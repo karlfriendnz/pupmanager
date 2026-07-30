@@ -50,7 +50,7 @@ export default async function HomeworkDetailPage({ params }: { params: Promise<{
   const task = await prisma.trainingTask.findFirst({
     where: { id: taskId, clientId: active.clientId },
     select: {
-      id: true, title: true, description: true, repetitions: true,
+      id: true, title: true, description: true, repetitions: true, wantsLog: true,
       videoUrl: true, trainerNote: true, imageUrls: true,
       completion: { select: { id: true } },
       logs: {
@@ -158,8 +158,15 @@ export default async function HomeworkDetailPage({ params }: { params: Promise<{
         )}
       </div>
 
-      {/* Log the training */}
-      <TrainingLogPanel taskId={task.id} initialLogs={logs} initiallyDone={!!task.completion} />
+      {/* Log the training — unless this is reading material.
+          The library isn't only a homework source: plenty of it is reference a
+          client looks at ("how to fit a harness"), where asking them to record
+          reps and rate how it went is noise. The flag is copied onto the homework
+          at hand-out time, so what a client sees can't change under them.
+          Anything already logged still shows, because it happened. */}
+      {(task.wantsLog || logs.length > 0) && (
+        <TrainingLogPanel taskId={task.id} initialLogs={logs} initiallyDone={!!task.completion} />
+      )}
     </div>
   )
 }

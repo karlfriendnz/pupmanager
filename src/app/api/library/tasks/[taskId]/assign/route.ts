@@ -57,6 +57,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ taskId:
       // attached one handed out homework that had lost it. LibraryTask holds ONE
       // image, TrainingTask holds a list, so it goes in as a list of one.
       imageUrls: task.imageUrl ? [task.imageUrl] : [],
+      // Copied, not looked up: changing the item later must not start asking for
+      // logs on homework already handed out.
+      wantsLog: task.wantsLog,
       dogId: parsed.data.dogId ?? null,
       libraryTaskId: task.id,
     },

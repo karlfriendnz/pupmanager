@@ -102,6 +102,7 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
             title: task.title,
             description: task.description,
             repetitions: task.repetitions,
+            wantsLog: task.wantsLog,
             videoUrl: task.videoUrl,
             imageUrl: task.imageUrl,
             fileUrl: task.fileUrl,

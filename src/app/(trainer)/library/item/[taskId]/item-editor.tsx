@@ -12,12 +12,14 @@ import { compressImageFile, isDisplayableImage } from '@/lib/compress-image'
 import { isRichTextEmpty } from '@/lib/rich-text'
 import { ErrorNote } from '../../library-forms'
 import { VideoUploadButton } from '@/components/video-upload-button'
+import { Switch } from '@/components/ui/switch'
 
 export interface EditableItem {
   id: string
   title: string
   description: string | null
   repetitions: number | null
+  wantsLog?: boolean
   videoUrl: string | null
   imageUrl: string | null
   fileUrl: string | null
@@ -41,6 +43,9 @@ export function ItemEditor({ item }: { item: EditableItem }) {
   const [title, setTitle] = useState(item.title)
   const [description, setDescription] = useState(item.description ?? '')
   const [repetitions, setRepetitions] = useState(item.repetitions?.toString() ?? '')
+  // Default true for an item saved before this existed — it behaved as homework,
+  // so it keeps behaving as homework.
+  const [wantsLog, setWantsLog] = useState(item.wantsLog ?? true)
   const [videoUrl, setVideoUrl] = useState(item.videoUrl ?? '')
   const [imageUrl, setImageUrl] = useState(item.imageUrl)
   const [fileUrl, setFileUrl] = useState(item.fileUrl)
@@ -64,6 +69,7 @@ export function ItemEditor({ item }: { item: EditableItem }) {
         title: title.trim(),
         description: isRichTextEmpty(description) ? null : description,
         repetitions: repetitions.trim() ? Number.parseInt(repetitions, 10) : null,
+        wantsLog,
         videoUrl: videoUrl.trim() || null,
         imageUrl,
         fileUrl,
@@ -164,6 +170,26 @@ export function ItemEditor({ item }: { item: EditableItem }) {
           </div>
 
           <div className="px-4 py-4">
+            {/* What the CLIENT is asked to do with this — a different question from
+                what the item contains, so it gets its own row. The library isn't
+                only a homework source: plenty of it is reference material ("how to
+                fit a harness") where asking for reps and a rating is noise. */}
+            <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
+              <div className="min-w-0">
+                <span className="block text-[13px] font-medium text-slate-700">Ask the client to log sessions</span>
+                <span className="block text-xs text-slate-500">
+                  {wantsLog
+                    ? 'They record what they did and how it went, and it counts towards their progress.'
+                    : 'Reading material — it appears in their app with nothing to fill in.'}
+                </span>
+              </div>
+              <Switch
+                checked={wantsLog}
+                onChange={() => { setWantsLog(v => !v); touched() }}
+                onColor="bg-teal-600"
+                aria-label={`Ask the client to log sessions — ${wantsLog ? 'on' : 'off'}`}
+              />
+            </div>
             <div className="flex flex-col gap-4 sm:flex-row">
               <div className="sm:w-32">
                 <label htmlFor="item-reps" className="block text-[13px] font-medium text-slate-700">Repetitions</label>

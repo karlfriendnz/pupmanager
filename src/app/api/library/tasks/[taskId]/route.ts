@@ -13,6 +13,9 @@ const schema = z.object({
   // Rich text (Tiptap HTML). Sanitized on the way out by <RichText />.
   description: z.string().optional().nullable(),
   repetitions: z.number().int().positive().optional().nullable(),
+  // Does a client log sessions against this, or just read it? Plenty of the
+  // library is reference material where reps and a rating are noise.
+  wantsLog: z.boolean().optional(),
   videoUrl: webUrl.optional().nullable().or(z.literal('')),
   // Blob URLs written by /api/library/upload; fileName is the handout's label.
   imageUrl: webUrl.optional().nullable().or(z.literal('')),
@@ -47,6 +50,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ taskId
       title: parsed.data.title,
       description: parsed.data.description ?? null,
       repetitions: parsed.data.repetitions ?? null,
+      ...(parsed.data.wantsLog !== undefined && { wantsLog: parsed.data.wantsLog }),
       videoUrl: parsed.data.videoUrl || null,
       imageUrl: parsed.data.imageUrl || null,
       fileUrl: parsed.data.fileUrl || null,
