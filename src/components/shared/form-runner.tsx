@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { ArrowLeft, ArrowRight, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { RichText } from '@/components/shared/rich-text'
+import { clientFieldLabel, clientFieldInputType } from '@/lib/client-fields'
 import { hasOptions, isQuestionVisible } from '@/lib/session-form-builder'
 import type { FormStep, Question } from '@/lib/session-form-builder'
 
@@ -95,7 +96,11 @@ export function FormRunner({
   // (the server normalises the link on write); the `?? ''` is only so an
   // in-flight builder question can't index with undefined.
   function label(q: Question): string {
-    return q.type === 'CUSTOM_FIELD' ? (linkedFields[q.customFieldId ?? '']?.label ?? 'Field') : q.label
+    if (q.type === 'CUSTOM_FIELD') return linkedFields[q.customFieldId ?? '']?.label ?? 'Field'
+    // A built-in detail is named by the app, not by the trainer — the same words
+    // wherever it's asked for.
+    if (q.type === 'CLIENT_FIELD') return clientFieldLabel(q.fieldKey)
+    return q.label
   }
   function optionsFor(q: Question): string[] {
     if (q.type === 'CUSTOM_FIELD') return linkedFields[q.customFieldId ?? '']?.options ?? []
@@ -103,6 +108,9 @@ export function FormRunner({
   }
   function typeOf(q: Question): string {
     if (q.type === 'CUSTOM_FIELD') return linkedFields[q.customFieldId ?? '']?.type ?? 'TEXT'
+    // Its input shape comes from the detail itself: an email box for an email, a
+    // date picker for a birthday.
+    if (q.type === 'CLIENT_FIELD') return clientFieldInputType(q.fieldKey)
     return q.type
   }
   function set(id: string, v: Answer) {

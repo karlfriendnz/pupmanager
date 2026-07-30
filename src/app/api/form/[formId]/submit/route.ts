@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { clientFieldLabel } from '@/lib/client-fields'
 import { z } from 'zod'
 import { notifyEnquiryTrainer } from '@/lib/notify-enquiry-trainer'
 import { sendFormAutoReply } from '@/lib/form-auto-reply'
@@ -136,7 +137,11 @@ async function submitUnified(req: Request, id: string) {
     const v = answers[q.id]
     const filled = Array.isArray(v) ? v.length > 0 : !!(v && v.trim())
     if (!filled) {
-      const label = q.type === 'CUSTOM_FIELD' ? 'A required field' : q.label
+      const label = q.type === 'CUSTOM_FIELD'
+        ? 'A required field'
+        : q.type === 'CLIENT_FIELD'
+          ? clientFieldLabel(q.fieldKey)
+          : q.label
       return NextResponse.json({ error: `${label} is required.` }, { status: 400 })
     }
   }

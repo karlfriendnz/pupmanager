@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
+import { CLIENT_FIELD_KEYS } from '@/lib/client-fields'
 
 // Shared validation + helpers for the unified Form API (intake + enquiry).
 // The question shape mirrors @/lib/session-form-builder's Question union — this
@@ -56,6 +57,14 @@ export const questionSchema = z.discriminatedUnion('type', [
     }).optional(),
   }).refine(q => !!q.customFieldId || !!q.field, {
     message: 'A saved-to-record question needs either an existing field or a new one to create',
+  }),
+  // Asks for one of the built-in client/dog details. The KEY is checked against
+  // the known list rather than taken on trust: a form is authored in a browser,
+  // and an unknown key would be a question nothing could ever answer.
+  z.object({
+    ...baseQuestion,
+    type: z.literal('CLIENT_FIELD'),
+    fieldKey: z.enum(CLIENT_FIELD_KEYS),
   }),
 ])
 

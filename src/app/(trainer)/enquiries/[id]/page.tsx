@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import { after } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { clientFieldLabel } from '@/lib/client-fields'
 import { Card } from '@/components/ui/card'
 import { EnquiryActions } from './enquiry-actions'
 import { PageHeader } from '@/components/shared/page-header'
@@ -76,7 +77,11 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
       const raw = answers[q.id]
       const value = Array.isArray(raw) ? raw.join(', ') : (raw ?? '')
       if (!value.trim()) return []
-      const label = q.type === 'CUSTOM_FIELD' ? (linkedLabels[q.customFieldId ?? ''] ?? 'Field') : q.label
+      const label = q.type === 'CUSTOM_FIELD'
+        ? (linkedLabels[q.customFieldId ?? ''] ?? 'Field')
+        : q.type === 'CLIENT_FIELD'
+          ? clientFieldLabel(q.fieldKey)
+          : q.label
       return [{ label, value }]
     })
   }

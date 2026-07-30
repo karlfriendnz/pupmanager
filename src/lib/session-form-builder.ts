@@ -10,7 +10,7 @@
 
 export type BasicType = 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5'
 export type ChoiceType = 'DROPDOWN' | 'RADIO' | 'CHECKBOX'
-export type QuestionType = BasicType | ChoiceType | 'CUSTOM_FIELD'
+export type QuestionType = BasicType | ChoiceType | 'CUSTOM_FIELD' | 'CLIENT_FIELD'
 
 /**
  * Conditional visibility: show this question only when the referenced
@@ -45,15 +45,52 @@ export interface NewFieldSpec {
 }
 export interface LinkedQuestion { id: string; type: 'CUSTOM_FIELD'; customFieldId?: string; required: boolean; isPrivate?: boolean; showIf?: ShowIf; step?: string; field?: NewFieldSpec }
 
-export type Question = BasicQuestion | ChoiceQuestion | LinkedQuestion
+/**
+ * A question that asks for one of the BUILT-IN client/dog details — their name,
+ * email, phone, address, or the dog's name, breed, weight, birthday, notes.
+ *
+ * These back real columns on User / ClientProfile / Dog, so they were configured
+ * apart from forms: a separate screen decided which were required and in what
+ * order. But "the system fields are just a result of the forms" (Karl,
+ * 2026-07-30) — if the form asks for an email and marks it required, that IS the
+ * rule. So they become questions like everything else, and the form is the one
+ * place that says what a client is asked for.
+ *
+ * The answer is written to the real column, never into the form's answer blob —
+ * a name collected here has to BE the client's name.
+ */
+export interface ClientFieldQuestion {
+  id: string
+  type: 'CLIENT_FIELD'
+  /** Which built-in detail (a ClientFieldKey — see lib/client-fields). */
+  fieldKey: string
+  required: boolean
+  isPrivate?: boolean
+  showIf?: ShowIf
+  step?: string
+}
+
+export type Question = BasicQuestion | ChoiceQuestion | LinkedQuestion | ClientFieldQuestion
 
 /** Narrows a Question to one that owns an `options` array. */
 export function hasOptions(q: Question): q is ChoiceQuestion {
-  return q.type !== 'CUSTOM_FIELD' && isChoiceType(q.type)
+  return q.type !== 'CUSTOM_FIELD' && q.type !== 'CLIENT_FIELD' && isChoiceType(q.type)
 }
 
-/** A question the trainer authored (i.e. not linked to a CustomField). */
+/** A question the trainer authored — the ones that carry their own label text. */
 export type AuthoredQuestion = BasicQuestion | ChoiceQuestion
+
+/**
+ * Does this question carry its own label?
+ *
+ * Two kinds don't: a CUSTOM_FIELD is named by the field it links to, and a
+ * CLIENT_FIELD by the built-in detail it asks for. Callers used to test
+ * `type !== 'CUSTOM_FIELD'` and read `.label`, which silently became wrong the
+ * moment a second labelless kind existed — so the question answers it instead.
+ */
+export function hasLabel(q: Question): q is AuthoredQuestion {
+  return q.type !== 'CUSTOM_FIELD' && q.type !== 'CLIENT_FIELD'
+}
 
 export interface CustomFieldOption {
   id: string
@@ -72,7 +109,7 @@ export function isChoiceType(t: string): t is ChoiceType {
   return (CHOICE_TYPES as string[]).includes(t)
 }
 
-export const TYPE_LABELS: Record<Exclude<QuestionType, 'CUSTOM_FIELD'>, string> = {
+export const TYPE_LABELS: Record<Exclude<QuestionType, 'CUSTOM_FIELD' | 'CLIENT_FIELD'>, string> = {
   SHORT_TEXT: 'Short text',
   LONG_TEXT: 'Long text',
   NUMBER: 'Number',
@@ -91,9 +128,9 @@ export const TYPE_LABELS: Record<Exclude<QuestionType, 'CUSTOM_FIELD'>, string> 
  * number or a dropdown. Offering a choice the client never sees is worse than not
  * offering it.
  */
-export const SAVED_FIELD_TYPES: Exclude<QuestionType, 'CUSTOM_FIELD'>[] = ['SHORT_TEXT', 'NUMBER', 'DROPDOWN']
+export const SAVED_FIELD_TYPES: Exclude<QuestionType, 'CUSTOM_FIELD' | 'CLIENT_FIELD'>[] = ['SHORT_TEXT', 'NUMBER', 'DROPDOWN']
 
-export const NEW_QUESTION_TYPES: Exclude<QuestionType, 'CUSTOM_FIELD'>[] = [
+export const NEW_QUESTION_TYPES: Exclude<QuestionType, 'CUSTOM_FIELD' | 'CLIENT_FIELD'>[] = [
   'SHORT_TEXT', 'LONG_TEXT', 'NUMBER', 'RATING_1_5', 'DROPDOWN', 'RADIO', 'CHECKBOX',
 ]
 
@@ -103,13 +140,22 @@ export function newQuestionId(): string {
 
 /** A blank question of `type`. Choice types get two empty options to edit. */
 export function createQuestion(
-  type: Exclude<QuestionType, 'CUSTOM_FIELD'>,
+  type: Exclude<QuestionType, 'CUSTOM_FIELD' | 'CLIENT_FIELD'>,
   id: string = newQuestionId(),
 ): Question {
   if (isChoiceType(type)) {
     return { id, type, label: '', required: false, options: ['', ''] }
   }
   return { id, type: type as BasicType, label: '', required: false }
+}
+
+/** A question asking for one of the built-in client/dog details. */
+export function createClientFieldQuestion(
+  fieldKey: string,
+  id: string = newQuestionId(),
+  required = false,
+): Question {
+  return { id, type: 'CLIENT_FIELD', fieldKey, required }
 }
 
 /** A question linked to one of the trainer's existing CustomFields. */
@@ -285,6 +331,12 @@ export function validateForm(name: string, questions: Question[]): string | null
       if (!q.customFieldId) return 'A linked field question is missing its field'
       continue
     }
+    // Named by the built-in detail it asks for — nothing for a trainer to fill in
+    // and so nothing to get wrong.
+    if (q.type === 'CLIENT_FIELD') {
+      if (!q.fieldKey) return 'A client-detail question is missing which detail it asks for'
+      continue
+    }
     if (!q.label.trim()) return 'Every question needs a label'
     if (hasOptions(q)) {
       const opts = q.options.map(o => o.trim()).filter(Boolean)
@@ -327,6 +379,9 @@ export function serializeQuestions(questions: Question[]): Question[] {
         isPrivate: !!q.isPrivate,
         ...extra,
       }
+    }
+    if (q.type === 'CLIENT_FIELD') {
+      return { id: q.id, type: q.type, fieldKey: q.fieldKey, required: q.required, isPrivate: !!q.isPrivate, ...extra }
     }
     if (hasOptions(q)) {
       return {

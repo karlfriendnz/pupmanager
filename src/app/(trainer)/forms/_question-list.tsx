@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Plus, Trash2, GripVertical, Link2, X, Copy } from 'lucide-react'
+import { Plus, Trash2, GripVertical, Link2, X, Copy, UserSquare } from 'lucide-react'
 import { ModalPortal } from '@/components/shared/modal-portal'
 import {
   NEW_QUESTION_TYPES,
@@ -23,10 +23,12 @@ import {
   TYPE_LABELS,
   addQuestion,
   createCustomFieldQuestion,
+  createClientFieldQuestion,
   createFieldQuestion,
   createQuestion,
   fieldSpecFor,
   duplicateQuestion,
+  hasLabel,
   hasOptions,
   newQuestionId,
   removeQuestion as removeQuestionFrom,
@@ -35,6 +37,7 @@ import {
   usedCustomFieldIds,
 } from '@/lib/session-form-builder'
 import { isChoiceType as isChoiceAnswer } from '@/lib/session-form-builder'
+import { CLIENT_FIELDS, clientFieldLabel, clientFieldIsDogDetail } from '@/lib/client-fields'
 import type { CustomFieldOption, Question, QuestionType, ShowIf } from '@/lib/session-form-builder'
 import { FORM_QUIET_ACTION, FormEditorSection } from './_form-editor-shell'
 
@@ -268,6 +271,21 @@ function QuestionCard({
             </p>
           </>
           )
+        ) : question.type === 'CLIENT_FIELD' ? (
+          <>
+            <div className="flex items-center gap-1.5 text-sm font-medium text-slate-900">
+              <UserSquare className="h-3.5 w-3.5 flex-shrink-0 text-slate-500" strokeWidth={1.75} />
+              <span className="truncate">{clientFieldLabel(question.fieldKey)}</span>
+            </div>
+            {/* Nothing to type: it asks for a detail the app already knows the
+                shape of, and the answer goes straight onto their record rather
+                than into this form's answers. */}
+            <p className="text-xs text-slate-400">
+              {clientFieldIsDogDetail(question.fieldKey)
+                ? 'Saved on their dog’s record.'
+                : 'Saved on their record.'}
+            </p>
+          </>
         ) : (
           <>
             <input
@@ -279,8 +297,10 @@ function QuestionCard({
               className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pm-brand-500)]"
             />
             <select
-              value={question.type}
-              onChange={e => onPatch({ type: e.target.value as Exclude<QuestionType, 'CUSTOM_FIELD'> })}
+              // Only authored questions reach this branch; the two labelless kinds
+              // are handled above and have no type to choose.
+              value={hasLabel(question) ? question.type : 'SHORT_TEXT'}
+              onChange={e => onPatch({ type: e.target.value as Exclude<QuestionType, 'CUSTOM_FIELD' | 'CLIENT_FIELD'> })}
               aria-label={`Answer type for question ${index + 1}`}
               className="h-9 w-fit rounded-lg border border-slate-200 bg-white px-2 text-xs focus:outline-none focus:ring-2 focus:ring-[var(--pm-brand-500)]"
             >
@@ -381,6 +401,7 @@ export function QuestionList({
     if (q.type === 'CUSTOM_FIELD') {
       return customFields.find(f => f.id === q.customFieldId)?.label ?? 'Linked field'
     }
+    if (q.type === 'CLIENT_FIELD') return clientFieldLabel(q.fieldKey)
     return q.label || TYPE_LABELS[q.type]
   }
 
@@ -472,6 +493,7 @@ export function QuestionsSection({
   stepFallback?: string | null
 }) {
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [detailPickerOpen, setDetailPickerOpen] = useState(false)
   const used = usedCustomFieldIds(questions)
 
   // A new question joins the page you're looking at, so it doesn't silently
@@ -494,6 +516,18 @@ export function QuestionsSection({
             >
               <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
               Add question
+            </button>
+            {/* The built-in details, as questions. They used to be configured on
+                their own screen — but "the system fields are just a result of the
+                forms" (Karl), so the form is what says they're asked for. */}
+            <button
+              type="button"
+              onClick={() => setDetailPickerOpen(true)}
+              className={FORM_QUIET_ACTION}
+              title="Ask for their name, phone, dog's breed…"
+            >
+              <UserSquare className="h-3.5 w-3.5" strokeWidth={1.75} />
+              Add a client detail
             </button>
             {/* Making a field used to mean leaving the builder, creating it on
                 another screen, and coming back to link it. */}
@@ -541,7 +575,88 @@ export function QuestionsSection({
           onClose={() => setPickerOpen(false)}
         />
       )}
+
+      {detailPickerOpen && (
+        <ClientDetailPicker
+          used={new Set(questions.filter(q => q.type === 'CLIENT_FIELD').map(q => q.fieldKey))}
+          onPick={key => {
+            onChange(addQuestion(questions, withStep(createClientFieldQuestion(key, newQuestionId()))))
+            setDetailPickerOpen(false)
+          }}
+          onClose={() => setDetailPickerOpen(false)}
+        />
+      )}
     </>
+  )
+}
+
+// ─── Client-detail picker ────────────────────────────────────────────────────
+
+/**
+ * The built-in details a form can ask for.
+ *
+ * A full screen for the same reason the field picker is one: nine rows, each
+ * needing to say whether it's about the owner or the dog. Already-asked details
+ * are shown as taken rather than hidden, so it's obvious the form has them rather
+ * than that they don't exist.
+ */
+function ClientDetailPicker({
+  used,
+  onPick,
+  onClose,
+}: {
+  used: Set<string>
+  onPick: (fieldKey: string) => void
+  onClose: () => void
+}) {
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return (
+    <ModalPortal>
+      <div role="dialog" aria-modal="true" aria-label="Add a client detail" className="fixed inset-0 z-[90] flex flex-col bg-slate-50">
+        <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 pt-[env(safe-area-inset-top)]">
+          <div className="min-w-0 flex-1 py-3.5">
+            <p className="truncate text-[15px] font-semibold text-slate-900">Add a client detail</p>
+            <p className="mt-0.5 truncate text-[13px] text-slate-500">Saved straight onto their record</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="-mr-1 flex-shrink-0 p-2 text-slate-400 active:text-slate-700">
+            <X className="h-5 w-5" strokeWidth={1.75} />
+          </button>
+        </div>
+        <div className="no-scrollbar flex-1 overflow-y-auto p-4">
+          <div className="mx-auto w-full max-w-lg rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+            {CLIENT_FIELDS.map(f => {
+              const taken = used.has(f.key)
+              return (
+                <button
+                  key={f.key}
+                  type="button"
+                  disabled={taken}
+                  onClick={() => onPick(f.key)}
+                  className="flex w-full items-center gap-3 px-4 py-3.5 text-left disabled:opacity-40 active:bg-slate-50"
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-slate-900">{f.label}</span>
+                    <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                      {f.scope === 'DOG' ? 'About their dog' : 'About the owner'}
+                      {f.alwaysRequired ? ' · always required' : ''}
+                    </span>
+                  </span>
+                  {taken && <span className="flex-shrink-0 text-[13px] text-slate-400">Already asked</span>}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
   )
 }
 

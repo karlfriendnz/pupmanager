@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
+import { collectClientFieldWrites, hasClientFieldWrites } from '@/lib/client-field-writes'
 import type { Question } from '@/lib/session-form-builder'
 
 const schema = z.object({
@@ -79,6 +80,35 @@ export async function POST(req: Request) {
       await prisma.customFieldValue.create({
         data: { fieldId: q.customFieldId, clientId: clientProfile.id, value },
       })
+    }
+  }
+
+  // Built-in details go to the columns they belong to. A name collected on an
+  // intake form has to BE the client's name — leaving it in intakeAnswers means
+  // the trainer's client list still says "Unnamed" after the client filled the
+  // form in. Blank answers write nothing, so skipping an optional question can't
+  // wipe a phone number the trainer already had.
+  const writes = collectClientFieldWrites(questions, answers)
+  if (hasClientFieldWrites(writes)) {
+    const profile = await prisma.clientProfile.findUnique({
+      where: { id: clientProfile.id },
+      select: { userId: true, dogId: true },
+    })
+    if (Object.keys(writes.user).length > 0 && profile?.userId) {
+      // Email is deliberately NOT written: it's the client's login, and letting a
+      // form change it would lock them out of the account they just used.
+      const { email: _ignored, ...safe } = writes.user
+      if (Object.keys(safe).length > 0) {
+        await prisma.user.update({ where: { id: profile.userId }, data: safe })
+      }
+    }
+    if (Object.keys(writes.profile).length > 0) {
+      await prisma.clientProfile.update({ where: { id: clientProfile.id }, data: writes.profile })
+    }
+    // Their primary dog, when they have one. Creating a dog from an intake answer
+    // is a bigger decision than this route should take on its own.
+    if (Object.keys(writes.dog).length > 0 && profile?.dogId) {
+      await prisma.dog.update({ where: { id: profile.dogId }, data: writes.dog })
     }
   }
 

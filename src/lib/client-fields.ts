@@ -75,3 +75,49 @@ export function resolveClientFieldConfig(raw: unknown): ResolvedFieldConfig {
 // Quick-added contacts land in the existing "New" bucket (the /clients "New"
 // tab) so they surface as needing follow-up without a parallel status/tab.
 export const QUICK_ADD_FOLLOW_UP_STATUS = 'NEW'
+
+/**
+ * What to call a built-in detail on a form.
+ *
+ * Used by the question builder, which asks for these as questions now rather than
+ * reading a separate configuration screen. An unknown key returns itself rather
+ * than throwing: a form authored against a key we later rename should still render
+ * something a trainer can recognise and remove.
+ */
+export function clientFieldLabel(key: string): string {
+  return CLIENT_FIELDS.find(f => f.key === key)?.label ?? key
+}
+
+/** Is this detail about the dog rather than the owner? */
+export function clientFieldIsDogDetail(key: string): boolean {
+  return CLIENT_FIELDS.find(f => f.key === key)?.scope === 'DOG'
+}
+
+/**
+ * The input a built-in detail should render as, in the vocabulary the form runner
+ * uses for its own question types.
+ *
+ * An email gets an email box, a birthday a date picker, weight a number — the
+ * shape belongs to the detail, so a trainer never picks it and can't pick wrong.
+ */
+export function clientFieldInputType(key: string): string {
+  const input = CLIENT_FIELDS.find(f => f.key === key)?.input
+  switch (input) {
+    case 'textarea': return 'LONG_TEXT'
+    case 'number': return 'NUMBER'
+    case 'date': return 'DATE'
+    case 'email': return 'EMAIL'
+    case 'tel': return 'TEL'
+    // An address is a single line here; the full lookup lives on the client form
+    // rather than in a generic runner.
+    default: return 'SHORT_TEXT'
+  }
+}
+
+/**
+ * Every built-in key, as a tuple, for validating what a form may ask for.
+ *
+ * Derived from CLIENT_FIELDS so the two can't disagree — adding a detail there
+ * makes it askable, with nothing else to remember.
+ */
+export const CLIENT_FIELD_KEYS = CLIENT_FIELDS.map(f => f.key) as [ClientFieldKey, ...ClientFieldKey[]]
