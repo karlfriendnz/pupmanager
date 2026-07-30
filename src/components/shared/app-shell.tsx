@@ -22,7 +22,7 @@ import { TopBarControls } from './top-bar-controls'
 import { FloatingCreateButton } from './floating-create-button'
 import { PageTitleProvider, NavLabelProvider, usePageTitle, usePageHasBack, usePageImmersive } from './page-title'
 import { FlatRow, FlatRowGrid } from './flat-list'
-import { shouldShowSectionHeader, labelFor, sectionKey } from '@/lib/nav-labels'
+import { shouldShowSectionHeader, labelFor, sectionKey, clientLabelFor } from '@/lib/nav-labels'
 
 const SIDEBAR_COLLAPSED_KEY = 'k9.trainerSidebarCollapsed'
 const NAV_GROUPS_KEY = 'k10.trainerNavGroups'
@@ -394,7 +394,7 @@ export function AppShell(props: AppShellProps) {
 // PupManager-branded client app. Mobile: full-bleed pages + bottom tab bar +
 // a full-screen pull-down Menu. Desktop (md+): left sidebar, content fills.
 
-function ClientShell({ children, trainerLogo, businessName, clientNavHints, unreadCounts = {}, trainerContact, showTrainerSwitcher, previewExitHref, hiddenNavHrefs = [] }: AppShellProps) {
+function ClientShell({ children, trainerLogo, businessName, clientNavHints, unreadCounts = {}, trainerContact, showTrainerSwitcher, previewExitHref, hiddenNavHrefs = [], navLabels = null }: AppShellProps) {
   const handleSignOut = () => {
     if (previewExitHref) { window.location.href = previewExitHref; return }
     signOutWithPush()
@@ -405,8 +405,14 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints, unre
   // Hide any nav item the trainer's add-ons disable (e.g. /my-shop when the
   // client-shop add-on is off).
   const shown = <T extends { href: string }>(items: T[]) => items.filter(i => !hiddenNavHrefs.includes(i.href))
-  const menuItems = shown(showTrainerSwitcher ? [...CLIENT_MENU, switchItem] : CLIENT_MENU)
-  const sidebarItems = shown(showTrainerSwitcher ? [...CLIENT_SIDEBAR, switchItem] : CLIENT_SIDEBAR)
+  // A client sees the trainer's words too: rename Events to Seminars and it is
+  // Seminars on both sides. Only where the two mean the same thing — see
+  // CLIENT_LABEL_SOURCE for the deliberate omissions.
+  const clientLabelled = <T extends { href: string; label: string }>(items: T[]) =>
+    items.map(i => ({ ...i, label: clientLabelFor(i.href, i.label, navLabels) }))
+  const menuItems = clientLabelled(shown(showTrainerSwitcher ? [...CLIENT_MENU, switchItem] : CLIENT_MENU))
+  const sidebarItems = clientLabelled(shown(showTrainerSwitcher ? [...CLIENT_SIDEBAR, switchItem] : CLIENT_SIDEBAR))
+  const clientTabs = clientLabelled(CLIENT_TABS)
   const [menuOpen, setMenuOpen] = useState(false)
   const [dragY, setDragY] = useState(0)
   const dragStart = useRef<number | null>(null)
@@ -528,7 +534,7 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints, unre
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="flex">
-          {CLIENT_TABS.map((item) => {
+          {clientTabs.map((item) => {
             const active = isActive(item.href) && !menuOpen
             const Icon = item.icon
             const unread = unreadCounts[item.href] ?? 0

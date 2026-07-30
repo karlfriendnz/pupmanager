@@ -5,6 +5,7 @@ import {
   isRenameable, sanitizeNavLabels, labelFor, sectionKey, shouldShowSectionHeader,
   NAV_LABEL_CATALOG, pageTitleLabel,
   type RenameableEntry,
+  clientLabelFor,
 } from '@/lib/nav-labels'
 
 const entries: RenameableEntry[] = [
@@ -282,5 +283,36 @@ describe('a renamed menu item renames its page too', () => {
   it('ignores the query-string menu entries', () => {
     expect(pageTitleLabel('/schedule', 'Schedule', { '/schedule?availability=1': 'Free time' }))
       .toBe('Schedule')
+  })
+})
+
+describe("a client sees the trainer's words too", () => {
+  const mine = { 'section:programs': 'Services', '/products': 'Merch', '/memberships': 'Plans' }
+
+  it('borrows the trainer label for the same thing', () => {
+    expect(clientLabelFor('/my-availability', 'Offerings', mine)).toBe('Services')
+    expect(clientLabelFor('/my-shop', 'Shop', mine)).toBe('Merch')
+    expect(clientLabelFor('/my-memberships', 'Packages', mine)).toBe('Plans')
+  })
+
+  it('keeps our word where the trainer has not chosen one', () => {
+    expect(clientLabelFor('/my-availability', 'Offerings', {})).toBe('Offerings')
+    expect(clientLabelFor('/my-shop', 'Shop', null)).toBe('Products')
+  })
+
+  // The client's Sessions is everything they have booked — classes, events and
+  // one-to-ones. The trainer's "1:1 Sessions" is one product among those, so
+  // renaming it to "Private lessons" must not relabel the whole list.
+  it('does not borrow across a meaning it does not share', () => {
+    const renamed = { '/packages': 'Private lessons' }
+    expect(clientLabelFor('/my-sessions', 'Sessions', renamed)).toBe('Sessions')
+    expect(clientLabelFor('/home', 'Home', renamed)).toBe('Home')
+    expect(clientLabelFor('/my-invoices', 'Invoices', renamed)).toBe('Invoices')
+  })
+
+  // A locked word is locked on both sides — the sanitizer drops it, so a
+  // client can never be shown something the trainer was not allowed to set.
+  it('will not carry a locked rename across', () => {
+    expect(clientLabelFor('/my-messages', 'Messages', { '/messages': 'Chat' })).toBe('Messages')
   })
 })
