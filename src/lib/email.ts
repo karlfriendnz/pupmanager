@@ -1,5 +1,6 @@
 import { Resend } from 'resend'
 import { env } from './env'
+import { isPlaceholderEmail, reachableRecipients } from './no-email'
 import { isTrainerMailStopped } from './trainer-mail'
 
 let _client: Resend | null = null
@@ -38,19 +39,48 @@ type SendArgs = {
 
 /**
  * The single gate every PupManager email passes through. Beyond handing the
- * message to Resend it enforces one rule: a trainer who cancelled (or whose
- * trial lapsed, or whose account was closed) stops hearing from us unless the
- * caller marks the message `alwaysSend`. Held mail returns the same
- * `{ data, error }` shape with no error, so a caller that only checks for
- * failures treats it as a clean send.
+ * message to Resend it enforces two rules:
+ *
+ * 1. A client with no email address is never mailed. They carry a synthetic
+ *    address on a domain with no MX record (see lib/no-email), so anything
+ *    sent there is a guaranteed hard bounce, and hard bounces are what cost a
+ *    sending domain its reputation. Enforced HERE rather than at each call
+ *    site because the call sites are where it was missed: four of them checked
+ *    and every transactional path — reminders, invoices, booking automations,
+ *    form auto-replies — did not.
+ *
+ * 2. A trainer who cancelled (or whose trial lapsed, or whose account was
+ *    closed) stops hearing from us unless the caller marks the message
+ *    `alwaysSend`.
+ *
+ * Both return the same `{ data, error }` shape with no error, so a caller that
+ * only checks for failures treats a suppressed message as a clean send. That
+ * is deliberate: not mailing someone who cannot receive mail is the correct
+ * outcome, not a failure to report upwards.
  */
 export async function sendEmail({ to, subject, html, text, from, replyTo, attachments, alwaysSend }: SendArgs) {
-  if (!alwaysSend && await isTrainerMailStopped(to)) {
+  // Placeholder recipients come out first — before the trainer-stopped lookup,
+  // which hits the database and has nothing to say about an address nobody
+  // reads. `alwaysSend` does NOT override this: a password reset to a
+  // non-existent domain is still a bounce, and there is no message important
+  // enough to be worth sending somewhere it cannot arrive.
+  const recipients = reachableRecipients(to)
+  if (recipients.length === 0) {
     return { data: null, error: null }
   }
+  // Keep the caller's original shape. isTrainerMailStopped reads an ARRAY as
+  // "internal alert to the team" and exempts it — so handing it a one-element
+  // array would quietly switch off the cancelled-trainer suppression for every
+  // ordinary send.
+  const filtered: string | string[] = Array.isArray(to) ? recipients : recipients[0]
+
+  if (!alwaysSend && await isTrainerMailStopped(filtered)) {
+    return { data: null, error: null }
+  }
+
   return client().emails.send({
     from: from ?? PLATFORM_FROM,
-    to,
+    to: filtered,
     subject,
     html,
     text,
@@ -85,6 +115,24 @@ export function fromTrainerDomain(displayName: string, sendingFromEmail: string)
 export async function sendEmailBatch(
   messages: { to: string; subject: string; html: string; text?: string; from: string; replyTo?: string }[],
 ) {
+  // Placeholder addresses are REFUSED here rather than filtered, unlike
+  // sendEmail. Callers map Resend's per-message ids back to recipients by
+  // position (`res.data.data[i]` → `group[i]`), so dropping an entry would
+  // silently attribute every id after it to the wrong person — a worse bug
+  // than the bounce it avoided. Both existing callers already filter upstream,
+  // so reaching this is a caller error and should say so.
+  const placeholders = messages.filter(m => isPlaceholderEmail(m.to))
+  if (placeholders.length) {
+    throw new Error(
+      `sendEmailBatch: ${placeholders.length} recipient(s) have no real email address ` +
+      `(${placeholders.slice(0, 3).map(m => m.to).join(', ')}${placeholders.length > 3 ? ', …' : ''}). ` +
+      'Filter them out before batching — see lib/no-email.',
+    )
+  }
+  if (messages.length === 0) {
+    return { data: null, error: null }
+  }
+
   return client().batch.send(
     messages.map(m => ({
       from: m.from,
