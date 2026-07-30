@@ -69,6 +69,11 @@ const JOBS: Array<{ name: string; schedule: string; path: string }> = [
   // rotation trap described above: a job outside this list gets skipped by the
   // next rotation and 401s forever with no error anywhere.
   { name: 'pm-membership-reconcile', schedule: '40 3 * * *', path: 'membership-reconcile' },
+  // Daily at 04:10: does Stripe agree with what WE think we are billing? The
+  // case that motivated it had already happened — two live subscriptions on one
+  // customer, both charging, invisible to us because the billing webhook
+  // overwrites our stored id with whichever subscription it heard about last.
+  { name: 'pm-billing-reconcile', schedule: '10 4 * * *', path: 'billing-reconcile' },
 ]
 
 // Every scheduled job that sends a bearer token is in this list. That is the

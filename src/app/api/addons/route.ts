@@ -116,6 +116,22 @@ export async function POST(req: Request) {
 
   const stripeClient = stripeFor(sandbox)
   const sub = await stripeClient.subscriptions.retrieve(trainer.stripeSubscriptionId)
+
+  // The stored id is not proof the subscription is still alive. It is written
+  // by the billing webhook from whatever subscription it last saw, so it can
+  // name one that has since been cancelled — and adding a paid add-on to a dead
+  // subscription bills nobody while switching the feature on, or fails in a way
+  // the trainer reads as "the button is broken".
+  if (!['active', 'trialing', 'past_due', 'unpaid'].includes(sub.status)) {
+    console.warn(
+      `[addons] trainer ${ctx.companyId} has stripeSubscriptionId ${sub.id} but it is ${sub.status}`,
+    )
+    return NextResponse.json(
+      { error: 'Your subscription is not active, so extras cannot be changed. Check Billing.', needsSubscription: true },
+      { status: 409 },
+    )
+  }
+
   const currency = (sub.currency ?? DEFAULT_CURRENCY).toUpperCase()
   const cur: CurrencyCode = isCurrencyCode(currency) ? currency : DEFAULT_CURRENCY
 
