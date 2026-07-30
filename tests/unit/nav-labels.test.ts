@@ -8,11 +8,11 @@ import {
 } from '@/lib/nav-labels'
 
 const entries: RenameableEntry[] = [
-  { key: 'section:programs', defaultLabel: 'Offerings', isSection: true, example: 'Services' },
-  { key: '/packages', defaultLabel: '1:1 Sessions', isSection: false, example: 'Private lessons' },
-  { key: '/library', defaultLabel: 'Library', isSection: false, example: 'Resources' },
-  { key: '/finances', defaultLabel: 'Finances', isSection: false, example: 'Money' },
-  { key: '/stripe', defaultLabel: 'Stripe', isSection: false, example: 'Payments' },
+  { key: 'section:programs', defaultLabel: 'Offerings', isSection: true, examples: ['Services', 'Training'] },
+  { key: '/packages', defaultLabel: '1:1 Sessions', isSection: false, examples: ['Private lessons', 'Consults'] },
+  { key: '/library', defaultLabel: 'Library', isSection: false, examples: ['Resources', 'Guides'] },
+  { key: '/finances', defaultLabel: 'Finances', isSection: false, examples: ['Money', 'Accounts'] },
+  { key: '/stripe', defaultLabel: 'Stripe', isSection: false, examples: ['Payments', 'Card'] },
 ]
 
 describe('what may be renamed', () => {
@@ -205,13 +205,18 @@ describe('the rename catalogue matches the real menu', () => {
   // The placeholder used to repeat our own label, sitting beside a label that
   // already said it. An example is the whole point of the box — so a new menu
   // item must not be added without one, or it silently goes back to useless.
-  it('gives every renameable thing an example, not its own name back', () => {
+  it('gives every renameable thing a few examples, not its own name back', () => {
     for (const e of NAV_LABEL_CATALOG) {
-      expect(e.example.trim(), `${e.defaultLabel} needs an example`).not.toBe('')
-      expect(
-        e.example.trim().toLowerCase(),
-        `${e.defaultLabel}'s example just repeats it`,
-      ).not.toBe(e.defaultLabel.trim().toLowerCase())
+      // Several, so it reads as a range to pick from rather than the one
+      // answer we had in mind.
+      expect(e.examples.length, `${e.defaultLabel} needs a few examples`).toBeGreaterThan(1)
+      for (const ex of e.examples) {
+        expect(ex.trim(), `${e.defaultLabel} has a blank example`).not.toBe('')
+        expect(
+          ex.trim().toLowerCase(),
+          `${e.defaultLabel}'s example just repeats it`,
+        ).not.toBe(e.defaultLabel.trim().toLowerCase())
+      }
     }
   })
 
