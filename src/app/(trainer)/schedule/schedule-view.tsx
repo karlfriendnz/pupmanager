@@ -14,7 +14,7 @@ import { Alert } from '@/components/ui/alert'
 import Link from 'next/link'
 import {
   ChevronLeft, ChevronRight, Plus, Calendar, CalendarDays,
-  Clock, Trash2, X, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search, Users, Check, CalendarClock,} from 'lucide-react'
+  Clock, Trash2, X, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search, Users, Check, CalendarClock, ArrowUpRight,} from 'lucide-react'
 import {
   AssignPackageFromScheduleModal,
 } from './assign-package-from-schedule'
@@ -1354,11 +1354,15 @@ function WeekGrid({
 function DayList({
   sessions,
   onDelete,
+  onEdit,
   matchedIds,
   searchActive,
 }: {
   sessions: Session[]
   onDelete: (id: string) => void
+  /** Open the quick-edit modal. The row itself goes to the session's page, so the
+   *  two actions are separate: read it there, change it here. */
+  onEdit?: (s: Session) => void
   /**
    * Kept in the prop signature for callers that previously routed clicks
    * to the client profile. The shared SessionRowCard now navigates to the
@@ -1389,13 +1393,25 @@ function DayList({
             session={s}
             dimmed={dimmed}
             trailing={
-              <button
-                onClick={() => onDelete(s.id)}
-                aria-label="Delete session"
-                className="hidden sm:flex self-stretch px-2 rounded-2xl text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0 items-center"
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              <>
+                {onEdit && (
+                  <button
+                    onClick={() => onEdit(s)}
+                    aria-label="Edit session"
+                    title="Edit"
+                    className="hidden sm:flex self-stretch px-2 rounded-2xl text-slate-300 hover:text-blue-600 hover:bg-blue-50 transition-colors flex-shrink-0 items-center"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </button>
+                )}
+                <button
+                  onClick={() => onDelete(s.id)}
+                  aria-label="Delete session"
+                  className="hidden sm:flex self-stretch px-2 rounded-2xl text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0 items-center"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </>
             }
           />
         )
@@ -2366,9 +2382,22 @@ function SessionModal({
                 </div>
               )}
             </div>
-            <button onClick={onClose} className="p-1 text-slate-400 hover:text-slate-600 flex-shrink-0 mt-0.5">
-              <X className="h-5 w-5" />
-            </button>
+            {/* Two different things, said plainly (Karl, 2026-07-30): this modal
+                is where you CHANGE the session; the session's own page is where
+                you read it — notes, homework, history. Clicking a block used to
+                give you only the first, with no way through to the second. */}
+            <div className="flex flex-shrink-0 items-start gap-1">
+              <Link
+                href={`/sessions/${session.id}`}
+                className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-blue-600 hover:bg-blue-50"
+              >
+                <ArrowUpRight className="h-4 w-4" strokeWidth={1.75} />
+                View
+              </Link>
+              <button onClick={onClose} aria-label="Close" className="p-1 text-slate-400 hover:text-slate-600 mt-0.5">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -4047,6 +4076,7 @@ export function ScheduleView({
             <DayList
               sessions={daySessions}
               onDelete={handleDeleteSession}
+              onEdit={handleSessionClick}
               onNavigateClient={(clientId) => router.push(`/clients/${clientId}`)}
               matchedIds={matchedIds}
               searchActive={searchTokens.length > 0}
