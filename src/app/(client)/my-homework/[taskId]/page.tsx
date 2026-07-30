@@ -5,6 +5,9 @@ import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { TrainingLogPanel, type TrainingLogEntry } from './training-log-panel'
 import type { Metadata } from 'next'
+import { RichText } from '@/components/shared/rich-text'
+import { isRichTextEmpty } from '@/lib/rich-text'
+import { VideoPlayer } from '@/components/video-player'
 
 export const metadata: Metadata = { title: 'Homework' }
 
@@ -59,6 +62,13 @@ export default async function HomeworkDetailPage({ params }: { params: Promise<{
   if (!task) redirect('/home')
 
   const embedUrl = task.videoUrl ? toEmbedUrl(task.videoUrl) : null
+  // A file we host (or any direct video file) plays inline; a YouTube/Vimeo link
+  // needs their iframe. Checked on the URL rather than on how it was created, so a
+  // pasted link to an .mp4 works too.
+  const isDirectVideo = !!task.videoUrl && (
+    /\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(task.videoUrl)
+    || /\.public\.blob\.vercel-storage\.com\//i.test(task.videoUrl)
+  )
   const images = Array.isArray(task.imageUrls) ? (task.imageUrls as string[]) : []
   const logs: TrainingLogEntry[] = task.logs.map(l => ({
     id: l.id,
@@ -89,8 +99,14 @@ export default async function HomeworkDetailPage({ params }: { params: Promise<{
             <Repeat className="h-4 w-4" /> {task.repetitions} reps
           </p>
         )}
-        {task.description && (
-          <p className="mt-3 text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">{task.description}</p>
+        {/* Tiptap HTML, so it goes through <RichText> — which sanitizes and applies
+            the shared .tiptap-body styling. Rendered as text it printed its own
+            markup on the page (AGENTS.md: never render a description any other
+            way). */}
+        {task.description && !isRichTextEmpty(task.description) && (
+          <div className="mt-3 text-sm text-slate-600">
+            <RichText html={task.description} />
+          </div>
         )}
 
         {task.trainerNote && (
@@ -103,7 +119,12 @@ export default async function HomeworkDetailPage({ params }: { params: Promise<{
         {/* Trainer's instructional video */}
         {task.videoUrl && (
           <div className="mt-4">
-            {embedUrl ? (
+            {isDirectVideo ? (
+              /* A clip the trainer uploaded (Blob), not a YouTube link — it has no
+                 embed URL, so it used to fall through to a bare "Watch the video"
+                 link that navigated away from the exercise. Play it in place. */
+              <VideoPlayer src={task.videoUrl} />
+            ) : embedUrl ? (
               <div className="relative w-full overflow-hidden rounded-2xl bg-black" style={{ aspectRatio: '16 / 9' }}>
                 <iframe
                   src={embedUrl}
