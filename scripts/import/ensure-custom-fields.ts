@@ -53,9 +53,27 @@ const prisma = scriptPrisma()
 
 type FieldType = 'TEXT' | 'NUMBER' | 'DROPDOWN'
 
+/**
+ * LOCAL ONLY, again.
+ *
+ * This was opened to the ap-southeast-2 Supabase pooler on 2026-07-30 to create
+ * eleven fields on a real trainer mid-import — the loader drops a value whose
+ * field does not exist, silently and per value, and that run would have lost
+ * 5,354 of them. It is closed again now the import is done, deliberately, so the
+ * exception does not quietly become the default.
+ *
+ * Open it the same way next time it is genuinely needed, and close it after:
+ *
+ *     if (isLocalSandbox(url) || /your-live-host/.test(url)) return
+ *
+ * Note this is STRICTER than loader/guard.ts's assertWritableTarget, which does
+ * permit that pooler. That asymmetry is on purpose: importing client data is a
+ * reviewed operation with a dry run and a backup in front of it, whereas this
+ * script edits a trainer's field definitions with neither.
+ */
 function requireLocalSandbox(): void {
   const url = process.env.DATABASE_URL ?? ''
-  if (isLocalSandbox(url) || /aws-1-ap-southeast-2\.pooler\.supabase\.com/.test(url)) return
+  if (isLocalSandbox(url)) return
   const { host, database } = describeUrl(url)
   console.error('\n✋ Refusing to write: DATABASE_URL is not the local sandbox.')
   console.error(`   host     : ${host}`)
