@@ -72,11 +72,13 @@ export function NavLabelsPanel({
   }
 
   return (
-    <section className="mt-8 max-w-3xl" data-review-scope="Configure: menu names">
-      <h3 className="text-sm font-semibold text-slate-900">What you call things</h3>
-      <p className="mt-0.5 mb-2 text-xs text-slate-500">
-        Rename anything in the left menu. Leave a box empty to keep ours.
-        {renamed > 0 && <span className="tabular-nums"> {renamed} renamed.</span>}
+    <section className="max-w-3xl" data-review-scope="Tab: What you call things">
+      {/* The tab's own TabIntro already says what this page is for, so this line
+          only reports where they're up to. */}
+      <p className="mb-3 text-sm text-slate-500">
+        {renamed === 0
+          ? 'Nothing renamed yet — the menu is using our words.'
+          : <span className="tabular-nums">{renamed} renamed.</span>}
       </p>
 
       {error && (

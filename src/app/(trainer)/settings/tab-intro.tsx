@@ -54,6 +54,16 @@ export const TAB_INTRO: Record<string, TabIntroCopy> = {
       'Some need a moment to set up; the link appears once it’s on.',
     ],
   },
+  naming: {
+    title: 'What you call things',
+    blurb:
+      'Your menu, in your words. A groomer says “Services”, a daycare says “Programmes” — you shouldn’t have to translate your own software. Leave a box empty to keep ours.',
+    steps: [
+      'Type your word next to ours. It changes the menu and the page it opens.',
+      'Rename a group heading and everything under it sits beneath your word.',
+      'A few keep their names — Stripe, Finances, Reports — so help articles still make sense.',
+    ],
+  },
   addons: {
     title: 'Add-ons',
     blurb:
