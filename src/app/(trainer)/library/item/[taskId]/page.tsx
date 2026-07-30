@@ -80,7 +80,10 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
       dog: { select: { id: true, name: true } },
       dogs: { select: { id: true, name: true } },
     },
-    orderBy: { createdAt: 'desc' },
+    // By NAME — this list is scanned for a person, and newest-first put them in
+    // an order nobody can predict. Nulls last so an unnamed contact doesn't
+    // squat the top of the picker.
+    orderBy: { user: { name: { sort: 'asc', nulls: 'last' } } },
   })
 
   const tree = await getLibraryTree(trainerId)

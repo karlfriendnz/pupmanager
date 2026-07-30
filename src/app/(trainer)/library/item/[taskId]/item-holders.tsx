@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Send, Users } from 'lucide-react'
+import { Check, Search, Send, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
 import { ModalPortal } from '@/components/shared/modal-portal'
@@ -120,6 +120,7 @@ function AssignDialog({
 }) {
   const router = useRouter()
   const [clientId, setClientId] = useState('')
+  const [search, setSearch] = useState('')
   const [dogId, setDogId] = useState('')
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [saving, setSaving] = useState(false)
@@ -127,6 +128,17 @@ function AssignDialog({
   const [done, setDone] = useState(false)
 
   const selected = clients.find(c => c.id === clientId)
+
+  // Matches the owner OR any of their dogs — a trainer often knows the dog's name
+  // and not the owner's. The chosen client always stays visible, so typing on
+  // after choosing can't make the selection vanish.
+  const q = search.trim().toLowerCase()
+  const visibleClients = q
+    ? clients.filter(c =>
+        c.id === clientId
+        || c.name.toLowerCase().includes(q)
+        || c.dogs.some(d => d.name.toLowerCase().includes(q)))
+    : clients
 
   async function submit() {
     if (!clientId || !date) { setError('Pick a client and a date.'); return }
@@ -158,17 +170,48 @@ function AssignDialog({
         </p>
       ) : (
         <div className="flex flex-col gap-4">
+          {/* The same picker as enrolling into a class (components/trainer/run-roster
+              → EnrolModal). A native <select> can't show a dog beside the owner or
+              a tick on the chosen row, and at a few hundred clients it's
+              unscannable — which is the same reason the class flow stopped using
+              one. Names arrive alphabetically from the page query. */}
           <div>
-            <label htmlFor="assign-client" className="block text-[13px] font-medium text-slate-700">Client</label>
-            <select
-              id="assign-client"
-              value={clientId}
-              onChange={e => { setClientId(e.target.value); setDogId('') }}
-              className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
-            >
-              <option value="">Choose a client…</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <label htmlFor="assign-client-search" className="block text-[13px] font-medium text-slate-700">Client</label>
+            <div className="relative mt-2">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={1.75} />
+              <input
+                id="assign-client-search"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search clients or dogs…"
+                autoFocus
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
+              />
+            </div>
+            {visibleClients.length === 0 ? (
+              <p className="py-6 text-center text-sm text-slate-500">No client matches “{search}”.</p>
+            ) : (
+              <div className="no-scrollbar mt-2 max-h-64 divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-200">
+                {visibleClients.map(c => {
+                  const on = c.id === clientId
+                  const dogs = c.dogs.map(d => d.name).join(', ')
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => { setClientId(c.id); setDogId('') }}
+                      className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left ${on ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-medium text-slate-800">{c.name}</span>
+                        {dogs && <span className="block truncate text-[11px] text-slate-400">{dogs}</span>}
+                      </span>
+                      {on && <Check className="h-4 w-4 shrink-0 text-slate-700" strokeWidth={1.75} />}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           {selected && selected.dogs.length > 0 && (
