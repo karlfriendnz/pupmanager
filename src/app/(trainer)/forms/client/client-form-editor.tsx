@@ -53,17 +53,27 @@ function newStepId() { return Math.random().toString(36).slice(2, 10) }
 export function ClientFormEditor({
   initial,
   customFields,
+  newFormUse,
 }: {
   initial: ClientFormInitial | null
   customFields: CustomFieldOption[]
+  /**
+   * Which job a BRAND-NEW form is being created for, from the door the trainer
+   * came through on /forms/new. Only sets the starting position — both switches
+   * are still on screen, so one form can still do both jobs.
+   */
+  newFormUse?: 'intake' | 'enquiry'
 }) {
   const router = useRouter()
   const isNew = !initial
 
   const [name, setName] = useState(initial?.name ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
-  const [asIntake, setAsIntake] = useState(initial?.usableAsIntake ?? true)
-  const [asEnquiry, setAsEnquiry] = useState(initial?.usableAsEnquiry ?? false)
+  // A new form starts set up for the job its door named. Intake stays the default
+  // when no door said otherwise — it's the common case, and a form that is neither
+  // can't be saved.
+  const [asIntake, setAsIntake] = useState(initial?.usableAsIntake ?? newFormUse !== 'enquiry')
+  const [asEnquiry, setAsEnquiry] = useState(initial?.usableAsEnquiry ?? newFormUse === 'enquiry')
   const [questions, setQuestions] = useState<Question[]>(
     initial?.questions ?? [createQuestion('SHORT_TEXT', newQuestionId())]
   )

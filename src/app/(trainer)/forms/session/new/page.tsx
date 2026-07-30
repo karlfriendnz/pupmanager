@@ -17,8 +17,8 @@ export default async function NewSessionFormPage() {
     where: { trainerId },
     orderBy: { order: 'asc' },
     // options too: the builder now EDITS a linked field, so a dropdown's
-      // choices have to arrive with it, not just its name.
-      select: { id: true, label: true, type: true, appliesTo: true, category: true, options: true },
+    // choices have to arrive with it, not just its name.
+    select: { id: true, label: true, type: true, appliesTo: true, category: true, options: true },
   })
 
   return (

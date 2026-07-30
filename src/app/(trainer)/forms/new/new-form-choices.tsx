@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ChevronRight, ClipboardList, FileText } from 'lucide-react'
+import { ChevronRight, ClipboardList, FileText, Globe } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { FlatBlock } from '@/components/shared/flat-list'
 
@@ -9,22 +9,29 @@ import { FlatBlock } from '@/components/shared/flat-list'
 // and a function can't cross the server → client boundary ("Only plain objects
 // can be passed to Client Components").
 
-// Two doors, not four. The split that matters to a trainer is WHO FILLS IT IN:
-// a session form is theirs to fill in after a session; a client form is the
-// client's — whether they meet it as a website enquiry or as intake after
-// being invited, which is a switch inside the one editor rather than a
-// separate kind of form.
+// Named by the JOB, not by our data model. "Client form" covered both intake and
+// website enquiries, with the choice between them a switch inside the editor — so a
+// trainer looking for an intake form couldn't see one here and had to know to open
+// "Client form" and find the switch (Karl, 2026-07-30). Both are the same editor
+// underneath; the link just arrives with the usage already set, and the switches
+// are still there for anyone who wants one form to do both jobs.
 //
-// "Lead-capture form" used to be a third choice, creating a legacy EmbedForm.
-// It is gone: a client form set to "Website enquiry" does the same job with
-// question types, conditional logic and pages. Existing lead-capture forms are
-// still listed and editable so live embeds can be maintained.
+// "Lead-capture form" used to be a choice here, creating a legacy EmbedForm. It is
+// gone: a client form set to "Website enquiry" does the same job with question
+// types, conditional logic and pages. Existing lead-capture forms are still listed
+// and editable so live embeds can be maintained.
 const CHOICES: { icon: LucideIcon; label: string; sub: string; href: string }[] = [
   {
     icon: ClipboardList,
-    label: 'Client form',
-    sub: 'Questions your clients answer — as a website enquiry form, or as intake when you invite them. Choose either, or both.',
-    href: '/forms/client/new',
+    label: 'Intake form',
+    sub: 'What a new client fills in before their first session. Pick it when you invite someone, and their answers land on their record.',
+    href: '/forms/client/new?use=intake',
+  },
+  {
+    icon: Globe,
+    label: 'Website enquiry form',
+    sub: 'For people who aren’t clients yet. Gets a public link you can share or embed, and submissions arrive in your enquiries.',
+    href: '/forms/client/new?use=enquiry',
   },
   {
     icon: FileText,
@@ -37,7 +44,7 @@ const CHOICES: { icon: LucideIcon; label: string; sub: string; href: string }[] 
 export function NewFormChoices() {
   return (
     <>
-      <p className="mb-3 px-1 text-sm text-slate-500">Who fills this one in?</p>
+      <p className="mb-3 px-1 text-sm text-slate-500">What is this one for?</p>
       <FlatBlock>
         {CHOICES.map(({ icon: Icon, label, sub, href }) => (
           <Link key={href} href={href} className="flex items-start gap-3 px-4 py-4 text-left active:bg-slate-50">
