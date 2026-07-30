@@ -72,3 +72,43 @@ describe('sessionCountChangeMessage', () => {
     expect(sessionCountChangeMessage({ kind: 'none' })).toBeNull()
   })
 })
+
+describe('offerings that own no single schedule', () => {
+  // The gap Karl hit: on a 1:1 package the box moved and nothing appeared, which
+  // reads as "this change does nothing". It DOES do something — just not to
+  // sessions that already exist.
+  it('speaks for a 1:1 package', () => {
+    expect(sessionCountChange({ existingSessions: 0, wanted: 8, isGroup: false }))
+      .toEqual({ kind: 'assignments', count: 8 })
+  })
+
+  it('says whose sessions are safe on a 1:1', () => {
+    const msg = sessionCountChangeMessage({ kind: 'assignments', count: 8 })!
+    expect(msg).toContain('8 sessions')
+    expect(msg).toMatch(/keep the sessions they have/)
+  })
+
+  // Several cohorts: we can't say which schedule is meant, and the save leaves
+  // all of them alone (syncOfferingRun no-ops on a multi-run offering).
+  it('speaks for a class with several cohorts', () => {
+    expect(sessionCountChange({ existingSessions: 0, wanted: 6, runCount: 3 }))
+      .toEqual({ kind: 'cohorts', runCount: 3, count: 6 })
+  })
+
+  it('says the scheduled sessions do not move', () => {
+    expect(sessionCountChangeMessage({ kind: 'cohorts', runCount: 3, count: 6 })!)
+      .toMatch(/don't move/)
+  })
+
+  // A single-cohort class is still the precise case — it must not fall into the
+  // vaguer cohorts wording.
+  it('keeps the exact numbers for a single cohort', () => {
+    expect(sessionCountChange({ existingSessions: 6, wanted: 3, runCount: 1 }))
+      .toEqual({ kind: 'remove', count: 3 })
+  })
+
+  it('stays quiet for an ongoing 1:1, which has no number to promise', () => {
+    expect(sessionCountChange({ existingSessions: 0, wanted: 0, isGroup: false }))
+      .toEqual({ kind: 'none' })
+  })
+})
