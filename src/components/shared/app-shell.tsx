@@ -1088,8 +1088,14 @@ function TrainerShell({
             one the collapsed rail was getting from its icon tiles, and
             .no-scrollbar hides the vertical track while keeping the scroll. */}
         <nav className={cn('flex-1 overflow-y-auto overflow-x-hidden no-scrollbar py-4 space-y-1', collapsed ? 'px-2' : 'px-3')}>
+          {/* Columns follow the COUNT. Fixed at 3, two tiles left a hole where a
+              third used to be — and two is a real state: Messages goes with the
+              client-app switch. */}
           {!collapsed && desktopTopRow.length > 0 && (
-            <div className="mb-2 grid grid-cols-3 gap-1">
+            <div
+              className="mb-2 grid gap-1"
+              style={{ gridTemplateColumns: `repeat(${Math.min(desktopTopRow.length, 3)}, minmax(0, 1fr))` }}
+            >
               {desktopTopRow.map(item => {
                 const Icon = item.icon
                 const active = pathname === item.href || pathname.startsWith(item.href + '/')
