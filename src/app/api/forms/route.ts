@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
-import { formSchema, ensureLinkedFieldsOwned, uniqueFormSlug, slugify } from '@/lib/form-api'
+import { formSchema, persistLinkedFields, uniqueFormSlug, slugify } from '@/lib/form-api'
 
 // GET /api/forms — the trainer's unified forms. Read-only, so any team member
 // may list them (the invite screen's intake-form picker needs this); creating
@@ -35,10 +35,13 @@ export async function POST(req: Request) {
   }
   const data = parsed.data
 
-  const owned = await ensureLinkedFieldsOwned(data.questions, trainerId)
-  if (!owned.ok) {
-    return NextResponse.json({ error: 'Unknown linked field', missing: owned.missing }, { status: 400 })
+  // Writes any field the builder authored and hands the questions back as bare
+  // links, so the CustomField stays the one definition of what a field is.
+  const linked = await persistLinkedFields(data.questions, trainerId)
+  if (!linked.ok) {
+    return NextResponse.json({ error: 'Unknown linked field', missing: linked.missing }, { status: 400 })
   }
+  const questions = linked.questions
 
   // Only enquiry forms carry a public slug; keep it unique per trainer.
   const slug = data.usableAsEnquiry
@@ -53,7 +56,7 @@ export async function POST(req: Request) {
       usableAsIntake: data.usableAsIntake,
       usableAsEnquiry: data.usableAsEnquiry,
       slug,
-      questions: data.questions as unknown as object[],
+      questions: questions as unknown as object[],
       steps: (data.steps ?? []) as unknown as object[],
       thankYouTitle: data.thankYouTitle ?? null,
       thankYouMessage: data.thankYouMessage ?? null,

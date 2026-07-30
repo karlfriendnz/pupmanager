@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
-import { formPatchSchema, ensureLinkedFieldsOwned, uniqueFormSlug } from '@/lib/form-api'
+import { formPatchSchema, persistLinkedFields, uniqueFormSlug } from '@/lib/form-api'
 
 async function ownedForm(formId: string, trainerId: string) {
   const form = await prisma.form.findUnique({
@@ -39,11 +39,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ formId
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   const d = parsed.data
 
+  // Writes any field the builder authored (creating new ones, editing linked
+  // ones in place) and returns the questions as bare links.
+  let questions = d.questions
   if (d.questions) {
-    const owned = await ensureLinkedFieldsOwned(d.questions, trainerId)
-    if (!owned.ok) {
-      return NextResponse.json({ error: 'Unknown linked field', missing: owned.missing }, { status: 400 })
+    const linked = await persistLinkedFields(d.questions, trainerId)
+    if (!linked.ok) {
+      return NextResponse.json({ error: 'Unknown linked field', missing: linked.missing }, { status: 400 })
     }
+    questions = linked.questions
   }
 
   // Keep the enquiry slug in sync: mint one when the form becomes an enquiry
@@ -64,7 +68,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ formId
       ...(d.usableAsIntake !== undefined && { usableAsIntake: d.usableAsIntake }),
       ...(d.usableAsEnquiry !== undefined && { usableAsEnquiry: d.usableAsEnquiry }),
       ...(slug !== undefined && { slug }),
-      ...(d.questions !== undefined && { questions: d.questions as unknown as object[] }),
+      ...(questions !== undefined && { questions: questions as unknown as object[] }),
       ...(d.steps !== undefined && { steps: d.steps as unknown as object[] }),
       ...(d.thankYouTitle !== undefined && { thankYouTitle: d.thankYouTitle }),
       ...(d.thankYouMessage !== undefined && { thankYouMessage: d.thankYouMessage }),

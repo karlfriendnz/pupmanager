@@ -25,7 +25,38 @@ export const questionSchema = z.discriminatedUnion('type', [
   z.object({ ...baseQuestion, type: z.literal('DROPDOWN'), label: z.string().min(1), options: choiceOptions }),
   z.object({ ...baseQuestion, type: z.literal('RADIO'), label: z.string().min(1), options: choiceOptions }),
   z.object({ ...baseQuestion, type: z.literal('CHECKBOX'), label: z.string().min(1), options: choiceOptions }),
-  z.object({ ...baseQuestion, type: z.literal('CUSTOM_FIELD'), customFieldId: z.string().min(1) }),
+  // A question whose answer is kept ON THE CLIENT'S RECORD, not just in this
+  // form's answers — so it shows on their profile, sorts the clients list, and
+  // reaches the reports and importers.
+  //
+  // `field` lets the BUILDER author that field, which it previously couldn't: a
+  // trainer had to go to a separate "Your fields" screen, create it there, come
+  // back, and link it. Sent with no customFieldId it creates the field; sent with
+  // one it edits that field in place.
+  //
+  // Only ONE definition survives the save: the server writes `field` to the
+  // CustomField and stores the question as a bare link (see persistLinkedFields).
+  // Keeping a copy on the question as well is how a label ends up saying two
+  // different things depending on which screen you're looking at.
+  z.object({
+    ...baseQuestion,
+    type: z.literal('CUSTOM_FIELD'),
+    customFieldId: z.string().min(1).optional(),
+    field: z.object({
+      label: z.string().trim().min(1).max(120),
+      // The QUESTION's answer type, not a second type to choose. CustomField
+      // stores only TEXT / NUMBER / DROPDOWN, so this is mapped down on save
+      // (see customFieldTypeFor) — asking a trainer to pick a type twice, in two
+      // vocabularies, for one question is how the old two-screen split felt.
+      answerType: z.enum(['SHORT_TEXT', 'LONG_TEXT', 'NUMBER', 'RATING_1_5', 'DROPDOWN', 'RADIO', 'CHECKBOX']),
+      options: z.array(z.string().trim().min(1)).max(50).optional(),
+      appliesTo: z.enum(['OWNER', 'DOG']).default('OWNER'),
+      category: z.string().trim().max(60).nullable().optional(),
+      inQuickAdd: z.boolean().optional(),
+    }).optional(),
+  }).refine(q => !!q.customFieldId || !!q.field, {
+    message: 'A saved-to-record question needs either an existing field or a new one to create',
+  }),
 ])
 
 export const formSchema = z.object({
@@ -62,25 +93,83 @@ export const formPatchSchema = formSchema.partial().extend({
 })
 
 /**
- * Every CUSTOM_FIELD question must reference a CustomField this trainer owns,
- * so nobody can attach another trainer's fields to their form and read the
- * answers back out.
+ * Which of the three stored field types holds this answer.
+ *
+ * CustomField knows TEXT, NUMBER and DROPDOWN; the builder offers seven answer
+ * types. The extra ones are presentation — a rating is a number, radio buttons
+ * and tick-boxes are a list of choices — so they map down rather than needing
+ * their own storage. The QUESTION keeps the trainer's choice, so the client still
+ * sees stars or radio buttons; this only decides how the answer is filed.
  */
-export async function ensureLinkedFieldsOwned(
+export function customFieldTypeFor(answerType: string): 'TEXT' | 'NUMBER' | 'DROPDOWN' {
+  switch (answerType) {
+    case 'NUMBER':
+    case 'RATING_1_5':
+      return 'NUMBER'
+    case 'DROPDOWN':
+    case 'RADIO':
+    case 'CHECKBOX':
+      return 'DROPDOWN'
+    default:
+      return 'TEXT'
+  }
+}
+
+type LinkedField = NonNullable<Extract<z.infer<typeof questionSchema>, { type: 'CUSTOM_FIELD' }>['field']>
+
+/**
+ * Write the fields the builder authored, and hand back the questions as bare
+ * links.
+ *
+ * This is what lets the builder be the ONE place a field is made. A question with
+ * `field` and no id creates the field; with both, it edits that field in place.
+ * Either way the question is stored as `{ type, id, customFieldId, … }` only — the
+ * CustomField is the single definition of what the field is called and how it
+ * behaves, so the two can't drift into disagreeing.
+ *
+ * Ownership is re-checked per id rather than trusted, since an id arrives from the
+ * browser: editing another trainer's field would rename it under them.
+ */
+export async function persistLinkedFields(
   questions: z.infer<typeof questionSchema>[],
   trainerId: string,
-): Promise<{ ok: true } | { ok: false; missing: string[] }> {
-  const linkedIds = questions
-    .filter(q => q.type === 'CUSTOM_FIELD')
-    .map(q => (q as { customFieldId: string }).customFieldId)
-  if (linkedIds.length === 0) return { ok: true }
-  const owned = await prisma.customField.findMany({
-    where: { trainerId, id: { in: linkedIds } },
-    select: { id: true },
-  })
-  const ownedSet = new Set(owned.map(f => f.id))
-  const missing = linkedIds.filter(id => !ownedSet.has(id))
-  return missing.length ? { ok: false, missing } : { ok: true }
+): Promise<{ ok: true; questions: z.infer<typeof questionSchema>[] } | { ok: false; missing: string[] }> {
+  const linked = questions.filter(q => q.type === 'CUSTOM_FIELD')
+  if (linked.length === 0) return { ok: true, questions }
+
+  const withId = linked.filter(q => !!q.customFieldId).map(q => q.customFieldId!)
+  const owned = new Set(
+    (await prisma.customField.findMany({
+      where: { trainerId, id: { in: withId } },
+      select: { id: true },
+    })).map(f => f.id),
+  )
+  const missing = withId.filter(id => !owned.has(id))
+  if (missing.length) return { ok: false, missing }
+
+  // Order matters to the trainer, and the field list is shown ordered elsewhere
+  // (the clients-list filters, the profile), so a field's order follows its
+  // position in the form that created it.
+  const out: z.infer<typeof questionSchema>[] = []
+  for (const [index, q] of questions.entries()) {
+    if (q.type !== 'CUSTOM_FIELD' || !q.field) { out.push(q); continue }
+    const f: LinkedField = q.field
+    const data = {
+      label: f.label,
+      type: customFieldTypeFor(f.answerType),
+      options: f.options && f.options.length > 0 ? f.options : undefined,
+      appliesTo: f.appliesTo,
+      category: f.category ?? null,
+      required: q.required,
+      ...(f.inQuickAdd !== undefined && { inQuickAdd: f.inQuickAdd }),
+      order: index,
+    }
+    const saved = q.customFieldId
+      ? await prisma.customField.update({ where: { id: q.customFieldId }, data })
+      : await prisma.customField.create({ data: { ...data, trainerId } })
+    out.push({ id: q.id, type: 'CUSTOM_FIELD', customFieldId: saved.id, required: q.required, ...(q.isPrivate !== undefined && { isPrivate: q.isPrivate }), ...(q.showIf && { showIf: q.showIf }), ...(q.step && { step: q.step }) })
+  }
+  return { ok: true, questions: out }
 }
 
 export function slugify(s: string): string {
