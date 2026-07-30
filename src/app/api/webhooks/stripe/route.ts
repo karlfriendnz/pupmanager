@@ -167,9 +167,61 @@ async function handleSubscriptionChange(sub: Stripe.Subscription, deleted: boole
   // another live one is a duplicate until proven otherwise.
   const before = await prisma.trainerProfile.findUnique({
     where: { id: trainerId },
-    select: { stripeSubscriptionId: true, subscriptionStatus: true },
+    select: { stripeSubscriptionId: true, subscriptionStatus: true, stripeCustomerId: true },
   })
   const displaced = before?.stripeSubscriptionId
+
+  // ── A cancellation must not cancel a trainer who still has a subscription. ──
+  //
+  // Cleaning up a duplicate is the obvious case and it broke a real customer:
+  // Mersea Mutts had two live subscriptions, the older one was cancelled to fix
+  // the double billing, Stripe sent customer.subscription.deleted, and this
+  // handler dutifully wrote CANCELLED — turning a paying customer into a
+  // cancelled one, mid-repair, while their other subscription carried on
+  // charging them. The act of fixing the fault caused the outage.
+  //
+  // So a deletion is only allowed to cancel the trainer when it is BOTH the
+  // subscription we are pointing at AND the last one standing. Otherwise we
+  // move to whatever is still live and carry on.
+  if (deleted) {
+    if (displaced && displaced !== sub.id) {
+      console.warn(
+        `[stripe webhook] ${sub.id} was deleted but trainer ${trainerId} holds ${displaced} — ignoring.`,
+      )
+      return
+    }
+    const customerId = before?.stripeCustomerId
+      ?? (typeof sub.customer === 'string' ? sub.customer : sub.customer.id)
+    const survivors = customerId
+      ? (await stripeFor(sandbox).subscriptions.list({ customer: customerId, status: 'all', limit: 20 })).data
+          .filter(s => s.id !== sub.id && ['active', 'trialing', 'past_due', 'unpaid'].includes(s.status))
+      : []
+    if (survivors.length > 0) {
+      const keeper = survivors[0]
+      const keeperItem = keeper.items.data[0] as unknown as { current_period_end?: number }
+      console.warn(
+        `[stripe webhook] ${sub.id} deleted for trainer ${trainerId}, but ${survivors.length} live ` +
+        `subscription(s) remain — repointing to ${keeper.id} instead of cancelling. ` +
+        `They were almost certainly double-subscribed.`,
+      )
+      const keeperRecon = await reconcileSubscriptionItems(keeper, sandbox)
+      await prisma.trainerProfile.update({
+        where: { id: trainerId },
+        data: {
+          stripeSubscriptionId: keeper.id,
+          subscriptionStatus: mapStripeStatus(keeper.status),
+          ...(keeperRecon.planId ? { subscriptionPlanId: keeperRecon.planId } : {}),
+          seatCount: keeperRecon.seatCount,
+          ...(keeperItem?.current_period_end
+            ? { currentPeriodEnd: new Date(keeperItem.current_period_end * 1000) }
+            : {}),
+        },
+      })
+      await syncTrainerAddons(trainerId, keeperRecon.activeAddons)
+      return
+    }
+  }
+
   if (!deleted && displaced && displaced !== sub.id) {
     console.error(
       `[stripe webhook] DUPLICATE SUBSCRIPTION SUSPECTED for trainer ${trainerId}: ` +
