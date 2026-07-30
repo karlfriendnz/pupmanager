@@ -8,11 +8,11 @@ import {
 } from '@/lib/nav-labels'
 
 const entries: RenameableEntry[] = [
-  { key: 'section:programs', defaultLabel: 'Offerings', isSection: true },
-  { key: '/packages', defaultLabel: '1:1 Sessions', isSection: false },
-  { key: '/library', defaultLabel: 'Library', isSection: false },
-  { key: '/finances', defaultLabel: 'Finances', isSection: false },
-  { key: '/stripe', defaultLabel: 'Stripe', isSection: false },
+  { key: 'section:programs', defaultLabel: 'Offerings', isSection: true, example: 'Services' },
+  { key: '/packages', defaultLabel: '1:1 Sessions', isSection: false, example: 'Private lessons' },
+  { key: '/library', defaultLabel: 'Library', isSection: false, example: 'Resources' },
+  { key: '/finances', defaultLabel: 'Finances', isSection: false, example: 'Money' },
+  { key: '/stripe', defaultLabel: 'Stripe', isSection: false, example: 'Payments' },
 ]
 
 describe('what may be renamed', () => {
@@ -199,6 +199,19 @@ describe('the rename catalogue matches the real menu', () => {
         continue
       }
       expect(inCatalog.get(sectionKey(section)), `heading ${section}`).toBe(label)
+    }
+  })
+
+  // The placeholder used to repeat our own label, sitting beside a label that
+  // already said it. An example is the whole point of the box — so a new menu
+  // item must not be added without one, or it silently goes back to useless.
+  it('gives every renameable thing an example, not its own name back', () => {
+    for (const e of NAV_LABEL_CATALOG) {
+      expect(e.example.trim(), `${e.defaultLabel} needs an example`).not.toBe('')
+      expect(
+        e.example.trim().toLowerCase(),
+        `${e.defaultLabel}'s example just repeats it`,
+      ).not.toBe(e.defaultLabel.trim().toLowerCase())
     }
   })
 

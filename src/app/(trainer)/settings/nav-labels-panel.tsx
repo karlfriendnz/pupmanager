@@ -5,7 +5,7 @@
  *
  * A groomer says "Services", a daycare says "Programmes", we say "Offerings" — and
  * a trainer shouldn't have to translate their own software every time they use it.
- * One row per thing in the left menu, our word as the placeholder, theirs in the
+ * One row per thing in the left menu, our word on the left, theirs in the
  * box. Blank means ours.
  *
  * Not everything is up for grabs: Stripe is Stripe, and Finances, Reports and
@@ -108,7 +108,7 @@ export function NavLabelsPanel({
                 onChange={e => edit(entry.key, e.target.value)}
                 disabled={!canEdit}
                 maxLength={MAX_LABEL}
-                placeholder={entry.defaultLabel}
+                placeholder={`e.g. ${entry.example}`}
                 aria-label={`Your word for ${entry.defaultLabel}`}
                 className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-accent disabled:bg-slate-50"
               />

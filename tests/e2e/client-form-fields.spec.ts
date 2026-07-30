@@ -138,6 +138,64 @@ test.describe('the client form, every field', () => {
     }
   })
 
+  // A client field can apply to the OWNER or to A DOG, and the dog case had never
+  // been exercised anywhere: no test filled one in, and every one of the 1,113
+  // values in the dev database belonged to an owner field. So "does a dog answer
+  // actually attach to the dog?" had no answer. It does — and now it stays
+  // answered, because the way it would break is silent. The routes drop a dogId
+  // they can't vouch for and store the value unscoped, which looks like a
+  // successful save and quietly loses which dog it was about.
+  test('an answer about a dog is filed against that dog', async ({ page }) => {
+    const prisma = await makePrisma()
+    const stamp = Date.now()
+    const label = `E2E Dog Field ${stamp}`
+    const answer = `Chicken ${stamp}`
+    let fieldId: string | null = null
+    try {
+      const trainer = await prisma.trainerProfile.findFirst({
+        where: { user: { email: SEED.owner.email } },
+        select: { id: true },
+      })
+      const field = await prisma.customField.create({
+        data: { trainerId: trainer!.id, label, type: 'TEXT', appliesTo: 'DOG' },
+      })
+      fieldId = field.id
+
+      // The seeded client's dog is linked from the CLIENT side (ClientProfile.dogId)
+      // and has no clientProfileId of its own — the shape most dogs are in, and the
+      // one an ownership check is most likely to miss.
+      const client = await prisma.clientProfile.findUnique({
+        where: { id: SEED.assignedClientId },
+        select: { dogId: true },
+      })
+      expect(client?.dogId, 'the seeded client needs a dog for this to mean anything').toBeTruthy()
+
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.goto(`/clients/${SEED.assignedClientId}/edit`)
+
+      const input = page.getByLabel(label)
+      await input.scrollIntoViewIfNeeded()
+      await input.fill(answer)
+      await page.getByRole('button', { name: /^Save/ }).first().click()
+
+      await expect.poll(
+        async () => prisma.customFieldValue.count({ where: { fieldId: field.id } }),
+        { timeout: 20_000, message: 'the dog answer never saved' },
+      ).toBe(1)
+
+      const saved = await prisma.customFieldValue.findFirst({ where: { fieldId: field.id } })
+      expect(saved?.value).toBe(answer)
+      // The whole point: it knows WHICH dog. Null here is the silent failure.
+      expect(saved?.dogId, 'the answer saved but lost which dog it was about').toBe(client!.dogId)
+    } finally {
+      if (fieldId) {
+        await prisma.customFieldValue.deleteMany({ where: { fieldId } }).catch(() => {})
+        await prisma.customField.delete({ where: { id: fieldId } }).catch(() => {})
+      }
+      await prisma.$disconnect()
+    }
+  })
+
   test('an empty form is refused, and saves nothing', async ({ page }) => {
     const prisma = await makePrisma()
     const before = await prisma.clientProfile.count()

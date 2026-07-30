@@ -70,6 +70,14 @@ export interface RenameableEntry {
   defaultLabel: string
   /** A group heading rather than a link, so it reads differently in the editor. */
   isSection: boolean
+  /**
+   * A plausible alternative, shown as the input's placeholder.
+   *
+   * The placeholder used to repeat our own label, which sat beside a label
+   * already saying it — telling the trainer nothing. An example says what the
+   * box is FOR: that "Events" is theirs to call Seminars.
+   */
+  example: string
 }
 
 /**
@@ -82,25 +90,25 @@ export interface RenameableEntry {
  * un-renameable.
  */
 export const NAV_LABEL_CATALOG: readonly RenameableEntry[] = [
-  { key: 'section:clients', defaultLabel: 'Clients', isSection: true },
-  { key: '/clients', defaultLabel: 'Clients', isSection: false },
-  { key: '/enquiries', defaultLabel: 'Enquiries', isSection: false },
+  { key: 'section:clients', defaultLabel: 'Clients', isSection: true, example: 'Owners' },
+  { key: '/clients', defaultLabel: 'Clients', isSection: false, example: 'Owners' },
+  { key: '/enquiries', defaultLabel: 'Enquiries', isSection: false, example: 'Leads' },
 
-  { key: 'section:programs', defaultLabel: 'Offerings', isSection: true },
-  { key: '/packages', defaultLabel: '1:1 Sessions', isSection: false },
-  { key: '/classes', defaultLabel: 'Group Classes', isSection: false },
-  { key: '/casual-classes', defaultLabel: 'Casual Classes', isSection: false },
-  { key: '/events', defaultLabel: 'Events', isSection: false },
-  { key: '/memberships', defaultLabel: 'Packages', isSection: false },
+  { key: 'section:programs', defaultLabel: 'Offerings', isSection: true, example: 'Services' },
+  { key: '/packages', defaultLabel: '1:1 Sessions', isSection: false, example: 'Private lessons' },
+  { key: '/classes', defaultLabel: 'Group Classes', isSection: false, example: 'Courses' },
+  { key: '/casual-classes', defaultLabel: 'Casual Classes', isSection: false, example: 'Drop-ins' },
+  { key: '/events', defaultLabel: 'Events', isSection: false, example: 'Seminars' },
+  { key: '/memberships', defaultLabel: 'Packages', isSection: false, example: 'Memberships' },
 
-  { key: '/library', defaultLabel: 'Library', isSection: false },
-  { key: '/products', defaultLabel: 'Products', isSection: false },
-  { key: '/achievements', defaultLabel: 'Achievements', isSection: false },
+  { key: '/library', defaultLabel: 'Library', isSection: false, example: 'Resources' },
+  { key: '/products', defaultLabel: 'Products', isSection: false, example: 'Shop' },
+  { key: '/achievements', defaultLabel: 'Achievements', isSection: false, example: 'Badges' },
 
 
   // The daily three sit above the group headings, so they come last in the
   // editor — a trainer scanning for "Offerings" shouldn't wade past them.
-  { key: '/messages', defaultLabel: 'Messages', isSection: false },
+  { key: '/messages', defaultLabel: 'Messages', isSection: false, example: 'Chat' },
 ]
 
 export function isRenameable(key: NavLabelKey, defaultLabel: string): boolean {
