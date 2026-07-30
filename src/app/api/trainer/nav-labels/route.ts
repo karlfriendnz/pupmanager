@@ -1,3 +1,4 @@
+import { revalidatePath } from 'next/cache'
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
@@ -35,6 +36,16 @@ export async function PUT(req: Request) {
     // rather than two (DbNull, not JsonNull — the column, not a JSON `null`).
     data: { navLabels: Object.keys(labels).length > 0 ? labels : Prisma.DbNull },
   })
+
+  // The left menu is rendered by the trainer LAYOUT, a server component that
+  // reads navLabels once per render and is cached. Without this, a rename saves
+  // to the database and the menu keeps showing our word until the cache happens
+  // to expire — which reads as "the setting doesn't work".
+  //
+  // 'layout' (not the default 'page') is the load-bearing part: the nav lives in
+  // the layout, so revalidating only the page it was saved from would refresh
+  // the settings screen and leave the menu beside it stale.
+  revalidatePath('/', 'layout')
 
   return NextResponse.json({ labels })
 }

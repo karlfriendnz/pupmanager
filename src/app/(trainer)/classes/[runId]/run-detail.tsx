@@ -182,12 +182,17 @@ export function RunDetail({
   const tabs: OfferingTab<Tab>[] = [
     { id: 'details', label: 'Details', icon: Info },
     { id: 'clients', label: 'Clients', icon: Users, badge: rosterCount > 0 ? rosterCount : undefined },
-    // Named for what it CONTAINS: a multi-session run opens on a list of its
-    // sessions, each carrying a description and its homework, so calling that
-    // "Homework" hid half of it — and hid the list entirely (found the hard
-    // way). Only a one-session run has nothing to list, and there it really is
-    // just homework. Shared by /classes, /casual-classes and /doggy-daycare.
-    { id: 'homework', label: run.sessionCount > 1 ? 'Sessions' : 'Homework', icon: ListChecks, badge: steps.length > 0 ? steps.length : undefined },
+    // Named for what it CONTAINS: the run's sessions, each carrying a
+    // description and its homework. Calling it "Homework" hid half of that —
+    // and hid the list entirely (found the hard way).
+    //
+    // It used to say "Homework" for a one-session run on the grounds that there
+    // was nothing to list. There still is: that single session has a
+    // description and a write-up of its own, and a trainer looking for it went
+    // to a tab that did not sound like it held one. One word in both cases is
+    // also one less thing to explain.
+    // Shared by /classes, /casual-classes and /doggy-daycare.
+    { id: 'homework', label: 'Sessions', icon: ListChecks, badge: steps.length > 0 ? steps.length : undefined },
     { id: 'messages', label: 'Reminders & messages', icon: Bell },
     { id: 'discounts', label: 'Discounts', icon: Tag },
   ]
