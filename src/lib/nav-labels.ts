@@ -52,6 +52,15 @@ const LOCKED: ReadonlySet<NavLabelKey> = new Set([
   '/help',
   'section:tools',
   'section:business',
+
+  // Locked too (Karl, 2026-07-30). Clients stays renameable — plenty of
+  // trainers say Owners or Members — but an Enquiry is a stage in the app's own
+  // pipeline, not a word for a person, so renaming it makes the reports and the
+  // follow-up chase read wrong.
+  '/enquiries',
+  // Messages too — it is the same word in every app anyone uses, and the
+  // client side calls it that as well.
+  '/messages',
 ])
 
 /** Locked when the label itself is a proper noun, wherever it sits. Belt and
@@ -61,7 +70,7 @@ const LOCKED_LABELS: ReadonlySet<string> = new Set([
   // Same belt and braces for the 2026-07-30 set: if one of these moves to a new
   // href it stays locked rather than quietly becoming renameable again.
   'Dashboard', 'Schedule', 'Availability', 'Route', 'Notes', 'Waitlist',
-  'Marketing', 'Help', 'Tools', 'Business',
+  'Marketing', 'Help', 'Tools', 'Business', 'Enquiries', 'Messages',
 ])
 
 export interface RenameableEntry {
@@ -92,9 +101,9 @@ export interface RenameableEntry {
  * un-renameable.
  */
 export const NAV_LABEL_CATALOG: readonly RenameableEntry[] = [
+
   { key: 'section:clients', defaultLabel: 'Clients', isSection: true, examples: ['Owners', 'Members', 'People'] },
   { key: '/clients', defaultLabel: 'Clients', isSection: false, examples: ['Owners', 'Members', 'Guardians'] },
-  { key: '/enquiries', defaultLabel: 'Enquiries', isSection: false, examples: ['Leads', 'Requests', 'New interest'] },
 
   { key: 'section:programs', defaultLabel: 'Offerings', isSection: true, examples: ['Services', 'Training', 'What we do'] },
   { key: '/packages', defaultLabel: '1:1 Sessions', isSection: false, examples: ['Private lessons', 'One-to-ones', 'Consults'] },
@@ -110,7 +119,6 @@ export const NAV_LABEL_CATALOG: readonly RenameableEntry[] = [
 
   // The daily three sit above the group headings, so they come last in the
   // editor — a trainer scanning for "Offerings" shouldn't wade past them.
-  { key: '/messages', defaultLabel: 'Messages', isSection: false, examples: ['Chat', 'Inbox', 'Conversations'] },
 ]
 
 export function isRenameable(key: NavLabelKey, defaultLabel: string): boolean {
@@ -209,4 +217,40 @@ export function sectionKey(section: string): NavLabelKey {
  */
 export function shouldShowSectionHeader(itemsInSection: number): boolean {
   return itemsInSection > 1
+}
+
+/**
+ * Which trainer label a CLIENT-side menu item borrows.
+ *
+ * A trainer who renames Events to Seminars has clients who should see
+ * Seminars too — the words are the business's, not the trainer screen's.
+ *
+ * Mapped by MEANING, not by matching text. Two deliberate omissions:
+ *
+ * - The client's "Sessions" is everything they have booked, across classes,
+ *   events and one-to-ones. The trainer's "1:1 Sessions" is one product among
+ *   several. Renaming that product to "Private lessons" must not relabel a list
+ *   that also holds their group classes.
+ * - "Home", "Invoices" and "My dogs" have no trainer-side twin to borrow from.
+ */
+export const CLIENT_LABEL_SOURCE: Readonly<Record<string, NavLabelKey>> = {
+  '/my-availability': 'section:programs',
+  '/my-memberships': '/memberships',
+  '/my-achievements': '/achievements',
+  // The client's shop IS the trainer's product list, seen from the other side.
+  '/my-shop': '/products',
+}
+
+/** A client-side item's label: the trainer's word for it when they have one. */
+export function clientLabelFor(
+  href: string,
+  fallback: string,
+  overrides: Record<NavLabelKey, string> | null | undefined,
+): string {
+  const source = CLIENT_LABEL_SOURCE[href]
+  if (!source) return fallback
+  const entry = NAV_LABEL_CATALOG.find(e => e.key === source)
+  // labelFor enforces the lock and the sanitizer, so a client can never be
+  // shown a word the trainer was not allowed to set.
+  return labelFor(source, entry?.defaultLabel ?? fallback, overrides)
 }
