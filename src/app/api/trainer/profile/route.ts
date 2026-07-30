@@ -65,8 +65,11 @@ const patchSchema = z.object({
   scheduleDays: z.array(z.number().int().min(1).max(7)).min(1).max(7).optional(),
   // Last-chosen grid layout, kept per device class for the same reason the
   // hours are: a phone wants a day column where a desktop wants the week.
-  scheduleView: z.enum(['day', 'threeDay', 'week']).nullable().optional(),
-  scheduleMobileView: z.enum(['day', 'threeDay', 'week']).nullable().optional(),
+  // 'agenda' is the one-day LIST (what 'day' used to mean); 'day' is now the
+  // hour-by-hour grid for a single day. scripts/backfill-schedule-agenda-view.ts
+  // moves stored 'day' preferences over so nobody's saved layout changes meaning.
+  scheduleView: z.enum(['agenda', 'day', 'threeDay', 'week']).nullable().optional(),
+  scheduleMobileView: z.enum(['agenda', 'day', 'threeDay', 'week']).nullable().optional(),
   // Built-in session/client field ids OR "custom:<cuid>". Mirrors the
   // /clients column selector so trainers can pick the same fields here.
   scheduleExtraFields: z.array(z.string().regex(/^(location|description|sessionType|duration|title|email|extraDogs|compliance|custom:[a-z0-9]+)$/)).max(2).optional(),

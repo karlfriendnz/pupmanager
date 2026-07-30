@@ -61,8 +61,8 @@ export function ScheduleSettings({
   endHour: number
   /** Current grid layout, and how to change it — used to live as an icon trio
    *  in the toolbar. */
-  view?: 'day' | 'threeDay' | 'week'
-  onView?: (v: 'day' | 'threeDay' | 'week') => void
+  view?: 'agenda' | 'day' | 'threeDay' | 'week'
+  onView?: (v: 'agenda' | 'day' | 'threeDay' | 'week') => void
   /** Opens the availability-hours editor (was its own toolbar button). */
   onOpenAvailability?: () => void
   /** Opens the weekly report (was its own toolbar button). */
@@ -199,7 +199,11 @@ export function ScheduleSettings({
                   <label className="text-sm font-medium text-slate-700 block mb-1.5">Layout</label>
                   <div className="overflow-hidden rounded-xl border border-slate-200 [&>*+*]:border-t [&>*+*]:border-slate-200">
                     {([
-                      { id: 'day' as const,      label: 'Day',    hint: 'One day at a time' },
+                      // "Day" used to be this list — the rename says what it
+                      // actually is, and frees the name for a real day grid
+                      // (Karl, 2026-07-30).
+                      { id: 'agenda' as const,   label: 'Agenda', hint: 'One day as a list' },
+                      { id: 'day' as const,      label: 'Day',    hint: 'One day, hour by hour' },
                       { id: 'threeDay' as const, label: '3 days', hint: 'A three-day window' },
                       { id: 'week' as const,     label: 'Week',   hint: 'Every day you work' },
                     ]).map(v => (

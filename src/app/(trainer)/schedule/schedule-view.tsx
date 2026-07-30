@@ -873,10 +873,13 @@ function WeekGrid({
     }
   }
 
-  // 3-day windowing is mobile-only AND only when the parent hasn't asked
-  // for a full-week render. The new "Week" view on mobile sets
-  // forceFullWeek=true so phones can see every configured day in one grid.
-  const useThreeDayWindow = isMobile && !forceFullWeek
+  // Windowed to three days whenever the parent hasn't asked for every day.
+  //
+  // This used to also require isMobile, which meant a trainer who picked "3 days"
+  // on a desktop got the whole week and no explanation — the option was offered
+  // where it did nothing (Karl, 2026-07-30). The chosen VIEW decides now, on every
+  // screen size; forceFullWeek is what the Week and Day views use to opt out.
+  const useThreeDayWindow = !forceFullWeek
   const visibleDays = useThreeDayWindow
     ? weekDays.slice(mobileDayStart, mobileDayStart + 3)
     : weekDays
@@ -3110,8 +3113,8 @@ export function ScheduleView({
   // value so existing trainers see no behaviour change until they pick
   // a phone-specific range in the schedule-view settings panel.
   /** Last layout this trainer chose, per device class (see schema). */
-  savedView?: 'day' | 'threeDay' | 'week' | null
-  savedMobileView?: 'day' | 'threeDay' | 'week' | null
+  savedView?: 'agenda' | 'day' | 'threeDay' | 'week' | null
+  savedMobileView?: 'agenda' | 'day' | 'threeDay' | 'week' | null
   scheduleMobileStartHour: number | null
   scheduleMobileEndHour: number | null
   scheduleDays: number[]   // 1=Mon..7=Sun
@@ -3183,7 +3186,7 @@ export function ScheduleView({
   //               grid; trainers asked for it as an extra mobile option so
   //               they can scan the whole week without paging.
   // Default: week on desktop, day on mobile.
-  const [view, setViewState] = useState<'day' | 'threeDay' | 'week'>(savedView ?? 'week')
+  const [view, setViewState] = useState<'agenda' | 'day' | 'threeDay' | 'week'>(savedView ?? 'week')
   // Track viewport class so we can pick the trainer's mobile vs desktop
   // hour range. Matches WeekGrid's existing 640px breakpoint so the two
   // device detectors stay in lockstep.
@@ -3201,7 +3204,7 @@ export function ScheduleView({
       if (phone) setViewState('threeDay')
     } else {
       const saved = phone ? savedMobileView : savedView
-      setViewState(saved ?? (phone ? 'day' : 'week'))
+      setViewState(saved ?? (phone ? 'agenda' : 'week'))
     }
     const update = () => setIsMobileViewport(window.innerWidth < 640)
     update()
@@ -3212,7 +3215,7 @@ export function ScheduleView({
   // Changing the layout remembers it for this device class, for this trainer,
   // everywhere they sign in. Fire-and-forget: the grid has already switched, and
   // a failed save just means the old default next time.
-  const setView = useCallback((v: 'day' | 'threeDay' | 'week') => {
+  const setView = useCallback((v: 'agenda' | 'day' | 'threeDay' | 'week') => {
     setViewState(v)
     const field = isPhoneLayout.current ? 'scheduleMobileView' : 'scheduleView'
     void fetch('/api/trainer/profile', {
@@ -3387,12 +3390,19 @@ export function ScheduleView({
   // Filter visible weekdays per trainer preference. JS getDay: 0=Sun..6=Sat;
   // schema convention: 1=Mon..7=Sun. Convert and intersect.
   const visibleDaySet = new Set(scheduleDays)
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
-    .filter(d => {
-      const js = d.getDay()
-      const iso = js === 0 ? 7 : js
-      return visibleDaySet.has(iso)
-    })
+  // The day grid is the same grid with one column, which is why a true day view
+  // needed no new grid: everything the week gives you — drag to move a session,
+  // the availability bands, imported busy blocks, the now-line — comes with it.
+  // Not filtered by the working-day set: asking for a specific day means you want
+  // THAT day, even if you don't normally work it.
+  const weekDays = view === 'day'
+    ? [parseLocalDate(selectedDate)]
+    : Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
+        .filter(d => {
+          const js = d.getDay()
+          const iso = js === 0 ? 7 : js
+          return visibleDaySet.has(iso)
+        })
 
   // Client-side week/day navigation. We avoid `router.push` here because that
   // re-runs the whole server component on every click (3+ seconds in dev
@@ -3456,7 +3466,8 @@ export function ScheduleView({
     }
   }
 
-  // Step by whole weeks (week / 3-day views) or single days (day view).
+  // Step by whole weeks (week / 3-day views) or single days (the day grid and the
+  // agenda list, both of which show one day).
   function navigate(delta: number) {
     let nextDateStr: string
     if (view === 'week' || view === 'threeDay') {
@@ -3805,7 +3816,7 @@ export function ScheduleView({
             <ChevronLeft className="h-4 w-4" />
           </button>
           <div className="flex-1 sm:flex-initial sm:min-w-[8rem] text-center">
-            {view === 'week' || view === 'threeDay' ? (
+            {view !== 'agenda' ? (
               <p className="font-semibold text-slate-900 text-sm tabular-nums">
                 {weekStart.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })} – {addDays(weekStart, 6).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })}
               </p>
@@ -4004,7 +4015,7 @@ export function ScheduleView({
 
       {/* ── Main content ─────────────────────────────────────────────────────── */}
       <div className="px-4 md:px-6 py-4 sm:flex-1 sm:overflow-hidden">
-        {view === 'week' || view === 'threeDay' ? (
+        {view !== 'agenda' ? (
           <WeekGrid
             weekDays={weekDays}
             sessions={visibleSessions}
@@ -4025,7 +4036,9 @@ export function ScheduleView({
             matchedIds={matchedIds}
             searchActive={searchTokens.length > 0}
             onAdvanceWeek={navigate}
-            forceFullWeek={view === 'week'}
+            // Week wants every configured day; the day grid is already a
+            // single-day array and must not be windowed.
+            forceFullWeek={view === 'week' || view === 'day'}
             previewBlocks={previewBlocks}
             previewClashes={previewClashes}
           />

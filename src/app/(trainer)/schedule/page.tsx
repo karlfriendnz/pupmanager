@@ -464,8 +464,8 @@ export default async function SchedulePage({
       scheduleStartHour={trainerProfile.scheduleStartHour}
       scheduleEndHour={trainerProfile.scheduleEndHour}
       scheduleMobileStartHour={trainerProfile.scheduleMobileStartHour}
-      savedView={trainerProfile.scheduleView as 'day' | 'threeDay' | 'week' | null}
-      savedMobileView={trainerProfile.scheduleMobileView as 'day' | 'threeDay' | 'week' | null}
+      savedView={trainerProfile.scheduleView as 'agenda' | 'day' | 'threeDay' | 'week' | null}
+      savedMobileView={trainerProfile.scheduleMobileView as 'agenda' | 'day' | 'threeDay' | 'week' | null}
       scheduleMobileEndHour={trainerProfile.scheduleMobileEndHour}
       scheduleDays={scheduleDaysArr}
       scheduleExtraFields={scheduleSelections}
