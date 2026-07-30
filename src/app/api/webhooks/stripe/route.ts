@@ -153,6 +153,31 @@ async function handleSubscriptionChange(sub: Stripe.Subscription, deleted: boole
 
   const recon = await reconcileSubscriptionItems(sub, sandbox)
 
+  // ── A DIFFERENT subscription id than the one we hold is a red flag. ──
+  //
+  // This overwrote `stripeSubscriptionId` unconditionally, which is what turned
+  // a duplicate subscription into an INVISIBLE one: the second subscription's
+  // events arrived, replaced our reference to the first, and the first carried
+  // on billing with nothing in our data pointing at it. Mersea Mutts paid two
+  // subscriptions for ten days and the only trace was a second PDF in an inbox.
+  //
+  // Taking the newer id is still right — it is the one Stripe is telling us
+  // about, and refusing would strand us on a subscription that may be gone —
+  // but it must not happen quietly. A live subscription being displaced by
+  // another live one is a duplicate until proven otherwise.
+  const before = await prisma.trainerProfile.findUnique({
+    where: { id: trainerId },
+    select: { stripeSubscriptionId: true, subscriptionStatus: true },
+  })
+  const displaced = before?.stripeSubscriptionId
+  if (!deleted && displaced && displaced !== sub.id) {
+    console.error(
+      `[stripe webhook] DUPLICATE SUBSCRIPTION SUSPECTED for trainer ${trainerId}: ` +
+      `stored ${displaced} (status ${before?.subscriptionStatus}) is being replaced by ${sub.id}. ` +
+      `If ${displaced} is still live in Stripe this trainer is being billed twice — check both.`,
+    )
+  }
+
   await prisma.trainerProfile.update({
     where: { id: trainerId },
     data: {

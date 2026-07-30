@@ -186,6 +186,42 @@ export async function POST(req: Request) {
 
   const stripeClient = stripeFor(sandbox)
 
+  // ── Already subscribed? Then this is a SECOND subscription, not a signup. ──
+  //
+  // Stripe opens as many subscriptions on one customer as it is asked to, and
+  // nothing here used to check. A trainer who reached this route twice — a
+  // stale tab, a back button, a "did that actually work?" second attempt —
+  // ended up paying twice over, every month, for the same thing. Mersea Mutts
+  // ran two live subscriptions from 21 and 25 July before anyone noticed.
+  //
+  // Asked of STRIPE, not of our own row, deliberately: `stripeSubscriptionId`
+  // is overwritten by the billing webhook with whatever subscription it last
+  // saw, so a duplicate is exactly the case our own data cannot see. The extra
+  // round trip is on a path that is about to redirect to Stripe anyway.
+  if (trainer.stripeCustomerId) {
+    const existing = await stripeClient.subscriptions.list({
+      customer: trainer.stripeCustomerId,
+      status: 'all',
+      limit: 20,
+    })
+    const live = existing.data.filter(s =>
+      ['active', 'trialing', 'past_due', 'unpaid'].includes(s.status),
+    )
+    if (live.length > 0) {
+      console.warn(
+        `[billing/checkout] refused a second subscription for trainer ${trainerId} — ` +
+        `${live.length} already live (${live.map(s => s.id).join(', ')})`,
+      )
+      return NextResponse.json(
+        {
+          error: 'You already have an active subscription. Manage it from Billing rather than starting a new one.',
+          subscriptionId: live[0].id,
+        },
+        { status: 409 },
+      )
+    }
+  }
+
   // Stripe address shape — only meaningful if line1 is set. Stripe needs
   // a country code; we accept the country name from the form, so prefer
   // the alpha-2 code if the trainer typed one (NZ/AU/etc.) and otherwise
