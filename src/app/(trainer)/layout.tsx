@@ -31,9 +31,12 @@ export default async function TrainerLayout({ children }: { children: React.Reac
   // contracts for a business (an accepted TrainerMembership) belongs here too.
   // This is the real gate — the proxy's cookie check is only a routing hint,
   // so a forged pm-profile cookie lands here and gets bounced.
-  if (session.user.role !== 'TRAINER') {
-    const { hasTrainerAccess } = await getAccountAccess(session.user.id)
-    if (!hasTrainerAccess) redirect('/home')
+  // Always resolved, not only for the non-TRAINER branch: the shell needs to
+  // know whether this person ALSO has a client relationship, so it can offer a
+  // way across. One query, already cached per request.
+  const accountAccess = await getAccountAccess(session.user.id)
+  if (session.user.role !== 'TRAINER' && !accountAccess.hasTrainerAccess) {
+    redirect('/home')
   }
 
   // Email-verification gate. Credentials sign-ups can't reach here unverified
@@ -274,6 +277,11 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     <PageHelpProvider show={showPageHelp}>
     <AppShell
       role="TRAINER"
+      // Karen Backhouse owns Guiding Paws AND is a client of Mersea Mutts. Her
+      // role says TRAINER, so she lands on her own business and — until this —
+      // had no way across. Access is derived from the rows that exist, never
+      // from the role.
+      isDualProfile={accountAccess.isDual}
       streak={streak}
       userName={session.user.name ?? ''}
       userEmail={session.user.email ?? ''}

@@ -34,53 +34,59 @@ export const getActiveClient = cache(async (): Promise<ActiveClient | null> => {
   const session = await auth()
   if (!session) return null
 
+  // A TRAINER looking at one of THEIR OWN clients — the preview feature.
   if (session.user.role === 'TRAINER' && session.user.trainerId) {
     const store = await cookies()
     const previewId = store.get(PREVIEW_COOKIE)?.value
-    if (!previewId) return null
-    const client = await prisma.clientProfile.findFirst({
-      where: { id: previewId, trainerId: session.user.trainerId },
-      select: { id: true, userId: true },
-    })
-    if (!client) return null
-    return {
-      clientId: client.id,
-      userId: client.userId,
-      isPreview: true,
-      actualUserId: session.user.id,
-    }
-  }
-
-  if (session.user.role === 'CLIENT') {
-    // A user can have several client profiles (one per trainer). The active
-    // one is pinned by the pm-active-trainer cookie; otherwise we default to
-    // the most recent relationship. The chooser/switcher sets the cookie.
-    const store = await cookies()
-    const activeId = store.get(ACTIVE_TRAINER_COOKIE)?.value
-
-    let client = activeId
-      ? await prisma.clientProfile.findFirst({
-          where: { id: activeId, userId: session.user.id },
-          select: { id: true, userId: true },
-        })
-      : null
-    if (!client) {
-      client = await prisma.clientProfile.findFirst({
-        where: { userId: session.user.id },
-        orderBy: { createdAt: 'desc' },
+    if (previewId) {
+      const client = await prisma.clientProfile.findFirst({
+        where: { id: previewId, trainerId: session.user.trainerId },
         select: { id: true, userId: true },
       })
+      if (!client) return null
+      return {
+        clientId: client.id,
+        userId: client.userId,
+        isPreview: true,
+        actualUserId: session.user.id,
+      }
     }
-    if (!client) return null
-    return {
-      clientId: client.id,
-      userId: client.userId,
-      isPreview: false,
-      actualUserId: session.user.id,
-    }
+    // No preview cookie: fall through. A trainer is often somebody else's
+    // client too — they train dogs for a living and take their own dog to a
+    // specialist. This used to `return null`, which bounced them out of the
+    // client app entirely: Karen Backhouse owns Guiding Paws AND is a client of
+    // Mersea Mutts, and could reach only the business she owns. `User.role` is
+    // the DEFAULT landing surface, never the truth about access — that is
+    // lib/account-access, and it has said so all along.
   }
 
-  return null
+  // Their own client relationships — one per trainer. The active one is pinned
+  // by the pm-active-trainer cookie; otherwise the most recent. Scoped to
+  // userId, so this can only ever resolve a profile that is genuinely theirs,
+  // whatever their role says.
+  const store = await cookies()
+  const activeId = store.get(ACTIVE_TRAINER_COOKIE)?.value
+
+  let client = activeId
+    ? await prisma.clientProfile.findFirst({
+        where: { id: activeId, userId: session.user.id },
+        select: { id: true, userId: true },
+      })
+    : null
+  if (!client) {
+    client = await prisma.clientProfile.findFirst({
+      where: { userId: session.user.id },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, userId: true },
+    })
+  }
+  if (!client) return null
+  return {
+    clientId: client.id,
+    userId: client.userId,
+    isPreview: false,
+    actualUserId: session.user.id,
+  }
 })
 
 /**
@@ -107,10 +113,15 @@ export async function noActiveClientDestination(): Promise<string> {
 }
 
 // The client profiles (one per trainer) available to the signed-in user, for
-// the trainer chooser/switcher. Returns [] for non-clients.
+// the trainer chooser/switcher. Empty for anyone who is nobody's client.
+//
+// Not gated on role: a trainer can be another trainer's client, and gating this
+// on `role === 'CLIENT'` meant their switcher listed nothing — so even once they
+// reached the client app they had no way to choose which trainer they were
+// looking at. The `userId` filter is what makes it safe; the role never was.
 export async function getClientTrainerOptions() {
   const session = await auth()
-  if (!session || session.user.role !== 'CLIENT') return []
+  if (!session?.user?.id) return []
   return prisma.clientProfile.findMany({
     where: { userId: session.user.id },
     orderBy: { createdAt: 'desc' },

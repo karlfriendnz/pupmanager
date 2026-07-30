@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useRef, useState, Fragment } from 'react'
 import { usePathname } from 'next/navigation'
 import { signOutWithPush } from '@/lib/sign-out'
+import { ProfileSwitchButton } from './profile-switch-button'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, Users, Calendar, Layers, Package,
@@ -255,6 +256,13 @@ interface AppShellProps {
   /** Client shell only: show a "Switch trainer" entry (client has 2+ trainers). */
   showTrainerSwitcher?: boolean
   /**
+   * This person holds BOTH a trainer and a client relationship, so they get a
+   * "switch sides" control next to Sign out. A trainer being somebody else's
+   * client is ordinary — they take their own dog to a specialist — and before
+   * this they could only reach whichever surface `User.role` happened to name.
+   */
+  isDualProfile?: boolean
+  /**
    * Trainer shell only: the organisations this user belongs to (their own +
    * any they're a team member at). When 2+, the sidebar shows an org switcher.
    */
@@ -394,7 +402,7 @@ export function AppShell(props: AppShellProps) {
 // PupManager-branded client app. Mobile: full-bleed pages + bottom tab bar +
 // a full-screen pull-down Menu. Desktop (md+): left sidebar, content fills.
 
-function ClientShell({ children, trainerLogo, businessName, clientNavHints, unreadCounts = {}, trainerContact, showTrainerSwitcher, previewExitHref, hiddenNavHrefs = [], navLabels = null }: AppShellProps) {
+function ClientShell({ children, trainerLogo, businessName, clientNavHints, unreadCounts = {}, trainerContact, showTrainerSwitcher, previewExitHref, hiddenNavHrefs = [], navLabels = null, isDualProfile = false }: AppShellProps) {
   const handleSignOut = () => {
     if (previewExitHref) { window.location.href = previewExitHref; return }
     signOutWithPush()
@@ -488,6 +496,10 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints, unre
           })}
         </nav>
         <div className="border-t border-slate-100 p-3">
+          {/* Only for a person who genuinely holds both sides. A previewing
+              trainer already has "Sign out" wired to their exit href, so they
+              must not also get a switch that would strand them here. */}
+          {isDualProfile && !previewExitHref && <ProfileSwitchButton to="trainer" />}
           <button onClick={handleSignOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-500 hover:bg-slate-50 transition-colors">
             <LogOut className="h-5 w-5" />Sign out
           </button>
@@ -618,7 +630,10 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints, unre
               })}
             </div>
             <div className="mt-4 rounded-2xl overflow-hidden" style={{ borderTop: `1px solid ${divider}` }}>
-              <button onClick={handleSignOut} className="w-full flex items-center gap-4 px-3 py-3.5 text-left">
+              {isDualProfile && !previewExitHref && (
+                <ProfileSwitchButton to="trainer" variant="sheet" />
+              )}
+              <button onClick={handleSignOut} className="w-full flex items-center gap-4 px-3 py-3.5 text-left" style={isDualProfile && !previewExitHref ? { borderTop: `1px solid ${divider}` } : undefined}>
                 <span className="flex h-9 w-9 items-center justify-center shrink-0"><LogOut className="h-5 w-5" /></span>
                 <span className="text-[15px] font-medium flex-1">Sign out</span>
               </button>
@@ -772,6 +787,7 @@ function TrainerTopBar({
   canSell = false,
   currency = 'nzd',
   notifCount = 0,
+  isDualProfile = false,
 }: {
   collapsed: boolean
   onToggle: () => void
@@ -785,6 +801,7 @@ function TrainerTopBar({
   orgs?: { id: string; name: string; role: string }[]
   activeCompanyId?: string | null
   streak?: { current: number } | null
+  isDualProfile?: boolean
   canSell?: boolean
   currency?: string
   notifCount?: number
@@ -832,7 +849,7 @@ function TrainerTopBar({
       <div id="pm-topbar-actions" className="mr-2 flex items-center gap-1.5 empty:hidden" />
       {/* Right-hand controls. */}
       <div className="pr-3 lg:pr-5">
-        <TopBarControls userName={userName} userEmail={userEmail} orgs={orgs} activeCompanyId={activeCompanyId} streak={streak} canSell={canSell} currency={currency} notifCount={notifCount} />
+        <TopBarControls userName={userName} userEmail={userEmail} orgs={orgs} activeCompanyId={activeCompanyId} streak={streak} canSell={canSell} currency={currency} notifCount={notifCount} isDualProfile={isDualProfile} />
       </div>
     </header>
   )
@@ -942,6 +959,7 @@ function TrainerShell({
   orgs = [],
   activeCompanyId = null,
   homeHref = '/dashboard',
+  isDualProfile = false,
 }: AppShellProps) {
   const pathname = usePathname()
   // Nav filtered to what this user's role/permissions allow. Add-on items
@@ -1091,6 +1109,7 @@ function TrainerShell({
         orgs={orgs}
         activeCompanyId={activeCompanyId}
         streak={streak}
+        isDualProfile={isDualProfile}
         canSell={canSell}
         currency={currency}
         notifCount={unreadCounts['/notifications'] ?? 0}
@@ -1494,6 +1513,21 @@ function TrainerShell({
                 </div>
               )
             })}
+
+            {isDualProfile && (
+              <button
+                type="button"
+                onClick={() => { void fetch('/api/profile/switch', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ side: 'client' }),
+                }).then(() => { window.location.href = '/home' }) }}
+                className="mb-3 flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-sm font-medium text-slate-700 active:bg-slate-50"
+              >
+                <ArrowLeftRight className="h-[18px] w-[18px]" />
+                Switch to my client account
+              </button>
+            )}
 
             <button
               type="button"

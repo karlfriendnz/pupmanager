@@ -25,6 +25,13 @@ export default async function ClientLayout({ children }: { children: React.React
   // them, and sending them to /login was an infinite bounce.
   if (!active) redirect(await noActiveClientDestination())
 
+  // Does this person also run a business? If so the shell offers a way back to
+  // it. `actualUserId` rather than the profile's userId: when a trainer is
+  // PREVIEWING a client, the person holding the session is the trainer, and the
+  // switch must never be offered as though it were the client's own.
+  const { getAccountAccess } = await import('@/lib/account-access')
+  const accountAccess = await getAccountAccess(active.actualUserId)
+
   const clientProfile = await prisma.clientProfile.findUnique({
     where: { id: active.clientId },
     include: {
@@ -276,6 +283,7 @@ export default async function ClientLayout({ children }: { children: React.React
       {banner}
       <AppShell
         role="CLIENT"
+        isDualProfile={accountAccess.isDual}
         userName={clientDisplayName}
         userEmail={clientProfile.user.email ?? ''}
         trainerLogo={clientProfile.trainer.logoUrl}

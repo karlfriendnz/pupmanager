@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
-import { Search, HelpCircle, Settings, LogOut, ChevronDown, Flame, Bell, Plus, UserPlus, Receipt, X, Package, Zap } from 'lucide-react'
+import { Search, HelpCircle, Settings, LogOut, ChevronDown, Flame, Bell, Plus, UserPlus, Receipt, X, Package, Zap, ArrowLeftRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { signOutWithPush } from '@/lib/sign-out'
 import { OrgSwitcher } from './org-switcher'
@@ -46,11 +46,14 @@ export function TopBarControls({
   canSell = false,
   currency = 'nzd',
   variant = 'full',
+  isDualProfile = false,
 }: {
   userName?: string | null
   userEmail?: string | null
   orgs?: Org[]
   activeCompanyId?: string | null
+  /** Holds a client relationship elsewhere too — offer a way across. */
+  isDualProfile?: boolean
   streak?: { current: number } | null
   notifCount?: number
   /** Instant-sale add-on on AND the member may raise a sale — hides "New sale". */
@@ -650,6 +653,23 @@ export function TopBarControls({
             <Link href="/settings" role="menuitem" className={cn('flex items-center gap-2 w-full px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors')}>
               <Settings className="h-4 w-4 text-slate-400" /> Settings
             </Link>
+            {/* A trainer who is also somebody else's client. Sits above Sign
+                out because it is the neighbouring idea — leaving this surface,
+                not leaving the app. */}
+            {isDualProfile && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { void fetch('/api/profile/switch', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ side: 'client' }),
+                }).then(() => { window.location.href = '/home' }) }}
+                className="flex items-center gap-2 w-full px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+              >
+                <ArrowLeftRight className="h-4 w-4 text-slate-400" /> Switch to my client account
+              </button>
+            )}
             <button
               type="button"
               onClick={() => signOutWithPush()}
