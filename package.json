@@ -26,7 +26,8 @@
     "test": "vitest",
     "test:e2e": "playwright test",
     "test:e2e:full": "playwright test --config=playwright.e2e.config.ts",
-    "smoke:prod": "./scripts/smoke-prod.sh"
+    "smoke:prod": "./scripts/smoke-prod.sh",
+    "test:integration": "./node_modules/.bin/dotenv -e .env.development.local -o -- vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",
