@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { headers } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { trainerHasAccess } from '@/lib/access'
@@ -21,7 +21,7 @@ import { STEP_TO_MENU } from '@/lib/onboarding/path-step'
 import { getStreak } from '@/lib/trainer-streak'
 import { isPrivateRelayEmail } from '@/lib/auth-emails'
 import { countUnreadMessages } from '@/lib/unread-messages'
-import { getAccountAccess } from '@/lib/account-access'
+import { getAccountAccess, PROFILE_COOKIE } from '@/lib/account-access'
 import { ReviewMount } from '@/components/review/review-mount'
 
 export default async function TrainerLayout({ children }: { children: React.ReactNode }) {
@@ -37,6 +37,14 @@ export default async function TrainerLayout({ children }: { children: React.Reac
   const accountAccess = await getAccountAccess(session.user.id)
   if (session.user.role !== 'TRAINER' && !accountAccess.hasTrainerAccess) {
     redirect('/home')
+  }
+
+  // Ask ONCE, of people who hold both sides. Without the cookie they would land
+  // here every time and never learn the other side exists — which is exactly
+  // what happened to the trainer who prompted this. Choosing sets the cookie, so
+  // this cannot ask twice, and a single-sided account never sees it at all.
+  if (accountAccess.isDual && !(await cookies()).get(PROFILE_COOKIE)?.value) {
+    redirect('/choose-account')
   }
 
   // Email-verification gate. Credentials sign-ups can't reach here unverified

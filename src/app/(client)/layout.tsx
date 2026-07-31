@@ -29,8 +29,17 @@ export default async function ClientLayout({ children }: { children: React.React
   // it. `actualUserId` rather than the profile's userId: when a trainer is
   // PREVIEWING a client, the person holding the session is the trainer, and the
   // switch must never be offered as though it were the client's own.
-  const { getAccountAccess } = await import('@/lib/account-access')
+  const { getAccountAccess, PROFILE_COOKIE } = await import('@/lib/account-access')
   const accountAccess = await getAccountAccess(active.actualUserId)
+
+  // The same one-time question as the trainer side, for a dual account that
+  // happens to land here first. Skipped during a PREVIEW: the trainer is
+  // borrowing a client's view, and asking them to choose an account mid-preview
+  // would be nonsense — and would bounce them out of the thing they opened.
+  if (accountAccess.isDual && !active.isPreview) {
+    const { cookies: readCookies } = await import('next/headers')
+    if (!(await readCookies()).get(PROFILE_COOKIE)?.value) redirect('/choose-account')
+  }
 
   const clientProfile = await prisma.clientProfile.findUnique({
     where: { id: active.clientId },
