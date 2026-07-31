@@ -67,7 +67,7 @@ test.describe('clients — pick some, then act on them', () => {
     await page.waitForURL(/\/messages\?client=/, { timeout: 30_000 })
   })
 
-  test('Message is offered for one client only, and says so for more', async ({ page }) => {
+  test('Message on several clients starts a group with them', async ({ page }) => {
     await login(page)
     await page.goto('/clients')
     await startSelecting(page)
@@ -79,10 +79,20 @@ test.describe('clients — pick some, then act on them', () => {
     await rows.nth(1).click()
     await expect(page.getByText('2 selected')).toBeVisible()
 
-    // Email still works for the many; Message does not pretend to.
+    // Messaging several people used to be refused ("one client at a time").
+    // It now starts a GROUP with exactly those people — the selection is
+    // handed straight to the composer rather than asking the trainer to tick
+    // the same clients again.
     await expect(page.getByRole('button', { name: 'Email' })).toBeEnabled()
-    await expect(page.getByRole('button', { name: 'Message' })).toBeDisabled()
-    await expect(page.getByText('Messages go to one client at a time')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Message' })).toBeEnabled()
+    await expect(page.getByText('Starts a group with these 2')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Message' }).click()
+    const composer = page.getByTestId('group-composer')
+    await expect(composer).toBeVisible()
+    // Straight to the mode question — the audience is already decided.
+    await expect(composer.getByTestId('mode-broadcast')).toBeVisible()
+    await expect(composer.getByTestId('mode-community')).toBeVisible()
   })
 
   test('the action bar clears the bottom tab bar instead of covering the last client', async ({ page }) => {
