@@ -25,8 +25,7 @@ import { ModalPortal } from '@/components/shared/modal-portal'
  *
  * Nothing here is new behaviour. The routes are the ones already in use:
  *   clone    POST   /api/packages/:packageId/clone
- *   convert  POST   /api/class-runs/:runId/convert-to-package   (class → 1:1)
- *                   — one direction only; see the comment on convertLabel
+ *   convert  POST   /api/class-runs/:runId/convert  { to }   (between group kinds)
  *   delete   DELETE /api/class-runs/:runId  |  /api/packages/:packageId
  */
 export function OfferingActions({
@@ -35,6 +34,7 @@ export function OfferingActions({
   editHref,
   packageId,
   runId,
+  runKind,
   backHref,
 }: {
   /** The offering's name — titles the sheet and the confirmation. */
@@ -49,6 +49,12 @@ export function OfferingActions({
    * and it decides which way Convert goes and which route Delete calls.
    */
   runId?: string
+  /**
+   * Which group kind this run currently is. Decides which conversions to
+   * offer — you are shown the other two, never the one you are already on.
+   * Absent for a 1:1 session (no run) and for daycare, which converts nowhere.
+   */
+  runKind?: 'class' | 'casual' | 'event'
   /** Where to land once it's deleted or converted away. */
   backHref: string
 }) {
@@ -58,25 +64,34 @@ export function OfferingActions({
   // drops its scheduled sessions). Both are unrecoverable, so neither happens
   // on a single tap — and neither uses window.confirm, the one dialog a phone
   // renders worst.
-  const [confirm, setConfirm] = useState<null | 'delete' | 'convert'>(null)
+  const [confirm, setConfirm] = useState<null | { kind: 'delete' } | { kind: 'convert'; to: 'class' | 'casual' | 'event'; label: string }>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const isRun = !!runId
-  // Convert is offered on run-backed offerings ONLY — group classes, casual
-  // classes, daycare programmes and events — and only in the direction that is
-  // actually implemented, back to a 1:1 session.
+
+  // The three group kinds are the same two rows wearing different declared
+  // flags, so a class can become a casual class or an event and back. Offered
+  // as separate rows rather than one "Convert…" that opens a picker: three
+  // named destinations read faster than a menu inside a menu, and there are
+  // only ever two of them.
   //
-  // The reverse used to be offered on 1:1 sessions and stranded the offering.
-  // It PATCHed isGroup: true and stopped: /packages lists `isGroup: false` so
-  // the consult vanished from there, /classes lists ClassRun rows and the
-  // conversion creates none, and saving the edit form afterwards doesn't help
-  // because syncOfferingRun opens with `if (runs.length !== 1) return null` —
-  // it only ever edits an existing run, never creates one. The offering ended
-  // up on neither page. Reinstate it only alongside a route that creates the
-  // run, the way class → 1:1 has convert-to-package.
-  const convertLabel = 'Convert to a 1:1 session'
-  const convertHint = 'Removes the scheduled sessions and keeps the offering'
+  // NOT offered: 1:1. A run-backed offering converting to a 1:1 used to be the
+  // only direction here, and the reverse stranded offerings on neither page —
+  // /packages lists `isGroup: false`, /classes lists ClassRun rows, and nothing
+  // creates a run. Group ↔ group has no such hole: the run already exists and
+  // stays put.
+  //
+  // Daycare is not a target either. Day-parts and drop-in bookings are a
+  // different shape and nobody has asked for it.
+  const CONVERT_TARGETS = [
+    { to: 'class' as const, label: 'group class', hint: 'A fixed series with a shared roster' },
+    { to: 'casual' as const, label: 'casual class', hint: 'Clients book single sessions as drop-ins' },
+    { to: 'event' as const, label: 'event', hint: 'A single occasion, sold on its own' },
+  ]
+  const convertOptions = isRun && runKind
+    ? CONVERT_TARGETS.filter(t => t.to !== runKind)
+    : []
 
   async function readError(res: Response, fallback: string) {
     const body = await res.json().catch(() => null) as { error?: unknown } | null
@@ -103,23 +118,32 @@ export function OfferingActions({
     }
   }
 
-  async function handleConvert() {
+  async function handleConvert(to: 'class' | 'casual' | 'event') {
     if (busy) return
     setBusy(true)
     setError(null)
     try {
-      // Only reachable from a run-backed offering — the action isn't offered
-      // otherwise — so there is one route, not a branch.
-      const res = await fetch(`/api/class-runs/${runId}/convert-to-package`, { method: 'POST' })
-      if (res.ok) {
-        // Lands on the offering's edit form: it is now a 1:1 session with
-        // nothing scheduled, and the price and duration want a look.
-        router.push(`/packages/${packageId}/edit`)
+      const res = await fetch(`/api/class-runs/${runId}/convert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to }),
+      })
+      const body = await res.json().catch(() => null) as
+        { href?: string; priceWarning?: string | null; error?: unknown } | null
+      if (res.ok && body?.href) {
+        // The kinds live under different sections, so this is a real move —
+        // land them on the offering where it now lives, not where it was.
+        // A price whose UNIT changed is carried, not recalculated, so say so
+        // rather than let them find out from a client's bill.
+        if (body.priceWarning) {
+          try { sessionStorage.setItem('pm-offering-notice', body.priceWarning) } catch { /* private mode */ }
+        }
+        router.push(body.href)
         router.refresh()
         return
       }
-      // The APIs refuse politely when people are booked in or assigned, and
-      // their message says exactly who — show it rather than a generic line.
+      // The API refuses in prose — people booked in, money already invoiced,
+      // an event that would have to be six events. Show what it said.
       setError(await readError(res, `Could not convert this ${noun}.`))
       setConfirm(null)
     } finally {
@@ -158,25 +182,21 @@ export function OfferingActions({
       onSelect: handleClone,
       disabled: busy,
     },
-    // Convert only goes ONE way: a run-backed offering (group class, casual
-    // class, daycare programme, event) back to a 1:1 session. See isRun above
-    // for why the other direction isn't offered.
-    ...(isRun
-      ? [{
-          key: 'convert',
-          label: convertLabel,
-          hint: convertHint,
-          icon: <Shuffle className="h-5 w-5" strokeWidth={1.75} />,
-          onSelect: () => { setSheetOpen(false); setConfirm('convert') },
-          disabled: busy,
-        }]
-      : []),
+    // One row per kind this could become — never the kind it already is.
+    ...convertOptions.map(t => ({
+      key: `convert-${t.to}`,
+      label: `Convert to ${t.to === 'event' ? 'an' : 'a'} ${t.label}`,
+      hint: t.hint,
+      icon: <Shuffle className="h-5 w-5" strokeWidth={1.75} />,
+      onSelect: () => { setSheetOpen(false); setConfirm({ kind: 'convert', to: t.to, label: t.label }) },
+      disabled: busy,
+    })),
     {
       key: 'delete',
       label: `Delete this ${noun}`,
       hint: 'Asks first — this can’t be undone',
       icon: <Trash2 className="h-5 w-5" strokeWidth={1.75} />,
-      onSelect: () => { setSheetOpen(false); setConfirm('delete') },
+      onSelect: () => { setSheetOpen(false); setConfirm({ kind: 'delete' }) },
       disabled: busy,
       danger: true,
     },
@@ -210,17 +230,19 @@ export function OfferingActions({
 
       {confirm && (
         <ConfirmSheet
-          title={confirm === 'delete' ? `Delete “${name}”?` : convertLabel}
-          body={confirm === 'delete'
+          title={confirm.kind === 'delete' ? `Delete “${name}”?` : `Convert to ${confirm.to === 'event' ? 'an' : 'a'} ${confirm.label}?`}
+          body={confirm.kind === 'delete'
             ? `This ${noun} and everything on it goes. This can’t be undone.`
-            : isRun
-              ? `“${name}” becomes a 1:1 session and its scheduled sessions are removed. This can’t be undone.`
-              : `“${name}” becomes a group class with a shared roster. You’ll set the day and time next.`}
-          confirmLabel={confirm === 'delete' ? 'Delete' : 'Convert'}
-          danger={confirm === 'delete'}
+            : confirm.to === 'casual'
+              ? `“${name}” becomes a casual class. Clients book single sessions, and the price becomes the price of ONE — check it before anyone books.`
+              : confirm.to === 'event'
+                ? `“${name}” becomes a one-off event, sold on its own.`
+                : `“${name}” becomes a group class — a fixed series with a shared roster.`}
+          confirmLabel={confirm.kind === 'delete' ? 'Delete' : 'Convert'}
+          danger={confirm.kind === 'delete'}
           busy={busy}
           onCancel={() => setConfirm(null)}
-          onConfirm={confirm === 'delete' ? handleDelete : handleConvert}
+          onConfirm={confirm.kind === 'delete' ? handleDelete : () => handleConvert(confirm.to)}
         />
       )}
     </div>

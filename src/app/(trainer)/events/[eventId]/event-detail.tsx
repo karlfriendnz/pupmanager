@@ -160,6 +160,7 @@ export function EventDetail({
                     editHref={`/packages/${event.packageId}/edit`}
                     packageId={event.packageId}
                     runId={event.id}
+                    runKind="event"
                     backHref="/events"
                   />
                 }

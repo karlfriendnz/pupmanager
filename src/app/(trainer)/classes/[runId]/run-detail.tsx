@@ -251,6 +251,10 @@ export function RunDetail({
                     editHref={`/packages/${run.packageId}/edit`}
                     packageId={run.packageId}
                     runId={run.id}
+                    // Daycare deliberately passes nothing: it converts nowhere,
+                    // so it is offered nothing rather than being offered
+                    // something the API would refuse.
+                    runKind={basePath === '/casual-classes' ? 'casual' : basePath === '/classes' ? 'class' : undefined}
                     backHref={basePath}
                   />
                 }
