@@ -28,7 +28,7 @@ export default async function AchievementsPage() {
 
   return (
     <>
-      <PageHeader title="Achievements" subtitle="Badges and milestones dogs earn as they train, to keep clients motivated." />
+      <PageHeader title="Achievements" />
       <div className="p-4 md:p-8 w-full max-w-3xl mx-auto">
       <AchievementsManager
         initial={achievements.map(a => ({

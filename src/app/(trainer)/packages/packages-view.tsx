@@ -67,7 +67,6 @@ export function PackagesView({
     <>
       <PageHeader
         title="1:1 Sessions"
-        subtitle="Bundles of 1:1 sessions you assign to a client in one go — set the count, spacing and price once."
       />
       <OfferingPage>
         {packages.length === 0 ? (

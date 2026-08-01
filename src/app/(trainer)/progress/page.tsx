@@ -50,7 +50,7 @@ export default async function ProgressPage() {
 
   return (
     <>
-      <PageHeader title="Progress & Analytics" subtitle="7-day compliance overview for all clients" />
+      <PageHeader title="Progress & Analytics" />
       <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
 
       {clientStats.length === 0 ? (

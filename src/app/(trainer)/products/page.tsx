@@ -23,7 +23,7 @@ export default async function ProductsPage() {
 
   return (
     <>
-      <PageHeader title="Products" subtitle="One-off things you sell alongside training — gear, food, toys and add-ons." />
+      <PageHeader title="Products" />
       <div className="p-4 md:p-8 w-full max-w-5xl xl:max-w-7xl mx-auto">
       <ProductsManager
         initialProducts={products.map(p => ({

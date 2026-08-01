@@ -34,7 +34,7 @@ export default async function FinancesPage() {
 
   return (
     <>
-      <PageHeader title="Finances" subtitle="Your money in one place — payments, payouts and what clients still owe." />
+      <PageHeader title="Finances" />
       <div className="p-4 md:p-8 w-full max-w-2xl md:max-w-[960px] mx-auto">
         <FinancesView />
       </div>

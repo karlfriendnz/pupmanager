@@ -59,7 +59,6 @@ export function EventsView({ events: initialEvents, currency }: { events: EventR
     <>
       <PageHeader
         title="Events"
-        subtitle="One-off events clients sign up to — workshops, seminars and meet-ups, with tickets, capacity and a guest list."
       />
       <OfferingPage>
         {events.length === 0 ? (

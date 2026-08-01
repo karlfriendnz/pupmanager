@@ -83,7 +83,6 @@ export function ClassesView({
     <>
       <PageHeader
         title="Group Classes"
-        subtitle="Run a class — pick the day, time and how many weeks. Clients enrol into one shared timetable with a roster, capacity and waitlist."
       />
       <OfferingPage>
         {runs.length === 0 ? (

@@ -57,7 +57,6 @@ export function DropInsView({ runs: initialRuns, currency = 'NZD' }: { runs: Run
     <>
       <PageHeader
         title="Casual Classes"
-        subtitle="Classes people book one session at a time — set the day, time and per-session price, and they pick the week that suits."
       />
       <OfferingPage>
         {runs.length === 0 ? (

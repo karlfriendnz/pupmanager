@@ -50,18 +50,19 @@ export function AddNameInline({
   // Collapsed, this is the same solid action every other list carries, at the
   // top and to the right. Open, it becomes a full-width field — the row it is
   // about to add is full width, so the thing you type into should be too.
+  // Collapsed this is JUST the button, with no margin of its own, so the
+  // caller can sit it on the same line as the section heading. Open, it becomes
+  // the field — which is why it cannot simply be an <AddOfferingButton>.
   if (!open) {
     return (
-      <div className="mb-3 flex justify-end">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
-        >
-          <Plus className="h-4 w-4 flex-shrink-0" strokeWidth={2.25} />
-          {label}
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 rounded-xl bg-[var(--pm-brand-600)] px-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--pm-brand-700)]"
+      >
+        <Plus className="h-4 w-4 flex-shrink-0" strokeWidth={2.25} />
+        {label}
+      </button>
     )
   }
 

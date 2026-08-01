@@ -1,9 +1,9 @@
 import type { Metadata } from 'next'
 import { PageHeader } from '@/components/shared/page-header'
-import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
+import { FlatBlock, SectionHeader } from '@/components/shared/flat-list'
 import { requireLibraryTrainer, getLibraryTree } from './library-data'
 import { LibraryShell } from './library-shell'
-import { LibraryCategoryGrid } from './library-category-grid'
+import { LibraryCategories } from './library-categories'
 import { LibraryEmpty } from './library-empty'
 import { AddCategory } from './library-index-actions'
 
@@ -27,15 +27,15 @@ export default async function LibraryPage() {
     <>
       <PageHeader
         title="Library"
-        subtitle="Reusable training items you can drop into any client's plan."
       />
       <LibraryShell tree={tree}>
-        <AddCategory />
-        <SectionLabel>Categories</SectionLabel>
         {tree.length === 0 ? (
-          <FlatBlock><LibraryEmpty /></FlatBlock>
+          <>
+            <SectionHeader action={<AddCategory />}>Categories</SectionHeader>
+            <FlatBlock><LibraryEmpty /></FlatBlock>
+          </>
         ) : (
-          <LibraryCategoryGrid
+          <LibraryCategories
             categories={tree.map(type => ({
               id: type.id,
               name: type.name,

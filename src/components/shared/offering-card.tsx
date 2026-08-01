@@ -387,7 +387,7 @@ export function OfferingListBar({ children, view, onView, action }: {
  * move further away the more you have.
  */
 export function AddOfferingButton({ href, label, onClick }: { href?: string; label: string; onClick?: () => void }) {
-  const className = 'inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800'
+  const className = 'inline-flex h-9 items-center gap-1.5 rounded-xl bg-[var(--pm-brand-600)] px-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--pm-brand-700)]'
   const inner = <><Plus className="h-4 w-4 flex-shrink-0" strokeWidth={2.25} /> {label}</>
   return onClick
     ? <button type="button" onClick={onClick} className={className}>{inner}</button>

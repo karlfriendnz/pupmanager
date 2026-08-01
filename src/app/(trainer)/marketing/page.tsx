@@ -82,7 +82,7 @@ export default async function MarketingPage({
 
   return (
     <>
-      <PageHeader title="Marketing" subtitle="Email your clients" />
+      <PageHeader title="Marketing" />
       <div className="p-4 md:p-8 w-full max-w-4xl mx-auto">
         <MarketingView
           businessName={trainer?.businessName ?? ''}

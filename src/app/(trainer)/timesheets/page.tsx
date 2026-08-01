@@ -43,7 +43,7 @@ export default async function TimesheetsPage() {
 
   return (
     <>
-      <PageHeader title="Timesheets" subtitle="Track your team's hours across sessions and shifts, ready for payroll." />
+      <PageHeader title="Timesheets" />
       <div className="p-4 md:p-8 w-full max-w-2xl md:max-w-4xl mx-auto">
         <TimesheetsView
           currency={profile?.payoutCurrency ?? 'nzd'}

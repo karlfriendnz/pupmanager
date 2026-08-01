@@ -1,4 +1,4 @@
-import { SectionLabel } from '@/components/shared/flat-list'
+import { SectionHeader } from '@/components/shared/flat-list'
 import { LibraryTree } from './library-tree'
 import type { TreeType } from './library-data'
 
@@ -26,10 +26,16 @@ export function LibraryShell({
   children: React.ReactNode
 }) {
   return (
-    <div className="mx-auto w-full max-w-6xl p-4 md:p-8">
+    // Full width, like the offering lists. The library is a two-column browser
+    // — tree on the left, cards on the right — and capping it at 72rem squeezed
+    // the cards into three columns on a screen with room for five.
+    <div className="w-full p-4 md:p-8">
       <div className="md:grid md:grid-cols-[17rem_minmax(0,1fr)] md:items-start md:gap-8">
         <aside className="hidden self-start md:sticky md:top-4 md:block">
-          <SectionLabel>Library</SectionLabel>
+          {/* SectionHeader, not SectionLabel — the right column's heading sits
+              in a 36px row so its action can share the line, and a plain label
+              here would ride higher than it. Both columns start level. */}
+          <SectionHeader>Library</SectionHeader>
           <LibraryTree tree={tree} />
         </aside>
         <div className="min-w-0">{children}</div>

@@ -61,6 +61,23 @@ export function PhoneRowList({ children, className }: { children: ReactNode; cla
 }
 
 /** A small uppercase caption above a block. */
+/**
+ * A section heading with its action on the SAME line.
+ *
+ * Without this the action sits in a row of its own above the heading, which
+ * pushes that column's content down — and in a two-column screen like the
+ * Library the two sides then start at different heights for no reason a reader
+ * can see.
+ */
+export function SectionHeader({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="mb-2 flex h-9 items-center justify-between gap-3">
+      <p className="px-1 text-xs font-medium uppercase tracking-wide text-slate-400">{children}</p>
+      {action}
+    </div>
+  )
+}
+
 export function SectionLabel({ children }: { children: ReactNode }) {
   return (
     <p className="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-slate-400">

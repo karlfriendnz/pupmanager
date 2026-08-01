@@ -41,7 +41,7 @@ export default async function LeadMagnetsPage() {
 
   return (
     <>
-      <PageHeader title="Lead magnets" subtitle="Free downloads that grow your mailing list" />
+      <PageHeader title="Lead magnets" />
       <div className="p-4 md:p-8 w-full max-w-5xl mx-auto">
         <LeadMagnetsManager
           slug={slug}
