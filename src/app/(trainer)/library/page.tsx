@@ -30,6 +30,7 @@ export default async function LibraryPage() {
         subtitle="Reusable training items you can drop into any client's plan."
       />
       <LibraryShell tree={tree}>
+        <AddCategory />
         <SectionLabel>Categories</SectionLabel>
         {tree.length === 0 ? (
           <FlatBlock><LibraryEmpty /></FlatBlock>
@@ -43,7 +44,6 @@ export default async function LibraryPage() {
             }))}
           />
         )}
-        <AddCategory />
       </LibraryShell>
     </>
   )

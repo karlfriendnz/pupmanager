@@ -11,7 +11,7 @@ import { ConnectPaymentsModal } from '../settings/connect-payments-prompt'
 import { type PackageColor, type PkgRow } from './package-form'
 import { formatMoney } from '@/lib/money'
 import {
-  OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingLink, OfferingPage,
+  OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingButton, OfferingPage,
   OfferingListBar, useOfferingView, OfferingItems, SortableOfferingList, SortableOfferingCard,   type OfferingFact, type OfferingBadge,
 } from '@/components/shared/offering-card'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
@@ -82,7 +82,11 @@ export function PackagesView({
             {reorderError && (
               <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
             )}
-            <OfferingListBar view={view} onView={setView}>
+            <OfferingListBar
+              view={view}
+              onView={setView}
+              action={<AddOfferingButton href="/offerings/new?kind=onetoone" label="New 1:1 session" />}
+            >
               <OfferingTabs
                 value={tab}
                 onChange={setTab}
@@ -129,8 +133,6 @@ export function PackagesView({
                 </OfferingItems>
               </SortableOfferingList>
             )}
-
-            <AddOfferingLink href="/offerings/new?kind=onetoone" label="New 1:1 session" />
           </>
         )}
       </OfferingPage>

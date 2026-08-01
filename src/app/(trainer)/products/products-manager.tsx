@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import Link from 'next/link'
 import { Star, Tag, Package as PackageIcon, FileDown, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { AddOfferingButton } from '@/components/shared/offering-card'
 import { useCurrency } from '@/components/currency-context'
 import { ProductPrice, SaleTag } from '@/components/shared/product-price'
 import { stockLabel, inStock } from '@/lib/stock'
@@ -67,6 +68,13 @@ export function ProductsManager({ initialProducts }: { initialProducts: Product[
 
   return (
     <div className="flex flex-col gap-6">
+      {/* The action, at the top and to the right — same place as every other
+          list in the app. A dashed row under the last card reads as an empty
+          slot, and it walks further down the page the more products you have. */}
+      <div className="flex justify-end">
+        <AddOfferingButton href="/products/new" label="Add product" />
+      </div>
+
       {grouped.map(([cat, items]) => (
         <div key={cat} className="flex flex-col gap-2">
           <div className="flex items-center gap-2 px-1">
@@ -80,12 +88,6 @@ export function ProductsManager({ initialProducts }: { initialProducts: Product[
         </div>
       ))}
 
-      <Link
-        href="/products/new"
-        className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white py-3 text-sm font-medium text-slate-600 hover:border-slate-400 hover:bg-slate-50"
-      >
-        <Plus className="h-4 w-4" strokeWidth={1.75} /> Add product
-      </Link>
     </div>
   )
 }

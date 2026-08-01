@@ -36,6 +36,7 @@ export default async function LibraryThemePage({ params }: { params: Promise<{ t
         back={{ href: `/library/type/${theme.type.id}`, label: theme.type.name }}
       />
       <LibraryShell tree={tree}>
+        <AddItem themeId={theme.id} />
         <SectionLabel>Items</SectionLabel>
         {theme.tasks.length === 0 ? (
           <FlatBlock>
@@ -62,7 +63,6 @@ export default async function LibraryThemePage({ params }: { params: Promise<{ t
             })}
           </FlatBlock>
         )}
-        <AddItem themeId={theme.id} />
 
         <CategorySettings
           kind="theme"

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Ticket, Users, CalendarDays, MapPin, Repeat, Pencil, Copy } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import {
-  OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingLink, OfferingPage,
+  OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingButton, OfferingPage,
   OfferingListBar, useOfferingView, OfferingItems, SortableOfferingList, SortableOfferingCard,   type OfferingFact,
 } from '@/components/shared/offering-card'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
@@ -72,7 +72,11 @@ export function DropInsView({ runs: initialRuns, currency = 'NZD' }: { runs: Run
             {reorderError && (
               <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
             )}
-            <OfferingListBar view={view} onView={setView}>
+            <OfferingListBar
+              view={view}
+              onView={setView}
+              action={<AddOfferingButton href="/offerings/new?kind=dropin" label="New casual class" />}
+            >
               <OfferingTabs
                 value={tab}
                 onChange={setTab}
@@ -128,8 +132,6 @@ export function DropInsView({ runs: initialRuns, currency = 'NZD' }: { runs: Run
                 </OfferingItems>
               </SortableOfferingList>
             )}
-
-            <AddOfferingLink href="/offerings/new?kind=dropin" label="New casual class" />
           </>
         )}
       </OfferingPage>

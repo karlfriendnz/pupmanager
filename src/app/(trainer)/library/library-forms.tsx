@@ -47,16 +47,21 @@ export function AddNameInline({
     setOpen(false)
   }
 
+  // Collapsed, this is the same solid action every other list carries, at the
+  // top and to the right. Open, it becomes a full-width field — the row it is
+  // about to add is full width, so the thing you type into should be too.
   if (!open) {
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="mt-3 flex items-center gap-2 px-1 py-2 text-sm text-slate-500 active:text-slate-900"
-      >
-        <Plus className="h-4 w-4" strokeWidth={1.75} />
-        {label}
-      </button>
+      <div className="mb-3 flex justify-end">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+        >
+          <Plus className="h-4 w-4 flex-shrink-0" strokeWidth={2.25} />
+          {label}
+        </button>
+      </div>
     )
   }
 

@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { AddOfferingButton } from '@/components/shared/offering-card'
 import { Trophy, Plus, ChevronRight } from 'lucide-react'
 import { AchievementBadge } from '@/components/shared/achievement-badge'
 import { richTextToPlain } from '@/lib/rich-text'
@@ -37,16 +38,14 @@ export function AchievementsManager({ initial }: { initial: AchievementRecord[] 
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex justify-end">
+        <AddOfferingButton href="/achievements/new" label="Add achievement" />
+      </div>
+
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white [&>*+*]:border-t [&>*+*]:border-slate-200">
         {initial.map(a => <AchievementRow key={a.id} achievement={a} />)}
       </div>
 
-      <Link
-        href="/achievements/new"
-        className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white py-3 text-sm font-medium text-slate-600 hover:border-slate-400 hover:bg-slate-50"
-      >
-        <Plus className="h-4 w-4" strokeWidth={1.75} /> Add achievement
-      </Link>
     </div>
   )
 }

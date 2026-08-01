@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
 import { countPendingMembershipRequests } from '@/lib/membership-requests'
 import { MembershipsView } from './memberships-view'
+import { pastMembershipIds } from './past-memberships'
 import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'Packages' }
@@ -55,6 +56,9 @@ export default async function MembershipsPage() {
     countPendingMembershipRequests(trainerId),
   ])
 
+  // Which of these have run their course — see ./past-memberships for the rule.
+  const pastIds = await pastMembershipIds(prisma, memberships.map(m => m.id))
+
   return (
     <MembershipsView
       memberships={memberships.map(m => ({
@@ -62,7 +66,7 @@ export default async function MembershipsPage() {
         imageUrl: m.imageUrl, bgColor: m.bgColor, headerColor: m.headerColor, textColor: m.textColor, featuredColor: m.featuredColor,
         buttonBgColor: m.buttonBgColor, buttonTextColor: m.buttonTextColor, buttonText: m.buttonText,
         cadence: m.cadence, interval: m.interval, minTermCount: m.minTermCount, earlyTermFeeCents: m.earlyTermFeeCents,
-        published: m.published, purchases: m._count.purchases,
+        published: m.published, purchases: m._count.purchases, isPast: pastIds.has(m.id),
         eligibility: m.eligibility, showWhenLocked: m.showWhenLocked,
         prerequisiteIds: m.prerequisites.map(p => p.achievementId),
         pendingRequests: requestCounts.get(m.id) ?? 0,

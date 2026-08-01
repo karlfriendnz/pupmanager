@@ -25,7 +25,9 @@ import {
   OfferingItems,
   SortableOfferingList,
   SortableOfferingCard,
-  AddOfferingLink,
+  AddOfferingButton,
+  OfferingTabs,
+  OfferingTabEmpty,
   type OfferingFact,
 } from '@/components/shared/offering-card'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
@@ -48,6 +50,8 @@ interface Membership extends Card {
   id: string; name: string; description: string | null; priceCents: number
   cadence: Cadence; interval: Interval | null; minTermCount: number; earlyTermFeeCents: number | null
   published: boolean; purchases: number; items: MItem[]; plans: MPlan[]
+  /** Everyone who bought it has since ended — see ./past-memberships. */
+  isPast: boolean
   eligibility: Eligibility; showWhenLocked: boolean; prerequisiteIds: string[]
   /** Clients who tapped "Request this" and haven't been answered. */
   pendingRequests?: number
@@ -212,6 +216,14 @@ export function MembershipsView({
   // The list owns its own order: dragging a card writes it back, and that same
   // order is what clients see in Offerings.
   const { rows: list, setRows: setList, reorder, error: reorderError } = useOfferingReorder(memberships, 'membership')
+  // Current / Past, the same split the 1:1 list uses one page over — a package
+  // is past once everyone who bought it has ended. Drafts stay CURRENT: not
+  // finished writing is a different thing from finished selling.
+  // listTab, not tab — the BUILDER already owns `tab` for its own panels.
+  const [listTab, setListTab] = useState<'current' | 'past'>('current')
+  const currentRows = list.filter(m => !m.isPast)
+  const pastRows = list.filter(m => m.isPast)
+  const shown = listTab === 'past' ? pastRows : currentRows
   const [draft, setDraft] = useState<Draft | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -646,10 +658,33 @@ export function MembershipsView({
             {reorderError && (
               <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
             )}
-            <OfferingListBar view={view} onView={setView} />
-            <SortableOfferingList ids={list.map(m => m.id)} onReorder={reorder}>
+            <OfferingListBar
+              view={view}
+              onView={setView}
+              action={<AddOfferingButton onClick={startNew} label="New package" />}
+            >
+              <OfferingTabs
+                value={listTab}
+                onChange={setListTab}
+                tabs={[
+                  { id: 'current', label: 'Current', count: currentRows.length },
+                  { id: 'past', label: 'Past', count: pastRows.length },
+                ]}
+              />
+            </OfferingListBar>
+
+            {shown.length === 0 ? (
+              <OfferingTabEmpty
+                icon={<Ticket className="mx-auto h-10 w-10" />}
+                title={listTab === 'past' ? 'No past packages' : 'No current packages'}
+                body={listTab === 'past'
+                  ? 'A package moves here once everyone who bought it has finished with it.'
+                  : 'Every package you have has run its course. Make another one to start selling again.'}
+              />
+            ) : (
+            <SortableOfferingList ids={shown.map(m => m.id)} onReorder={reorder}>
               <OfferingItems view={view}>
-                {list.map(m => (
+                {shown.map(m => (
                   <SortableOfferingCard key={m.id} id={m.id}>
                     {handle => (
                       <OfferingCard
@@ -685,7 +720,7 @@ export function MembershipsView({
                 ))}
               </OfferingItems>
             </SortableOfferingList>
-            <AddOfferingLink onClick={startNew} label="New package" />
+            )}
           </>
         )}
       </div>

@@ -39,6 +39,7 @@ export default async function LibraryTypePage({ params }: { params: Promise<{ ty
         back={{ href: '/library', label: 'Library' }}
       />
       <LibraryShell tree={tree}>
+        <AddTheme typeId={type.id} />
         <SectionLabel>Themes</SectionLabel>
         {type.themes.length === 0 ? (
           <FlatBlock>
@@ -61,7 +62,6 @@ export default async function LibraryTypePage({ params }: { params: Promise<{ ty
             ))}
           </FlatBlock>
         )}
-        <AddTheme typeId={type.id} />
 
         <CategorySettings
           kind="type"

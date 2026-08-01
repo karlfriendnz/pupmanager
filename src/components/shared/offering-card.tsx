@@ -359,15 +359,39 @@ export function OfferingViewToggle({ value, onChange }: { value: OfferingView; o
  * Now it's an ordinary row in the flow: tabs left, toggle right, on the shared
  * hairline the underline tabs sit on. Nothing overlaps at any width.
  */
-export function OfferingListBar({ children, view, onView }: { children?: ReactNode; view: OfferingView; onView: (v: OfferingView) => void }) {
+export function OfferingListBar({ children, view, onView, action }: {
+  children?: ReactNode
+  view: OfferingView
+  onView: (v: OfferingView) => void
+  /** The "new one of these" action, sat beside the view toggle. */
+  action?: ReactNode
+}) {
   return (
     <div className={`mb-3 flex items-end justify-between gap-3 ${children ? 'border-b border-slate-200' : ''}`}>
       <div className="min-w-0">{children}</div>
-      <div className={`flex-shrink-0 ${children ? 'pb-1.5' : ''}`}>
+      <div className={`flex flex-shrink-0 items-center gap-2 ${children ? 'pb-1.5' : ''}`}>
+        {action}
         <OfferingViewToggle value={view} onChange={onView} />
       </div>
     </div>
   )
+}
+
+/**
+ * "New <thing>" as a real button, at the top of the list beside the view
+ * toggle — rather than a dashed row under the last card.
+ *
+ * The dashed row reads as an empty slot in the list: at a glance it is another
+ * card that has not loaded yet. Up here it is unambiguously an action, and it
+ * is in the same place whether the list has one item or forty, so it does not
+ * move further away the more you have.
+ */
+export function AddOfferingButton({ href, label, onClick }: { href?: string; label: string; onClick?: () => void }) {
+  const className = 'inline-flex h-9 items-center gap-1.5 rounded-xl bg-slate-900 px-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800'
+  const inner = <><Plus className="h-4 w-4 flex-shrink-0" strokeWidth={2.25} /> {label}</>
+  return onClick
+    ? <button type="button" onClick={onClick} className={className}>{inner}</button>
+    : <Link href={href ?? '#'} className={className}>{inner}</Link>
 }
 
 function SortableOffering({ id, children }: { id: string; children: (handle: HTMLAttributes<HTMLElement>) => ReactNode }) {

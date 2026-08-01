@@ -6,7 +6,7 @@ import { GraduationCap, Users, MapPin, CalendarDays, Repeat, Pencil, Copy, UserC
 import { PageHeader } from '@/components/shared/page-header'
 import { ConnectPaymentsModal } from '../settings/connect-payments-prompt'
 import {
-  OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingLink, OfferingPage,
+  OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingButton, OfferingPage,
   OfferingListBar, useOfferingView, OfferingItems, SortableOfferingList, SortableOfferingCard,   type OfferingFact, type OfferingBadge,
 } from '@/components/shared/offering-card'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
@@ -98,7 +98,11 @@ export function ClassesView({
             {reorderError && (
               <p className="rounded-lg bg-rose-50 border border-rose-200 px-3 py-2 text-sm text-rose-700">{reorderError}</p>
             )}
-            <OfferingListBar view={view} onView={setView}>
+            <OfferingListBar
+              view={view}
+              onView={setView}
+              action={<AddOfferingButton href="/offerings/new?kind=group" label="New class" />}
+            >
               <OfferingTabs
                 value={tab}
                 onChange={setTab}
@@ -148,7 +152,6 @@ export function ClassesView({
               </SortableOfferingList>
             )}
 
-            <AddOfferingLink href="/offerings/new?kind=group" label="New class" />
           </>
         )}
       </OfferingPage>
