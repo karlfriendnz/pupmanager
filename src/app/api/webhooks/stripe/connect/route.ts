@@ -179,8 +179,11 @@ export async function POST(req: Request) {
 
       // ─── Recurring memberships ────────────────────────────────────────────
       // Stripe does NOT guarantee event order, so every one of these is written
-      // to create the rows it needs or safely defer. None of them assumes a
-      // prior event landed.
+      // to CREATE the rows it needs. None of them assumes a prior event landed,
+      // and none of them defers: answering 200 is Stripe's signal to stop
+      // sending, so "wait for the retry" means losing the event. The connected
+      // account id is threaded in because backfilling a missing subscription
+      // means calling Stripe on that account.
       case 'customer.subscription.created':
       case 'customer.subscription.updated':
       case 'customer.subscription.deleted': {
@@ -191,13 +194,13 @@ export async function POST(req: Request) {
         const invoice = event.data.object as Stripe.Invoice
         const subId = subscriptionIdFromInvoice(invoice)
         // A one-off invoice (not subscription-generated) is not ours to handle.
-        if (subId) await recordInvoicePaid(invoice, sandbox, subId)
+        if (subId) await recordInvoicePaid(invoice, sandbox, subId, event.account ?? null)
         break
       }
       case 'invoice.payment_failed': {
         const invoice = event.data.object as Stripe.Invoice
         const subId = subscriptionIdFromInvoice(invoice)
-        if (subId) await recordInvoicePaymentFailed(invoice, sandbox, subId)
+        if (subId) await recordInvoicePaymentFailed(invoice, sandbox, subId, event.account ?? null)
         break
       }
       case 'invoice.payment_action_required': {
@@ -206,7 +209,7 @@ export async function POST(req: Request) {
         // Stripe's hosted page, so this has to reach their phone.
         const invoice = event.data.object as Stripe.Invoice
         const subId = subscriptionIdFromInvoice(invoice)
-        if (subId) await recordInvoiceActionRequired(invoice, sandbox, subId)
+        if (subId) await recordInvoiceActionRequired(invoice, sandbox, subId, event.account ?? null)
         break
       }
       case 'invoice.upcoming': {

@@ -286,14 +286,20 @@ describe('recordInvoicePaid', () => {
       trainerId: 't1', clientId: 'c1', connectAccountId: 'acct_1',
       amountTotal: 4000, currency: 'nzd', status: 'PAID', stripePaymentIntentId: 'pi_1',
     })
-    expect(h.invoiceCreate.mock.calls[0][0].data).toMatchObject({
+    // Upsert rather than create: the row may already exist as OPEN from a
+    // failed attempt this payment just rescued.
+    expect(h.invoiceUpsert.mock.calls[0][0].create).toMatchObject({
       membershipPurchaseId: 'p1', stripeInvoiceId: 'in_1', amountPaid: 4000, status: 'PAID', paymentId: 'pay1',
     })
   })
 
   it('is idempotent: a redelivered invoice.paid creates NO second Payment', async () => {
     h.purchaseFindUnique.mockResolvedValue({ id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1' })
-    h.invoiceFindUnique.mockResolvedValue({ id: 'mi1', paymentId: 'pay1' })
+    // ALREADY PAID is the marker for "this one is finished" — the state the row
+    // is actually left in once the first delivery commits. Row-exists alone is
+    // NOT the marker: a row can also exist as OPEN from a failed attempt, which
+    // is a payment still owed a Payment record.
+    h.invoiceFindUnique.mockResolvedValue({ id: 'mi1', paymentId: 'pay1', status: 'PAID' })
 
     await recordInvoicePaid(invoice(), false, 'sub_1')
     await recordInvoicePaid(invoice(), false, 'sub_1')
@@ -301,7 +307,7 @@ describe('recordInvoicePaid', () => {
     // This is the exact double-charge the event ledger and this guard exist to
     // stop — the PENDING→PAID transition alone would NOT have caught it.
     expect(h.paymentCreate).not.toHaveBeenCalled()
-    expect(h.invoiceCreate).not.toHaveBeenCalled()
+    expect(h.invoiceUpsert).not.toHaveBeenCalled()
     expect(h.invoiceUpdate).toHaveBeenCalledTimes(2)
   })
 
@@ -325,7 +331,7 @@ describe('recordInvoicePaid', () => {
     h.invoiceFindUnique.mockResolvedValue(null)
     await recordInvoicePaid(invoice({ amount_paid: 0 }), false, 'sub_1')
     expect(h.paymentCreate).not.toHaveBeenCalled()
-    expect(h.invoiceCreate).toHaveBeenCalled()
+    expect(h.invoiceUpsert).toHaveBeenCalled()
   })
 })
 
@@ -584,6 +590,27 @@ describe('regrantOnRenewal is a RENEWAL behaviour', () => {
     expect(h.regrantRenewalItems).not.toHaveBeenCalled()
   })
 
+  it('re-grants when a FAILED cycle is later paid — the row is OPEN, not PAID', async () => {
+    // The dunning recovery. Proven against a test clock: this used to hit the
+    // "row already exists" short-circuit and stop, so the rescued payment got
+    // no Payment row at all and the cycle's items were never granted. Stripe
+    // had the money; PupManager had no record of it.
+    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1' })
+    h.invoiceFindUnique.mockResolvedValue({ id: 'mi1', paymentId: null, status: 'OPEN' })
+    h.paymentCreate.mockResolvedValue({ id: 'pay9' })
+
+    await recordInvoicePaid(invoice({ billing_reason: 'subscription_cycle' }), false, 'sub_1')
+
+    expect(h.paymentCreate).toHaveBeenCalledTimes(1)
+    expect(h.invoiceUpsert.mock.calls[0][0].update).toMatchObject({ status: 'PAID', paymentId: 'pay9' })
+    expect(h.regrantRenewalItems).toHaveBeenCalledTimes(1)
+    // And the dunning state has to come off, or access stays flagged as paused
+    // for someone who has paid.
+    expect(h.purchaseUpdateMany.mock.calls[0][0].data).toMatchObject({
+      status: 'ACTIVE', failedPaymentCount: 0, accessPausedAt: null,
+    })
+  })
+
   it('does not re-grant on a mid-cycle update or a manual invoice', async () => {
     for (const reason of ['subscription_update', 'manual', 'subscription_threshold']) {
       h.invoiceFindUnique.mockResolvedValue(null)
@@ -594,8 +621,9 @@ describe('regrantOnRenewal is a RENEWAL behaviour', () => {
 
   it('re-grants exactly once per cycle — a redelivery grants nothing', async () => {
     await recordInvoicePaid(invoice({ billing_reason: 'subscription_cycle' }), false, 'sub_1')
-    // Second delivery of the SAME invoice: the natural key short-circuits it.
-    h.invoiceFindUnique.mockResolvedValue({ id: 'mi1', paymentId: 'pay1' })
+    // Second delivery of the SAME invoice. A row already marked PAID is the
+    // short-circuit; that is the state the first delivery left behind.
+    h.invoiceFindUnique.mockResolvedValue({ id: 'mi1', paymentId: 'pay1', status: 'PAID' })
     await recordInvoicePaid(invoice({ billing_reason: 'subscription_cycle' }), false, 'sub_1')
 
     expect(h.regrantRenewalItems).toHaveBeenCalledTimes(1)

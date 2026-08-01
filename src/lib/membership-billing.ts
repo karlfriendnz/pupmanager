@@ -42,6 +42,91 @@ export {
 } from './membership-consent-copy'
 
 /**
+ * Make sure the MembershipPurchase for a subscription exists before an invoice
+ * event tries to write against it.
+ *
+ * WHY THIS EXISTS. Stripe emits `invoice.paid` for the opening invoice at the
+ * same moment as `customer.subscription.created`, and does not order them. When
+ * the invoice wins, `recordInvoicePaid` used to find no purchase row and return
+ * — on the theory, written into a comment, that "Stripe retries invoice.paid".
+ * It does not. We answered 200, so Stripe considers it delivered and never
+ * sends it again. Proven against a test clock: the client was charged $100, and
+ * nothing was written. No invoice row, no Payment row, no trace.
+ *
+ * Rather than defer, this goes and GETS the subscription. Retrieving it also
+ * lets us expand `default_payment_method`, which webhook payloads never do —
+ * so this is also the only place the card snapshot ("your card ending 4242
+ * expires before your next payment") ever gets filled in.
+ *
+ * Returns false only when the subscription genuinely isn't ours — no metadata,
+ * or Stripe cannot be reached. The caller then does nothing, which is correct.
+ */
+async function ensureSubscriptionSynced(args: {
+  subscriptionId: string
+  sandbox: boolean
+  connectAccountId: string | null
+}): Promise<boolean> {
+  const found = await prisma.membershipPurchase.findUnique({
+    where: { stripeSubscriptionId: args.subscriptionId },
+    select: { id: true },
+  })
+  if (found) return true
+  if (!args.connectAccountId) return false
+
+  try {
+    const sub = await stripeFor(args.sandbox).subscriptions.retrieve(
+      args.subscriptionId,
+      { expand: ['default_payment_method'] },
+      { stripeAccount: args.connectAccountId },
+    )
+    await syncSubscription(sub, args.sandbox)
+  } catch (err) {
+    // Let the webhook fail loudly rather than ack a charge we cannot record.
+    // Stripe retries a non-2xx, and by the next attempt the subscription event
+    // will almost certainly have landed on its own.
+    console.error('[membership-billing] could not back-fill subscription', {
+      subscriptionId: args.subscriptionId, err,
+    })
+    throw err
+  }
+
+  const after = await prisma.membershipPurchase.findUnique({
+    where: { stripeSubscriptionId: args.subscriptionId },
+    select: { id: true },
+  })
+  return after != null
+}
+
+/**
+ * An invoice with its `payments` list populated.
+ *
+ * `invoice.payment_intent` and `invoice.charge` are gone from the pinned API
+ * version; the PaymentIntent now hangs off `invoice.payments`, which is only
+ * present when explicitly expanded — and a webhook payload never expands it.
+ * So every membership Payment row was being written with a null
+ * `stripePaymentIntentId`, and nothing that matches on it (refunds, disputes,
+ * the charge.updated fee backfill) could ever find them again.
+ */
+async function withPayments(
+  invoice: Stripe.Invoice,
+  sandbox: boolean,
+  connectAccountId: string | null,
+): Promise<Stripe.Invoice> {
+  if (invoice.payments?.data?.length || !invoice.id || !connectAccountId) return invoice
+  try {
+    return await stripeFor(sandbox).invoices.retrieve(
+      invoice.id,
+      { expand: ['payments'] },
+      { stripeAccount: connectAccountId },
+    )
+  } catch {
+    // Best effort: a missing PaymentIntent id is a reconciliation nuisance, not
+    // a reason to drop a payment we otherwise know about.
+    return invoice
+  }
+}
+
+/**
  * The consent row for a subscribe attempt, written BEFORE the Stripe redirect.
  *
  * Reuses a recent unconsumed consent for the same client + plan rather than
@@ -123,7 +208,12 @@ export async function syncSubscription(sub: Stripe.Subscription, sandbox: boolea
   // Refresh the card snapshot whenever Stripe tells us about the subscription,
   // so "your card ending 4242 expires before your next payment" is about the
   // card actually on file rather than one they replaced months ago.
-  const card = cardSnapshotFrom(sub)
+  //
+  // A webhook payload NEVER expands default_payment_method, so reading it off
+  // the event alone yielded nothing every single time — which quietly made the
+  // card-expiry warning unreachable code. When it comes through as a bare id,
+  // go and fetch the card.
+  const card = await resolveCard(sub, sandbox, trainerId)
 
   await prisma.$transaction(async (tx) => {
     // Re-check inside the transaction so two concurrent deliveries cannot both
@@ -131,7 +221,7 @@ export async function syncSubscription(sub: Stripe.Subscription, sandbox: boolea
     // backstop if they somehow do).
     const existing = await tx.membershipPurchase.findUnique({
       where: { stripeSubscriptionId: sub.id },
-      select: { id: true, status: true },
+      select: { id: true, status: true, accessPausedAt: true },
     })
 
     if (existing) {
@@ -145,7 +235,21 @@ export async function syncSubscription(sub: Stripe.Subscription, sandbox: boolea
           ...(status === 'CANCELLED' ? { cancelledAt: new Date() } : {}),
           // A successful cycle clears the failure state; syncSubscription is
           // reached with an ACTIVE status only once Stripe is happy again.
-          ...(status === 'ACTIVE' ? { failedPaymentCount: 0 } : {}),
+          //
+          // ALL of it, not just the counter. Clearing failedPaymentCount alone
+          // left accessPausedAt and lastPaymentFailedAt set forever on anyone
+          // who recovered from a failed payment — the grants below were put
+          // back, so the row claimed access was paused while it demonstrably
+          // was not, and accessRestoredAt (what the client is told) never got
+          // written at all.
+          ...(status === 'ACTIVE'
+            ? {
+                failedPaymentCount: 0,
+                lastPaymentFailedAt: null,
+                accessPausedAt: null,
+                ...(existing.accessPausedAt ? { accessRestoredAt: new Date() } : {}),
+              }
+            : {}),
           ...card,
         },
       })
@@ -249,6 +353,42 @@ function cardSnapshotFrom(sub: Stripe.Subscription): {
 }
 
 /**
+ * The card snapshot, fetching the PaymentMethod when the event only carried its
+ * id — which is always, for a webhook.
+ *
+ * One extra Stripe call per subscription event. Subscription events are a
+ * handful per client per month, and the alternative is a warning email that
+ * can never fire. Failure is swallowed: an empty snapshot is the same
+ * best-effort nothing the old code produced, and must never fail a webhook that
+ * is also recording money.
+ */
+async function resolveCard(
+  sub: Stripe.Subscription,
+  sandbox: boolean,
+  trainerId: string,
+): Promise<ReturnType<typeof cardSnapshotFrom>> {
+  const expanded = cardSnapshotFrom(sub)
+  if (expanded.cardLast4 || typeof sub.default_payment_method !== 'string') return expanded
+
+  const trainer = await prisma.trainerProfile.findUnique({
+    where: { id: trainerId },
+    select: { connectAccountId: true },
+  })
+  if (!trainer?.connectAccountId) return {}
+
+  try {
+    const pm = await stripeFor(sandbox).paymentMethods.retrieve(
+      sub.default_payment_method,
+      undefined,
+      { stripeAccount: trainer.connectAccountId },
+    )
+    return cardSnapshotFrom({ ...sub, default_payment_method: pm } as Stripe.Subscription)
+  } catch {
+    return {}
+  }
+}
+
+/**
  * A cycle was paid. Records the invoice, mirrors it into a Payment row so the
  * EXISTING refund/dispute/Xero machinery keeps working unchanged, and rolls the
  * period forward.
@@ -260,14 +400,17 @@ export async function recordInvoicePaid(
   invoice: Stripe.Invoice,
   sandbox: boolean,
   subscriptionId: string,
+  connectAccountId: string | null = null,
 ): Promise<void> {
+  // Out-of-order delivery: the opening invoice regularly beats
+  // customer.subscription.created. Fetch the subscription and build the row now
+  // rather than dropping a payment that has already been taken.
+  if (!(await ensureSubscriptionSynced({ subscriptionId, sandbox, connectAccountId }))) return
+
   const purchase = await prisma.membershipPurchase.findUnique({
     where: { stripeSubscriptionId: subscriptionId },
     select: { id: true, trainerId: true, clientId: true, membershipId: true, status: true, accessPausedAt: true },
   })
-  // Out-of-order delivery: the subscription event has not landed yet. Ack and
-  // do nothing — Stripe retries invoice.paid, and by then syncSubscription will
-  // have created the row. Deliberately NOT creating a half-formed purchase here.
   if (!purchase) return
 
   // Was this the retry that rescued a paused membership? Decided before the
@@ -280,27 +423,40 @@ export async function recordInvoicePaid(
   // post-commit Xero reconcile knows what to sync.
   let createdPaymentId: string | null = null
 
-  const piId = paymentIntentIdFromInvoice(invoice)
-  const currency = (invoice.currency ?? 'nzd').toLowerCase()
-  const amountPaid = invoice.amount_paid ?? 0
-
   const trainer = await prisma.trainerProfile.findUnique({
     where: { id: purchase.trainerId },
     select: { connectAccountId: true },
   })
 
+  // The PaymentIntent id only exists on an expanded invoice, and this is the
+  // row everything downstream matches on.
+  const hydrated = await withPayments(invoice, sandbox, connectAccountId ?? trainer?.connectAccountId ?? null)
+  const piId = paymentIntentIdFromInvoice(hydrated)
+  const currency = (invoice.currency ?? 'nzd').toLowerCase()
+  const amountPaid = invoice.amount_paid ?? 0
+
   await prisma.$transaction(async (tx) => {
     const existing = await tx.membershipInvoice.findUnique({
       where: { stripeInvoiceId: invoice.id },
-      select: { id: true, paymentId: true },
+      select: { id: true, paymentId: true, status: true },
     })
-    if (existing) {
+
+    // ALREADY PAID is the only safe "we finished this one" marker — a plain
+    // re-delivery of invoice.paid must not create a second Payment or re-grant
+    // a month's consumables. Refresh the mutable numbers and stop.
+    if (existing?.status === 'PAID') {
       await tx.membershipInvoice.update({
         where: { id: existing.id },
-        data: { status: 'PAID', amountPaid, attemptCount: invoice.attempt_count ?? 0 },
+        data: { amountPaid, attemptCount: invoice.attempt_count ?? 0 },
       })
       return
     }
+
+    // An OPEN row means this invoice FAILED first and has now been paid — the
+    // ordinary dunning recovery. It used to take the early return above and
+    // stop there, so the money was never mirrored into a Payment row, access
+    // stayed flagged as paused, and a renewal's items were never re-granted.
+    // Falling through is the fix; the writes below are upserts either way.
 
     // One Payment per cycle, written as already-PAID from the invoice's own
     // amounts. Deliberately NOT via createPaymentRecord(): that appends the
@@ -332,8 +488,11 @@ export async function recordInvoicePaid(
       createdPaymentId = payment.id
     }
 
-    await tx.membershipInvoice.create({
-      data: {
+    // Upsert, not create: the row may already be sitting there as OPEN from the
+    // failed attempt this payment just rescued.
+    await tx.membershipInvoice.upsert({
+      where: { stripeInvoiceId: invoice.id },
+      create: {
         membershipPurchaseId: purchase.id,
         stripeInvoiceId: invoice.id,
         periodStart: invoice.period_start ? new Date(invoice.period_start * 1000) : null,
@@ -346,6 +505,14 @@ export async function recordInvoicePaid(
         attemptCount: invoice.attempt_count ?? 0,
         paymentId,
         sandbox,
+      },
+      update: {
+        status: 'PAID',
+        amountPaid,
+        attemptCount: invoice.attempt_count ?? 0,
+        actionRequiredAt: null,
+        // Never overwrite a payment link that is already there.
+        ...(paymentId ? { paymentId } : {}),
       },
     })
 
@@ -429,7 +596,13 @@ export async function recordInvoicePaymentFailed(
   invoice: Stripe.Invoice,
   sandbox: boolean,
   subscriptionId: string,
+  connectAccountId: string | null = null,
 ): Promise<void> {
+  // Same ordering hole as invoice.paid: a first charge can fail before the
+  // subscription event lands, and dropping it would leave a client quietly
+  // unpaid with access still on.
+  if (!(await ensureSubscriptionSynced({ subscriptionId, sandbox, connectAccountId }))) return
+
   const purchase = await prisma.membershipPurchase.findUnique({
     where: { stripeSubscriptionId: subscriptionId },
     select: { id: true, trainerId: true, clientId: true, membershipId: true },
@@ -503,7 +676,10 @@ export async function recordInvoiceActionRequired(
   invoice: Stripe.Invoice,
   sandbox: boolean,
   subscriptionId: string,
+  connectAccountId: string | null = null,
 ): Promise<void> {
+  if (!(await ensureSubscriptionSynced({ subscriptionId, sandbox, connectAccountId }))) return
+
   const purchase = await prisma.membershipPurchase.findUnique({
     where: { stripeSubscriptionId: subscriptionId },
     select: { id: true, trainerId: true, clientId: true, membershipId: true },
