@@ -64,7 +64,15 @@ export function AdminTrainerNotes({
   }
 
   return (
-    <div className="mt-8 grid gap-6 lg:grid-cols-2">
+    // STACKED, not two-up. This panel is the LEFT column of the trainer page's
+    // own grid — minmax(0, 22rem), so ~352px however wide the window is. `lg:`
+    // is a VIEWPORT breakpoint, not a container one, so `lg:grid-cols-2` split
+    // that 352px into two 164px columns on any desktop screen. At that width
+    // the To-dos row (an input plus its Add button) overflowed its column and
+    // pushed the button underneath the Notes textarea, which made it literally
+    // unclickable — the e2e click failed with "textarea intercepts pointer
+    // events". One column each, full width of the 22rem sidebar.
+    <div className="mt-8 flex flex-col gap-6">
       {/* ── To-dos ─────────────────────────────────────────────────────── */}
       <section className="rounded-2xl border border-slate-700 bg-slate-800 p-5">
         <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-200">
@@ -76,7 +84,9 @@ export function AdminTrainerNotes({
             onChange={(e) => setTaskTitle(e.target.value)}
             placeholder="Add a to-do…"
             maxLength={500}
-            className="h-10 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            // min-w-0: a flex item will not shrink below its intrinsic width
+            // without it, which is how this row overflowed in the first place.
+            className="h-10 min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <button type="submit" disabled={busy || !taskTitle.trim()} className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-3 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-40">
             <Plus className="h-4 w-4" /> Add
