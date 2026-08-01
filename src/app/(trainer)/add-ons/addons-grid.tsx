@@ -110,6 +110,10 @@ export function AddonsGrid({
       <button
         key={card.id}
         type="button"
+        // A stable handle per add-on. Its accessible name is the whole card —
+        // title, blurb and price — which collides with the nav item of the same
+        // word for anything called "Marketing".
+        data-testid={`addon-card-${card.id}`}
         onClick={() => {
           setError(null)
           // An enabled add-on with a config page → go manage it; otherwise the

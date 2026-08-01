@@ -68,6 +68,23 @@ export default async function globalSetup() {
     await prisma.trainerMembership.create({
       data: { companyId: profile.id, userId: user.id, role: 'OWNER', acceptedAt: new Date() },
     })
+    // The rest of the PAID catalogue as BillingItem rows. In production every
+    // add-on has one, and `available` on the Add-ons tab is exactly
+    // "is there a sellable BillingItem for this id" — so without these the
+    // trainer-journey spec meets a permanently disabled "Turn on" button that
+    // no real trainer would ever see. Seeded, not enabled: switching them on is
+    // what that journey is there to walk.
+    for (const [id, name, price] of [
+      ['routeplanner', 'Route planner', 10],
+      ['leadmagnets', 'Lead magnets', 10],
+    ] as const) {
+      await prisma.billingItem.upsert({
+        where: { id },
+        update: { isActive: true },
+        create: { id, kind: 'ADDON', name, description: name, priceMonthly: price, sortOrder: 20, isActive: true },
+      })
+    }
+
     // Marketing is an add-on — seed its BillingItem (FK target) then enable it
     // so the Marketing specs can reach the gated page.
     await prisma.billingItem.create({
