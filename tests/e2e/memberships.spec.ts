@@ -137,7 +137,10 @@ test.describe('memberships — trainer builds, client sees', () => {
       await expect(page.getByRole('heading', { name: SEED.membershipName })).toBeVisible({ timeout: 15_000 })
       // …the recurring one is there too, priced per period and NOT buyable —
       // it offers a request instead of a checkout button that would 409.
-      const recurring = page.locator('div').filter({ has: page.getByRole('heading', { name: 'E2E Subscription Bundle' }) }).last()
+      // The CARD, not the innermost div holding the title — the price and the
+      // button are siblings of that, so .last() could never contain them.
+      const recurring = page.getByTestId('membership-card')
+        .filter({ has: page.getByRole('heading', { name: 'E2E Subscription Bundle' }) })
       await expect(recurring).toContainText('/ month')
       await expect(recurring.getByRole('button', { name: 'Request this' })).toBeVisible()
       // …and neither of the other two is anywhere.
@@ -171,7 +174,8 @@ test.describe('memberships — trainer builds, client sees', () => {
       await login(page, SEED.client.email, SEED.client.password)
       await page.goto('/my-memberships')
 
-      const card = page.locator('div').filter({ has: page.getByRole('heading', { name: 'E2E Ongoing Plan' }) }).last()
+      const card = page.getByTestId('membership-card')
+        .filter({ has: page.getByRole('heading', { name: 'E2E Ongoing Plan' }) })
       // The reason is still stated — the button is an action beside it, not a
       // replacement for the explanation.
       await expect(card).toContainText('bills you regularly')
@@ -186,7 +190,8 @@ test.describe('memberships — trainer builds, client sees', () => {
 
       // Survives a reload — not a state flip that forgets.
       await page.reload()
-      const after = page.locator('div').filter({ has: page.getByRole('heading', { name: 'E2E Ongoing Plan' }) }).last()
+      const after = page.getByTestId('membership-card')
+        .filter({ has: page.getByRole('heading', { name: 'E2E Ongoing Plan' }) })
       await expect(after.getByText('Requested')).toBeVisible({ timeout: 15_000 })
       await expect(after.getByRole('button', { name: 'Request this' })).toHaveCount(0)
 
@@ -247,9 +252,12 @@ test.describe('memberships — trainer builds, client sees', () => {
       await page.goto('/dashboard')
 
       // It's on the screen the trainer opens every morning, saying who and what.
-      const row = page.locator('div').filter({ hasText: name }).last()
-      await expect(page.getByText(name)).toBeVisible({ timeout: 20_000 })
-      await expect(page.getByText('1 request from clients')).toBeVisible()
+      // The dashboard renders a mobile and a desktop variant of this, so the
+      // FIRST match is the hidden one — filter to what a person can actually
+      // see rather than picking an index and hoping.
+      const row = page.locator('div').filter({ hasText: name }).filter({ visible: true }).last()
+      await expect(page.getByText(name).filter({ visible: true }).first()).toBeVisible({ timeout: 20_000 })
+      await expect(page.getByText('1 request from clients').filter({ visible: true }).first()).toBeVisible()
       await expect(row).toContainText('Ongoing plan')
 
       await page.getByRole('button', { name: 'Accept' }).first().click()

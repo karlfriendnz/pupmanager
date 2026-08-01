@@ -152,7 +152,13 @@ export function MembershipCards({
           return (
             <div
               key={m.id}
-              className={`rounded-2xl border shadow-sm overflow-hidden ${locked ? 'border-slate-200' : 'border-slate-200'}`}
+              // A stable handle on the whole card. The specs used to reach for
+              // it with .filter({ has: heading }).last(), which resolves to the
+              // innermost <div> holding the title — so every assertion about
+              // the PRICE or the button, which are siblings of that div, could
+              // never pass.
+              data-testid="membership-card"
+              className="rounded-2xl border border-slate-200 shadow-sm overflow-hidden"
               style={{ backgroundColor: bg }}
             >
               {m.imageUrl && (

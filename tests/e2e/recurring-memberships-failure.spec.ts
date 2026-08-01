@@ -118,7 +118,8 @@ test.describe('a paused plan actually takes access away', () => {
       await expect(page.getByText('E2E Membership Session')).toBeVisible()
 
       await page.goto('/my-memberships')
-      await expect(page.getByText('E2E Paused Plan')).toBeVisible()
+      // Named in both the plans list and the storefront card below it.
+      await expect(page.getByText('E2E Paused Plan').first()).toBeVisible()
       await expect(page.getByRole('button', { name: 'Update card' })).toHaveCount(0)
     } finally {
       await cleanup(prisma)

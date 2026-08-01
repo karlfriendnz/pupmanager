@@ -122,7 +122,13 @@ export async function loadClientSubscriptions(clientId: string, currency: string
     where: {
       clientId,
       stripeSubscriptionId: { not: null },
-      status: { in: ['ACTIVE', 'PAST_DUE', 'CANCELLING', 'PAUSED'] },
+      // ORPHANED belongs here even though the plan has ENDED. accessPausedReason
+      // has purpose-written copy for it — "your trainer has stopped taking
+      // payments … you haven't been charged again" — and leaving the status out
+      // of this query made that copy unreachable, so a client whose trainer left
+      // PupManager saw their plan silently vanish with no explanation at all.
+      // No cancel button appears (that is gated on ACTIVE), only the sentence.
+      status: { in: ['ACTIVE', 'PAST_DUE', 'CANCELLING', 'PAUSED', 'ORPHANED'] },
     },
     orderBy: { purchasedAt: 'desc' },
     select: {

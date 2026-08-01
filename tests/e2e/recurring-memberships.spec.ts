@@ -260,8 +260,10 @@ test.describe('recurring memberships — cancelling', () => {
       // "Your plans" is NOT behind the storefront kill-switch — see the note at
       // the top of this file.
       await expect(page.getByText('Your plans')).toBeVisible()
-      await expect(page.getByText('E2E Ongoing Plan')).toBeVisible()
-      await expect(page.getByText('$400.00 / month')).toBeVisible()
+      // Named in both the plans list and the storefront card below it.
+      await expect(page.getByText('E2E Ongoing Plan').first()).toBeVisible()
+      // Priced in both the plans list and the storefront card below it.
+      await expect(page.getByText('$400.00 / month').first()).toBeVisible()
 
       await page.getByRole('button', { name: 'Cancel', exact: true }).click()
 
