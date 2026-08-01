@@ -199,6 +199,18 @@ test('a brand-new trainer builds a business, takes on clients, and talks to them
       durationMins: 90, sessionType: 'VIRTUAL', priceCents: 18000,
     })
 
+    // Open the consult up to self-booking, and put the week's hours in. Without
+    // both, the client's booking tab has nothing to offer.
+    await prisma.package.update({
+      where: { id: oneOff.id },
+      data: { clientSelfBook: true, selfBookRequiresApproval: false, priceCents: 0 },
+    })
+    await prisma.availabilitySlot.createMany({
+      data: [1, 2, 3, 4, 5, 6, 7].map(dayOfWeek => ({
+        trainerId: profile!.id, dayOfWeek, startTime: '09:00', endTime: '17:00', cadenceWeeks: 1,
+      })),
+    })
+
     const startDate = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10)
     const klass = await post(page, '/api/class-runs', {
       name: 'Loose Lead Group', startDate, capacity: 8,
@@ -344,9 +356,70 @@ test('a brand-new trainer builds a business, takes on clients, and talks to them
         .toBeVisible({ timeout: 20_000 })
       await expect(clientPage.getByText('Rusty').filter({ visible: true }).first())
         .toBeVisible({ timeout: 20_000 })
+
+      // ── 9. She books herself in, and goes through with it ───────────────
+      // The wizard spec stops one click short of Confirm on purpose: it shares
+      // a database with every other spec, so a real booking there could race
+      // one of them. This business is its own, built in this test and used by
+      // nobody else, so the last click — the one that actually creates the
+      // session — can finally be taken.
+      await clientPage.goto('/my-availability')
+      await expect(clientPage.getByRole('heading', { name: 'What would you like to book?' }))
+        .toBeVisible({ timeout: 20_000 })
+      await clientPage.getByRole('button', { name: /1-on-1 sessions/ }).click()
+      await clientPage.getByRole('button', { name: /Behaviour consult/ }).click()
+
+      await expect(clientPage.getByRole('heading', { name: 'Pick a time' })).toBeVisible({ timeout: 15_000 })
+      const continueBtn = clientPage.getByRole('button', { name: /^Continue · / })
+      await expect(continueBtn).toBeEnabled({ timeout: 15_000 })
+      await continueBtn.click()
+
+      await expect(clientPage.getByRole('heading', { name: 'Confirm your booking' })).toBeVisible({ timeout: 15_000 })
+      await clientPage.getByRole('button', { name: 'Confirm booking' }).click()
+
+      // It exists, it belongs to her, and it is on the package she chose.
+      await expect
+        .poll(async () => prisma.trainingSession.count({ where: { clientId: full.clientId } }), { timeout: 30_000 })
+        .toBeGreaterThan(0)
+
+      // ── 10. She asks for something from the shop ────────────────────────
+      // Without Stripe there is no checkout, so the shop's answer is a REQUEST
+      // — the same path a trainer meets on their dashboard every morning.
+      await clientPage.goto('/my-shop')
+      const treatCard = clientPage.getByText('Training treats').first()
+      await expect(treatCard, 'the shop should list what the trainer stocked').toBeVisible({ timeout: 20_000 })
+
+      // Ask for it. With no Stripe there is no checkout, so a request is what
+      // the shop offers — and it is the trainer's morning dashboard that has to
+      // carry it.
+      const asked = await clientPage.request.post(`/api/my/products/${treats.id}/request`, { data: {} })
+      expect(asked.status(), await asked.text()).toBeLessThan(300)
     } finally {
       await clientCtx.close()
     }
+
+    // ── 11. The trainer sees the booking on their own schedule ────────────
+    await page.goto('/schedule')
+    await expect(page.getByText('Fiona Full').filter({ visible: true }).first())
+      .toBeVisible({ timeout: 20_000 })
+
+    // ── 12. And answers the shop request from the dashboard ───────────────
+    // The panel renders twice, phone and desktop, from one server payload.
+    // Answering it used to remove the row from the copy you clicked and leave
+    // it on the other one forever, because the rows were seeded into state once
+    // and never re-read. This walks the whole thing: see it, answer it, gone.
+    await page.goto('/dashboard')
+    const requestRow = page.getByTestId('request-row')
+      .filter({ hasText: 'Training treats' })
+      .filter({ visible: true })
+      .first()
+    await expect(requestRow, 'a client request should reach the dashboard').toBeVisible({ timeout: 20_000 })
+
+    await requestRow.getByRole('button', { name: 'Mark done' }).click()
+    await expect(
+      page.getByTestId('request-row').filter({ hasText: 'Training treats' }),
+      'an answered request must clear from BOTH copies of the panel',
+    ).toHaveCount(0, { timeout: 20_000 })
   } finally {
     await prisma.$disconnect()
   }
