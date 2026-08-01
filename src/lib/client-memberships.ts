@@ -87,7 +87,11 @@ export interface MembershipConsentCopy {
 /** A recurring membership this client is (or was recently) paying for. */
 export interface ClientSubscription {
   purchaseId: string
+  /** The package itself — what a switch compares against, and moves away from. */
+  membershipId: string
   name: string
+  /** Per-period price of the plan they're on, so a switch can say up or down. */
+  priceCents: number | null
   status: 'ACTIVE' | 'PAST_DUE' | 'CANCELLING' | 'CANCELLED' | 'PAUSED' | 'LAPSED'
   priceLabel: string | null
   /** End of the period they have already paid for. */
@@ -124,6 +128,7 @@ export async function loadClientSubscriptions(clientId: string, currency: string
     select: {
       id: true, status: true, currentPeriodEnd: true, committedUntil: true, cancelAtPeriodEnd: true,
       cardLast4: true,
+      membershipId: true,
       membership: { select: { name: true } },
       plan: { select: { priceCents: true, interval: true } },
       // An invoice the client's bank wants them to authorise. Nothing in the
@@ -140,7 +145,9 @@ export async function loadClientSubscriptions(clientId: string, currency: string
   const now = Date.now()
   return rows.map(r => ({
     purchaseId: r.id,
+    membershipId: r.membershipId,
     name: r.membership?.name ?? 'Package',
+    priceCents: r.plan?.priceCents ?? null,
     status: r.status as ClientSubscription['status'],
     priceLabel: r.plan
       ? `${formatMoney(r.plan.priceCents, currency)} / ${INTERVAL_WORD[r.plan.interval as ClientMembershipInterval]}`
@@ -194,6 +201,11 @@ export function resolveBuyability(args: {
   if (price <= 0) return { buyable: false, blockedReason: 'NO_PRICE', needsConsent: false }
   return { buyable: true, blockedReason: null, needsConsent: true }
 }
+
+// The card's own decision lives in membership-card-action.ts — a prisma-free
+// module, so the 'use client' card can import it without pulling `pg` into the
+// browser bundle. Re-exported here so server callers have one place to look.
+export { resolveCardAction, lockedCopy, type CardAction } from './membership-card-action'
 
 /**
  * Load a trainer's published memberships for the client storefront, resolving

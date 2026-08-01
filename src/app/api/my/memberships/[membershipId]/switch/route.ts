@@ -10,7 +10,7 @@ import {
   addCycles,
   type PlanInterval,
 } from '@/lib/connect-subscriptions'
-import { describePlanCommitment, ensureConsent, findLiveSubscription } from '@/lib/membership-billing'
+import { describePlanCommitment, ensureConsent } from '@/lib/membership-billing'
 import { checkEligibility, describeMissing, type EligibilityMode } from '@/lib/membership-eligibility'
 import { fulfilMembershipInTx, enrolMembershipClasses } from '@/lib/memberships'
 import { suspendMembershipGrants } from '@/lib/membership-access'

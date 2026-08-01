@@ -21,16 +21,34 @@ export default async function MembershipsPage() {
   // locked "turn it on" row until then), same as Events and Doggy Daycare.
   if (!(await hasAddon(trainerId, 'memberships'))) redirect(addonSettingsHref('memberships'))
 
-  const [memberships, packages, classRuns, products, trainer, requestCounts] = await Promise.all([
+  const [memberships, packages, classRuns, products, trainer, achievements, clientRows, requestCounts] = await Promise.all([
     prisma.membership.findMany({
       where: { trainerId },
       orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
-      include: { items: { orderBy: { order: 'asc' } }, plans: { orderBy: { order: 'asc' } }, _count: { select: { purchases: true } } },
+      include: {
+        items: { orderBy: { order: 'asc' } },
+        plans: { orderBy: { order: 'asc' } },
+        prerequisites: { select: { achievementId: true } },
+        _count: { select: { purchases: true } },
+      },
     }),
     prisma.package.findMany({ where: { trainerId, isGroup: false }, orderBy: { name: 'asc' }, select: { id: true, name: true, priceCents: true, specialPriceCents: true, description: true } }),
     prisma.classRun.findMany({ where: { trainerId, status: { not: 'CANCELLED' } }, orderBy: { startDate: 'desc' }, select: { id: true, name: true, imageUrl: true, package: { select: { description: true } } } }),
     prisma.product.findMany({ where: { trainerId }, orderBy: { name: 'asc' }, select: { id: true, name: true, priceCents: true, imageUrl: true, description: true } }),
     prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { payoutCurrency: true } }),
+    // What a package can be gated on, and who can be invited to one. Sample
+    // clients are excluded — inviting the demo data to a real package would be
+    // confusing and does nothing.
+    prisma.achievement.findMany({
+      where: { trainerId, isSample: false },
+      orderBy: { order: 'asc' },
+      select: { id: true, name: true },
+    }),
+    prisma.clientProfile.findMany({
+      where: { trainerId, status: 'ACTIVE' },
+      orderBy: { user: { name: 'asc' } },
+      select: { id: true, user: { select: { name: true, email: true } } },
+    }),
     // Clients waiting on each package. The trainer answers them on the
     // dashboard; the count here is so demand is visible where they'd go to fix
     // the reason it can't be bought (set a price, or think about the plan).
@@ -45,6 +63,8 @@ export default async function MembershipsPage() {
         buttonBgColor: m.buttonBgColor, buttonTextColor: m.buttonTextColor, buttonText: m.buttonText,
         cadence: m.cadence, interval: m.interval, minTermCount: m.minTermCount, earlyTermFeeCents: m.earlyTermFeeCents,
         published: m.published, purchases: m._count.purchases,
+        eligibility: m.eligibility, showWhenLocked: m.showWhenLocked,
+        prerequisiteIds: m.prerequisites.map(p => p.achievementId),
         pendingRequests: requestCounts.get(m.id) ?? 0,
         items: m.items.map(i => ({ kind: i.kind, packageId: i.packageId, classRunId: i.classRunId, productId: i.productId, quantity: i.quantity, regrantOnRenewal: i.regrantOnRenewal, imageUrl: i.imageUrl, description: i.description })),
         plans: m.plans.map(p => ({ interval: p.interval, priceCents: p.priceCents, minTermCount: p.minTermCount, earlyTermFeeCents: p.earlyTermFeeCents })),
@@ -55,6 +75,11 @@ export default async function MembershipsPage() {
         products: products.map(p => ({ id: p.id, name: p.name, priceCents: p.priceCents ?? undefined, imageUrl: p.imageUrl ?? null, description: p.description ?? null })),
       }}
       currency={trainer?.payoutCurrency ?? 'nzd'}
+      achievements={achievements}
+      clients={clientRows.map(c => ({
+        id: c.id,
+        name: c.user?.name?.trim() || c.user?.email || 'Unnamed',
+      }))}
     />
   )
 }

@@ -2,11 +2,12 @@
 
 import { useState } from 'react'
 import { RichText } from '@/components/shared/rich-text'
-import { Ticket, Loader2, Check } from 'lucide-react'
+import { Ticket, Loader2, Check, Lock, ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import { resolveButtonColors } from '@/lib/membership-card-colors'
 import { MembershipConsentScreen } from '@/components/shared/membership-consent-screen'
-import type { ClientMembership, ClientMembershipInterval } from '@/lib/client-memberships'
+import { resolveCardAction } from '@/lib/membership-card-action'
+import type { ClientMembership, ClientMembershipInterval, ClientSubscription } from '@/lib/client-memberships'
 
 const INTERVAL_LABEL: Record<ClientMembershipInterval, string> = {
   WEEK: 'week',
@@ -26,16 +27,26 @@ function priceLabel(m: ClientMembership, currency: string): string {
  * trainer's card styling (image, colours, custom button text) renders
  * identically wherever a client meets it.
  */
-// Plain-language reason a package can't just be bought, shown beside the
-// Request button so the client is never left guessing what happened.
-const BLOCKED_COPY: Record<'RECURRING' | 'NO_PRICE', string> = {
-  RECURRING: 'This one bills you regularly, so it has to be set up for you before you can buy it.',
-  NO_PRICE: 'This one doesn’t have a price on it yet.',
-}
-
-export function MembershipCards({ memberships, currency }: { memberships: ClientMembership[]; currency: string }) {
+export function MembershipCards({
+  memberships,
+  currency,
+  /**
+   * The recurring plan the client is on right now, if any. Its presence turns
+   * every OTHER recurring card from "Subscribe" into "Move to this one" —
+   * without it a client on Juniors would be offered a second subscription
+   * alongside it rather than a change of plan.
+   */
+  currentPlan = null,
+}: {
+  memberships: ClientMembership[]
+  currency: string
+  currentPlan?: ClientSubscription | null
+}) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // A switch that has gone through — the card confirms rather than silently
+  // reloading, because moving plan takes money and should say so.
+  const [switched, setSwitched] = useState<string | null>(null)
   // Which membership's consent screen is open. A recurring plan never goes
   // straight to Stripe — it has to be agreed to first.
   const [consentFor, setConsentFor] = useState<string | null>(null)
@@ -85,6 +96,37 @@ export function MembershipCards({ memberships, currency }: { memberships: Client
     }
   }
 
+  /**
+   * Move an existing subscription onto this package.
+   *
+   * Deliberately a different call from `buy`: buying would open a SECOND
+   * subscription beside the one they already pay for. The route re-prices the
+   * existing one instead, and there is no Stripe redirect — the card they are
+   * already being charged on is the card this uses.
+   */
+  async function switchTo(id: string, planId?: string) {
+    setBusy(id); setError(null)
+    try {
+      const res = await fetch(`/api/my/memberships/${id}/switch`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ consent: true, planId }),
+      })
+      const b = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(typeof b.error === 'string' ? b.error : 'Could not change your plan.'); return }
+      setConsentFor(null)
+      setSwitched(id)
+      // The subscriptions list above the cards is server-rendered, so it has to
+      // be re-fetched for the change to show. Reloading after the confirmation
+      // is set means they see it land rather than a blank flash.
+      setTimeout(() => window.location.reload(), 1200)
+    } catch {
+      setError('Something went wrong — please try again.')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const consenting = memberships.find(m => m.id === consentFor) ?? null
 
   if (memberships.length === 0) {
@@ -103,13 +145,23 @@ export function MembershipCards({ memberships, currency }: { memberships: Client
           // Never paint the trainer's raw pair — the guard derives a label tone
           // that clears 4.5:1 on whatever background they chose.
           const btn = resolveButtonColors(m.buttonBgColor, m.buttonTextColor, m.featuredColor)
+          // One decision, made in client-memberships.ts where it can be
+          // tested, rather than a ladder of conditions inside the JSX.
+          const action = resolveCardAction(m, currentPlan)
+          const locked = action.kind === 'LOCKED'
           return (
-            <div key={m.id} className="rounded-2xl border border-slate-200 shadow-sm overflow-hidden" style={{ backgroundColor: bg }}>
+            <div
+              key={m.id}
+              className={`rounded-2xl border shadow-sm overflow-hidden ${locked ? 'border-slate-200' : 'border-slate-200'}`}
+              style={{ backgroundColor: bg }}
+            >
               {m.imageUrl && (
+                // Desaturated rather than hidden: they should still see what
+                // they're working towards.
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={m.imageUrl} alt="" className="w-full h-36 object-cover" />
+                <img src={m.imageUrl} alt="" className={`w-full h-36 object-cover ${locked ? 'grayscale opacity-60' : ''}`} />
               )}
-              <div className="p-5">
+              <div className={`p-5 ${locked ? 'opacity-75' : ''}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h2 className="font-semibold text-lg flex items-center gap-2" style={{ color: header }}><Ticket className="h-5 w-5 shrink-0" style={{ color: featured }} /> {m.name}</h2>
@@ -141,26 +193,50 @@ export function MembershipCards({ memberships, currency }: { memberships: Client
                     someone, they get one tap that tells the trainer — with the
                     reason still stated right above it, and the trainer's own
                     button colours so the card doesn't look half-styled. */}
-                {m.subscribed ? (
+                {action.kind === 'LOCKED' ? (
+                  <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-3">
+                    <Lock className="h-4 w-4 shrink-0 mt-0.5 text-slate-400" strokeWidth={1.75} />
+                    <p className="text-sm text-slate-600">{action.copy}</p>
+                  </div>
+                ) : switched === m.id ? (
+                  <p className="mt-4 flex items-center justify-center gap-2 h-11 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-semibold text-emerald-700">
+                    <Check className="h-4 w-4" strokeWidth={1.75} /> You&apos;re on {m.name} now
+                  </p>
+                ) : action.kind === 'SWITCH' ? (
+                  <>
+                    <p className="mt-4 text-sm" style={{ color: text }}>
+                      {action.copy} Then it’s {priceLabel(m, currency)}.
+                    </p>
+                    <button
+                      onClick={() => setConsentFor(m.id)}
+                      disabled={busy === m.id}
+                      className="mt-2 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl font-semibold hover:opacity-90 disabled:opacity-50"
+                      style={{ backgroundColor: btn.background, color: btn.color }}
+                    >
+                      {busy === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : action.movingUp ? <ArrowUpRight className="h-4 w-4" strokeWidth={2} /> : <ArrowDownRight className="h-4 w-4" strokeWidth={2} />}
+                      {action.movingUp ? 'Move up to this' : 'Move to this'}
+                    </button>
+                  </>
+                ) : action.kind === 'SUBSCRIBED' ? (
                   // Already paying for it. Selling it again would stack a second
                   // recurring charge on the same plan.
                   <p className="mt-4 flex items-center justify-center gap-2 h-11 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-600">
                     <Check className="h-4 w-4" strokeWidth={1.75} /> You&apos;re on this plan
                   </p>
-                ) : m.buyable ? (
+                ) : action.kind === 'BUY' ? (
                   <button
-                    onClick={() => (m.needsConsent ? setConsentFor(m.id) : buy(m.id))}
+                    onClick={() => (action.needsConsent ? setConsentFor(m.id) : buy(m.id))}
                     disabled={busy === m.id}
                     className="mt-4 w-full inline-flex items-center justify-center gap-2 h-11 rounded-xl font-semibold hover:opacity-90 disabled:opacity-50"
                     style={{ backgroundColor: btn.background, color: btn.color }}
                   >
                     {busy === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    {m.buttonText?.trim() || (m.needsConsent ? 'Subscribe' : 'Get this package')}
+                    {m.buttonText?.trim() || (action.needsConsent ? 'Subscribe' : 'Get this package')}
                   </button>
                 ) : (
                   <>
                     <p className="mt-4 text-sm" style={{ color: text }}>
-                      {BLOCKED_COPY[m.blockedReason ?? 'NO_PRICE']}
+                      {action.kind === 'REQUEST' ? action.copy : ''}
                     </p>
                     {requested[m.id] ? (
                       <p className="mt-2 flex items-center justify-center gap-2 h-11 rounded-xl border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-600">
@@ -184,7 +260,14 @@ export function MembershipCards({ memberships, currency }: { memberships: Client
           busy={busy === consenting.id}
           error={error}
           onCancel={() => { setConsentFor(null); setError(null) }}
-          onConfirm={(planId) => buy(consenting.id, { consent: true, planId: planId ?? consenting.plans[0]?.id })}
+          onConfirm={(planId) => {
+            const chosen = planId ?? consenting.plans[0]?.id
+            // Same screen, two destinations: someone already paying is CHANGING
+            // an agreement, not entering their first one.
+            return currentPlan && consenting.id !== currentPlan.membershipId && consenting.cadence === 'RECURRING'
+              ? switchTo(consenting.id, chosen)
+              : buy(consenting.id, { consent: true, planId: chosen })
+          }}
         />
       )}
     </>

@@ -7,7 +7,8 @@ import { isRichTextEmpty } from '@/lib/rich-text'
 import { ImageUploadButton } from '@/components/image-uploader'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
-import { Ticket, Plus, Trash2, Loader2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon, Palette, GripVertical } from 'lucide-react'
+import { Ticket, Plus, Trash2, Loader2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon, Palette, GripVertical, Lock } from 'lucide-react'
+import { EligibilityEditor, type Eligibility, type AchievementOption, type ClientOption } from './eligibility-editor'
 import { closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { DndArea } from '@/components/shared/dnd-area'
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
@@ -47,6 +48,7 @@ interface Membership extends Card {
   id: string; name: string; description: string | null; priceCents: number
   cadence: Cadence; interval: Interval | null; minTermCount: number; earlyTermFeeCents: number | null
   published: boolean; purchases: number; items: MItem[]; plans: MPlan[]
+  eligibility: Eligibility; showWhenLocked: boolean; prerequisiteIds: string[]
   /** Clients who tapped "Request this" and haven't been answered. */
   pendingRequests?: number
 }
@@ -56,6 +58,7 @@ interface DraftPlan { key: string; interval: Interval; price: string; minTerm: s
 interface Draft extends Card {
   id: string | null; name: string; description: string; price: string; cadence: Cadence
   interval: Interval; minTermCount: string; earlyTermFee: string; published: boolean; items: DraftItem[]; plans: DraftPlan[]
+  eligibility: Eligibility; showWhenLocked: boolean; prerequisiteIds: string[]
 }
 
 // Live preview of the membership as it appears in the client Memberships
@@ -167,15 +170,16 @@ function SortableItemShell({ id, children }: { id: string; children: (handle: HT
 
 // The builder used to be one 8,000px column on a phone: the name and price, the
 // storefront card's image and six colour pickers, every included item with its
-// own rich-text editor and image, and the reminder flow — all stacked. Four
+// own rich-text editor and image, and the reminder flow — all stacked. Five
 // tabs, so a trainer meets one job at a time. Same underline rail as Finances
 // and the To-do screen. Panels stay MOUNTED and hide, because remounting a
 // Tiptap editor mid-edit loses what's in it.
-type BuilderTab = 'details' | 'included' | 'appearance' | 'messages'
+type BuilderTab = 'details' | 'included' | 'appearance' | 'who' | 'messages'
 const BUILDER_TABS: { id: BuilderTab; label: string; Icon: React.ComponentType<{ className?: string; strokeWidth?: number }> }[] = [
   { id: 'details', label: 'Details', Icon: Ticket },
   { id: 'included', label: 'Included', Icon: PackageIcon },
   { id: 'appearance', label: 'Appearance', Icon: Palette },
+  { id: 'who', label: 'Who it’s for', Icon: Lock },
   { id: 'messages', label: 'Messages', Icon: Bell },
 ]
 
@@ -186,7 +190,19 @@ const KINDS: { k: Kind; label: string; Icon: React.ComponentType<{ className?: s
   { k: 'PRODUCT', label: 'Product', Icon: ShoppingBag },
 ]
 
-export function MembershipsView({ memberships, offerings, currency: initialCurrency }: { memberships: Membership[]; offerings: Offerings; currency: string }) {
+export function MembershipsView({
+  memberships,
+  offerings,
+  currency: initialCurrency,
+  achievements,
+  clients,
+}: {
+  memberships: Membership[]
+  offerings: Offerings
+  currency: string
+  achievements: AchievementOption[]
+  clients: ClientOption[]
+}) {
   const [view, setView] = useOfferingView('memberships')
 
   const router = useRouter()
@@ -214,7 +230,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
   function startNew() {
     setError(null)
     setTab('details')
-    setDraft({ id: null, name: '', description: '', price: '', cadence: 'ONE_OFF', interval: 'MONTH', minTermCount: '0', earlyTermFee: '', published: false, items: [], plans: [], imageUrl: null, bgColor: null, headerColor: null, textColor: null, featuredColor: null, buttonBgColor: null, buttonTextColor: null, buttonText: null })
+    setDraft({ id: null, name: '', description: '', price: '', cadence: 'ONE_OFF', interval: 'MONTH', minTermCount: '0', earlyTermFee: '', published: false, items: [], plans: [], eligibility: 'PUBLIC', showWhenLocked: true, prerequisiteIds: [], imageUrl: null, bgColor: null, headerColor: null, textColor: null, featuredColor: null, buttonBgColor: null, buttonTextColor: null, buttonText: null })
   }
   function startEdit(m: Membership) {
     setError(null)
@@ -223,6 +239,7 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
       id: m.id, name: m.name, description: m.description ?? '', price: (m.priceCents / 100).toString(),
       cadence: m.cadence, interval: m.interval ?? 'MONTH', minTermCount: String(m.minTermCount), earlyTermFee: m.earlyTermFeeCents != null ? (m.earlyTermFeeCents / 100).toString() : '',
       published: m.published,
+      eligibility: m.eligibility, showWhenLocked: m.showWhenLocked, prerequisiteIds: m.prerequisiteIds,
       imageUrl: m.imageUrl, bgColor: m.bgColor, headerColor: m.headerColor, textColor: m.textColor, featuredColor: m.featuredColor,
       buttonBgColor: m.buttonBgColor, buttonTextColor: m.buttonTextColor, buttonText: m.buttonText,
       items: m.items.map(i => ({ key: `k${seq++}`, kind: i.kind, id: i.packageId ?? i.classRunId ?? i.productId ?? '', quantity: i.quantity, regrantOnRenewal: i.regrantOnRenewal, imageUrl: i.imageUrl ?? null, description: i.description ?? '' })),
@@ -281,6 +298,9 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
       minTermCount: draft.cadence === 'RECURRING' ? Number(draft.minTermCount) || 0 : 0,
       earlyTermFeeCents: draft.cadence === 'RECURRING' && draft.earlyTermFee.trim() ? Math.round(Number(draft.earlyTermFee) * 100) : null,
       published: draft.published, items,
+      eligibility: draft.eligibility,
+      showWhenLocked: draft.showWhenLocked,
+      prerequisiteAchievementIds: draft.prerequisiteIds,
       plans: draft.cadence === 'RECURRING'
         ? draft.plans.filter(p => p.price.trim()).map(p => ({ interval: p.interval, priceCents: Math.round(Number(p.price) * 100), minTermCount: Number(p.minTerm) || 0, earlyTermFeeCents: p.earlyTermFee.trim() ? Math.round(Number(p.earlyTermFee) * 100) : null }))
         : [],
@@ -550,6 +570,22 @@ export function MembershipsView({ memberships, offerings, currency: initialCurre
             {/* Reminders & messages — timed automatically off each client's
                 purchase (a membership has no timetable to hang them on). Only
                 once the membership exists: the steps attach to its id. */}
+            <div className={tab === 'who' ? 'p-5' : 'hidden'}>
+              <EligibilityEditor
+                membershipId={draft.id}
+                eligibility={draft.eligibility}
+                showWhenLocked={draft.showWhenLocked}
+                prerequisiteIds={draft.prerequisiteIds}
+                achievements={achievements}
+                clients={clients}
+                onChange={p => patch({
+                  ...(p.eligibility !== undefined ? { eligibility: p.eligibility } : {}),
+                  ...(p.showWhenLocked !== undefined ? { showWhenLocked: p.showWhenLocked } : {}),
+                  ...(p.prerequisiteIds !== undefined ? { prerequisiteIds: p.prerequisiteIds } : {}),
+                })}
+              />
+            </div>
+
             <div className={tab === 'messages' ? 'p-5' : 'hidden'}>
               <p className="flex items-center gap-2 text-sm font-medium text-slate-700"><Bell className="h-4 w-4 text-slate-400" strokeWidth={1.75} /> Reminders &amp; messages</p>
               {draft.id ? (

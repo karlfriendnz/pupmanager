@@ -28,7 +28,15 @@ export function ClientMembershipsView({
       <p className="text-slate-500 text-sm mb-5">Bundles of sessions and extras — everything below is included.</p>
       <ClientSubscriptions subscriptions={subscriptions} />
       {memberships.length > 0 || !hasAnything ? (
-        <MembershipCards memberships={memberships} currency={currency} />
+        <MembershipCards
+          memberships={memberships}
+          currency={currency}
+          // The plan they're on now, so the other recurring cards offer a MOVE
+          // rather than a second subscription beside the one they already pay
+          // for. CANCELLING is excluded on purpose: someone who has asked to
+          // stop should not be nudged sideways into another plan.
+          currentPlan={subscriptions.find(s => s.status === 'ACTIVE' || s.status === 'PAST_DUE') ?? null}
+        />
       ) : null}
     </div>
   )
