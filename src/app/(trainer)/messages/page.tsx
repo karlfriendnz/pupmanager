@@ -24,7 +24,10 @@ export default async function MessagesPage({
   if (!(await hasAddon(trainerId, 'messaging'))) redirect(addonSettingsHref('messaging'))
 
   const sp = await searchParams
-  const tab = sp.tab === 'inactive' ? 'inactive' : 'active'
+  // 'groups' is a FILTER on the same list, not a different place: a group is a
+  // thread and still belongs in Active. This is for the trainer who has a lot
+  // of both and wants to see only one of them.
+  const tab = sp.tab === 'inactive' ? 'inactive' : sp.tab === 'groups' ? 'groups' : 'active'
   const selectedClientId = sp.client ?? null
   // A client thread and a group are alternative right-pane contents; the
   // thread wins if both somehow end up in the URL.
@@ -218,7 +221,7 @@ async function loadGroups(trainerId: string, userId: string): Promise<GroupRow[]
   const groups = await prisma.messageGroup.findMany({
     where: { trainerId },
     select: {
-      id: true, name: true, mode: true, archivedAt: true, lastMessageAt: true,
+      id: true, name: true, mode: true, archivedAt: true, lastMessageAt: true, createdAt: true,
       messages: {
         where: { deletedAt: null },
         orderBy: { createdAt: 'desc' },
@@ -263,6 +266,7 @@ async function loadGroups(trainerId: string, userId: string): Promise<GroupRow[]
       id: g.id,
       name: g.name,
       mode: g.mode,
+      createdAt: g.createdAt.toISOString(),
       archived: !!g.archivedAt,
       memberCount: g.participants.filter(p => p.role === 'CLIENT' && !p.leftAt && p.joinedAt).length,
       // Someone still sitting on a COMMUNITY invitation is worth surfacing —

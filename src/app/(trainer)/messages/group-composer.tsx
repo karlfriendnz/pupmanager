@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft, Check, GraduationCap, Megaphone, Package as PackageIcon,
-  Search, Star, Users, UsersRound,
+  Search, Star, Users, UsersRound, X,
 } from 'lucide-react'
 import { ModalPortal } from '@/components/shared/modal-portal'
 import { FlatBlock, FlatRow, SectionLabel } from '@/components/shared/flat-list'
@@ -39,10 +39,16 @@ interface Props {
   activeClientCount: number
   /** Pre-ticked clients, e.g. handed over from the clients-list multi-select. */
   initialClientIds?: string[]
+  /**
+   * Set to ADD people to a group that already exists, rather than create one.
+   * Same picker, same search, same audience rules — it just stops after the
+   * audience is chosen, because mode and name are already decided.
+   */
+  addToGroupId?: string
   onClose: () => void
 }
 
-type Step = 'audience' | 'people' | 'mode' | 'name'
+type Step = 'audience' | 'people' | 'mode' | 'name' | 'confirmAdd'
 type Audience =
   | { scope: 'CLASS_RUN' | 'PACKAGE' | 'MEMBERSHIP'; id: string; label: string; count: number }
   | { scope: 'MANUAL'; ids: string[]; label: string; count: number }
@@ -53,8 +59,9 @@ type Audience =
 const CONFIRM_ABOVE = 25
 
 export function GroupComposer({
-  classRuns, packages, memberships, clients, activeClientCount, initialClientIds, onClose,
+  classRuns, packages, memberships, clients, activeClientCount, initialClientIds, addToGroupId, onClose,
 }: Props) {
+  const adding = !!addToGroupId
   const router = useRouter()
   // Handed a selection already? Skip straight past the picker.
   const [step, setStep] = useState<Step>(initialClientIds?.length ? 'mode' : 'audience')
@@ -82,9 +89,13 @@ export function GroupComposer({
   // The below-md rule in globals.css can't do this — it keys off VIEWPORT
   // width, so a narrow desktop window would still show a second rail.
   useEffect(() => {
+    // Escape closes. Expected of a modal on a laptop, and harmless on the
+    // full-screen sheet, where there is no keyboard to press it with.
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = prev }
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev }
   }, [])
 
   const filteredClients = useMemo(() => {
@@ -95,21 +106,66 @@ export function GroupComposer({
   }, [clients, query])
 
   function chooseGroup(scope: 'CLASS_RUN' | 'PACKAGE' | 'MEMBERSHIP', o: AudienceOption) {
-    setAudience({ scope, id: o.id, label: o.name, count: o.count })
+    const a: Audience = { scope, id: o.id, label: o.name, count: o.count }
+    setAudience(a)
     setName(o.name)
+    if (adding) { void submitAdd(a); return }
     setStep('mode')
   }
 
   function chooseEveryone() {
-    setAudience({ scope: 'ALL_CLIENTS', label: 'Everyone', count: activeClientCount })
+    const a: Audience = { scope: 'ALL_CLIENTS', label: 'Everyone', count: activeClientCount }
+    setAudience(a)
     setName('Everyone')
+    if (adding) { void submitAdd(a); return }
     setStep('mode')
   }
 
   function confirmPeople() {
     const ids = [...picked]
-    setAudience({ scope: 'MANUAL', ids, label: `${ids.length} chosen`, count: ids.length })
+    const a: Audience = { scope: 'MANUAL', ids, label: `${ids.length} chosen`, count: ids.length }
+    setAudience(a)
+    if (adding) { void submitAdd(a); return }
     setStep('mode')
+  }
+
+  /**
+   * Add the chosen audience to an existing group.
+   *
+   * Takes the audience as an argument rather than reading state: the choosing
+   * functions above call it in the same tick they set it, and a setState is not
+   * visible until the next render.
+   */
+  async function submitAdd(a: Audience) {
+    if (!addToGroupId || busy) return
+    if (a.count > CONFIRM_ABOVE && !confirming) { setConfirming(true); setStep('confirmAdd'); return }
+    setBusy(true)
+    setError(null)
+    try {
+      const payload: Record<string, unknown> = { scope: a.scope }
+      if (a.scope === 'MANUAL') payload.clientIds = a.ids
+      if (a.scope === 'CLASS_RUN') { payload.classRunId = a.id; payload.includeWaitlist = includeWaitlist }
+      if (a.scope === 'PACKAGE') payload.packageId = a.id
+      if (a.scope === 'MEMBERSHIP') payload.membershipId = a.id
+
+      const res = await fetch(`/api/message-groups/${addToGroupId}/participants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(typeof data.error === 'string' ? data.error : 'Could not add those people.')
+        setBusy(false)
+        setConfirming(false)
+        return
+      }
+      router.refresh()
+      onClose()
+    } catch {
+      setError('Could not add those people.')
+      setBusy(false)
+    }
   }
 
   async function create() {
@@ -154,7 +210,8 @@ export function GroupComposer({
   }
 
   const title =
-    step === 'audience' ? 'Who is in this group?'
+    step === 'confirmAdd' ? 'Add these people?'
+    : step === 'audience' ? (adding ? 'Who do you want to add?' : 'Who is in this group?')
     : step === 'people' ? 'Choose people'
     : step === 'mode' ? 'How should it work?'
     : 'Name the group'
@@ -162,15 +219,46 @@ export function GroupComposer({
   function back() {
     setError(null)
     setConfirming(false)
-    if (step === 'name') setStep('mode')
+    if (step === 'confirmAdd') setStep(audience?.scope === 'MANUAL' ? 'people' : 'audience')
+    else if (step === 'name') setStep('mode')
     else if (step === 'mode') setStep(audience?.scope === 'MANUAL' ? 'people' : 'audience')
     else if (step === 'people') setStep('audience')
     else onClose()
   }
 
+  // What the header button will actually do — same test back() uses, so the
+  // icon cannot drift from the behaviour.
+  const closes = step === 'audience'
+
   return (
     <ModalPortal>
-      <div className="fixed inset-0 z-50 flex flex-col bg-white" data-testid="group-composer">
+      {/* Full screen on a phone or tablet, a centred modal from `lg` up.
+          Creating a group is a short, decided task — you already know who it is
+          for — so on a laptop it should sit ON the messages list rather than
+          replace it, the way every other short task in the app does. On a
+          narrow screen there is no room for that and the full-screen sheet is
+          right, which is why this is one component with two shapes rather than
+          two components.
+          `lg` (1024px), so a tablet in portrait keeps the sheet. */}
+      <div
+        className="fixed inset-0 z-50 lg:flex lg:items-start lg:justify-center lg:bg-slate-900/40 lg:p-6 lg:pt-[100px]"
+        onClick={e => { if (e.target === e.currentTarget) onClose() }}
+      >
+      <div
+        className={cn(
+          'flex h-full w-full flex-col bg-white',
+          // Pinned 100px from the top rather than centred. Centring re-centres
+          // on every height change, so typing in the search made the whole
+          // dialog jump up and down as results came and went. A fixed top edge
+          // keeps the search box exactly where the eye left it.
+          //
+          // max-h leaves room for that offset plus a margin at the bottom; the
+          // body's own overflow means a long list scrolls INSIDE the card
+          // rather than growing it off-screen.
+          'lg:h-auto lg:max-h-[min(44rem,calc(100vh-140px))] lg:w-full lg:max-w-lg lg:overflow-hidden lg:rounded-2xl lg:shadow-2xl',
+        )}
+        data-testid="group-composer"
+      >
         <div
           className="flex items-center gap-2 border-b border-slate-200 px-2 pr-4"
           style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.625rem)', paddingBottom: '0.625rem' }}
@@ -178,10 +266,12 @@ export function GroupComposer({
           <button
             type="button"
             onClick={back}
-            aria-label={step === 'audience' ? 'Close' : 'Back'}
+            aria-label={closes ? 'Close' : 'Back'}
             className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"
           >
-            <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />
+            {closes
+              ? <X className="h-4 w-4" strokeWidth={1.75} />
+              : <ArrowLeft className="h-4 w-4" strokeWidth={1.75} />}
           </button>
           <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">{title}</h2>
           {step === 'people' && picked.size > 0 && (
@@ -197,7 +287,29 @@ export function GroupComposer({
 
         {/* The only scrolling region on screen while this is open. */}
         <div className="no-scrollbar flex-1 overflow-y-auto">
-          {step === 'audience' ? (
+          {step === 'confirmAdd' ? (
+            /* Adding a lot of people at once. Same threshold as creating —
+               the one thing between a trainer and a group they did not mean to
+               make this big. */
+            <div className="px-4 py-6">
+              <p className="text-sm text-slate-700">
+                This adds <span className="font-semibold">{audience?.count}</span>{' '}
+                {audience?.count === 1 ? 'person' : 'people'} to the group.
+              </p>
+              <p className="mt-2 text-xs text-slate-500">
+                Anyone who left the group on purpose stays out — adding them here won’t override that.
+              </p>
+              <button
+                type="button"
+                onClick={() => { if (audience) void submitAdd(audience) }}
+                disabled={busy}
+                data-testid="group-add-confirm"
+                className="mt-5 flex h-12 w-full items-center justify-center rounded-xl bg-slate-900 text-sm font-semibold text-white hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400"
+              >
+                {busy ? 'Adding…' : `Yes — add ${audience?.count} people`}
+              </button>
+            </div>
+          ) : step === 'audience' ? (
             <AudienceStep
               classRuns={classRuns}
               packages={packages}
@@ -263,6 +375,7 @@ export function GroupComposer({
           </div>
         )}
       </div>
+      </div>
     </ModalPortal>
   )
 }
@@ -279,6 +392,29 @@ function AudienceStep({
   onEveryone: () => void
   onPeople: () => void
 }) {
+  // A busy trainer has 60+ classes and 100+ packages. Listing all of them and
+  // asking someone to scroll is the same as not having them: the row you want
+  // is somewhere in a wall of near-identical names. Filtering is on the LABEL
+  // only, because that is the whole of what is on screen to recognise it by.
+  const [filter, setFilter] = useState('')
+  const q = filter.trim().toLowerCase()
+  const match = (o: AudienceOption) => !q || o.name.toLowerCase().includes(q)
+  const runs = classRuns.filter(match)
+  const mems = memberships.filter(match)
+  const pkgs = packages.filter(match)
+  const total = classRuns.length + memberships.length + packages.length
+  const shown = runs.length + mems.length + pkgs.length
+
+  // Only worth the row when there is enough to hunt through. Below that the
+  // search box is just something else to read, and the list is short enough to
+  // simply show.
+  const searchable = total > 8
+  // …and once it IS searchable, the list stays hidden until they type. A
+  // trainer with 60 classes and 100 packages cannot find anything by scrolling
+  // them, so showing all 160 by default is a wall, not a menu. Below the
+  // threshold nothing is hidden — there is nothing to hide.
+  const showLists = !searchable || !!q
+
   return (
     <div className="px-4 py-4">
       <SectionLabel>Anyone</SectionLabel>
@@ -297,33 +433,56 @@ function AudienceStep({
         />
       </FlatBlock>
 
-      {classRuns.length > 0 && (
+      {searchable && (
+        <div className="mt-5">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={1.75} />
+            <input
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+              placeholder="Search classes, memberships and packages"
+              aria-label="Search classes, memberships and packages"
+              data-testid="audience-search"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-300 focus:outline-none"
+            />
+          </div>
+          <p className="mt-2 px-1 text-xs text-slate-500">
+            {!q
+              ? `Type to find one of your ${total} classes, memberships and packages`
+              : shown === 0
+                ? `Nothing matches “${filter.trim()}”`
+                : `${shown} of ${total}`}
+          </p>
+        </div>
+      )}
+
+      {showLists && runs.length > 0 && (
         <div className="mt-5">
           <SectionLabel>Classes</SectionLabel>
           <FlatBlock>
-            {classRuns.map(o => (
+            {runs.map(o => (
               <FlatRow key={o.id} icon={GraduationCap} label={o.name} sub={`${o.count} enrolled`} onClick={() => onGroup('CLASS_RUN', o)} />
             ))}
           </FlatBlock>
         </div>
       )}
 
-      {memberships.length > 0 && (
+      {showLists && mems.length > 0 && (
         <div className="mt-5">
           <SectionLabel>Memberships</SectionLabel>
           <FlatBlock>
-            {memberships.map(o => (
+            {mems.map(o => (
               <FlatRow key={o.id} icon={Star} label={o.name} sub={`${o.count} active`} onClick={() => onGroup('MEMBERSHIP', o)} />
             ))}
           </FlatBlock>
         </div>
       )}
 
-      {packages.length > 0 && (
+      {showLists && pkgs.length > 0 && (
         <div className="mt-5">
           <SectionLabel>Packages</SectionLabel>
           <FlatBlock>
-            {packages.map(o => (
+            {pkgs.map(o => (
               <FlatRow key={o.id} icon={PackageIcon} label={o.name} sub={`${o.count} on this package`} onClick={() => onGroup('PACKAGE', o)} />
             ))}
           </FlatBlock>

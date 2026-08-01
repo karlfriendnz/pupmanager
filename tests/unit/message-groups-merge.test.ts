@@ -22,7 +22,7 @@ function client(opts: { id: string; at?: string; unread?: number } ): ClientRow 
   }
 }
 
-function group(opts: { id: string; at?: string; unread?: number }): GroupRow {
+function group(opts: { id: string; at?: string; unread?: number; createdAt?: string }): GroupRow {
   return {
     id: opts.id,
     name: opts.id,
@@ -31,6 +31,9 @@ function group(opts: { id: string; at?: string; unread?: number }): GroupRow {
     memberCount: 5,
     invitedCount: 0,
     unread: opts.unread ?? 0,
+    // Defaults to the epoch so the EXISTING cases keep testing what they were
+    // written to test — only the case that cares about creation time sets it.
+    createdAt: opts.createdAt ?? '1970-01-01T00:00:00Z',
     lastMessage: opts.at ? { body: 'hi', createdAt: opts.at, senderName: 'Jess' } : null,
   }
 }
@@ -47,12 +50,30 @@ describe('mergeThreadsAndGroups', () => {
     expect(out.map(idOf)).toEqual(['newest', 'middle', 'older'])
   })
 
-  it('floats anything unread to the top, group or thread, however stale', () => {
+  it('orders by activity alone — unread does NOT float to the top', () => {
+    // This asserted the opposite until 2026-08-01, and the reversal was
+    // deliberate. Unread used to add half of MAX_SAFE_INTEGER to the sort key,
+    // so a stale unread thread outranked everything: the list stopped being a
+    // timeline, and opening a thread made it jump down the list under the
+    // cursor that had just clicked it. Unread is already carried by bold text
+    // and a badge; it does not also need to reorder the world.
     const out = mergeThreadsAndGroups(
       [client({ id: 'recent-read', at: '2026-07-27T09:00:00Z' })],
       [group({ id: 'ancient-unread', at: '2020-01-01T09:00:00Z', unread: 3 })],
     )
-    expect(out.map(idOf)).toEqual(['ancient-unread', 'recent-read'])
+    expect(out.map(idOf)).toEqual(['recent-read', 'ancient-unread'])
+  })
+
+  it('puts a group nobody has posted in yet at the top, by when it was made', () => {
+    // Creating a group IS activity on it. Falling back to zero sent a group
+    // made five seconds ago to the foot of the list, beneath conversations from
+    // months back — at the one moment the trainer is certain to be looking for
+    // it, having just made it.
+    const out = mergeThreadsAndGroups(
+      [client({ id: 'yesterday', at: '2026-07-31T09:00:00Z' })],
+      [group({ id: 'just-made', createdAt: '2026-08-01T09:00:00Z' })],
+    )
+    expect(out.map(idOf)).toEqual(['just-made', 'yesterday'])
   })
 
   it('keeps a brand-new group with no posts visible at the bottom rather than dropping it', () => {

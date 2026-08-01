@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { MessageCircle, ArrowLeft, Check, CheckCheck, ChevronRight, Megaphone, UsersRound } from 'lucide-react'
+import { MessageCircle, ArrowLeft, Check, CheckCheck, ChevronRight, Megaphone, Plus, UsersRound } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import { ClientAvatar } from '@/components/shared/client-avatar'
@@ -56,6 +56,8 @@ export interface GroupRow {
   /** Invited to a COMMUNITY group but not yet accepted. */
   invitedCount: number
   unread: number
+  /** When the group was made — how an empty one earns its place in the list. */
+  createdAt: string
   lastMessage: { body: string; createdAt: string; senderName: string } | null
 }
 
@@ -65,7 +67,7 @@ interface Props {
   activeUnread: number
   inactiveUnread: number
   groups: GroupRow[]
-  tab: 'active' | 'inactive'
+  tab: 'active' | 'inactive' | 'groups'
   selectedClient: SelectedClient | null
   selectedGroupId: string | null
   threadMessages: ThreadMessage[]
@@ -87,20 +89,67 @@ type ListEntry =
   | { kind: 'client'; sort: number; client: ClientRow }
   | { kind: 'group'; sort: number; group: GroupRow }
 
+/**
+ * "New group" — one row, two homes.
+ *
+ * Top of the Groups tab, foot of the others. Same markup either way so the two
+ * cannot drift apart; only the border moves, because a row at the top of a list
+ * wants its divider underneath it and a row at the foot wants it above.
+ */
+/**
+ * "New group" — top of the Groups tab, and nowhere else.
+ *
+ * It used to sit at the foot of every tab. Active and Inactive are lists of
+ * CLIENT threads, so a button there offers a different kind of thing from the
+ * list it is attached to; the Groups tab is one tap away for anyone who wants
+ * one. A button rather than a row, because in a list of conversations a row
+ * reads as another conversation.
+ */
+function NewGroupRow({ onClick }: { onClick: () => void }) {
+  return (
+    <div className="flex-shrink-0 border-b border-slate-100 bg-white px-3 py-3">
+      <button
+        type="button"
+        onClick={onClick}
+        data-testid="open-group-composer"
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+      >
+        <Plus className="h-4 w-4 flex-shrink-0" strokeWidth={2.25} />
+        New group
+      </button>
+    </div>
+  )
+}
+
 export function mergeThreadsAndGroups(clients: ClientRow[], groups: GroupRow[]): ListEntry[] {
-  // The same huge bonus the client list already used, so the comparator stays
-  // deterministic without a second sort pass.
-  const UNREAD_BONUS = Number.MAX_SAFE_INTEGER / 2
+  // Most recent activity first, and ONLY that.
+  //
+  // Unread used to add half of MAX_SAFE_INTEGER to the sort key, which floated
+  // every unread thread above every read one whatever the dates said. It reads
+  // as a bug rather than a feature: the list stops being a timeline, a message
+  // from last week sits above one from this morning, and opening something
+  // makes it jump down the list under the trainer's cursor. Unread is already
+  // shown — bold text and a badge — so it does not also need to reorder the
+  // world to be noticed.
+  //
+  // A group with no posts falls back to WHEN IT WAS MADE, not to zero. Sorting
+  // an empty group to the bottom sent a group the trainer created five seconds
+  // ago to the foot of the list, under conversations from months back — the one
+  // moment they are certain to be looking for it. Creating a thing is activity.
+  //
+  // A client thread has no such fallback and still sorts to 0: it exists
+  // because the client does, not because anybody did anything, so "never talked
+  // to" belongs at the bottom.
   const entries: ListEntry[] = [
     ...clients.map(c => ({
       kind: 'client' as const,
       client: c,
-      sort: (c.lastMessage ? Date.parse(c.lastMessage.createdAt) : 0) + (c.unread > 0 ? UNREAD_BONUS : 0),
+      sort: c.lastMessage ? Date.parse(c.lastMessage.createdAt) : 0,
     })),
     ...groups.map(g => ({
       kind: 'group' as const,
       group: g,
-      sort: (g.lastMessage ? Date.parse(g.lastMessage.createdAt) : 0) + (g.unread > 0 ? UNREAD_BONUS : 0),
+      sort: Date.parse(g.lastMessage?.createdAt ?? g.createdAt),
     })),
   ]
   return entries.sort((a, b) => b.sort - a.sort)
@@ -159,13 +208,17 @@ export function MessagesView({
   // so they live in the Active tab beside the live conversations.
   const visible = tab === 'inactive'
     ? mergeThreadsAndGroups(inactiveClients, [])
-    : mergeThreadsAndGroups(activeClients, groups)
+    : tab === 'groups'
+      // Groups only. They stay in Active as well — this narrows the view, it
+      // does not move them somewhere else.
+      ? mergeThreadsAndGroups([], groups)
+      : mergeThreadsAndGroups(activeClients, groups)
   const groupUnread = groups.reduce((n, g) => n + g.unread, 0)
 
-  function hrefFor({ clientId, groupId, nextTab }: { clientId?: string; groupId?: string; nextTab?: 'active' | 'inactive' } = {}) {
+  function hrefFor({ clientId, groupId, nextTab }: { clientId?: string; groupId?: string; nextTab?: 'active' | 'inactive' | 'groups' } = {}) {
     const params = new URLSearchParams()
     const t = nextTab ?? tab
-    if (t === 'inactive') params.set('tab', 'inactive')
+    if (t !== 'active') params.set('tab', t)
     if (clientId) params.set('client', clientId)
     if (groupId) params.set('group', groupId)
     const qs = params.toString()
@@ -207,6 +260,7 @@ export function MessagesView({
             // Groups live in Active, so they count there too — otherwise the
             // tab says 12 and the list shows 15.
             { key: 'active',   label: 'Active',   count: activeClients.length + groups.length, unread: activeUnread + groupUnread },
+            { key: 'groups',   label: 'Groups',   count: groups.length,                        unread: groupUnread },
             { key: 'inactive', label: 'Inactive', count: inactiveClients.length,               unread: inactiveUnread },
           ] as const).map(t => {
             const active = tab === t.key
@@ -245,14 +299,20 @@ export function MessagesView({
 
         {/* List body */}
         <div className="flex-1 overflow-y-auto p-2">
+          {tab === 'groups' && <NewGroupRow onClick={() => setComposing(true)} />}
+
           {visible.length === 0 ? (
             <div className="text-center py-16 text-slate-400">
               <MessageCircle className="h-12 w-12 mx-auto mb-3 opacity-30" />
               <p className="font-medium">
-                {tab === 'inactive' ? 'No inactive clients' : 'No active clients yet'}
+                {tab === 'groups' ? 'No groups yet'
+                  : tab === 'inactive' ? 'No inactive clients'
+                  : 'No active clients yet'}
               </p>
               <p className="text-sm mt-1">
-                {tab === 'inactive' ? 'Inactive clients with threads show up here.' : 'Invite a client to start messaging.'}
+                {tab === 'groups' ? 'Message a class, a package or a handful of people at once.'
+                  : tab === 'inactive' ? 'Inactive clients with threads show up here.'
+                  : 'Invite a client to start messaging.'}
               </p>
             </div>
           ) : (
@@ -404,22 +464,7 @@ export function MessagesView({
           )}
         </div>
 
-        {/* The way in. A row at the foot of the list, not a floating add
-            button — the shell already owns the global "+", and nothing should
-            say the same thing twice. */}
-        <button
-          type="button"
-          onClick={() => setComposing(true)}
-          data-testid="open-group-composer"
-          className="flex w-full flex-shrink-0 items-center gap-3 border-t border-slate-100 bg-white px-4 py-3 text-left hover:bg-slate-50"
-        >
-          <UsersRound className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-medium text-slate-900">New group</span>
-            <span className="mt-0.5 block text-[13px] text-slate-500">Message a class, a membership, or everyone</span>
-          </span>
-          <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
-        </button>
+
       </aside>
 
       {composing && (
@@ -436,7 +481,14 @@ export function MessagesView({
       {/* ── Thread (right pane) ────────────────────────────────────────── */}
       <section className={cn('flex-1 flex-col min-w-0 min-h-0 bg-slate-50', threadVisibility)}>
         {selectedGroupId ? (
-          <GroupThread key={selectedGroupId} groupId={selectedGroupId} backHref={hrefFor()} />
+          <GroupThread
+            key={selectedGroupId}
+            groupId={selectedGroupId}
+            backHref={hrefFor()}
+            audiences={audiences}
+            clients={pickableClients}
+            activeClientCount={activeClientCount}
+          />
         ) : selectedClient ? (
           <>
             <div

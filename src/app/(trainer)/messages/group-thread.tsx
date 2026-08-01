@@ -5,8 +5,9 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft, ChevronRight, Lock, Megaphone, MoreHorizontal, Send, Trash2,
-  UserMinus, UsersRound,
+  UserMinus, UserPlus, UsersRound,
 } from 'lucide-react'
+import { GroupComposer, type AudienceOption, type PickableClient } from './group-composer'
 import { cn } from '@/lib/utils'
 
 // The trainer's view of one group.
@@ -67,7 +68,22 @@ type View =
   | { kind: 'responses'; postId: string }
   | { kind: 'person'; postId: string; participantId: string }
 
-export function GroupThread({ groupId, backHref }: { groupId: string; backHref: string }) {
+export function GroupThread({
+  groupId, backHref, audiences, clients, activeClientCount,
+}: {
+  groupId: string
+  backHref: string
+  /**
+   * Everything the picker needs to add people later. A group could only ever
+   * shrink before this — participants had a DELETE and nothing else — so a
+   * class that took a late booking had no way to include them.
+   * Optional: the client-side thread renders without it and shows no button.
+   */
+  audiences?: { classRuns: AudienceOption[]; packages: AudienceOption[]; memberships: AudienceOption[] }
+  clients?: PickableClient[]
+  activeClientCount?: number
+}) {
+  const [addingPeople, setAddingPeople] = useState(false)
   const router = useRouter()
   const [group, setGroup] = useState<GroupMeta | null>(null)
   const [messages, setMessages] = useState<GroupMessage[]>([])
@@ -203,6 +219,16 @@ export function GroupThread({ groupId, backHref }: { groupId: string; backHref: 
               sub={group.archivedAt ? 'People can post again' : 'Still readable, but nobody can post'}
               onClick={() => moderate(group.archivedAt ? 'unlock' : 'lock')}
             />
+            {audiences && clients && !group.archivedAt && (
+              <MenuRow
+                icon={UserPlus}
+                label="Add people"
+                sub={group.mode === 'COMMUNITY'
+                  ? 'They’re invited — a community group needs each person to accept'
+                  : 'They join straight away and see posts from now on'}
+                onClick={() => { setMenuOpen(false); setAddingPeople(true) }}
+              />
+            )}
             <MenuRow
               icon={Trash2}
               label="Delete this group"
@@ -228,6 +254,18 @@ export function GroupThread({ groupId, backHref }: { groupId: string; backHref: 
                 : 'People who haven&rsquo;t accepted can&rsquo;t see these posts.'}
             </p>
           </div>
+        )}
+
+        {addingPeople && audiences && clients && (
+          <GroupComposer
+            classRuns={audiences.classRuns}
+            packages={audiences.packages}
+            memberships={audiences.memberships}
+            clients={clients}
+            activeClientCount={activeClientCount ?? clients.length}
+            addToGroupId={groupId}
+            onClose={() => { setAddingPeople(false); void load() }}
+          />
         )}
 
         {group.mode === 'COMMUNITY' && participants.length > 0 && (
