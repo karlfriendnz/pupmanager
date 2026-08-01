@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/page-header'
-import { FlatBlock, FlatRow, SectionLabel } from '@/components/shared/flat-list'
+import { FlatBlock, FlatRow, SectionHeader } from '@/components/shared/flat-list'
 import { richTextToPlain } from '@/lib/rich-text'
 import { requireLibraryTrainer, getLibraryTree } from '../../library-data'
 import { LibraryShell } from '../../library-shell'
@@ -36,8 +36,7 @@ export default async function LibraryThemePage({ params }: { params: Promise<{ t
         back={{ href: `/library/type/${theme.type.id}`, label: theme.type.name }}
       />
       <LibraryShell tree={tree}>
-        <AddItem themeId={theme.id} />
-        <SectionLabel>Items</SectionLabel>
+        <SectionHeader action={<AddItem themeId={theme.id} />}>Items</SectionHeader>
         {theme.tasks.length === 0 ? (
           <FlatBlock>
             <div className="px-4 py-8 text-center">

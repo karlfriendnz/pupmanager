@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/page-header'
-import { FlatBlock, FlatRow, SectionLabel } from '@/components/shared/flat-list'
+import { FlatBlock, FlatRow, SectionHeader } from '@/components/shared/flat-list'
 import { requireLibraryTrainer, getLibraryTree } from '../../library-data'
 import { LibraryShell } from '../../library-shell'
 import { CategorySettings } from '../../library-forms'
@@ -39,8 +39,7 @@ export default async function LibraryTypePage({ params }: { params: Promise<{ ty
         back={{ href: '/library', label: 'Library' }}
       />
       <LibraryShell tree={tree}>
-        <AddTheme typeId={type.id} />
-        <SectionLabel>Themes</SectionLabel>
+        <SectionHeader action={<AddTheme typeId={type.id} />}>Themes</SectionHeader>
         {type.themes.length === 0 ? (
           <FlatBlock>
             <div className="px-4 py-8 text-center">
