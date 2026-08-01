@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test'
 import { PrismaPg } from '@prisma/adapter-pg'
 import bcrypt from 'bcryptjs'
 import { TEST_DATABASE_URL } from './test-db'
+import { PACKAGES_HIDDEN_FROM_CLIENTS } from '../../src/lib/feature-flags'
 
 // A whole business, built the way a real one is: sign up, switch on what you
 // use, put your offerings in, add your library and your products, then take on
@@ -16,7 +17,7 @@ import { TEST_DATABASE_URL } from './test-db'
 // client in a class you have not created), and splitting them into independent
 // tests would mean seeding the middle of the journey and never walking it.
 
-test.describe.configure({ mode: 'serial', timeout: 300_000 })
+test.describe.configure({ mode: 'serial', timeout: 600_000 })
 
 const STAMP = Date.now()
 const BIZ = {
@@ -135,6 +136,30 @@ async function post(page: Page, url: string, data: unknown) {
   const res = await page.request.post(url, { data })
   expect(res.status(), `POST ${url} → ${await res.text()}`).toBeLessThan(300)
   return res.json()
+}
+
+
+/**
+ * Do something as the client, in a browser of her own.
+ *
+ * A separate context each time, so nothing leaks between her session and the
+ * trainer's — and so her side can be revisited after the trainer has moved on,
+ * which is the only way to check that something the trainer just did reached
+ * her.
+ */
+async function asClient(page: Page, email: string, password: string, fn: (p: Page) => Promise<void>) {
+  const ctx = await page.context().browser()!.newContext()
+  const clientPage = await ctx.newPage()
+  try {
+    await clientPage.goto('/login')
+    await clientPage.getByLabel(/Email/).first().fill(email)
+    await clientPage.getByLabel('Password').fill(password)
+    await clientPage.getByRole('button', { name: 'Sign in' }).click()
+    await clientPage.waitForURL(u => !u.pathname.startsWith('/login'), { timeout: 30_000 })
+    await fn(clientPage)
+  } finally {
+    await ctx.close()
+  }
 }
 
 test('a brand-new trainer builds a business, takes on clients, and talks to them', async ({ page }) => {
@@ -447,7 +472,121 @@ test('a brand-new trainer builds a business, takes on clients, and talks to them
       'an answered request must clear from BOTH copies of the panel',
     ).toHaveCount(0, { timeout: 20_000 })
 
-    // ── 14. The class fills up, and then it doesn't ───────────────────────
+    // ── 14. Money: assign a priced package, and bill for it ───────────────
+    // The trainer side of invoicing has its own spec. What is not covered
+    // anywhere is the other end — whether the person being billed can actually
+    // see the bill in their own app.
+    const assigned = await page.request.post(`/api/clients/${full.clientId}/packages`, {
+      data: {
+        packageId: pkg.id,
+        sessionDates: [new Date(Date.now() + 3 * 864e5).toISOString()],
+        notify: false,
+      },
+    })
+    expect(assigned.status(), await assigned.text()).toBe(201)
+
+    const receivables = await page.request
+      .get(`/api/trainer/finances/receivables?clientId=${full.clientId}`)
+      .then(r => r.json())
+    expect(
+      receivables.items?.some((i: { description: string; status: string }) =>
+        i.description === 'Puppy Foundations' && i.status === 'UNPAID'),
+      'assigning a priced package should raise an unpaid receivable',
+    ).toBe(true)
+
+    await page.goto('/finances')
+    await expect(page.getByRole('row', { name: /Puppy Foundations/ }).first())
+      .toBeVisible({ timeout: 20_000 })
+
+    // Her side of the same bill.
+    await asClient(page, fionaUser!.user!.email!, clientPassword, async cp => {
+      await cp.goto('/my-invoices')
+      await expect(
+        cp.getByText(/Puppy Foundations/).first(),
+        'a client should be able to see what they are being billed for',
+      ).toBeVisible({ timeout: 20_000 })
+    })
+
+    // ── 15. She changes her mind about the session she booked ─────────────
+    // Cancelling from the client side is the path a trainer never sees until it
+    // has already happened, so what matters is that it lands on their schedule.
+    // Cancelling DELETES the row rather than flagging it — so the count is the
+    // check, not a status.
+    const beforeCancel = await prisma.trainingSession.count({ where: { clientId: full.clientId } })
+    // The session she self-booked is TODAY — the wizard offers the earliest
+    // slot — and the API refuses to cancel something that has already started,
+    // which is right. So this cancels the one that is still ahead of her.
+    const future = await prisma.trainingSession.findFirst({
+      where: { clientId: full.clientId, scheduledAt: { gt: new Date(Date.now() + 864e5) } },
+      select: { id: true },
+    })
+    expect(future, 'she should have a session still to come').toBeTruthy()
+
+    await asClient(page, fionaUser!.user!.email!, clientPassword, async cp => {
+      await cp.goto('/my-sessions')
+      // Her own session, cancelled from her own signed-in context — the guard
+      // is "is this yours and has it started", and both are hers to trip.
+      const res = await cp.request.post(`/api/my/sessions/${future!.id}/cancel`, { data: {} })
+      expect(res.status(), await res.text()).toBeLessThan(300)
+
+      // And she cannot reach past her own record: someone else's session is a
+      // 404, not a cancellation.
+      const otherSession = await prisma.trainingSession.findFirst({
+        where: { clientId: { not: full.clientId } },
+        select: { id: true },
+      })
+      if (otherSession) {
+        const forbidden = await cp.request.post(`/api/my/sessions/${otherSession.id}/cancel`, { data: {} })
+        expect(forbidden.status(), 'a client must not cancel someone else\'s session').toBe(404)
+      }
+    })
+
+    await expect
+      .poll(async () => prisma.trainingSession.count({ where: { clientId: full.clientId } }), { timeout: 30_000 })
+      .toBeLessThan(beforeCancel)
+
+    // ── 15. The ladder: a package you have to earn ────────────────────────
+    // Skips itself while packages are hidden from clients, the same way the
+    // other client-package specs do. It is the only coverage the achievement
+    // gate has: everything below is server-enforced, and the storefront copy is
+    // the only place a client learns WHY something is shut.
+    if (!PACKAGES_HIDDEN_FROM_CLIENTS) {
+      const badge = await post(page, '/api/achievements', {
+        name: 'Bronze Recall', description: '<p>Comes back every time.</p>', published: true,
+      })
+
+      const seniors = await post(page, '/api/trainer/memberships', {
+        name: 'Seniors', priceCents: 15000, cadence: 'ONE_OFF', published: true,
+        eligibility: 'ACHIEVEMENT', showWhenLocked: true,
+        prerequisiteAchievementIds: [badge.id], items: [],
+      })
+
+      // Locked, and it says what would unlock it — a rung you can see is the
+      // point of showing it at all.
+      await asClient(page, fionaUser!.user!.email!, clientPassword, async cp => {
+        await cp.goto('/my-memberships')
+        await expect(cp.getByText('Seniors').first()).toBeVisible({ timeout: 20_000 })
+        await expect(
+          cp.getByText(/Earn Bronze Recall to unlock this/).first(),
+          'a locked package should name what would open it',
+        ).toBeVisible({ timeout: 15_000 })
+
+        // And the server refuses, not just the screen.
+        const refused = await cp.request.post(`/api/my/memberships/${seniors.id}/buy`, { data: { consent: true } })
+        expect(refused.status(), 'the gate must hold against a direct POST').toBe(403)
+      })
+
+      // Award it, and the same package opens.
+      await prisma.clientAchievement.create({
+        data: { clientId: full.clientId, achievementId: badge.id, awardedBy: profile!.id },
+      })
+      await asClient(page, fionaUser!.user!.email!, clientPassword, async cp => {
+        await cp.goto('/my-memberships')
+        await expect(cp.getByText(/Earn Bronze Recall/)).toHaveCount(0, { timeout: 20_000 })
+      })
+    }
+
+    // ── 16. The class fills up, and then it doesn't ───────────────────────
     // Capacity 2, three people who want in. This is the part with the most
     // state in it: a seat, a queue, and what happens to the queue when a seat
     // comes back.
