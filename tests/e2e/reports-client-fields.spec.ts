@@ -117,7 +117,13 @@ test.describe('Client field-config API — cross-tenant tolerance', () => {
     const res = await page.request.get('/api/clients/field-config')
     expect(res.status()).toBe(200)
     const body = await res.json()
-    expect(body.config?.name).toMatchObject({ required: true })
+    // It used to also return a per-company config for the BUILT-IN details —
+    // which were required, which showed on quick-add. That was removed: quick
+    // add asks the same three every time, and requiredness belongs to a form's
+    // own questions. What is left is the caller's OWN custom fields, and the
+    // point of this test is that the company comes from the session with no id
+    // to tamper with.
+    expect(Array.isArray(body.customFields)).toBe(true)
   })
 
   test('field-config is rejected for an unauthenticated request', async ({ request }) => {

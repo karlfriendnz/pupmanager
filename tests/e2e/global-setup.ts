@@ -271,7 +271,10 @@ export default async function globalSetup() {
       },
     })
     const bProfile = await prisma.trainerProfile.create({
-      data: { userId: bUser.id, businessName: SEED.businessB.businessName, phone: '+6421000001', subscriptionStatus: 'ACTIVE' },
+      // A public slug, because Business B is the one whose JOIN LINK the
+      // self-signup spec walks a dog owner through — /c/<slug>/join is the only
+      // way in, so without it there is no door to knock on.
+      data: { userId: bUser.id, businessName: SEED.businessB.businessName, slug: SEED.businessB.slug, phone: '+6421000001', subscriptionStatus: 'ACTIVE' },
     })
     await prisma.trainerMembership.create({
       data: { companyId: bProfile.id, userId: bUser.id, role: 'OWNER', acceptedAt: new Date() },

@@ -239,7 +239,14 @@ test.describe('the event detail screen', () => {
 
       // …and it still opens on its own screen, sessions and all.
       await page.goto(`/classes/${cls.classRunId}`)
-      await expect(page.getByRole('heading', { name: /^Sessions/ })).toBeVisible({ timeout: 15_000 })
+      // "Sessions" is a TAB on the run screen now, not a heading — the card
+      // that used to sit on the overview moved onto it.
+      await expect(
+        page.getByRole('tab', { name: /^Sessions/ })
+          .or(page.getByRole('button', { name: /^Sessions/ }))
+          .or(page.getByRole('link', { name: /^Sessions/ }))
+          .first(),
+      ).toBeVisible({ timeout: 15_000 })
     } finally {
       for (const fn of cleanup.reverse()) await fn()
       await prisma.$disconnect()

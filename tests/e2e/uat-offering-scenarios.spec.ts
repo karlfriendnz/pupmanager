@@ -201,7 +201,7 @@ test.describe('UAT — offerings set up several ways', () => {
 
   // SELL-6 from both sides at once: the trainer can build a recurring
   // membership, and it stays out of the client's shop until it can be bought.
-  test('a recurring membership is configurable by the trainer and invisible to clients', async ({ page }) => {
+  test('a recurring membership is configurable by the trainer and shown as not-yet-buyable', async ({ page }) => {
     // Packages are hidden from clients right now (see feature-flags.ts).
     // This spec covers the client-facing package journey, which therefore
     // does not exist. It un-skips itself the moment the flag flips back.
@@ -228,13 +228,21 @@ test.describe('UAT — offerings set up several ways', () => {
       const plans = await prisma.membershipPlan.findMany({ where: { membershipId: membershipId! } })
       expect(plans).toHaveLength(2)
 
-      // The client's side offers neither — it isn't purchasable yet.
+      // The client's side SHOWS it, and says it can't be bought yet. It used to
+      // be hidden outright — which meant a trainer whose only published package
+      // was recurring saw nothing at all on either client screen, with no
+      // explanation. Showing published work and saying it needs setting up is
+      // the deliberate replacement (see loadPublishedMemberships).
       await login(page, SEED.client.email, SEED.client.password)
       await page.goto('/my-availability')
       const later = page.getByRole('button', { name: 'Maybe later' })
       if (await later.isVisible().catch(() => false)) await later.click()
       await page.getByRole('button', { name: /Packages/ }).click()
-      await expect(page.getByText(name)).toHaveCount(0)
+      await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 })
+      const card = page.getByTestId('membership-card').filter({ hasText: name })
+      await expect(card).toContainText('bills you regularly')
+      // No checkout button — the way in is to ask the trainer.
+      await expect(card.getByRole('button', { name: 'Request this' })).toBeVisible()
 
       // And the buy route refuses it outright, link or no link.
       const buy = await page.request.post(`/api/my/memberships/${membershipId}/buy`, { data: {} })

@@ -101,7 +101,7 @@ export function PendingRequestsPanel({
               : requestReasonLine(row.membership, formatMoney(row.membership.priceCents, currency))
 
             return (
-              <div key={row.id} className="flex flex-wrap items-start gap-x-3 gap-y-1.5 px-3 py-2.5 sm:flex-nowrap sm:items-center">
+              <div key={row.id} data-testid="request-row" className="flex flex-wrap items-start gap-x-3 gap-y-1.5 px-3 py-2.5 sm:flex-nowrap sm:items-center">
                 <Icon className="mt-0.5 h-[18px] w-[18px] flex-shrink-0 text-slate-700 sm:mt-0" strokeWidth={1.75} />
 
                 {/* basis forces the actions onto their own line at 390px —

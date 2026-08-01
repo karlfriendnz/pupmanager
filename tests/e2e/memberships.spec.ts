@@ -252,15 +252,19 @@ test.describe('memberships — trainer builds, client sees', () => {
       await page.goto('/dashboard')
 
       // It's on the screen the trainer opens every morning, saying who and what.
-      // The dashboard renders a mobile and a desktop variant of this, so the
-      // FIRST match is the hidden one — filter to what a person can actually
-      // see rather than picking an index and hoping.
-      const row = page.locator('div').filter({ hasText: name }).filter({ visible: true }).last()
-      await expect(page.getByText(name).filter({ visible: true }).first()).toBeVisible({ timeout: 20_000 })
-      await expect(page.getByText('1 request from clients').filter({ visible: true }).first()).toBeVisible()
+      // The request ROW — the one that holds both the name and its buttons.
+      const row = page.getByTestId('request-row').filter({ hasText: name })
+      await expect(row).toBeVisible({ timeout: 20_000 })
+      // At least one, not exactly one: another spec's pending request may be
+      // sitting in this list, and the count is not what this test is about.
+      await expect(page.getByText(/\d+ requests? from clients/).first()).toBeVisible()
       await expect(row).toContainText('Ongoing plan')
 
-      await page.getByRole('button', { name: 'Accept' }).first().click()
+      // Accept THIS request, not whichever is top of the list — another spec's
+      // pending request sitting above it would otherwise be the one accepted,
+      // and this one would still be on screen at the assertion below. That is
+      // exactly how this failed in the full suite while passing on its own.
+      await row.getByRole('button', { name: 'Accept' }).first().click()
 
       // The confirmation is where the money promise is kept — it must say
       // outright that nothing is charged, and what the trainer still has to do.

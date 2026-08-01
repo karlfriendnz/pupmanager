@@ -71,16 +71,22 @@ function selectionSnapshot(): string {
 /** The server has no sessionStorage — it always renders "nothing selected". */
 const serverSelectionSnapshot = (): string => ''
 
-function parseSelection(raw: string): Map<string, EmailTarget> {
+export function parseSelection(raw: string): Map<string, EmailTarget> {
   if (!raw) return new Map()
   try {
     const parsed: unknown = JSON.parse(raw)
     if (!Array.isArray(parsed)) return new Map()
     return new Map(parsed
+      // `email` is string | NULL — a client registered without one is a
+      // supported case, and demanding a string here silently dropped them on
+      // read-back. The symptom was invisible and awful: ticking a client with
+      // no email did nothing at all. The write landed, the re-read discarded
+      // it, and the row sprang back unticked with no explanation. Only `id`
+      // makes an entry usable; who can be EMAILED is decided at the Email
+      // action, not here.
       .filter((v): v is EmailTarget =>
         !!v && typeof v === 'object'
-        && typeof (v as EmailTarget).id === 'string'
-        && typeof (v as EmailTarget).email === 'string')
+        && typeof (v as EmailTarget).id === 'string')
       .map(v => [v.id, { id: v.id, name: v.name ?? null, email: v.email, dogName: v.dogName ?? null }] as const))
   } catch {
     return new Map()   // corrupt storage is not worth breaking the page over
@@ -252,6 +258,11 @@ export function ClientsList({ clients, view, tabs, blurb, columns, customFields,
   const visibleSelectedCount = filtered.reduce((n, c) => n + (selected.has(c.id) ? 1 : 0), 0)
   const offscreenSelectedCount = selectedCount - visibleSelectedCount
   const selectedTargets = Array.from(selected.values())
+  // Everyone picked can be MESSAGED; only those with an address can be emailed.
+  // The composer's own contract says its candidates are "already filtered to
+  // mailable", so the filtering belongs here rather than inside it.
+  const mailableTargets = selectedTargets.filter(t => !!t.email)
+  const unmailableCount = selectedTargets.length - mailableTargets.length
 
   // A message thread is one client — the schema has no group conversation, and
   // faking one would put a reply from one owner in front of five others. So
@@ -527,6 +538,14 @@ export function ClientsList({ clients, view, tabs, blurb, columns, customFields,
                   {offscreenSelectedCount} not shown here — still included
                 </p>
               )}
+              {/* Said before they open the composer and wonder where people
+                  went. They can still be MESSAGED — only the email needs an
+                  address. */}
+              {unmailableCount > 0 && (
+                <p className="truncate text-xs text-slate-500">
+                  {unmailableCount} {unmailableCount === 1 ? 'has' : 'have'} no email address
+                </p>
+              )}
               {soleSelectedId === null && (
                 <p className="truncate text-xs text-slate-500">Starts a group with these {selectedCount}</p>
               )}
@@ -567,7 +586,7 @@ export function ClientsList({ clients, view, tabs, blurb, columns, customFields,
         <BulkEmailModal
           // From the stored selection, not from `clients` — someone ticked on
           // the Active tab must still be emailable from the Inactive one.
-          candidates={selectedTargets}
+          candidates={mailableTargets}
           onClose={() => setComposeOpen(false)}
           onSent={(summary) => {
             setSentSummary(summary)

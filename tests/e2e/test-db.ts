@@ -54,6 +54,9 @@ export const SEED = {
     ownerPassword: 'Password123!',
     name: 'Bianca Rival',
     businessName: 'Rival Dog Co',
+    // Its public booking-page slug — the self-signup journey enters through
+    // /c/<slug>/join.
+    slug: 'rival-dog-co',
     clientId: 'e2ebclient00000000000000',
     packageId: 'e2ebpackage0000000000000',
   },
