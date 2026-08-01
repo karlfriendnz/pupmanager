@@ -89,7 +89,7 @@ test.describe('a client record shows the whole client', () => {
         .toBeVisible({ timeout: 15_000 })
 
       // The clients list "next session" knows about it too.
-      await page.goto('/clients')
+      await page.goto('/clients')  // Current: this one is booked onto a class
       // Each client is a link, not a table row.
       const row = page.getByRole('link').filter({ hasText: 'Class Only Client' }).first()
       await expect(row).toBeVisible({ timeout: 15_000 })
@@ -131,7 +131,7 @@ test.describe('a client record shows the whole client', () => {
       expect(check?.dogs.length).toBe(2)
 
       await login(page, SEED.owner.email, SEED.owner.password)
-      await page.goto('/clients')
+      await page.goto('/clients?tab=never')
 
       const row = page.getByRole('link').filter({ hasText: 'Extra Dogs Client' }).first()
       await expect(row).toBeVisible({ timeout: 15_000 })

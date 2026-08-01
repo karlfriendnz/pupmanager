@@ -48,7 +48,7 @@ test.describe('bulk email — guards', () => {
 test.describe('bulk email — clients-list selection UI', () => {
   test('owner can enter select mode and reveal the email action bar', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
-    await page.goto('/clients')
+    await page.goto('/clients?tab=never')
     await page.getByRole('button', { name: 'Select clients to email' }).click()
     // Select-all appears, and selecting all reveals the "{n} selected" bar + Email action.
     await page.getByRole('button', { name: /select all/i }).click()

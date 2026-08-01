@@ -51,8 +51,12 @@ test.describe('a brand-new customer signs up on a phone', () => {
     const prisma = await makePrisma()
     const email = `e2e-signup-${Date.now()}@e2e.test`
     try {
-      await page.goto('/register')
+      // /register now opens on a role chooser — dog pro or dog owner — and the
+      // business signup form lives behind ?as=pro. Going straight there keeps
+      // this spec about the FORM rather than the door in front of it.
+      await page.goto('/register?as=pro')
       await expect(page.getByRole('heading', { name: 'Create your account' })).toBeVisible()
+
 
       // ── numpty: submit the form with nothing in it ──────────────────────
       await page.getByRole('button', { name: 'Create account' }).click()
@@ -148,7 +152,10 @@ test.describe('a brand-new customer signs up on a phone', () => {
     const prisma = await makePrisma()
     const email = `e2e-nocountry-${Date.now()}@e2e.test`
     try {
-      await page.goto('/register')
+      // /register now opens on a role chooser — dog pro or dog owner — and the
+      // business signup form lives behind ?as=pro. Going straight there keeps
+      // this spec about the FORM rather than the door in front of it.
+      await page.goto('/register?as=pro')
       await page.getByLabel('Your name').fill('No Country Nick')
       await page.getByLabel('Business name').fill('No Country Co')
       await page.getByLabel('Phone number').fill('021 000 0001')

@@ -30,9 +30,17 @@ async function login(page: Page) {
   await page.waitForURL(u => !u.pathname.startsWith('/login'), { timeout: 30_000 })
 }
 
+// The clients list gained Current / Past / Contacts tabs, and the default
+// "Current" only lists people booked onto something still to come — so it is
+// empty for seeded data and every row query found nothing. ?tab=never is the
+// Contacts view: everyone on the list. Navigating by URL rather than clicking
+// the tab keeps this independent of how the tab row is rendered.
 /** Enter selection mode from whichever control this width offers. */
 async function startSelecting(page: Page) {
-  const select = page.getByRole('button', { name: /^Select$/ }).first()
+  // The button READS "Select", but its aria-label — which is what an
+  // accessible-name query matches — is the fuller "Select clients to email".
+  // Matching the visible text alone found nothing.
+  const select = page.getByRole('button', { name: 'Select clients to email' }).first()
   await expect(select).toBeVisible()
   await select.click()
   // Each row renders a checkbox for both layouts (the desktop grid one is
@@ -46,7 +54,7 @@ test.describe('clients — pick some, then act on them', () => {
 
   test('a phone can select at all, and one pick offers both Email and Message', async ({ page }) => {
     await login(page)
-    await page.goto('/clients')
+    await page.goto('/clients?tab=never')
 
     await startSelecting(page)
     const rows = page.getByTestId('client-select-row')
@@ -69,7 +77,7 @@ test.describe('clients — pick some, then act on them', () => {
 
   test('Message on several clients starts a group with them', async ({ page }) => {
     await login(page)
-    await page.goto('/clients')
+    await page.goto('/clients?tab=never')
     await startSelecting(page)
 
     const rows = page.getByTestId('client-select-row')
@@ -97,7 +105,7 @@ test.describe('clients — pick some, then act on them', () => {
 
   test('the action bar clears the bottom tab bar instead of covering the last client', async ({ page }) => {
     await login(page)
-    await page.goto('/clients')
+    await page.goto('/clients?tab=never')
     await startSelecting(page)
     await page.getByTestId('client-select-row').first().click()
     await expect(page.getByText('1 selected')).toBeVisible()
@@ -120,7 +128,7 @@ test.describe('clients — pick some, then act on them', () => {
 
   test('Select all takes what is on screen, and the selection survives a tab change', async ({ page }) => {
     await login(page)
-    await page.goto('/clients')
+    await page.goto('/clients?tab=never')
     await startSelecting(page)
 
     // The control names the number it will take, and that number is the number
@@ -136,8 +144,11 @@ test.describe('clients — pick some, then act on them', () => {
     // Switching to a tab those clients aren't on keeps them picked and says how
     // many are off screen — the alternative (silently dropping them) sends to
     // five of the six you chose and never tells you.
-    await page.getByRole('link', { name: /^Inactive/ }).click()
-    await page.waitForURL(/tab=inactive/, { timeout: 30_000 })
+    // "Past", not "Archived": the Archived tab only renders when something is
+    // actually archived, and the seed has nothing. Any tab these clients are
+    // NOT on proves the same thing — the picks survive and are still counted.
+    await page.getByRole('link', { name: /^Past/ }).click()
+    await page.waitForURL(/tab=past/, { timeout: 30_000 })
     await expect(page.getByText(`${promised} selected`)).toBeVisible()
     await expect(page.getByText(/not shown here — still included/)).toBeVisible()
 
@@ -149,7 +160,7 @@ test.describe('clients — pick some, then act on them', () => {
 
   test('Email opens the bulk composer with the people you picked', async ({ page }) => {
     await login(page)
-    await page.goto('/clients')
+    await page.goto('/clients?tab=never')
     await startSelecting(page)
     await page.getByTestId('client-select-row').first().click()
     await page.getByRole('button', { name: 'Email' }).click()
@@ -165,7 +176,7 @@ test.describe('clients — the same selection on a desktop', () => {
 
   test('the toolbar Select reveals checkboxes and the bar offers both actions', async ({ page }) => {
     await login(page)
-    await page.goto('/clients')
+    await page.goto('/clients?tab=never')
 
     // Desktop enters selection from the toolbar beside the search field.
     await page.getByRole('button', { name: /Select clients to email/ }).click()

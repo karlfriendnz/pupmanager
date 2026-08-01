@@ -66,8 +66,10 @@ test.describe('forms screen — owner happy path', () => {
     // Two doors, split by who fills the form in. "Lead-capture form" used to be
     // a third; a client form set to "Website enquiry" replaced it.
     await expect(page.getByRole('link', { name: /Session form/ })).toBeVisible()
-    await expect(page.getByRole('link', { name: /Client form/ })).toBeVisible()
-    await expect(page.getByRole('link', { name: /Lead-capture form/ })).toHaveCount(0)
+    // "Client form" is called "Intake form" now, and the website-enquiry door
+    // is back as its own choice rather than a setting on a client form.
+    await expect(page.getByRole('link', { name: /Intake form/ })).toBeVisible()
+    await expect(page.getByRole('link', { name: /Website enquiry form/ })).toBeVisible()
     await page.getByRole('link', { name: /Session form/ }).click()
     await page.waitForURL('**/forms/session/new')
 
@@ -117,8 +119,10 @@ test.describe('forms screen — owner happy path', () => {
 
     await page.getByRole('button', { name: 'New form' }).click()
     await page.waitForURL('**/forms/new')
-    await page.getByRole('link', { name: /Client form/ }).click()
-    await page.waitForURL('**/forms/client/new')
+    await page.getByRole('link', { name: /Intake form/ }).click()
+    // The route still ends /forms/client/new but now carries ?use=intake, so a
+    // strict glob no longer matches.
+    await page.waitForURL(/\/forms\/client\/new/)
 
     const formName = `Client form ${Date.now()}`
     await page.getByLabel('Form name').fill(formName)

@@ -82,7 +82,9 @@ test.describe('group messaging', () => {
     const tag = `E2E-GRP-${Date.now()}`
     await login(page, SEED.owner.email, SEED.owner.password)
     await page.setViewportSize(PHONE)
-    await page.goto('/messages')
+    // "New group" lives at the top of the GROUPS tab and nowhere else — on the
+    // Active list a row reads as another conversation, which is why it moved.
+    await page.goto('/messages?tab=groups')
 
     await page.getByTestId('open-group-composer').click()
     const composer = page.getByTestId('group-composer')

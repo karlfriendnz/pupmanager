@@ -39,8 +39,13 @@ async function rowBoxes(page: Page) {
   )
 }
 
+// The clients list gained Current / Past / Contacts tabs, and the default
+// "Current" only lists people booked onto something still to come — so it is
+// empty for seeded data and every row query found nothing. ?tab=never is the
+// Contacts view: everyone on the list. Navigating by URL rather than clicking
+// the tab keeps this independent of how the tab row is rendered.
 async function gotoClients(page: Page) {
-  await page.goto('/clients')
+  await page.goto('/clients?tab=never')
   await expect
     .poll(async () => (await rowBoxes(page)).length, { timeout: 30_000 })
     .toBeGreaterThan(0)

@@ -80,8 +80,11 @@ async function makeProducts(prisma: Db, names: string[], over: Record<string, un
  * The "+" is in the mobile header on every trainer page, so any of them will do.
  */
 async function openComposer(page: Page) {
-  await page.goto('/clients')
-  await page.getByRole('button', { name: 'Create' }).click()
+  await page.goto('/clients?tab=never')
+  // exact, because getByRole name-matching is a SUBSTRING match by default and
+  // "Create new client" also contains "Create". The one wanted here is the
+  // mobile header "+", whose aria-label is exactly "Create".
+  await page.getByRole('button', { name: 'Create', exact: true }).click()
   await page.getByRole('button', { name: /New sale/ }).click()
   await expect(page.getByRole('dialog', { name: 'New sale' })).toBeVisible()
 }

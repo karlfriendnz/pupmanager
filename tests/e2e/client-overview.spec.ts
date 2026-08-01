@@ -19,7 +19,7 @@ async function login(page: Page, email: string, password: string) {
 test.describe('client overview — owner happy path', () => {
   test('Overview tab shows the priority panels', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
-    await page.goto('/clients')
+    await page.goto('/clients?tab=never')
     await page.getByRole('link', { name: /Sarah Client/ }).first().click()
     await page.waitForURL('**/clients/**')
 
