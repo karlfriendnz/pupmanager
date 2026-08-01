@@ -335,39 +335,50 @@ describe('recordInvoicePaid', () => {
   })
 })
 
-describe('recordInvoicePaymentFailed — access stops on the FIRST failure', () => {
-  it('marks PAST_DUE and PAUSES everything the plan granted', async () => {
-    // Karl, 2026-07-27: access stops on the first failed payment, not after
-    // Stripe exhausts its retries.
-    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1' })
+describe('recordInvoicePaymentFailed — access survives, for two weeks', () => {
+  it('marks PAST_DUE, opens a window, and pauses NOTHING', async () => {
+    // Karl, 2026-08-01, replacing the 2026-07-27 rule. Stripe is still
+    // retrying; taking a client's classes away on the first miss punished them
+    // for something that had not finished going wrong.
+    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1', accessGraceUntil: null })
     await recordInvoicePaymentFailed(invoice({ attempt_count: 1 }), false, 'sub_1')
 
     const data = h.purchaseUpdateMany.mock.calls[0][0].data
     expect(data.status).toBe('PAST_DUE')
-    expect(data.accessPausedAt).toBeInstanceOf(Date)
-    expect(data.accessRestoredAt).toBeNull()
-    // The grants themselves are paused — the status alone changes nothing the
-    // client can see or use.
-    expect(h.suspendGrants).toHaveBeenCalledWith(expect.anything(), 'p1')
-    expect(h.restoreGrants).not.toHaveBeenCalled()
+    expect(data.accessGraceUntil).toBeInstanceOf(Date)
+    // The grants stay exactly as they were.
+    expect(h.suspendGrants).not.toHaveBeenCalled()
+    expect(data.accessPausedAt).toBeUndefined()
   })
 
-  it('tells the client it is paused AND how to turn it back on', async () => {
-    // Losing access with no explanation is the worst version of this.
-    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1' })
+  it('does NOT push the deadline out on every retry', async () => {
+    // The window runs from the first miss. Recomputing it per retry would move
+    // it every time Stripe tried again and the two weeks would never end.
+    const opened = new Date('2026-08-05T00:00:00Z')
+    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1', accessGraceUntil: opened })
+
+    await recordInvoicePaymentFailed(invoice({ attempt_count: 2 }), false, 'sub_1')
+
+    expect(h.purchaseUpdateMany.mock.calls[0][0].data.accessGraceUntil).toEqual(opened)
+  })
+
+  it('tells the client nothing has stopped yet, and by when to fix it', async () => {
+    // The old copy said "your plan is paused". Saying that while they still
+    // have everything sends them chasing a problem that hasn't happened.
+    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', trainerId: 'lt1', clientId: 'c1', membershipId: 'm1', accessGraceUntil: null })
     await recordInvoicePaymentFailed(invoice(), false, 'sub_1')
 
     const notice = h.notifyClient.mock.calls[0][0]
     expect(notice.vars.description).toContain('didn’t go through')
-    expect(notice.vars.description).toContain('paused')
-    expect(notice.vars.description).toContain('Update your card')
+    expect(notice.vars.description).toContain('Nothing has stopped yet')
+    expect(notice.vars.description).not.toContain('paused')
     expect(notice.ctaLabel).toBe('Update your card')
-    // And the trainer hears about it too.
-    expect(h.notifyTrainer.mock.calls[0][2].detail).toContain('paused')
+    // The trainer is told they KEEP access, not that it stopped.
+    expect(h.notifyTrainer.mock.calls[0][2].detail).toContain('keep access')
   })
 
   it('takes the attempt count from STRIPE so a replay cannot inflate it', async () => {
-    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1' })
+    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1', accessGraceUntil: null })
     await recordInvoicePaymentFailed(invoice({ attempt_count: 3 }), false, 'sub_1')
     await recordInvoicePaymentFailed(invoice({ attempt_count: 3 }), false, 'sub_1')
 
@@ -376,7 +387,7 @@ describe('recordInvoicePaymentFailed — access stops on the FIRST failure', () 
   })
 
   it('upserts the invoice row so a redelivery does not duplicate it', async () => {
-    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1' })
+    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1', accessGraceUntil: null })
     await recordInvoicePaymentFailed(invoice(), false, 'sub_1')
     expect(h.invoiceUpsert.mock.calls[0][0].where).toEqual({ stripeInvoiceId: 'in_1' })
   })
@@ -439,21 +450,28 @@ describe('revoke → retry succeeds → restored', () => {
     expect(h.restoreGrants).toHaveBeenCalled()
   })
 
-  it('survives the full cycle: fail, fail again, then pay', async () => {
-    h.purchaseFindUnique.mockResolvedValue({ ...PURCHASE, status: 'ACTIVE', accessPausedAt: null })
+  it('survives the full cycle: fail, fail again, then pay — losing nothing on the way', async () => {
+    // The whole point of the two-week window: a client whose card fails twice
+    // and is then replaced never notices anything stopped, because nothing did.
+    const opened = new Date('2026-08-05T00:00:00Z')
+    h.purchaseFindUnique.mockResolvedValue({ ...PURCHASE, status: 'ACTIVE', accessPausedAt: null, accessGraceUntil: null })
     await recordInvoicePaymentFailed(invoice({ attempt_count: 1 }), false, 'sub_1')
-    h.purchaseFindUnique.mockResolvedValue({ ...PURCHASE, status: 'PAST_DUE', accessPausedAt: new Date() })
+    h.purchaseFindUnique.mockResolvedValue({ ...PURCHASE, status: 'PAST_DUE', accessPausedAt: null, accessGraceUntil: opened })
     await recordInvoicePaymentFailed(invoice({ attempt_count: 2 }), false, 'sub_1')
 
-    expect(h.suspendGrants).toHaveBeenCalledTimes(2)
-    expect(h.restoreGrants).not.toHaveBeenCalled()
+    expect(h.suspendGrants).not.toHaveBeenCalled()
+    // And the deadline did not move with the second attempt.
+    expect(h.purchaseUpdateMany.mock.calls.at(-1)?.[0].data.accessGraceUntil).toEqual(opened)
 
     h.invoiceFindUnique.mockResolvedValue(null)
     h.paymentCreate.mockResolvedValue({ id: 'pay1' })
     await recordInvoicePaid(invoice({ id: 'in_2' }), false, 'sub_1')
 
-    expect(h.restoreGrants).toHaveBeenCalledWith(expect.anything(), 'p1')
-    expect(h.purchaseUpdateMany.mock.calls.at(-1)?.[0].data.status).toBe('ACTIVE')
+    const paid = h.purchaseUpdateMany.mock.calls.at(-1)?.[0].data
+    expect(paid.status).toBe('ACTIVE')
+    // The episode is closed: the next failure opens a fresh fortnight.
+    expect(paid.accessGraceUntil).toBeNull()
+    expect(paid.failedPaymentCount).toBe(0)
   })
 })
 

@@ -3799,6 +3799,11 @@ model MembershipPurchase {
   // answerable after the fact.
   accessPausedAt   DateTime?
   accessRestoredAt DateTime?
+  // When a failed payment stops actually costing them access. Set on the FIRST
+  // failure of a dunning episode and left alone by later retries, so the window
+  // is two weeks from the first miss rather than two weeks from the latest one.
+  // Cleared the moment a payment succeeds.
+  accessGraceUntil DateTime?
 
   membership     Membership          @relation(fields: [membershipId], references: [id], onDelete: Cascade)
   plan           MembershipPlan?     @relation(fields: [planId], references: [id], onDelete: SetNull)

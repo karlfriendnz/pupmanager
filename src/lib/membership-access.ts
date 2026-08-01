@@ -7,22 +7,47 @@ import type { Prisma, MembershipPurchaseStatus } from '@/generated/prisma'
 // and the client ends up half-locked-out in a way nobody can reproduce. Every
 // call site asks these functions instead of testing the status itself.
 //
-// THE RULE (Karl, 2026-07-27): access stops on the FIRST failed payment. Not
-// after Stripe exhausts its ~4 retries over 2–3 weeks — immediately. Stripe
-// keeps retrying underneath, and a retry that succeeds restores everything.
+// THE RULE (Karl, 2026-08-01, replacing the 2026-07-27 one): a failed payment
+// does NOT stop access on the spot. The plan goes PAST_DUE and the client is
+// told straight away, but everything the package granted keeps working for two
+// weeks while Stripe retries.
 //
-// That makes the RESTORE path the common one rather than the exception: most
-// failures are an expired card that gets replaced within days. So nothing here
-// deletes anything — pausing is a reversible timestamp on the granted rows, and
-// restoring is the same timestamp cleared.
+// Why it changed: Stripe retries a declined card for roughly two weeks, and the
+// overwhelming majority of failures are an expired card someone replaces within
+// days. Stopping on the first miss meant cutting a client out of the classes
+// they had paid for all year over a card they were about to fix — and doing it
+// before the payment had actually, finally failed.
+//
+// The window runs from the FIRST failure of an episode, not the latest retry,
+// or every retry would push the deadline out and the grace would never end.
+// Stripe giving up early still ends it immediately: `unpaid` maps to CANCELLED,
+// which grants nothing whatever the grace date says.
+//
+// Nothing here deletes anything either way — pausing is a reversible timestamp
+// on the granted rows, and restoring is the same timestamp cleared.
+
+/** How long a client keeps everything after a payment first fails. */
+export const MEMBERSHIP_GRACE_DAYS = 14
+
+/** The end of the grace window for a failure that happened at `firstFailedAt`. */
+export function graceDeadline(firstFailedAt: Date): Date {
+  return new Date(firstFailedAt.getTime() + MEMBERSHIP_GRACE_DAYS * 24 * 60 * 60 * 1000)
+}
 
 /**
  * Does a membership in this state entitle the client to what it granted?
  *
- * If this ever becomes a per-trainer setting, this function grows one argument
- * and one branch — that is the whole point of it existing.
+ * PAST_DUE now depends on a DATE, so this takes the purchase's grace deadline.
+ * It is a required argument rather than an optional one on purpose: every call
+ * site had to be visited when the rule changed, and a default would have let
+ * one of them keep quietly cutting people off.
  */
-export function membershipGrantsAccess(status: MembershipPurchaseStatus): boolean {
+export function membershipGrantsAccess(
+  status: MembershipPurchaseStatus,
+  /** MembershipPurchase.accessGraceUntil. Null means no grace is running. */
+  graceUntil: Date | null,
+  now: Date = new Date(),
+): boolean {
   switch (status) {
     // Paid and current.
     case 'ACTIVE':
@@ -32,9 +57,12 @@ export function membershipGrantsAccess(status: MembershipPurchaseStatus): boolea
     // on the cancel screen promises.
     case 'CANCELLING':
       return true
-    // A payment failed. Access stops here, on the first failure.
+    // A payment failed and Stripe is still retrying. They keep everything until
+    // the grace window closes. A null deadline means no window was ever opened
+    // — which includes every row that went PAST_DUE under the old rule, so this
+    // change does not hand access back to anyone who has already lost it.
     case 'PAST_DUE':
-      return false
+      return graceUntil != null && graceUntil.getTime() > now.getTime()
     // Stripe-side pause, trainer/dispute-driven suspension, a finished plan, or
     // a trainer who has left PupManager entirely.
     case 'PAUSED':
@@ -56,10 +84,24 @@ export function membershipGrantsAccess(status: MembershipPurchaseStatus): boolea
  * worst version of this, so every non-access state has a sentence and — where
  * the client can actually do something — says what.
  */
-export function accessPausedReason(status: MembershipPurchaseStatus): string | null {
+export function accessPausedReason(
+  status: MembershipPurchaseStatus,
+  graceUntil: Date | null = null,
+  now: Date = new Date(),
+): string | null {
   switch (status) {
-    case 'PAST_DUE':
+    case 'PAST_DUE': {
+      // Still inside the window: they have NOT lost anything, and saying "this
+      // plan is paused" when it isn't would send them chasing a problem that
+      // hasn't happened. Give them the date instead — it is the one piece of
+      // information that changes what they do.
+      const inGrace = graceUntil != null && graceUntil.getTime() > now.getTime()
+      if (inGrace) {
+        const by = graceUntil!.toLocaleDateString('en-NZ', { day: 'numeric', month: 'long' })
+        return `Your payment didn’t go through. We’ll keep trying — update your card before ${by} to avoid losing access.`
+      }
       return 'Your payment didn’t go through, so this plan is paused. Update your card to turn it back on.'
+    }
     case 'PAUSED':
       return 'This plan is paused.'
     case 'ORPHANED':

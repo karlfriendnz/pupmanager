@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   isStripeConfigured: vi.fn(),
   suspendGrants: vi.fn(),
   restoreGrants: vi.fn(),
+  purchaseUpdateMany: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -23,7 +24,7 @@ vi.mock('@/lib/prisma', () => ({
     trainerProfile: { findUnique: h.trainerFindUnique },
     membershipPurchase: { findMany: h.purchaseFindMany },
     $transaction: (fn: (t: unknown) => unknown) =>
-      fn({ membershipPurchase: { update: h.purchaseUpdate } }),
+      fn({ membershipPurchase: { update: h.purchaseUpdate, updateMany: h.purchaseUpdateMany } }),
   },
 }))
 vi.mock('@/lib/stripe', () => ({
@@ -36,7 +37,7 @@ vi.mock('@/lib/membership-access', async (importOriginal) => ({
   restoreMembershipGrants: h.restoreGrants,
 }))
 
-import { reconcileTrainerSubscriptions } from '@/lib/membership-reconcile'
+import { reconcileTrainerSubscriptions, sweepExpiredGrace } from '@/lib/membership-reconcile'
 import { cardExpiresBefore } from '@/lib/membership-billing'
 
 function stripeSub(over: Record<string, unknown> = {}) {
@@ -187,5 +188,74 @@ describe('cardExpiresBefore', () => {
     // Better silent than crying wolf about a card we know nothing about.
     expect(cardExpiresBefore({ cardExpMonth: null, cardExpYear: null }, new Date())).toBe(false)
     expect(cardExpiresBefore({ cardExpMonth: 7, cardExpYear: null }, new Date())).toBe(false)
+  })
+})
+
+
+// The other half of the two-week rule. A failed payment no longer stops access
+// on the spot, so SOMETHING has to stop it when the window really expires —
+// Stripe sends no event on a deadline we invented, so this sweeps it nightly.
+describe('sweepExpiredGrace', () => {
+  beforeEach(() => {
+    h.purchaseFindMany.mockReset()
+    h.suspendGrants.mockReset().mockResolvedValue({ packages: 1, enrolments: 1 })
+    h.purchaseUpdateMany.mockReset().mockResolvedValue({ count: 1 })
+  })
+
+  it('pauses a plan whose fortnight ran out without a payment', async () => {
+    h.purchaseFindMany.mockResolvedValue([{ id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1' }])
+
+    const res = await sweepExpiredGrace(new Date('2026-08-20T00:00:00Z'))
+
+    expect(res.paused).toBe(1)
+    expect(h.suspendGrants).toHaveBeenCalledWith(expect.anything(), 'p1', expect.any(Date))
+    expect(h.purchaseUpdateMany.mock.calls[0][0].data.accessPausedAt).toBeInstanceOf(Date)
+  })
+
+  it('only ever looks at PAST_DUE rows whose window has actually elapsed', async () => {
+    h.purchaseFindMany.mockResolvedValue([])
+    const now = new Date('2026-08-20T00:00:00Z')
+
+    await sweepExpiredGrace(now)
+
+    // The query is the guard. Anything looser and it would pause people who
+    // are still inside their fortnight, or who have already paid.
+    expect(h.purchaseFindMany.mock.calls[0][0].where).toEqual({
+      status: 'PAST_DUE',
+      accessGraceUntil: { not: null, lte: now },
+      accessPausedAt: null,
+    })
+  })
+
+  it('re-checks inside the transaction, so a payment that lands mid-sweep wins', async () => {
+    h.purchaseFindMany.mockResolvedValue([{ id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1' }])
+
+    await sweepExpiredGrace(new Date('2026-08-20T00:00:00Z'))
+
+    // Without this the sweep would pause someone whose card cleared in the
+    // seconds between the read and the write.
+    expect(h.purchaseUpdateMany.mock.calls[0][0].where).toMatchObject({
+      id: 'p1', status: 'PAST_DUE', accessPausedAt: null,
+    })
+  })
+
+  it('does nothing at all when nobody is out of time', async () => {
+    h.purchaseFindMany.mockResolvedValue([])
+    const res = await sweepExpiredGrace()
+    expect(res.paused).toBe(0)
+    expect(h.suspendGrants).not.toHaveBeenCalled()
+  })
+
+  it('carries on when one client fails, so one bad row cannot save everyone else', async () => {
+    h.purchaseFindMany.mockResolvedValue([
+      { id: 'p1', trainerId: 't1', clientId: 'c1', membershipId: 'm1' },
+      { id: 'p2', trainerId: 't1', clientId: 'c2', membershipId: 'm1' },
+    ])
+    h.suspendGrants.mockRejectedValueOnce(new Error('db blew up'))
+
+    const res = await sweepExpiredGrace(new Date('2026-08-20T00:00:00Z'))
+
+    expect(res.paused).toBe(2)
+    expect(h.suspendGrants).toHaveBeenCalledTimes(2)
   })
 })

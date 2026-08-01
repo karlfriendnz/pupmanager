@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { reconcileAllSubscriptions } from '@/lib/membership-reconcile'
+import { reconcileAllSubscriptions, sweepExpiredGrace } from '@/lib/membership-reconcile'
 
 // Nightly: confirm Stripe agrees with every recurring membership we think is
 // live, and fix any disagreement.
@@ -23,6 +23,12 @@ async function handle(req: Request) {
 
   const result = await reconcileAllSubscriptions()
 
+  // Then close any grace window that ran out today. After the reconcile, so a
+  // subscription that Stripe has already moved back to active is ACTIVE by the
+  // time this looks — otherwise a client who paid yesterday could be paused by
+  // a stale PAST_DUE row.
+  const grace = await sweepExpiredGrace()
+
   // Any correction is worth shouting about in the logs: it means a webhook was
   // missed or an API call silently failed, and the count is the health signal
   // for the whole recurring system. `unreachable` rising is its own alarm —
@@ -35,7 +41,7 @@ async function handle(req: Request) {
     })
   }
 
-  return NextResponse.json({ ok: true, ...result })
+  return NextResponse.json({ ok: true, ...result, gracePaused: grace.paused })
 }
 
 export const GET = handle

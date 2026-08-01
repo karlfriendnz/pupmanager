@@ -129,6 +129,7 @@ export async function loadClientSubscriptions(clientId: string, currency: string
       id: true, status: true, currentPeriodEnd: true, committedUntil: true, cancelAtPeriodEnd: true,
       cardLast4: true,
       membershipId: true,
+      accessGraceUntil: true,
       membership: { select: { name: true } },
       plan: { select: { priceCents: true, interval: true } },
       // An invoice the client's bank wants them to authorise. Nothing in the
@@ -155,7 +156,10 @@ export async function loadClientSubscriptions(clientId: string, currency: string
     currentPeriodEnd: r.currentPeriodEnd ? r.currentPeriodEnd.toISOString() : null,
     cancelAtPeriodEnd: r.cancelAtPeriodEnd,
     committedUntil: r.committedUntil && r.committedUntil.getTime() > now ? r.committedUntil.toISOString() : null,
-    pausedReason: accessPausedReason(r.status),
+    // With the deadline, a client mid-grace is told what to do and by when
+    // rather than that their plan is paused — which, during the window, it
+    // isn't.
+    pausedReason: accessPausedReason(r.status, r.accessGraceUntil),
     cardLast4: r.cardLast4,
     actionRequiredUrl: r.invoices[0]?.hostedInvoiceUrl ?? null,
   }))

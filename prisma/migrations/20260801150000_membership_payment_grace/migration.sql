@@ -1,0 +1,16 @@
+-- A grace window before a failed payment costs the client access.
+--
+-- Until now access stopped on the FIRST failed payment. Stripe keeps retrying
+-- for around two weeks, and the overwhelming majority of failures are an
+-- expired card that gets replaced within days — so the old rule cut people off
+-- from classes they had paid for all year over a card they were about to fix.
+--
+-- Now: the plan goes PAST_DUE and they are told immediately, but everything the
+-- package granted keeps working until this date. It is set on the first failure
+-- of an episode and NOT pushed out by subsequent retries, so the window is two
+-- weeks from the first miss.
+--
+-- Null on every existing row, which reads as "no grace running". Anyone already
+-- PAST_DUE keeps the paused grants they already have — this does not silently
+-- hand access back to someone who lost it under the old rule.
+ALTER TABLE "membership_purchases" ADD COLUMN "accessGraceUntil" TIMESTAMP(3);

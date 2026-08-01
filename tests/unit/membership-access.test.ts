@@ -20,6 +20,8 @@ import {
   LIVE_SUBSCRIPTION_STATUSES,
   NOT_SUSPENDED,
   SESSIONS_NOT_SUSPENDED,
+  graceDeadline,
+  MEMBERSHIP_GRACE_DAYS,
 } from '@/lib/membership-access'
 
 const tx = {
@@ -32,61 +34,104 @@ beforeEach(() => {
   h.enrolUpdateMany.mockReset().mockResolvedValue({ count: 1 })
 })
 
+const NOW = new Date('2026-08-01T00:00:00Z')
+const IN_GRACE = new Date('2026-08-10T00:00:00Z')
+const GRACE_OVER = new Date('2026-07-25T00:00:00Z')
+
 describe('membershipGrantsAccess', () => {
   it('grants access while paid and current', () => {
-    expect(membershipGrantsAccess('ACTIVE')).toBe(true)
+    expect(membershipGrantsAccess('ACTIVE', null, NOW)).toBe(true)
   })
 
   it('grants access to someone who cancelled but has paid to the period end', () => {
     // The cancel screen promises "you'll keep your plan until the 14th". This
     // is the code that has to keep that promise.
-    expect(membershipGrantsAccess('CANCELLING')).toBe(true)
+    expect(membershipGrantsAccess('CANCELLING', null, NOW)).toBe(true)
   })
 
-  it('STOPS access on the first failed payment', () => {
-    // Karl, 2026-07-27 — deliberately not the "keep access through the retry
-    // window" recommendation that was in the plan.
-    expect(membershipGrantsAccess('PAST_DUE')).toBe(false)
+  it('KEEPS access after a failed payment, while Stripe is still retrying', () => {
+    // Karl, 2026-08-01, replacing the 2026-07-27 rule. Stripe retries a
+    // declined card for about two weeks and most failures are a card about to
+    // be replaced; stopping on the first miss cut people out of classes they
+    // had paid for all year.
+    expect(membershipGrantsAccess('PAST_DUE', IN_GRACE, NOW)).toBe(true)
+  })
+
+  it('stops access once the two weeks are actually up', () => {
+    expect(membershipGrantsAccess('PAST_DUE', GRACE_OVER, NOW)).toBe(false)
+  })
+
+  it('stops access for a PAST_DUE row with no window — the pre-change rows', () => {
+    // Everything that went past-due under the old rule has a null deadline and
+    // already-paused grants. It must NOT be handed access back by this change.
+    expect(membershipGrantsAccess('PAST_DUE', null, NOW)).toBe(false)
+  })
+
+  it('stops access the moment Stripe gives up, whatever the window says', () => {
+    // `unpaid` maps to CANCELLED, so an unexpired deadline cannot keep a
+    // subscription alive that Stripe has already written off.
+    expect(membershipGrantsAccess('CANCELLED', IN_GRACE, NOW)).toBe(false)
   })
 
   it('stops access for every ended or suspended state', () => {
-    expect(membershipGrantsAccess('CANCELLED')).toBe(false)
-    expect(membershipGrantsAccess('LAPSED')).toBe(false)
-    expect(membershipGrantsAccess('PAUSED')).toBe(false)
-    expect(membershipGrantsAccess('ORPHANED')).toBe(false)
+    expect(membershipGrantsAccess('CANCELLED', null, NOW)).toBe(false)
+    expect(membershipGrantsAccess('LAPSED', null, NOW)).toBe(false)
+    expect(membershipGrantsAccess('PAUSED', null, NOW)).toBe(false)
+    expect(membershipGrantsAccess('ORPHANED', null, NOW)).toBe(false)
   })
 
   it('denies access for an unrecognised status rather than defaulting open', () => {
     // A status added later must fail CLOSED until someone decides otherwise.
-    expect(membershipGrantsAccess('SOMETHING_NEW' as never)).toBe(false)
+    expect(membershipGrantsAccess('SOMETHING_NEW' as never, IN_GRACE, NOW)).toBe(false)
   })
 
   it('agrees with LIVE_SUBSCRIPTION_STATUSES about what is still running', () => {
-    // A live subscription is not the same as one granting access — PAST_DUE is
-    // live (Stripe is still retrying) but grants nothing. Pinned so the two
-    // ideas cannot quietly merge.
+    // Live and granting-access are still different ideas: PAUSED is live but
+    // grants nothing, and PAST_DUE now depends on the date.
     expect(LIVE_SUBSCRIPTION_STATUSES).toEqual(['ACTIVE', 'PAST_DUE', 'CANCELLING', 'PAUSED'])
-    expect(LIVE_SUBSCRIPTION_STATUSES.filter(membershipGrantsAccess)).toEqual(['ACTIVE', 'CANCELLING'])
+    expect(LIVE_SUBSCRIPTION_STATUSES.filter(s => membershipGrantsAccess(s, IN_GRACE, NOW)))
+      .toEqual(['ACTIVE', 'PAST_DUE', 'CANCELLING'])
+    expect(LIVE_SUBSCRIPTION_STATUSES.filter(s => membershipGrantsAccess(s, GRACE_OVER, NOW)))
+      .toEqual(['ACTIVE', 'CANCELLING'])
+  })
+
+  it('gives exactly two weeks from the first miss', () => {
+    const failedAt = new Date('2026-08-01T09:00:00Z')
+    const deadline = graceDeadline(failedAt)
+    expect(MEMBERSHIP_GRACE_DAYS).toBe(14)
+    expect(deadline.toISOString()).toBe('2026-08-15T09:00:00.000Z')
+    // The boundary belongs to the client.
+    expect(membershipGrantsAccess('PAST_DUE', deadline, new Date('2026-08-14T23:59:00Z'))).toBe(true)
+    expect(membershipGrantsAccess('PAST_DUE', deadline, new Date('2026-08-15T09:00:01Z'))).toBe(false)
   })
 })
 
 describe('accessPausedReason', () => {
-  it('tells a past-due client what happened and what to do', () => {
-    const reason = accessPausedReason('PAST_DUE')
+  it('tells a client inside the window the DEADLINE, and never says "paused"', () => {
+    // During the window nothing is paused. Saying it is would send them
+    // chasing a problem that has not happened, and the date is the only part
+    // that changes what they do.
+    const reason = accessPausedReason('PAST_DUE', IN_GRACE, NOW)
     expect(reason).toContain('didn’t go through')
+    expect(reason).toContain('10 August')
+    expect(reason).not.toContain('paused')
+  })
+
+  it('tells a client whose window has closed that the plan IS paused', () => {
+    const reason = accessPausedReason('PAST_DUE', GRACE_OVER, NOW)
     expect(reason).toContain('paused')
     expect(reason).toContain('Update your card')
   })
 
   it('makes clear an orphaned plan was not the client’s doing, and that they are not being charged', () => {
-    const reason = accessPausedReason('ORPHANED')
+    const reason = accessPausedReason('ORPHANED', null, NOW)
     expect(reason).toContain('trainer has stopped taking payments')
     expect(reason).toContain('haven’t been charged again')
   })
 
   it('says nothing when they do have access', () => {
-    expect(accessPausedReason('ACTIVE')).toBeNull()
-    expect(accessPausedReason('CANCELLING')).toBeNull()
+    expect(accessPausedReason('ACTIVE', null, NOW)).toBeNull()
+    expect(accessPausedReason('CANCELLING', null, NOW)).toBeNull()
   })
 })
 

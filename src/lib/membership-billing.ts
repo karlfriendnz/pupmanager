@@ -12,6 +12,7 @@ import {
 import { RECURRING_CONSENT_VERSION } from './membership-consent-copy'
 import {
   LIVE_SUBSCRIPTION_STATUSES,
+  graceDeadline,
   membershipGrantsAccess,
   restoreMembershipGrants,
   suspendMembershipGrants,
@@ -221,7 +222,7 @@ export async function syncSubscription(sub: Stripe.Subscription, sandbox: boolea
     // backstop if they somehow do).
     const existing = await tx.membershipPurchase.findUnique({
       where: { stripeSubscriptionId: sub.id },
-      select: { id: true, status: true, accessPausedAt: true },
+      select: { id: true, status: true, accessPausedAt: true, accessGraceUntil: true },
     })
 
     if (existing) {
@@ -247,6 +248,8 @@ export async function syncSubscription(sub: Stripe.Subscription, sandbox: boolea
                 failedPaymentCount: 0,
                 lastPaymentFailedAt: null,
                 accessPausedAt: null,
+                // The episode is over; the next failure opens a fresh window.
+                accessGraceUntil: null,
                 ...(existing.accessPausedAt ? { accessRestoredAt: new Date() } : {}),
               }
             : {}),
@@ -258,7 +261,10 @@ export async function syncSubscription(sub: Stripe.Subscription, sandbox: boolea
       // move a subscription out of past_due on its own (a retry we never saw an
       // invoice event for), and if only the status moved the client would be
       // left with an active plan and everything still switched off.
-      if (membershipGrantsAccess(status)) {
+      // PAST_DUE now depends on the grace window, so the deadline goes in too —
+      // without it a mid-grace subscription.updated would suspend the very
+      // grants the grace exists to protect.
+      if (membershipGrantsAccess(status, existing.accessGraceUntil)) {
         await restoreMembershipGrants(tx, existing.id)
       } else {
         await suspendMembershipGrants(tx, existing.id)
@@ -527,6 +533,8 @@ export async function recordInvoicePaid(
         failedPaymentCount: 0,
         lastPaymentFailedAt: null,
         accessPausedAt: null,
+        // Paid: the dunning episode is closed and the window with it.
+        accessGraceUntil: null,
         ...(wasPaused ? { accessRestoredAt: new Date() } : {}),
       },
     })
@@ -605,11 +613,16 @@ export async function recordInvoicePaymentFailed(
 
   const purchase = await prisma.membershipPurchase.findUnique({
     where: { stripeSubscriptionId: subscriptionId },
-    select: { id: true, trainerId: true, clientId: true, membershipId: true },
+    select: { id: true, trainerId: true, clientId: true, membershipId: true, accessGraceUntil: true },
   })
   if (!purchase) return
 
   const currency = (invoice.currency ?? 'nzd').toLowerCase()
+
+  // The window opens on the FIRST failure of an episode and is then left alone.
+  // Recomputing it on every retry would push the deadline out each time Stripe
+  // tried again, and the two weeks would never actually end.
+  const graceUntil = purchase.accessGraceUntil ?? graceDeadline(new Date())
 
   await prisma.$transaction(async (tx) => {
     await tx.membershipInvoice.upsert({
@@ -642,14 +655,17 @@ export async function recordInvoicePaymentFailed(
         status: 'PAST_DUE',
         lastPaymentFailedAt: new Date(),
         failedPaymentCount: Math.max(1, invoice.attempt_count ?? 1),
-        accessPausedAt: new Date(),
-        accessRestoredAt: null,
+        // NOT paused. Access survives the failure — see the rule at the top of
+        // membership-access.ts. accessPausedAt is set later, by the sweep, if
+        // and only if the window closes without a payment.
+        accessGraceUntil: graceUntil,
       },
     })
 
-    // Pause what the plan granted. Idempotent, so a redelivered
-    // invoice.payment_failed pauses nothing twice and loses nothing.
-    await suspendMembershipGrants(tx, purchase.id)
+    // Deliberately NOT suspending the grants here. Stripe is still retrying and
+    // most of these are a card about to be replaced; taking a client's classes
+    // away on the first miss punished them for something that had not finished
+    // going wrong yet.
   })
 
   await notifyPaymentFailed({
@@ -659,6 +675,7 @@ export async function recordInvoicePaymentFailed(
     amountCents: invoice.amount_due ?? 0,
     currency,
     hostedInvoiceUrl: invoice.hosted_invoice_url ?? null,
+    graceUntil,
   })
 }
 
@@ -1000,6 +1017,8 @@ async function notifyPaymentFailed(args: {
   amountCents: number
   currency: string
   hostedInvoiceUrl?: string | null
+  /** End of the grace window, so the message can name the date. */
+  graceUntil: Date
 }): Promise<void> {
   const [membership, trainer, client] = await Promise.all([
     prisma.membership.findUnique({ where: { id: args.membershipId }, select: { name: true } }),
@@ -1015,10 +1034,14 @@ async function notifyPaymentFailed(args: {
   const planName = membership?.name ?? 'your plan'
   const amount = formatMoney(args.amountCents, args.currency)
 
-  // Access has just stopped, so this is not a nicety — it is the ONLY thing
-  // standing between the client and losing their sessions with no explanation.
-  // Says three things in order: it didn't go through, your plan is paused, here
-  // is how to turn it back on. Never shaming: most of these are an expired card.
+  const by = args.graceUntil.toLocaleDateString('en-NZ', { day: 'numeric', month: 'long' })
+
+  // Access has NOT stopped — that is the point of the change on 2026-08-01, and
+  // the message has to match, or a client who still has everything is told
+  // their plan is paused and rings the trainer about a problem that hasn't
+  // happened. Three things in order: it didn't go through, nothing has stopped
+  // yet, here is the date by which it needs fixing. Never shaming: most of
+  // these are an expired card.
   if (client?.user?.id) {
     await notifyClient({
       userId: client.user.id,
@@ -1027,7 +1050,7 @@ async function notifyPaymentFailed(args: {
       vars: {
         trainerName: trainer?.businessName ?? 'Your trainer',
         amount,
-        description: `${planName} — your payment didn’t go through, so your plan is paused. Update your card to turn it back on.`,
+        description: `${planName} — your payment didn’t go through. Nothing has stopped yet: update your card before ${by} and everything carries on as normal.`,
       },
       link: '/my-memberships',
       ctaLabel: 'Update your card',
@@ -1041,7 +1064,7 @@ async function notifyPaymentFailed(args: {
       {
         clientName: client?.user?.name ?? 'A client',
         dogName: '',
-        detail: `had a payment of ${amount} fail for “${planName}” — their plan is paused until it clears`,
+        detail: `had a payment of ${amount} fail for “${planName}” — they keep access until ${by} while it retries`,
       },
       `/clients/${args.clientId}`,
       args.trainerId,

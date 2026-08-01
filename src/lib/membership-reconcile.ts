@@ -52,7 +52,7 @@ export async function reconcileTrainerSubscriptions(trainerId: string): Promise<
       status: { in: LIVE_SUBSCRIPTION_STATUSES },
       stripeSubscriptionId: { not: null },
     },
-    select: { id: true, status: true, stripeSubscriptionId: true, cancelAtPeriodEnd: true },
+    select: { id: true, status: true, stripeSubscriptionId: true, cancelAtPeriodEnd: true, accessGraceUntil: true },
   })
 
   const stripe = stripeFor(trainer.sandboxBilling)
@@ -101,7 +101,10 @@ export async function reconcileTrainerSubscriptions(trainerId: string): Promise<
       })
       // A status that drifted has almost certainly left the grants drifted too
       // — fixing one without the other is how a half-revoked membership sticks.
-      if (membershipGrantsAccess(truth)) {
+      // The grace window travels with the status: a subscription that drifted
+      // INTO past_due mid-window must keep its grants, not lose them to a
+      // nightly job the client never sees.
+      if (membershipGrantsAccess(truth, p.accessGraceUntil)) {
         await restoreMembershipGrants(tx, p.id)
       } else {
         await suspendMembershipGrants(tx, p.id)
@@ -142,4 +145,55 @@ export async function reconcileAllSubscriptions(): Promise<ReconcileResult> {
   }
 
   return total
+}
+
+/**
+ * Close the grace window on anyone whose two weeks are up.
+ *
+ * The counterpart to the rule in membership-access.ts: a failed payment no
+ * longer stops access on the spot, so SOMETHING has to stop it when the window
+ * actually expires. Nothing in a webhook can — Stripe sends no event on the day
+ * a deadline we invented passes — so it is swept nightly by the same cron that
+ * reconciles subscriptions.
+ *
+ * Scoped hard: PAST_DUE only, window genuinely elapsed, and not already paused.
+ * A client whose retry succeeded is ACTIVE with a null window and is never
+ * touched; a client already paused is not re-paused and re-notified every night.
+ *
+ * Suspending, never deleting — exactly what the old first-failure path did, just
+ * two weeks later and only once it is really true that they have not paid.
+ */
+export async function sweepExpiredGrace(now: Date = new Date()): Promise<{ paused: number }> {
+  const expired = await prisma.membershipPurchase.findMany({
+    where: {
+      status: 'PAST_DUE',
+      accessGraceUntil: { not: null, lte: now },
+      accessPausedAt: null,
+    },
+    select: { id: true, trainerId: true, clientId: true, membershipId: true },
+  })
+  if (expired.length === 0) return { paused: 0 }
+
+  for (const p of expired) {
+    // One transaction each: a single client whose grants fail to suspend must
+    // not stop everyone else's window from closing.
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.membershipPurchase.updateMany({
+          // Re-checked inside the transaction, so a payment that landed between
+          // the read above and here wins — the client keeps everything.
+          where: { id: p.id, status: 'PAST_DUE', accessPausedAt: null },
+          data: { accessPausedAt: now, accessRestoredAt: null },
+        })
+        await suspendMembershipGrants(tx, p.id, now)
+      })
+      console.error('[membership-reconcile] grace expired, access paused', {
+        purchaseId: p.id, clientId: p.clientId, membershipId: p.membershipId,
+      })
+    } catch (err) {
+      console.error('[membership-reconcile] could not close grace window', { purchaseId: p.id, err })
+    }
+  }
+
+  return { paused: expired.length }
 }
