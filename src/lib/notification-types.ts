@@ -353,6 +353,24 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     placeholders: ['trainerName', 'dogName', 'planName', 'detail', 'description'],
     sampleValues: { trainerName: 'Jess', dogName: 'Bailey', planName: 'Puppy Foundations', detail: '6 sessions · Thursdays 6pm', description: 'Six weeks of the basics — sit, recall, loose-leash walking — for pups under 6 months.' },
   },
+  CLIENT_MEMBERSHIP_INVITE: {
+    type: 'CLIENT_MEMBERSHIP_INVITE',
+    label: 'Invited to a package',
+    description: 'When your trainer opens a restricted package up to you.',
+    trigger: 'event',
+    audience: 'client',
+    channels: ['PUSH', 'EMAIL', 'IN_APP'],
+    defaultChannels: ['PUSH', 'EMAIL', 'IN_APP'],
+    defaults: {
+      enabled: true,
+      title: 'You’ve been invited',
+      // "can now join", never "has joined" — an invitation is an opening, and
+      // they still have to choose it and pay for it.
+      body: '{{trainerName}} has opened {{planName}} up to you — you can now join it.',
+    },
+    placeholders: ['trainerName', 'dogName', 'planName', 'detail', 'description'],
+    sampleValues: { trainerName: 'Jess', dogName: 'Bailey', planName: 'Seniors', detail: '$150 / month', description: 'The next rung up.' },
+  },
   CLIENT_SESSION_DIGEST: {
     type: 'CLIENT_SESSION_DIGEST',
     label: 'Morning summary',

@@ -36,6 +36,9 @@ function makeTx(membership: unknown = MEMBERSHIP) {
     // pause exactly what this plan gave the client.
     membershipPurchase: { create: vi.fn().mockResolvedValue({ id: 'purchase1' }) },
     clientPackage: { update: vi.fn().mockResolvedValue({}) },
+    // An invitation that has just been taken up. updateMany, so a package
+    // nobody was invited to is a silent no-op.
+    membershipRequest: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
   }
 }
 

@@ -100,6 +100,21 @@ export async function fulfilMembershipInTx(
   // to be findable. A one-off is paid for once and never taken away.
   const grantOwnerId = r ? purchase.id : null
 
+  // An invitation that has been taken up. Marked here rather than in the buy
+  // route because this is the ONE place a membership is ever granted — by
+  // checkout, by an upgrade, or by a trainer accepting a request — so an
+  // invitation cannot end up still reading "waiting" after the client joined.
+  // updateMany, so a package with no invitation is a silent no-op.
+  await tx.membershipRequest.updateMany({
+    where: {
+      clientId: args.clientId,
+      membershipId: membership.id,
+      reason: 'INVITE',
+      status: 'PENDING',
+    },
+    data: { status: 'FULFILLED', fulfilledAt: now },
+  })
+
   for (const item of membership.items) {
     const qty = Math.max(1, item.quantity)
 

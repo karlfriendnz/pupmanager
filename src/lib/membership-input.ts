@@ -39,6 +39,14 @@ export const membershipCreateSchema = z.object({
   minTermCount: z.number().int().min(0).max(120).optional(),
   earlyTermFeeCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
   published: z.boolean().optional(),
+  // WHO the package is for. Separate from `published`, which is about whether
+  // it is finished. A locked package is still published — showing someone the
+  // rung above them is the point.
+  eligibility: z.enum(['PUBLIC', 'ACHIEVEMENT', 'INVITE_ONLY']).optional(),
+  showWhenLocked: z.boolean().optional(),
+  // Achievement ids a client must ALREADY hold, all of them. Sending an empty
+  // array clears the gate; omitting the key leaves it untouched.
+  prerequisiteAchievementIds: z.array(z.string()).max(20).optional(),
   // RECURRING billing options — the client picks one. Empty for ONE_OFF.
   plans: z.array(z.object({
     interval: z.enum(['WEEK', 'FORTNIGHT', 'MONTH']),

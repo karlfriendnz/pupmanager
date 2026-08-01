@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
   hasAddon: vi.fn(),
   notifyTrainer: vi.fn(),
   enforceRateLimit: vi.fn(),
+  checkEligibility: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -32,6 +33,12 @@ vi.mock('@/lib/client-context', () => ({ getActiveClient: h.getActiveClient }))
 vi.mock('@/lib/billing', () => ({ hasAddon: h.hasAddon }))
 vi.mock('@/lib/trainer-notify', () => ({ notifyTrainer: h.notifyTrainer }))
 vi.mock('@/lib/rate-limit', () => ({ enforceRateLimit: h.enforceRateLimit }))
+// The eligibility RULE has its own suite (membership-eligibility.test.ts);
+// what matters here is that this route consults it and refuses when it says no.
+vi.mock('@/lib/membership-eligibility', () => ({
+  checkEligibility: h.checkEligibility,
+  describeMissing: vi.fn(async () => []),
+}))
 
 import { POST, DELETE } from '@/app/api/my/memberships/[membershipId]/request/route'
 
@@ -54,9 +61,26 @@ beforeEach(() => {
   h.requestFindFirst.mockResolvedValue(null)
   h.requestCreate.mockImplementation(async ({ data }: { data: unknown }) => ({ id: 'req1', ...(data as object) }))
   h.notifyTrainer.mockResolvedValue(undefined)
+  h.checkEligibility.mockResolvedValue({ eligible: true, lockedReason: null, missing: [] })
 })
 
 describe('POST /api/my/memberships/[id]/request', () => {
+  it('403s a package the client is not eligible for — asking is not a way past the ladder', async () => {
+    // Without this, "Request this" is a route around eligibility: the request
+    // reaches the trainer looking like any other, and a trainer working through
+    // their list might simply accept it.
+    h.getActiveClient.mockResolvedValue({ clientId: 'c1', isPreview: false })
+    h.clientFindUnique.mockResolvedValue({ id: 'c1', trainerId: 't1', user: { name: 'Sam' }, dog: { name: 'Bo' }, trainer: { user: { id: 'u_t' } }, assignedTrainer: null })
+    h.membershipFindFirst.mockResolvedValue({ id: 'm1', name: 'Seniors', priceCents: 0, cadence: 'RECURRING', eligibility: 'ACHIEVEMENT' })
+    h.checkEligibility.mockResolvedValue({ eligible: false, lockedReason: 'ACHIEVEMENT', missing: ['a1'] })
+
+    const res = await POST(req(), PARAMS)
+
+    expect(res.status).toBe(403)
+    expect(h.requestCreate).not.toHaveBeenCalled()
+    expect(h.notifyTrainer).not.toHaveBeenCalled()
+  })
+
   it('401s a caller with no client context', async () => {
     h.getActiveClient.mockResolvedValue(null)
     expect((await POST(req(), PARAMS)).status).toBe(401)

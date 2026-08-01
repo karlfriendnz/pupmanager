@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // been switched on for recurring take a recurring payment at all.
 
 const h = vi.hoisted(() => ({
+  checkEligibility: vi.fn(),
   getActiveClient: vi.fn(),
   clientFindUnique: vi.fn(),
   membershipFindFirst: vi.fn(),
@@ -29,6 +30,12 @@ vi.mock('@/lib/client-context', () => ({ getActiveClient: h.getActiveClient }))
 vi.mock('@/lib/rate-limit', () => ({ enforceRateLimit: h.enforceRateLimit, getClientIp: h.getClientIp }))
 vi.mock('@/lib/billing', () => ({ hasAddon: h.hasAddon }))
 vi.mock('@/lib/connect', () => ({ isConnectConfigured: h.isConnectConfigured }))
+// The eligibility RULE has its own suite (membership-eligibility.test.ts).
+// Open by default here; the refusal is asserted in its own test below.
+vi.mock('@/lib/membership-eligibility', () => ({
+  checkEligibility: h.checkEligibility,
+  describeMissing: vi.fn(async () => ['Bronze Recall']),
+}))
 vi.mock('@/lib/connect-checkout', () => ({ createConnectCheckout: h.createConnectCheckout }))
 // PARTIAL mock: the Stripe-touching calls are stubbed, but the pure helpers
 // (intervalLabel, addCycles) stay real because the consent copy is built from
@@ -76,10 +83,12 @@ beforeEach(() => {
   h.enforceRateLimit.mockResolvedValue(null)
   h.hasAddon.mockResolvedValue(true)
   h.isConnectConfigured.mockReturnValue(true)
+  h.checkEligibility.mockResolvedValue({ eligible: true, lockedReason: null, missing: [] })
   h.getActiveClient.mockResolvedValue({ clientId: 'c1', userId: 'u1', isPreview: false })
   h.clientFindUnique.mockResolvedValue({ id: 'c1', trainerId: 't1', user: { email: 'a@b.c', name: 'Sarah' } })
   h.membershipFindFirst.mockResolvedValue({
-    id: 'm1', name: 'Starter', priceCents: 0, cadence: 'RECURRING', interval: 'MONTH', plans: [PLAN],
+    id: 'm1', name: 'Starter', priceCents: 0, cadence: 'RECURRING', interval: 'MONTH',
+    eligibility: 'PUBLIC', plans: [PLAN],
   })
   h.trainerFindUnique.mockResolvedValue({
     acceptPaymentsEnabled: true, connectChargesEnabled: true, connectAccountId: 'acct_1',
@@ -91,6 +100,36 @@ beforeEach(() => {
   h.ensureCustomer.mockResolvedValue('cus_1')
   h.ensurePlanPrice.mockResolvedValue('price_1')
   h.createSubscriptionCheckout.mockResolvedValue({ id: 'cs_1', url: 'https://stripe/checkout' })
+})
+
+describe('eligibility', () => {
+  it('403s a package this client has not earned, before any Stripe call', async () => {
+    // The storefront already greys the card out. This is the same rule applied
+    // where it actually binds: a POST straight at the route, which is the only
+    // version of the ladder that cannot be walked around.
+    h.checkEligibility.mockResolvedValue({ eligible: false, lockedReason: 'ACHIEVEMENT', missing: ['a1'] })
+
+    const res = await POST(req(), params())
+
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ lockedReason: 'ACHIEVEMENT' })
+    expect(h.ensureConsent).not.toHaveBeenCalled()
+    expect(h.createSubscriptionCheckout).not.toHaveBeenCalled()
+  })
+
+  it('403s an invite-only package with no invitation on file', async () => {
+    h.checkEligibility.mockResolvedValue({ eligible: false, lockedReason: 'INVITE_ONLY', missing: [] })
+
+    const res = await POST(req(), params())
+
+    expect(res.status).toBe(403)
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining('invitation') })
+  })
+
+  it('lets an eligible client straight through', async () => {
+    const res = await POST(req(), params())
+    expect(res.status).toBe(201)
+  })
 })
 
 describe('tenancy', () => {

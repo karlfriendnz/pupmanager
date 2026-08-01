@@ -242,6 +242,67 @@ export async function createSubscriptionCheckout(args: {
 }
 
 /**
+ * Move a live subscription onto a different plan's Price — the upgrade path.
+ *
+ * The existing Subscription is KEPT and its single item re-priced, rather than
+ * cancelled and replaced. That matters for three reasons: the client is not
+ * charged a fresh full period on the day they switch, the card and billing
+ * anchor carry over untouched, and there is never a moment where two live
+ * subscriptions exist for one person (the exact shape that cost a customer a
+ * double charge in July).
+ *
+ * PRORATION. An UPGRADE invoices immediately for the balance of the period at
+ * the new rate, so the better package is paid for from the moment it starts —
+ * the alternative is a free run now and an unexplained larger bill next month.
+ * A DOWNGRADE only writes credit lines, which land on the next invoice: taking
+ * money at the moment someone chooses to pay less would be indefensible, and
+ * refunding to card for a plan change they initiated is not what they asked for.
+ *
+ * The metadata is REPLACED, not merged, because it is what every later webhook
+ * uses to work out which package a subscription belongs to. A stale membershipId
+ * left behind here would attribute next month's payment to the old package.
+ */
+export async function switchSubscriptionPrice(args: {
+  subscriptionId: string
+  newPriceId: string
+  connectAccountId: string
+  sandbox: boolean
+  /** Full replacement metadata — membershipId, planId, clientId, trainerId, consentId. */
+  metadata: Record<string, string>
+  /** True when the new plan costs more per period than the old one. */
+  isUpgrade: boolean
+  currency: string
+  idempotencyKey: string
+}): Promise<Stripe.Subscription> {
+  const stripe = stripeFor(args.sandbox)
+  const opts = { stripeAccount: args.connectAccountId }
+
+  const sub = await stripe.subscriptions.retrieve(args.subscriptionId, {}, opts)
+  const item = sub.items.data[0]
+  if (!item) throw new Error(`Subscription ${args.subscriptionId} has no items to re-price`)
+
+  const feePercent = applicationFeePercentFor(args.currency)
+
+  return stripe.subscriptions.update(
+    args.subscriptionId,
+    {
+      // Passing the EXISTING item id is what re-prices it. Omitting the id
+      // would add a second line and bill them for both packages.
+      items: [{ id: item.id, price: args.newPriceId }],
+      proration_behavior: args.isUpgrade ? 'always_invoice' : 'create_prorations',
+      metadata: args.metadata,
+      ...(feePercent != null ? { application_fee_percent: feePercent } : {}),
+    },
+    {
+      ...opts,
+      // A double-tapped Upgrade must re-price once. Anchored on our own consent
+      // id, so both taps produce the same key.
+      idempotencyKey: args.idempotencyKey,
+    },
+  )
+}
+
+/**
  * A hosted Stripe Checkout Session in `mode: 'setup'` — it collects a new card
  * and saves it against the customer WITHOUT charging anything.
  *

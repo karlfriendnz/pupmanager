@@ -13,7 +13,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params
   const membership = await prisma.membership.findFirst({
     where: { id, trainerId: ctx.companyId },
-    include: { items: { orderBy: { order: 'asc' } }, plans: { orderBy: { order: 'asc' } } },
+    include: {
+      items: { orderBy: { order: 'asc' } },
+      plans: { orderBy: { order: 'asc' } },
+      prerequisites: { select: { achievementId: true } },
+    },
   })
   if (!membership) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(membership)
@@ -35,6 +39,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       if (d.items.length && !(await itemsOwnedByTrainer(tx, ctx.companyId, d.items))) return null
       await tx.membershipItem.deleteMany({ where: { membershipId: id } })
       if (d.items.length) await tx.membershipItem.createMany({ data: itemRows(id, d.items) })
+    }
+    // The prerequisite set is replaced wholesale when sent, and only ever with
+    // achievements this trainer owns — a foreign id here would gate a package
+    // on something the client could never be awarded.
+    if (d.prerequisiteAchievementIds !== undefined) {
+      const ids = [...new Set(d.prerequisiteAchievementIds)]
+      if (ids.length) {
+        const mine = await tx.achievement.count({ where: { id: { in: ids }, trainerId: ctx.companyId } })
+        if (mine !== ids.length) return null
+      }
+      await tx.membershipPrerequisite.deleteMany({ where: { membershipId: id } })
+      if (ids.length) {
+        await tx.membershipPrerequisite.createMany({
+          data: ids.map(achievementId => ({ membershipId: id, achievementId })),
+          skipDuplicates: true,
+        })
+      }
     }
     if (d.plans !== undefined) {
       // A plan someone is actually subscribed to must NOT be deleted. Stripe
@@ -89,8 +110,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         ...(d.minTermCount !== undefined ? { minTermCount: d.minTermCount } : {}),
         ...(d.earlyTermFeeCents !== undefined ? { earlyTermFeeCents: d.earlyTermFeeCents } : {}),
         ...(d.published !== undefined ? { published: d.published } : {}),
+        ...(d.eligibility !== undefined ? { eligibility: d.eligibility } : {}),
+        ...(d.showWhenLocked !== undefined ? { showWhenLocked: d.showWhenLocked } : {}),
       },
-      include: { items: { orderBy: { order: 'asc' } }, plans: { orderBy: { order: 'asc' } } },
+      include: {
+        items: { orderBy: { order: 'asc' } },
+        plans: { orderBy: { order: 'asc' } },
+        prerequisites: { select: { achievementId: true } },
+      },
     })
   })
 

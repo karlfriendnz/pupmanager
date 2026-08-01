@@ -4,6 +4,7 @@ import { getActiveClient } from '@/lib/client-context'
 import { enforceRateLimit } from '@/lib/rate-limit'
 import { hasAddon } from '@/lib/billing'
 import { notifyTrainer } from '@/lib/trainer-notify'
+import { checkEligibility, type EligibilityMode } from '@/lib/membership-eligibility'
 
 // "Request this" for a membership the client CAN'T check out themselves.
 //
@@ -54,9 +55,23 @@ export async function POST(_req: Request, { params }: { params: Promise<{ member
   // Tenant-scoped: a membership id from another trainer resolves to nothing.
   const membership = await prisma.membership.findFirst({
     where: { id: membershipId, trainerId: profile.trainerId, published: true },
-    select: { id: true, name: true, priceCents: true, cadence: true },
+    select: { id: true, name: true, priceCents: true, cadence: true, eligibility: true },
   })
   if (!membership) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // Asking for a locked package is still asking for it. A client who cannot
+  // join must not be able to put a request in front of the trainer either —
+  // otherwise "request this" is a way around the ladder that arrives as an
+  // ordinary-looking notification the trainer might just accept.
+  const gate = await checkEligibility({
+    membershipId: membership.id,
+    clientId: profile.id,
+    mode: membership.eligibility as EligibilityMode,
+    subscribed: false,
+  })
+  if (!gate.eligible) {
+    return NextResponse.json({ error: 'You can’t join this one yet.' }, { status: 403 })
+  }
 
   // Only for what can't be bought. Anything checkout WOULD take must go through
   // checkout — otherwise "request" becomes a way to skip paying.

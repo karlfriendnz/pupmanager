@@ -1,5 +1,10 @@
 import { prisma } from './prisma'
 import { hasAddon } from './billing'
+import {
+  loadEligibilityContext,
+  resolveEligibility,
+  type EligibilityMode,
+} from './membership-eligibility'
 import { describePlanCommitment } from './membership-consent-copy'
 import { accessPausedReason } from './membership-access'
 import { formatMoney } from './money'
@@ -51,6 +56,16 @@ export interface ClientMembership {
   needsConsent: boolean
   /** The client is already subscribed — the card says so instead of selling again. */
   subscribed: boolean
+  /**
+   * May THIS client join it at all? Separate from `buyable`, which is about
+   * whether money can change hands. A package can be perfectly buyable and
+   * still not be theirs to buy.
+   */
+  eligible: boolean
+  /** Why it's locked, for the card's wording. Null when they can join. */
+  lockedReason: 'ACHIEVEMENT' | 'INVITE_ONLY' | null
+  /** Names of the achievements still needed — "You still need: Bronze Recall". */
+  missingAchievements: string[]
   /**
    * RECURRING + buyable only: the exact sentences the consent screen must show,
    * built server-side by the SAME function that writes the stored consent, so
@@ -254,6 +269,21 @@ export async function loadPublishedMemberships(trainerId: string, clientId?: str
       })).map(p => p.membershipId))
     : new Set<string>()
 
+  // Who may join what. One pass for the whole list rather than per card.
+  const eligibilityCtx = await loadEligibilityContext({
+    membershipIds: memberships.map(m => m.id),
+    clientId,
+  })
+  // Names for the achievements anyone is short of, resolved in one query.
+  const gateIds = new Set<string>()
+  for (const ids of eligibilityCtx.requiresByMembership.values()) for (const id of ids) gateIds.add(id)
+  const achievementName = gateIds.size
+    ? new Map((await prisma.achievement.findMany({
+        where: { id: { in: [...gateIds] } },
+        select: { id: true, name: true },
+      })).map(a => [a.id, a.name]))
+    : new Map<string, string>()
+
   const nameOf = new Map<string, string>([...pkgs, ...runs, ...prods].map(x => [x.id, x.name]))
   const imgOf = new Map<string, string | null>([...runs, ...prods].map(x => [x.id, x.imageUrl ?? null]))
   const descOf = new Map<string, string | null>([
@@ -262,10 +292,21 @@ export async function loadPublishedMemberships(trainerId: string, clientId?: str
     ...prods.map(x => [x.id, x.description ?? null] as const),
   ])
 
-  return memberships.map(m => {
+  return memberships.flatMap(m => {
     // Defensive: a membership row always carries a plans array from Prisma, but
     // reading [0] off an undefined here would take the whole storefront down.
     const plans = m.plans ?? []
+    const eligibility = resolveEligibility({
+      mode: m.eligibility as EligibilityMode,
+      requires: eligibilityCtx.requiresByMembership.get(m.id) ?? [],
+      holds: eligibilityCtx.holds,
+      invited: eligibilityCtx.invitedTo.has(m.id),
+      subscribed: subscribedIds.has(m.id),
+    })
+    // Hidden means hidden: a package the trainer chose not to advertise to
+    // people who can't join it drops out of the list entirely. `showWhenLocked`
+    // is the trainer's call between "work towards this" and "not your business".
+    if (!eligibility.eligible && !m.showWhenLocked) return []
     const buyability = resolveBuyability({
       cadence: m.cadence as 'ONE_OFF' | 'RECURRING',
       priceCents: m.priceCents,
@@ -300,7 +341,7 @@ export async function loadPublishedMemberships(trainerId: string, clientId?: str
     const plan = plans[0] ?? null
     const consent = buyability.needsConsent && plan ? copyFor(plan) : null
 
-    return {
+    return [{
     id: m.id, name: m.name, description: m.description, priceCents: m.priceCents,
     imageUrl: m.imageUrl, bgColor: m.bgColor, headerColor: m.headerColor, textColor: m.textColor, featuredColor: m.featuredColor,
     buttonBgColor: m.buttonBgColor, buttonTextColor: m.buttonTextColor, buttonText: m.buttonText,
@@ -316,6 +357,12 @@ export async function loadPublishedMemberships(trainerId: string, clientId?: str
         }))
       : [],
     ...buyability,
+    // Eligibility wins over buyability for the BUTTON: a locked package must
+    // never render a working Subscribe, whatever the payment side says.
+    buyable: buyability.buyable && eligibility.eligible,
+    eligible: eligibility.eligible,
+    lockedReason: eligibility.lockedReason,
+    missingAchievements: eligibility.missing.map(id => achievementName.get(id) ?? '').filter(Boolean),
     requested: requestedIds.has(m.id),
     subscribed: subscribedIds.has(m.id),
     consent,
@@ -330,6 +377,6 @@ export async function loadPublishedMemberships(trainerId: string, clientId?: str
         }
       })
       .filter(x => x.label),
-    }
+    }]
   })
 }

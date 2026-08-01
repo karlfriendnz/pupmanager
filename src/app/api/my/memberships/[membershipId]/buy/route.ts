@@ -10,6 +10,7 @@ import {
   type PlanInterval,
 } from '@/lib/connect-subscriptions'
 import { describePlanCommitment, ensureConsent, findLiveSubscription } from '@/lib/membership-billing'
+import { checkEligibility, describeMissing, type EligibilityMode } from '@/lib/membership-eligibility'
 import { enforceRateLimit, getClientIp } from '@/lib/rate-limit'
 import { hasAddon } from '@/lib/billing'
 import { env } from '@/lib/env'
@@ -53,13 +54,44 @@ export async function POST(req: Request, { params }: { params: Promise<{ members
   const membership = await prisma.membership.findFirst({
     where: { id: membershipId, trainerId: profile.trainerId, published: true },
     select: {
-      id: true, name: true, priceCents: true, cadence: true, interval: true,
+      id: true, name: true, priceCents: true, cadence: true, interval: true, eligibility: true,
       // Archived plans keep billing their existing subscribers but can never be
       // sold again — a new subscription always uses a current plan.
       plans: { where: { archivedAt: null }, orderBy: { order: 'asc' }, select: { id: true, interval: true, priceCents: true, minTermCount: true, earlyTermFeeCents: true } },
     },
   })
   if (!membership) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  // ─── ELIGIBILITY ──────────────────────────────────────────────────────────
+  // The gate, re-derived here from the database. The storefront's copy of this
+  // answer is a rendering hint; a POST straight at this route is exactly the
+  // case it would not stop. Applies to one-off and recurring alike — a ladder
+  // that only held for subscriptions would be no ladder at all.
+  //
+  // `subscribed` is passed so someone already on the package is never locked
+  // out of it by a prerequisite added after they joined.
+  const alreadyOn = await findLiveSubscription(profile.id, membership.id)
+  const gate = await checkEligibility({
+    membershipId: membership.id,
+    clientId: profile.id,
+    mode: membership.eligibility as EligibilityMode,
+    subscribed: !!alreadyOn,
+  })
+  if (!gate.eligible) {
+    const missing = await describeMissing(gate.missing)
+    return NextResponse.json(
+      {
+        error:
+          gate.lockedReason === 'INVITE_ONLY'
+            ? 'This one is by invitation from your trainer.'
+            : missing.length
+              ? `You need ${missing.join(' and ')} before you can join this.`
+              : 'You can’t join this one yet.',
+        lockedReason: gate.lockedReason,
+      },
+      { status: 403 },
+    )
+  }
 
   const trainer = await prisma.trainerProfile.findUnique({
     where: { id: profile.trainerId },
@@ -114,8 +146,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ members
     }
 
     // One live subscription per client per membership. Without this, a second
-    // Subscribe stacks a second recurring charge on the same plan.
-    const live = await findLiveSubscription(profile.id, membership.id)
+    // Subscribe stacks a second recurring charge on the same plan. (Resolved
+    // above for the eligibility check — the same row, not a second query.)
+    const live = alreadyOn
     if (live) {
       return NextResponse.json({ error: 'You’re already on this plan.' }, { status: 409 })
     }

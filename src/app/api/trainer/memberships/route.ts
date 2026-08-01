@@ -42,10 +42,22 @@ export async function POST(req: Request) {
         priceCents: d.priceCents, cadence: d.cadence, interval: d.interval ?? null,
         minTermCount: d.minTermCount ?? 0, earlyTermFeeCents: d.earlyTermFeeCents ?? null,
         published: d.published ?? false, order: (last?.order ?? -1) + 1,
+        eligibility: d.eligibility ?? 'PUBLIC', showWhenLocked: d.showWhenLocked ?? true,
       },
     })
     if (d.items.length) await tx.membershipItem.createMany({ data: itemRows(m.id, d.items) })
     if (d.plans?.length) await tx.membershipPlan.createMany({ data: planRows(m.id, d.plans) })
+    // Same ownership rule as the edit route: a package can only ever be gated
+    // on achievements this trainer can actually award.
+    const prereqIds = [...new Set(d.prerequisiteAchievementIds ?? [])]
+    if (prereqIds.length) {
+      const mine = await tx.achievement.count({ where: { id: { in: prereqIds }, trainerId: ctx.companyId } })
+      if (mine !== prereqIds.length) return null
+      await tx.membershipPrerequisite.createMany({
+        data: prereqIds.map(achievementId => ({ membershipId: m.id, achievementId })),
+        skipDuplicates: true,
+      })
+    }
     return m
   })
 

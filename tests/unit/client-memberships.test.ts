@@ -10,6 +10,10 @@ const h = vi.hoisted(() => ({
   membershipRequest: { findMany: vi.fn() },
   membershipPurchase: { findMany: vi.fn() },
   trainerProfile: { findUnique: vi.fn() },
+  // Eligibility — who may join, as opposed to whether it can be paid for.
+  membershipPrerequisite: { findMany: vi.fn() },
+  clientAchievement: { findMany: vi.fn() },
+  achievement: { findMany: vi.fn() },
   package: { findMany: vi.fn() },
   classRun: { findMany: vi.fn() },
   product: { findMany: vi.fn() },
@@ -32,6 +36,11 @@ beforeEach(() => {
   h.product.findMany.mockResolvedValue([])
   h.membershipRequest.findMany.mockResolvedValue([])
   h.membershipPurchase.findMany.mockResolvedValue([])
+  // Ungated by default: these tests are about what the loader loads, and
+  // eligibility has its own suite in membership-eligibility.test.ts.
+  h.membershipPrerequisite.findMany.mockResolvedValue([])
+  h.clientAchievement.findMany.mockResolvedValue([])
+  h.achievement.findMany.mockResolvedValue([])
   // Recurring is OFF by default for every trainer — that column is the rollout
   // allowlist now that the env var is gone.
   h.trainerProfile.findUnique.mockResolvedValue({
