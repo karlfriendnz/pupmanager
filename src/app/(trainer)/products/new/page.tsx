@@ -16,13 +16,14 @@ export default async function NewProductPage() {
   if (!trainerId) redirect('/login')
   if (!(await hasAddon(trainerId, 'shop'))) redirect(addonSettingsHref('shop'))
 
-  const siblings = await prisma.product.findMany({
+  // The shelves themselves, in the order they appear on /products — not the
+  // distinct words off the products, which is what this used to be and which
+  // could offer a category that has no shelf to sit on.
+  const existingCategories = await prisma.productCategory.findMany({
     where: { trainerId },
-    select: { category: true },
+    orderBy: [{ order: 'asc' }, { name: 'asc' }],
+    select: { id: true, name: true },
   })
-  const existingCategories = Array.from(
-    new Set(siblings.map(s => s.category).filter(Boolean) as string[])
-  ).sort()
 
   return (
     <>

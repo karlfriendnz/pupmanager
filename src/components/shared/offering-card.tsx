@@ -483,15 +483,26 @@ export function SortableOfferingCard({ id, children }: { id: string; children: (
  * trainer's chosen view decides whether cards go full width (list) or two to
  * four across (grid).
  */
-export function OfferingItems({ view, children }: { view: OfferingView; children: ReactNode }) {
-  return (
-    <div className={view === 'grid'
-      ? 'grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4'
-      : 'flex flex-col gap-2.5'}
-    >
-      {children}
-    </div>
-  )
+export function OfferingItems({
+  view,
+  columns = 3,
+  children,
+}: {
+  view: OfferingView
+  /**
+   * How wide the grid gets at its widest. Offerings are wordy cards and stop at
+   * 3; product tiles are a picture and a price, so the shop asks for 4.
+   *
+   * Written out in full because Tailwind reads the source for class names — a
+   * built-up `xl:grid-cols-${n}` is never in the stylesheet.
+   */
+  columns?: 3 | 4
+  children: ReactNode
+}) {
+  const grid = columns === 4
+    ? 'grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+    : 'grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4'
+  return <div className={view === 'grid' ? grid : 'flex flex-col gap-2.5'}>{children}</div>
 }
 
 /**

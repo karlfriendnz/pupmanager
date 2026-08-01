@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { ProductsManager } from './products-manager'
+import { ProductsBrowser } from './products-browser'
 import { hasAddon } from '@/lib/billing'
 import { PageHeader } from '@/components/shared/page-header'
 import type { Metadata } from 'next'
@@ -16,34 +16,42 @@ export default async function ProductsPage() {
   if (!trainerId) redirect('/login')
   if (!(await hasAddon(trainerId, 'shop'))) redirect(addonSettingsHref('shop'))
 
-  const products = await prisma.product.findMany({
-    where: { trainerId },
-    orderBy: [{ category: 'asc' }, { order: 'asc' }, { createdAt: 'desc' }],
-  })
+  // Ordered the way the browser shows them: shelves in their own order, and
+  // the things on a shelf in theirs.
+  const [products, categories] = await Promise.all([
+    prisma.product.findMany({
+      where: { trainerId },
+      orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
+      select: {
+        id: true, name: true, kind: true, priceCents: true, salePriceCents: true,
+        imageUrl: true, stockCount: true, categoryId: true, featured: true, active: true,
+      },
+    }),
+    prisma.productCategory.findMany({
+      where: { trainerId },
+      orderBy: [{ order: 'asc' }, { name: 'asc' }],
+      select: { id: true, name: true, _count: { select: { products: true } } },
+    }),
+  ])
 
   return (
     <>
       <PageHeader title="Products" />
-      <div className="p-4 md:p-8 w-full max-w-5xl xl:max-w-7xl mx-auto">
-      <ProductsManager
-        initialProducts={products.map(p => ({
+      <ProductsBrowser
+        categories={categories.map(c => ({ id: c.id, name: c.name, products: c._count.products }))}
+        products={products.map(p => ({
           id: p.id,
           name: p.name,
-          description: p.description,
-          kind: p.kind as 'PHYSICAL' | 'DIGITAL',
+          kind: p.kind,
           priceCents: p.priceCents,
           salePriceCents: p.salePriceCents,
-          stockCount: p.stockCount,
           imageUrl: p.imageUrl,
-          downloadUrl: p.downloadUrl,
-          category: p.category,
+          stockCount: p.stockCount,
+          categoryId: p.categoryId,
           featured: p.featured,
           active: p.active,
-          xeroAccountCode: p.xeroAccountCode,
-          requirePayment: p.requirePayment,
         }))}
       />
-      </div>
     </>
   )
 }

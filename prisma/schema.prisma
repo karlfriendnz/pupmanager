@@ -727,6 +727,7 @@ model TrainerProfile {
   xeroConnection     XeroConnection?
   linkPage           LinkPage?
   locations          Location[]
+  productCategories  ProductCategory[]
 
   @@map("trainer_profiles")
 }
@@ -1550,6 +1551,30 @@ model SessionBuddy {
 
 // ─── Products (trainer shop) ─────────────────────────────────────────────────
 
+// A trainer's own grouping for their shop — "Treats", "Guides", "Gear".
+//
+// It used to be a free-form string on each product, which was enough to GROUP
+// by but not to manage: you could not create an empty one to fill later, could
+// not rename it without editing every product in it, and had nowhere to keep
+// the order they appear in. A row per category answers all three, and the old
+// string is kept alongside so nothing that still reads it breaks.
+model ProductCategory {
+  id        String   @id @default(cuid())
+  trainerId String
+  name      String
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer  TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  // One "Treats" per business — a second would split the shelf in two.
+  @@unique([trainerId, name])
+  @@index([trainerId])
+  @@map("product_categories")
+}
+
 model Product {
   id              String      @id @default(cuid())
   trainerId       String
@@ -1568,7 +1593,10 @@ model Product {
   // Required for DIGITAL products — the file the customer downloads. Public URL
   // (e.g. Vercel Blob) or signed URL handed out at access time.
   downloadUrl     String?
-  category        String? // free-form trainer-defined grouping ("Treats", "Guides")
+  // The old free-form grouping. Still written and read so anything that has
+  // not moved to categoryId keeps working; categoryId is the one to use.
+  category        String?
+  categoryId      String?
   // Units on hand. NULL = not tracked (services, digital downloads, anything
   // the trainer never runs out of) — the common case, and why this is nullable
   // rather than defaulting to 0, which would read as "sold out" for every
@@ -1589,9 +1617,12 @@ model Product {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  trainer      TrainerProfile   @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  requests     ProductRequest[]
-  paymentItems PaymentItem[]
+  trainer         TrainerProfile   @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  // Deleting a category leaves its products alone — they fall back to
+  // Uncategorised rather than vanishing from the shop with it.
+  productCategory ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  requests        ProductRequest[]
+  paymentItems    PaymentItem[]
 
   @@index([trainerId])
   @@index([category])

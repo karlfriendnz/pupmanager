@@ -17,6 +17,7 @@ const patchSchema = z.object({
   imageUrl: optionalAssetUrlSchema(),
   downloadUrl: optionalAssetUrlSchema(),
   category: z.string().max(60).nullable().optional(),
+  categoryId: z.string().nullable().optional(),
   featured: z.boolean().optional(),
   xeroAccountCode: z.string().max(50).nullable().optional(),
   // Units on hand. Null clears tracking ("I never run out of this").
@@ -77,6 +78,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ produc
       ...(data.imageUrl !== undefined && { imageUrl: data.imageUrl || null }),
       ...(data.downloadUrl !== undefined && { downloadUrl: data.downloadUrl || null }),
       ...(data.category !== undefined && { category: data.category?.trim() || null }),
+      ...(data.categoryId !== undefined && { categoryId: data.categoryId || null }),
       ...(data.featured !== undefined && { featured: data.featured }),
       ...(data.xeroAccountCode !== undefined && { xeroAccountCode: data.xeroAccountCode || null }),
       ...(data.active !== undefined && { active: data.active }),

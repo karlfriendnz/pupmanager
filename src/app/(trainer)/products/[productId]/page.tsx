@@ -27,11 +27,7 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
   })
   if (!product) notFound()
 
-  const [siblings, requests, paidItems] = await Promise.all([
-    prisma.product.findMany({
-      where: { trainerId },
-      select: { category: true },
-    }),
+  const [requests, paidItems] = await Promise.all([
     // Pay-later orders and standing requests.
     prisma.productRequest.findMany({
       where: { productId: product.id },
@@ -95,9 +91,14 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
 
   const purchases = [...paid, ...fromRequests].sort((a, b) => b.at.localeCompare(a.at))
 
-  const existingCategories = Array.from(
-    new Set(siblings.map(s => s.category).filter(Boolean) as string[])
-  ).sort()
+  // The shelves themselves, in the order they appear on /products — not the
+  // distinct words off the products, which is what this used to be and which
+  // could offer a category that has no shelf to sit on.
+  const existingCategories = await prisma.productCategory.findMany({
+    where: { trainerId },
+    orderBy: [{ order: 'asc' }, { name: 'asc' }],
+    select: { id: true, name: true },
+  })
 
   return (
     <>
@@ -115,6 +116,7 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
             imageUrl: product.imageUrl,
             downloadUrl: product.downloadUrl,
             category: product.category,
+            categoryId: product.categoryId,
             featured: product.featured,
             active: product.active,
             xeroAccountCode: product.xeroAccountCode,

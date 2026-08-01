@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useRef, useState, Fragment } from 'react'
+import { useEffect, useRef, useState, Fragment, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import { signOutWithPush } from '@/lib/sign-out'
 import { ProfileSwitchButton } from './profile-switch-button'
@@ -680,6 +680,50 @@ function NavBadge({ count, variant = 'pill' }: { count: number; variant?: 'pill'
 // sidebar, hover flyout, and the mobile nav.
 const ADDON_SETTINGS_HREF = '/settings?tab=addons'
 const ADDON_LOCK_TITLE = 'This is an add-on — turn it on in Add-ons'
+
+/**
+ * The label for a row on the collapsed rail, shown beside it on hover.
+ *
+ * A collapsed sidebar is a column of unlabelled icons, and several of them are
+ * near neighbours — Group Classes, Casual Classes and Events are three
+ * variations on a calendar. The browser's own `title=` does say the name, but
+ * only after about a second of holding still, which is far longer than it takes
+ * to give up and open the sidebar instead. This appears immediately.
+ *
+ * Positioned `fixed` from the row's measured top rather than absolutely inside
+ * it, because the nav is `overflow-x-hidden` — anything laid out inside the
+ * rail gets cut off at the rail's edge, which is exactly where the label needs
+ * to start. Measured on enter (not on every scroll) since the tip only ever has
+ * to be right while it is on screen.
+ */
+function TipIf({ when, label, children }: { when: boolean; label: string; children: ReactNode }) {
+  return when ? <RailTip label={label}>{children}</RailTip> : <>{children}</>
+}
+
+function RailTip({ label, children }: { label: string; children: ReactNode }) {
+  const [top, setTop] = useState<number | null>(null)
+  const measure = (el: HTMLElement | null) => { if (el) setTop(el.getBoundingClientRect().top) }
+  return (
+    <div
+      className="group/tip relative"
+      onMouseEnter={e => measure(e.currentTarget)}
+      onFocusCapture={e => measure(e.currentTarget)}
+    >
+      {children}
+      {top != null && (
+        <span
+          aria-hidden
+          className="pointer-events-none invisible fixed z-50 flex h-10 items-center pl-3.5 opacity-0 transition-opacity duration-100 group-hover/tip:visible group-hover/tip:opacity-100 group-focus-within/tip:visible group-focus-within/tip:opacity-100"
+          style={{ top, left: 56 }}
+        >
+          <span className="whitespace-nowrap rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-[0_10px_25px_-8px_rgba(15,23,42,0.55)]">
+            {label}
+          </span>
+        </span>
+      )}
+    </div>
+  )
+}
 function LockedNavRow({
   item,
   variant,
@@ -696,14 +740,16 @@ function LockedNavRow({
     case 'top-collapsed':
       // Collapsed rail: single centred icon + a small lock overlay, no label.
       return (
-        <Link
-          href={ADDON_SETTINGS_HREF}
-          title={ADDON_LOCK_TITLE}
-          className="relative flex items-center justify-center h-10 w-10 mx-auto rounded-xl text-slate-400 hover:bg-slate-50 transition-colors"
-        >
-          <Icon className="h-5 w-5 flex-shrink-0" />
-          <Lock aria-hidden className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 text-slate-400" />
-        </Link>
+        <RailTip label={`${item.label} — add-on`}>
+          <Link
+            href={ADDON_SETTINGS_HREF}
+            aria-label={`${item.label}. ${ADDON_LOCK_TITLE}`}
+            className="relative flex items-center justify-center h-10 w-10 mx-auto rounded-xl text-slate-400 hover:bg-slate-50 transition-colors"
+          >
+            <Icon className="h-5 w-5 flex-shrink-0" />
+            <Lock aria-hidden className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 text-slate-400" />
+          </Link>
+        </RailTip>
       )
     case 'top-expanded':
       return (
@@ -1267,22 +1313,24 @@ function TrainerShell({
                 className={cn('relative', childrenOf[item.href] && 'group/sub')}
                 onMouseEnter={childrenOf[item.href] ? (e) => setFlyoutTop(e.currentTarget.getBoundingClientRect().top) : undefined}
               >
+              <TipIf when={collapsed && !childrenOf[item.href]} label={item.label}>
               {isGroup ? (
                 // Group parent: a non-navigating toggle (no page of its own).
                 <button
                   type="button"
                   onClick={() => toggleGroup(item.href)}
-                  title={collapsed ? item.label : undefined}
+                  aria-label={collapsed ? item.label : undefined}
                   aria-expanded={isGroupOpen(item.href)}
                   className={rowCls}
                 >
                   {rowInner}
                 </button>
               ) : (
-                <Link href={item.href} title={collapsed ? item.label : undefined} className={rowCls}>
+                <Link href={item.href} aria-label={collapsed ? item.label : undefined} className={rowCls}>
                   {rowInner}
                 </Link>
               )}
+              </TipIf>
               {/* Chevron toggles the inline child group. It's a sibling of the
                   row Link (can't nest interactive elements) overlaid on the
                   right edge. */}

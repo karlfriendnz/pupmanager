@@ -20,6 +20,9 @@ import { Eye, EyeOff, ImagePlus, Loader2, Star, Trash2 } from 'lucide-react'
 
 export type Kind = 'PHYSICAL' | 'DIGITAL'
 
+/** A real category row, which is what the shelves on /products are. */
+export interface ProductCategoryOption { id: string; name: string }
+
 export interface ProductDraft {
   id: string
   name: string
@@ -31,6 +34,7 @@ export interface ProductDraft {
   imageUrl: string | null
   downloadUrl: string | null
   category: string | null
+  categoryId: string | null
   featured: boolean
   active: boolean
   xeroAccountCode: string | null
@@ -48,6 +52,7 @@ export const EMPTY_PRODUCT: ProductDraft = {
   imageUrl: null,
   downloadUrl: null,
   category: null,
+  categoryId: null,
   featured: false,
   active: true,
   xeroAccountCode: null,
@@ -77,7 +82,7 @@ export function ProductForm({
 }: {
   initial: ProductDraft
   isNew: boolean
-  existingCategories: string[]
+  existingCategories: ProductCategoryOption[]
 }) {
   const router = useRouter()
   const currency = useCurrency()
@@ -147,6 +152,31 @@ export function ProductForm({
     }
   }
 
+  /**
+   * The typed word → the category row it means, creating one if it is new.
+   *
+   * The field stays a combobox because "type a new one" is how this form has
+   * always worked, but the shelves on /products are rows now, so a name on its
+   * own is not enough — a product filed under a word nothing points at would
+   * simply never show up on a shelf. Matching is case-insensitive so "treats"
+   * and "Treats" don't become two shelves saying the same thing.
+   */
+  async function resolveCategoryId(): Promise<string | null> {
+    const name = draft.category?.trim()
+    if (!name) return null
+    const known = existingCategories.find(c => c.name.toLowerCase() === name.toLowerCase())
+    if (known) return known.id
+    const res = await fetch('/api/products/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    const body = await res.json().catch(() => ({}))
+    // A category that won't save shouldn't stop the product saving — the
+    // product lands in Uncategorised and can be dragged onto a shelf.
+    return res.ok && typeof body.id === 'string' ? body.id : null
+  }
+
   async function save() {
     setError(null)
 
@@ -166,6 +196,7 @@ export function ProductForm({
       imageUrl: draft.imageUrl,
       downloadUrl: draft.downloadUrl,
       category: draft.category,
+      categoryId: await resolveCategoryId(),
       featured: draft.featured,
       active: draft.active,
       xeroAccountCode: draft.xeroAccountCode,
@@ -267,7 +298,7 @@ export function ProductForm({
               className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <datalist id="product-categories">
-              {existingCategories.map(c => <option key={c} value={c} />)}
+              {existingCategories.map(c => <option key={c.id} value={c.name} />)}
             </datalist>
             <p className="text-xs text-slate-500">Type a new one or pick an existing.</p>
           </div>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import type { ProductCategoryOption } from '../product-form'
 import { ProductForm, type ProductDraft } from '../product-form'
 import { ProductPurchases, type Purchase } from './product-purchases'
 
@@ -17,7 +18,7 @@ export function ProductDetail({
   purchases,
 }: {
   product: ProductDraft
-  existingCategories: string[]
+  existingCategories: ProductCategoryOption[]
   purchases: Purchase[]
 }) {
   const [tab, setTab] = useState<Tab>('details')
