@@ -52,6 +52,14 @@ test('swiping the mobile day view moves to the next / previous day', async ({ pa
   await login(page, SEED.owner.email, SEED.owner.password)
   await page.goto('/schedule')
 
+  // Pick Agenda explicitly. The layout is saved on the trainer's PROFILE
+  // (scheduleView / scheduleMobileView), so it is not per-test state: any spec
+  // that chose another view leaves this one looking at a grid with no
+  // day-swipe and no date header. "Agenda" is the one-day list this covers.
+  await page.getByRole('button', { name: 'Schedule view options' }).click()
+  await page.getByRole('button', { name: 'Agenda', exact: true }).click()
+  await page.getByRole('button', { name: 'Close' }).click()
+
   // The single-day view shows a full date header (e.g. "Sunday, 19 July 2026").
   // Phones show the short form ("Mon, 27 Jul"); desktop keeps the long one.
   const dateHeader = page.getByText(/\w{3,},? \d{1,2} \w{3}/).first()
@@ -68,7 +76,14 @@ test('swiping the mobile day view moves to the next / previous day', async ({ pa
   await expect.poll(async () => (await dateHeader.textContent())?.trim(), { timeout: 10_000 }).toBe(day0)
 })
 
-test('swiping the 3-day view moves to the next set of days', async ({ page }) => {
+// The 3-day window's date row is `hidden sm:flex` — deliberately dropped below
+// 640px, where there is no room for it beside the Prev/Next controls (Karl,
+// 2026-07-27). The window itself is no longer mobile-only, so this runs just
+// wide enough for the label to exist while still driving it by touch.
+test.describe('the 3-day window, wide enough to show its date row', () => {
+  test.use({ viewport: { width: 700, height: 844 }, hasTouch: true })
+
+  test('swiping the 3-day view moves to the next set of days', async ({ page }) => {
   await login(page, SEED.owner.email, SEED.owner.password)
   await page.goto('/schedule')
   // Layout lives in the View panel now, as words rather than icons.
@@ -89,4 +104,5 @@ test('swiping the 3-day view moves to the next set of days', async ({ page }) =>
 
   await swipe(page, 'schedule-scroll', 200)
   await expect.poll(async () => (await range.textContent())?.trim(), { timeout: 10_000 }).toBe(before)
+  })
 })

@@ -92,7 +92,9 @@ test('the booking-request preview card is readable at 390px', async ({ page }) =
 // Picking a layout is REMEMBERED per device class (savedMobileView), so a spec
 // that switches to Week must put the phone default back or every later spec
 // that expects the day view starts on a grid.
-async function setLayout(page: Page, layout: 'Day' | '3 days' | 'Week') {
+// The four layouts the View panel offers. "Agenda" is the one-day LIST (the
+// only one with a day-swipe target); "Day" is the hour grid.
+async function setLayout(page: Page, layout: 'Agenda' | 'Day' | '3 days' | 'Week') {
   await page.getByRole('button', { name: 'Schedule view options' }).click()
   await page.getByRole('button', { name: layout, exact: true }).click()
   await page.getByRole('button', { name: 'Cancel' }).click()
@@ -128,9 +130,13 @@ test('the week calendar scrolls with the page, not in a box of its own', async (
   await page.evaluate(() => window.scrollTo(0, 400))
   await expect.poll(() => page.evaluate(() => window.scrollY), { timeout: 5_000 }).toBeGreaterThan(100)
 
-  // Hand the phone default back to the next spec.
+  // Hand the phone default back to the next spec. AGENDA, not "Day": the
+  // layout is saved on the trainer's PROFILE, so whatever this leaves behind is
+  // what every later schedule spec opens on — and `day-swipe` only exists on
+  // the agenda list. "Day" is the hour grid, which has no swipe target, so this
+  // line both failed here and left the swipe specs looking at the wrong screen.
   await page.evaluate(() => window.scrollTo(0, 0))
-  await setLayout(page, 'Day')
+  await setLayout(page, 'Agenda')
   await expect(page.getByTestId('day-swipe')).toBeVisible({ timeout: 15_000 })
 })
 
