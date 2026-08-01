@@ -213,7 +213,7 @@ test('a brand-new trainer builds a business, takes on clients, and talks to them
 
     const startDate = new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10)
     const klass = await post(page, '/api/class-runs', {
-      name: 'Loose Lead Group', startDate, capacity: 8,
+      name: 'Loose Lead Group', startDate, capacity: 2,
       sessionCount: 4, weeksBetween: 1, durationMins: 60, priceCents: 24000,
       // The one-step create needs the class's own settings inline — without a
       // sessionType it falls through to "Missing class settings".
@@ -318,7 +318,14 @@ test('a brand-new trainer builds a business, takes on clients, and talks to them
     ).toHaveCount(0)
     await expect(composer.getByText('Create email').first()).toBeVisible({ timeout: 10_000 })
 
-    // ── 8. The client's own side ──────────────────────────────────────────
+    // ── 8. A message, sent before she ever signs in ───────────────────────
+    const sent = await post(page, '/api/messages', {
+      clientId: full.clientId,
+      body: 'Hi Fiona — welcome aboard. Rusty is booked in for Thursday.',
+    })
+    expect(sent).toBeTruthy()
+
+    // ── 9. The client's own side ──────────────────────────────────────────
     // Give Fiona a password the way an accepted invite would, then sign in as
     // her in a clean context. What matters is that a client of a business built
     // entirely in this test can reach their own app and see whose it is.
@@ -357,7 +364,20 @@ test('a brand-new trainer builds a business, takes on clients, and talks to them
       await expect(clientPage.getByText('Rusty').filter({ visible: true }).first())
         .toBeVisible({ timeout: 20_000 })
 
-      // ── 9. She books herself in, and goes through with it ───────────────
+      // The message was waiting for her.
+      await clientPage.goto('/my-messages')
+      await expect(
+        clientPage.getByText(/Rusty is booked in for Thursday/).first(),
+        'a message sent before the client ever signed in should be waiting',
+      ).toBeVisible({ timeout: 20_000 })
+
+      // And she can answer it.
+      const replied = await clientPage.request.post('/api/messages', {
+        data: { clientId: full.clientId, body: 'Brilliant, thank you! See you then.' },
+      })
+      expect(replied.status(), await replied.text()).toBeLessThan(300)
+
+      // ── 10. She books herself in, and goes through with it ──────────────
       // The wizard spec stops one click short of Confirm on purpose: it shares
       // a database with every other spec, so a real booking there could race
       // one of them. This business is its own, built in this test and used by
@@ -382,7 +402,7 @@ test('a brand-new trainer builds a business, takes on clients, and talks to them
         .poll(async () => prisma.trainingSession.count({ where: { clientId: full.clientId } }), { timeout: 30_000 })
         .toBeGreaterThan(0)
 
-      // ── 10. She asks for something from the shop ────────────────────────
+      // ── 11. She asks for something from the shop ────────────────────────
       // Without Stripe there is no checkout, so the shop's answer is a REQUEST
       // — the same path a trainer meets on their dashboard every morning.
       await clientPage.goto('/my-shop')
@@ -398,12 +418,18 @@ test('a brand-new trainer builds a business, takes on clients, and talks to them
       await clientCtx.close()
     }
 
-    // ── 11. The trainer sees the booking on their own schedule ────────────
+    // ── 12. The trainer sees the booking, and her reply ───────────────────
     await page.goto('/schedule')
     await expect(page.getByText('Fiona Full').filter({ visible: true }).first())
       .toBeVisible({ timeout: 20_000 })
 
-    // ── 12. And answers the shop request from the dashboard ───────────────
+    await page.goto('/messages')
+    await expect(
+      page.getByText(/See you then/).first(),
+      'the client\'s reply should reach the trainer\'s inbox',
+    ).toBeVisible({ timeout: 20_000 })
+
+    // ── 13. And answers the shop request from the dashboard ───────────────
     // The panel renders twice, phone and desktop, from one server payload.
     // Answering it used to remove the row from the copy you clicked and leave
     // it on the other one forever, because the rows were seeded into state once
@@ -420,6 +446,56 @@ test('a brand-new trainer builds a business, takes on clients, and talks to them
       page.getByTestId('request-row').filter({ hasText: 'Training treats' }),
       'an answered request must clear from BOTH copies of the panel',
     ).toHaveCount(0, { timeout: 20_000 })
+
+    // ── 14. The class fills up, and then it doesn't ───────────────────────
+    // Capacity 2, three people who want in. This is the part with the most
+    // state in it: a seat, a queue, and what happens to the queue when a seat
+    // comes back.
+    const runId = klass.id ?? klass.runId
+    const enrol = (clientId: string) =>
+      page.request.post(`/api/class-runs/${runId}/enrollments`, { data: { clientId, type: 'FULL' } })
+
+    const first = await enrol(full.clientId)
+    const second = await enrol(quick.clientId)
+    expect(first.status(), await first.text()).toBeLessThan(300)
+    expect(second.status(), await second.text()).toBeLessThan(300)
+
+    // Full, and no waitlist yet — the third is refused rather than quietly
+    // squeezed in over capacity.
+    const third = await enrol(noEmail.clientId)
+    expect(
+      third.status(),
+      `a full class with no waitlist must refuse the next person, not overfill: ${await third.text()}`,
+    ).toBeGreaterThanOrEqual(400)
+
+    // Open a waitlist and ask again: now they queue instead of bouncing.
+    await prisma.package.update({
+      where: { id: (await prisma.classRun.findUnique({ where: { id: runId }, select: { packageId: true } }))!.packageId },
+      data: { allowWaitlist: true },
+    })
+    const queued = await enrol(noEmail.clientId)
+    expect(queued.status(), await queued.text()).toBeLessThan(300)
+    const waitlisted = await prisma.classEnrollment.findFirst({
+      where: { classRunId: runId, clientId: noEmail.clientId },
+      select: { status: true },
+    })
+    expect(waitlisted?.status, 'the third person should be WAITLISTED, not enrolled').toBe('WAITLISTED')
+
+    // A seat comes back. The person at the front of the queue should take it —
+    // a waitlist that does not promote is just a list.
+    const seat = await prisma.classEnrollment.findFirst({
+      where: { classRunId: runId, clientId: full.clientId },
+      select: { id: true },
+    })
+    const dropped = await page.request.delete(`/api/class-runs/${runId}/enrollments/${seat!.id}`)
+    expect(dropped.status(), await dropped.text()).toBeLessThan(300)
+
+    await expect
+      .poll(async () => (await prisma.classEnrollment.findFirst({
+        where: { classRunId: runId, clientId: noEmail.clientId },
+        select: { status: true },
+      }))?.status, { timeout: 20_000 })
+      .toBe('ENROLLED')
   } finally {
     await prisma.$disconnect()
   }
