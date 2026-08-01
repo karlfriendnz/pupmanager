@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { FileDown, Plus, Star, Tag, PackageIcon } from 'lucide-react'
+import { Columns3, FileDown, Plus, Star, Tag, PackageIcon } from 'lucide-react'
 import {
   closestCenter,
   DragOverlay,
@@ -25,8 +25,11 @@ import { DndArea } from '@/components/shared/dnd-area'
 import { SectionHeader } from '@/components/shared/flat-list'
 import { OfferingItems, OfferingViewToggle, SortableOfferingCard, useOfferingView } from '@/components/shared/offering-card'
 import { ProductPrice, SaleTag } from '@/components/shared/product-price'
+import { effectivePriceCents, isOnSale } from '@/lib/product-price'
+import { formatMoney } from '@/lib/money'
 import { useCurrency } from '@/components/currency-context'
 import { inStock, stockLabel } from '@/lib/stock'
+import { OPTIONAL_COLUMNS, useProductColumns, type ColumnKey } from './product-columns'
 
 // The shop, browsed the same way the Library is: shelves on the left, what is
 // on the shelf on the right.
@@ -67,6 +70,54 @@ export interface BrowseCategory {
   products: number
 }
 
+/**
+ * The table's columns, in the order they appear.
+ *
+ * `pin: true` means the column is always there — a row with no product and no
+ * price is not a row. The rest are the trainer's choice (see product-columns).
+ *
+ * The template is built from that choice at render time, so it lives in a CSS
+ * variable rather than a Tailwind class: the set of combinations is 2^4 and
+ * Tailwind can only ship classes it can see in the source.
+ */
+const TABLE_COLUMNS = [
+  { key: 'grip', width: '1.5rem', pin: true },
+  { key: 'thumb', width: '2.5rem', pin: true },
+  { key: 'product', width: 'minmax(0,1fr)', pin: true },
+  { key: 'category', width: '8rem', pin: false },
+  { key: 'type', width: '5.5rem', pin: false },
+  { key: 'stock', width: '4rem', pin: false },
+  // Price sizes to its content so a sale — two prices side by side — stays on
+  // one line without spending that room on the rows that don't need it.
+  { key: 'price', width: 'minmax(6rem,auto)', pin: true },
+  { key: 'status', width: '5.5rem', pin: false },
+] as const
+
+/**
+ * The frame every row and the header share.
+ *
+ * Two templates, picked by a CONTAINER query: below @2xl the table is down to
+ * product and price whatever the trainer chose, because the alternative in a
+ * column that narrow is columns landing on top of one another. Container, not
+ * window — the table sits beside a 17rem rail, so a wide window is not a wide
+ * table.
+ */
+const ROW = 'grid items-center gap-x-3 px-3 [grid-template-columns:var(--pm-cols-narrow)] @2xl:[grid-template-columns:var(--pm-cols)]'
+
+function rowVars(chosen: Set<ColumnKey>): React.CSSProperties {
+  const template = TABLE_COLUMNS
+    .filter(c => c.pin || chosen.has(c.key as ColumnKey))
+    .map(c => c.width)
+    .join(' ')
+  return {
+    '--pm-cols': template,
+    '--pm-cols-narrow': TABLE_COLUMNS.filter(c => c.pin).map(c => c.width).join(' '),
+  } as React.CSSProperties
+}
+
+/** Optional cells vanish below @2xl as well as when they are switched off. */
+const OPTIONAL_CELL = 'hidden @2xl:block'
+
 /** The Uncategorised shelf is not a row in the database — it is "everything with no shelf". */
 const NONE = '__none__'
 
@@ -91,6 +142,7 @@ export function ProductsBrowser({
 }) {
   const router = useRouter()
   const [view, setView] = useOfferingView('products')
+  const [chosen, toggleColumn] = useProductColumns()
   const [categories, setCategories] = useState(initialCategories)
   const [products, setProducts] = useState(initialProducts)
   const [selected, setSelected] = useState<string | null>(null)   // null = everything
@@ -336,13 +388,14 @@ export function ProductsBrowser({
         <SectionHeader
           action={
             <span className="flex items-center gap-2">
-              <OfferingViewToggle value={view} onChange={setView} />
               <Link
                 href="/products/new"
                 className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 rounded-xl bg-[var(--pm-brand-600)] px-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--pm-brand-700)]"
               >
                 <Plus className="h-4 w-4 flex-shrink-0" strokeWidth={2.25} /> Add product
               </Link>
+              {view === 'list' && <ColumnPicker chosen={chosen} onToggle={toggleColumn} />}
+              <OfferingViewToggle value={view} onChange={setView} />
             </span>
           }
         >
@@ -365,13 +418,37 @@ export function ProductsBrowser({
           </div>
         ) : (
           <SortableContext items={shownIds} strategy={rectSortingStrategy}>
-            <OfferingItems view={view} columns={4}>
-              {shown.map(p => (
-                <SortableOfferingCard key={p.id} id={p.id}>
-                  {handle => <ProductTile product={p} view={view} dragHandle={handle} />}
-                </SortableOfferingCard>
-              ))}
-            </OfferingItems>
+            {view === 'grid' ? (
+              <OfferingItems view="grid" columns={4}>
+                {shown.map(p => (
+                  <SortableOfferingCard key={p.id} id={p.id}>
+                    {handle => <ProductTile product={p} view="grid" chosen={chosen} dragHandle={handle} />}
+                  </SortableOfferingCard>
+                ))}
+              </OfferingItems>
+            ) : (
+              // One bordered box with hairlines between the rows, rather than
+              // OfferingItems' stack of separate cards — a table only reads as
+              // a table when its columns run the whole way down it.
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <ProductTableHead chosen={chosen} />
+                <div className="[&>*+*]:border-t [&>*+*]:border-slate-100">
+                  {shown.map(p => (
+                    <SortableOfferingCard key={p.id} id={p.id}>
+                      {handle => (
+                        <ProductTile
+                          product={p}
+                          view="list"
+                          categoryName={categories.find(c => c.id === p.categoryId)?.name ?? null}
+                          chosen={chosen}
+                          dragHandle={handle}
+                        />
+                      )}
+                    </SortableOfferingCard>
+                  ))}
+                </div>
+              </div>
+            )}
           </SortableContext>
         )}
       </BrowseShell>
@@ -461,44 +538,86 @@ function UncategorisedRow({
   )
 }
 
+/** The column names, on the same grid the rows use. */
+function ProductTableHead({ chosen }: { chosen: Set<ColumnKey> }) {
+  const cell = 'text-[11px] font-semibold uppercase tracking-wide text-slate-400'
+  return (
+    <div className={`${ROW} h-9 border-b border-slate-200 bg-slate-50/70`} style={rowVars(chosen)}>
+      <span aria-hidden />
+      <span aria-hidden />
+      <span className={cell}>Product</span>
+      {chosen.has('category') && <span className={`${OPTIONAL_CELL} ${cell}`}>Category</span>}
+      {chosen.has('type') && <span className={`${OPTIONAL_CELL} ${cell}`}>Type</span>}
+      {chosen.has('stock') && <span className={`${OPTIONAL_CELL} ${cell} text-right`}>Stock</span>}
+      <span className={`${cell} text-right`}>Price</span>
+      {chosen.has('status') && <span className={`${OPTIONAL_CELL} ${cell}`}>Status</span>}
+    </div>
+  )
+}
+
+/** Pick the columns. Only offered in list view — the grid has no columns. */
+function ColumnPicker({
+  chosen,
+  onToggle,
+}: {
+  chosen: Set<ColumnKey>
+  onToggle: (key: ColumnKey, on: boolean) => void
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <span className="relative hidden md:inline-flex">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        title="Choose columns"
+        className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+      >
+        <Columns3 className="h-4 w-4" strokeWidth={1.75} /> Columns
+      </button>
+      {open && (
+        <>
+          {/* Clicking anywhere else closes it. */}
+          <button type="button" aria-hidden tabIndex={-1} className="fixed inset-0 z-40 cursor-default" onClick={() => setOpen(false)} />
+          <span className="absolute right-0 top-10 z-50 w-44 rounded-xl border border-slate-200 bg-white p-1 shadow-[0_18px_45px_-12px_rgba(15,23,42,0.25)]">
+            {OPTIONAL_COLUMNS.map(c => (
+              <label key={c.key} className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-slate-700 hover:bg-slate-50">
+                <input
+                  type="checkbox"
+                  checked={chosen.has(c.key)}
+                  onChange={e => onToggle(c.key, e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-[var(--pm-brand-600)] focus:ring-[var(--pm-brand-600)]"
+                />
+                {c.label}
+              </label>
+            ))}
+          </span>
+        </>
+      )}
+    </span>
+  )
+}
+
 function ProductTile({
   product,
   view,
+  categoryName,
+  chosen,
   dragHandle,
 }: {
   product: BrowseProduct
   view: 'list' | 'grid'
+  /** The shelf it is on, shown in the table's Category column. */
+  categoryName?: string | null
+  /** Which optional columns are switched on. */
+  chosen: Set<ColumnKey>
   dragHandle: React.ReactNode
 }) {
   const currency = useCurrency()
-  const stock = stockLabel(product.stockCount)
   const kind = product.kind === 'DIGITAL' ? 'Digital' : 'Physical'
-  const card = `overflow-hidden rounded-xl border border-slate-200 bg-white ${product.active ? '' : 'opacity-60'}`
-
-  // Everything that used to be badged on the old card is still badged here —
-  // Sale, Featured and Hidden are the three things a trainer scans this list
-  // for, and a tile that only shows a name and a number can't be scanned for
-  // any of them.
-  const badges = (
-    <>
-      <SaleTag product={product} />
-      {product.featured && (
-        <span className="inline-flex items-center gap-1 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-slate-700 backdrop-blur">
-          <Star className="h-3 w-3" strokeWidth={1.75} /> Featured
-        </span>
-      )}
-      {!product.active && (
-        <span className="rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium text-slate-700 backdrop-blur">Hidden</span>
-      )}
-    </>
-  )
-
-  const sub = (
-    <span className="truncate text-xs text-slate-500">
-      {kind}
-      {stock && <span className={inStock(product.stockCount) ? '' : 'text-red-500'}> · {stock}</span>}
-    </span>
-  )
+  const stock = stockLabel(product.stockCount)
+  const price = effectivePriceCents(product)
+  const onSale = isOnSale(product)
 
   const thumb = (cls: string, icon: string) =>
     product.imageUrl ? (
@@ -513,26 +632,37 @@ function ProductTile({
     )
 
   // A grid cell is tall and narrow, so the picture goes on top of the name
-  // rather than beside it. Same data either way — only the shape changes.
+  // rather than beside it, and the three things a trainer scans for — Sale,
+  // Featured, Hidden — are badged on the picture. The table says the same in
+  // its own columns.
   if (view === 'grid') {
     return (
-      <div className={`${card} relative h-full`}>
+      <div className={`relative h-full overflow-hidden rounded-xl border border-slate-200 bg-white ${product.active ? '' : 'opacity-60'}`}>
         <span className="absolute left-1 top-1 z-10 rounded-lg bg-white/85">{dragHandle}</span>
         <Link href={`/products/${product.id}`} className="flex h-full flex-col">
           <span className="relative block">
             {thumb('aspect-4/3 w-full object-cover', 'h-7 w-7')}
-            <span className="absolute bottom-2 left-2 flex flex-wrap items-center gap-1">{badges}</span>
+            <span className="absolute bottom-2 left-2 flex flex-wrap items-center gap-1">
+              <SaleTag product={product} />
+              {product.featured && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-slate-700 backdrop-blur">
+                  <Star className="h-3 w-3" strokeWidth={1.75} /> Featured
+                </span>
+              )}
+              {!product.active && (
+                <span className="rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium text-slate-700 backdrop-blur">Hidden</span>
+              )}
+            </span>
           </span>
-          {/* Name and price share the top line, the kind sits under them —
-              the same shape the old product card had, and the reason is the
-              same: a sale price is three parts wide, and putting it beside the
-              kind squeezes "Physical" down to "Physi…". */}
           <span className="flex min-w-0 flex-1 flex-col gap-0.5 border-t border-slate-100 p-3">
             <span className="flex items-start justify-between gap-2">
               <span className="line-clamp-1 text-sm font-medium text-slate-900">{product.name}</span>
               <ProductPrice product={product} currency={currency} className="flex-shrink-0 justify-end" />
             </span>
-            {sub}
+            <span className="truncate text-xs text-slate-500">
+              {kind}
+              {stock && <span className={inStock(product.stockCount) ? '' : 'text-red-500'}> · {stock}</span>}
+            </span>
           </span>
         </Link>
       </div>
@@ -540,19 +670,65 @@ function ProductTile({
   }
 
   return (
-    <div className={`flex items-center gap-2 ${card}`}>
-      <span className="pl-2">{dragHandle}</span>
-      <Link href={`/products/${product.id}`} className="flex min-w-0 flex-1 items-center gap-3 py-3 pr-4">
-        {thumb('h-10 w-10 flex-shrink-0 rounded-lg border border-slate-100 object-cover', 'h-4 w-4')}
-        <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 items-center gap-1.5">
-            <span className="truncate text-sm font-medium text-slate-900">{product.name}</span>
-            {badges}
-          </span>
-          <span className="mt-0.5 block">{sub}</span>
-        </span>
-        <ProductPrice product={product} currency={currency} className="flex-shrink-0 justify-end" />
+    <div
+      data-testid="product-row"
+      data-product={product.id}
+      className={`${ROW} h-14 transition-colors hover:bg-slate-50 ${product.active ? '' : 'opacity-60'}`}
+      style={rowVars(chosen)}
+    >
+      {dragHandle}
+      {thumb('h-9 w-9 rounded-lg border border-slate-100 object-cover', 'h-4 w-4')}
+
+      <Link
+        href={`/products/${product.id}`}
+        className="min-w-0 truncate text-sm font-medium text-slate-900 hover:underline"
+      >
+        {product.name}
       </Link>
+
+      {chosen.has('category') && (
+        <span className={`${OPTIONAL_CELL} truncate text-sm text-slate-500`}>{categoryName ?? '—'}</span>
+      )}
+      {chosen.has('type') && <span className={`${OPTIONAL_CELL} text-sm text-slate-500`}>{kind}</span>}
+      {chosen.has('stock') && (
+        // Just the number. "Only 3 left" is a shop-front phrase; a trainer
+        // reading down a stock column wants figures they can compare.
+        <span className={`${OPTIONAL_CELL} text-right text-sm tabular-nums ${
+          product.stockCount != null && !inStock(product.stockCount) ? 'text-red-500' : 'text-slate-500'
+        }`}>
+          {product.stockCount ?? '—'}
+        </span>
+      )}
+
+      {/* ONE price — what a client would actually pay today, which is the sale
+          price when there is one. The struck original, the "% off" and the
+          "Sale" flash all belong on a card; down a column they are three extra
+          things to read past. A product on special says so by being red. */}
+      {price == null ? (
+        <span className="text-right text-sm text-slate-400">—</span>
+      ) : onSale ? (
+        <span
+          data-testid="sale-price"
+          title={`Was ${formatMoney(product.priceCents as number, currency)}`}
+          className="justify-self-end rounded-full bg-rose-600 px-2 py-0.5 text-xs font-semibold tabular-nums text-white"
+        >
+          {formatMoney(price, currency)}
+        </span>
+      ) : (
+        <span className="text-right text-sm font-semibold tabular-nums text-slate-900">{formatMoney(price, currency)}</span>
+      )}
+
+      {chosen.has('status') && (
+        <span className={`${OPTIONAL_CELL} text-sm`}>
+          {!product.active ? (
+            <span className="text-slate-400">Hidden</span>
+          ) : product.featured ? (
+            <span className="inline-flex items-center gap-1 text-slate-600"><Star className="h-3.5 w-3.5" strokeWidth={1.75} /> Featured</span>
+          ) : (
+            <span className="text-slate-400">Live</span>
+          )}
+        </span>
+      )}
     </div>
   )
 }

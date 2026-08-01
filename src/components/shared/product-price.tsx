@@ -18,6 +18,7 @@ export function ProductPrice({
   currency,
   size = 'sm',
   unpricedLabel = 'Contact',
+  showSaving = true,
   className,
 }: {
   product: ProductPricing
@@ -25,6 +26,12 @@ export function ProductPrice({
   size?: 'sm' | 'lg'
   /** What to say when there's no price at all. */
   unpricedLabel?: string
+  /**
+   * Whether to add the "N% off" flash after the struck original. On a card it
+   * is the selling point; in a table column it is a third thing competing for
+   * a fixed width when the two prices side by side already say it.
+   */
+  showSaving?: boolean
   className?: string
 }) {
   const cents = effectivePriceCents(product)
@@ -48,9 +55,11 @@ export function ProductPrice({
           <s className={cn(size === 'lg' ? 'text-sm' : 'text-xs', 'font-medium text-slate-400')}>
             {formatMoney(product.priceCents as number, currency)}
           </s>
-          <span className={cn(size === 'lg' ? 'text-xs' : 'text-[10px]', 'font-semibold uppercase tracking-wide text-rose-600')}>
-            {savingPercent(product)}% off
-          </span>
+          {showSaving && (
+            <span className={cn(size === 'lg' ? 'text-xs' : 'text-[10px]', 'font-semibold uppercase tracking-wide text-rose-600')}>
+              {savingPercent(product)}% off
+            </span>
+          )}
         </>
       )}
     </span>

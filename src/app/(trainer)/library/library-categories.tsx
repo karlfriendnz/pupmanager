@@ -37,12 +37,15 @@ export function LibraryCategories({ categories }: { categories: CategoryTile[] }
   return (
     <>
       {/* Heading, switch and action on ONE line — and the same 36px row the
-          tree's heading uses, so the two columns start level. */}
+          tree's heading uses, so the two columns start level.
+
+          The action comes FIRST, then the view controls: the button is the
+          thing you came to press, and it stays put as views come and go. */}
       <SectionHeader
         action={
           <span className="flex items-center gap-2">
-            <OfferingViewToggle value={view} onChange={setView} />
             <AddCategory />
+            <OfferingViewToggle value={view} onChange={setView} />
           </span>
         }
       >

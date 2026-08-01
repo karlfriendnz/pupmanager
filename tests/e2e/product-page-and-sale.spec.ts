@@ -182,10 +182,14 @@ test.describe('sale price', () => {
       })
       expect(row).toMatchObject({ priceCents: 5000, salePriceCents: 2500 })
 
-      // The list card advertises it, original struck through.
-      const card = page.getByRole('link', { name: new RegExp(product.name) }).first()
-      await expect(card).toContainText('Sale')
-      await expect(card.locator('s')).toHaveText(/50\.00/)
+      // The list row shows ONE price — what a client pays today — as a red
+      // badge because it is on special. The row, not the name link: /products
+      // is a table now and the price is its own column. The struck original,
+      // the "% off" and the "Sale" flash came out of the table on 2026-08-02
+      // (Karl); the product's own page still shows all of it.
+      const listRow = page.getByTestId('product-row').filter({ hasText: product.name }).first()
+      await expect(listRow.getByTestId('sale-price')).toHaveText(/25\.00/)
+      await expect(listRow).not.toContainText('50.00')
     } finally {
       if (id) await prisma.product.delete({ where: { id } }).catch(() => {})
       await prisma.$disconnect()

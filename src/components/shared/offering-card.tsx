@@ -499,8 +499,13 @@ export function OfferingItems({
   columns?: 3 | 4
   children: ReactNode
 }) {
+  // The 4-across variant is only ever used inside BrowseShell, which IS a
+  // query container — so it can size itself against the column it sits in
+  // rather than the window, which is 17rem wider. The 3-across default is used
+  // on pages with no such container, where `@` variants would never match, so
+  // it stays on window widths.
   const grid = columns === 4
-    ? 'grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+    ? 'grid grid-cols-1 gap-2.5 @sm:grid-cols-2 @xl:grid-cols-3 @3xl:grid-cols-4'
     : 'grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4'
   return <div className={view === 'grid' ? grid : 'flex flex-col gap-2.5'}>{children}</div>
 }

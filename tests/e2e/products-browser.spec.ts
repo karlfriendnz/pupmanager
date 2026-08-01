@@ -31,11 +31,10 @@ test('a product dragged onto a category stays there', async ({ page }) => {
   })
 
   await page.goto('/products')
-  const row = page.getByRole('link', { name: /Draggable widget/ })
+  const row = page.getByTestId('product-row').filter({ hasText: 'Draggable widget' })
   await expect(row).toBeVisible()
 
-  // The grip is the row's drag handle, rendered as its first sibling.
-  const grip = row.locator('xpath=preceding-sibling::*[1]//button').first()
+  const grip = row.getByRole('button', { name: 'Drag to reorder' })
   const target = page.getByRole('button', { name: /^Drag Target/ })
   const from = await grip.boundingBox()
   const to = await target.boundingBox()
@@ -52,7 +51,7 @@ test('a product dragged onto a category stays there', async ({ page }) => {
   await expect(target).toContainText('1')
   await page.reload()
   await page.getByRole('button', { name: /^Drag Target/ }).click()
-  await expect(page.getByRole('link', { name: /Draggable widget/ })).toBeVisible()
+  await expect(page.getByTestId('product-row').filter({ hasText: 'Draggable widget' })).toBeVisible()
 })
 
 test('a new category appears on the rail without leaving the page', async ({ page }) => {

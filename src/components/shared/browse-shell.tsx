@@ -20,7 +20,13 @@ export function BrowseShell({ nav, children }: { nav: ReactNode; children: React
     <div className="w-full p-4 md:p-8">
       <div className="md:grid md:grid-cols-[17rem_minmax(0,1fr)] md:items-start md:gap-8">
         <aside className="hidden self-start md:sticky md:top-4 md:block">{nav}</aside>
-        <div className="min-w-0">{children}</div>
+        {/* A query container, so what is INSIDE this column can size itself
+            against the column rather than against the window. The rail costs
+            it 17rem, so a `lg:` window is nowhere near an `lg:` worth of room
+            in here — the products table laid out on viewport breakpoints
+            overflowed its own box at 1100px, with the columns landing on top
+            of one another. */}
+        <div className="min-w-0 @container">{children}</div>
       </div>
     </div>
   )
