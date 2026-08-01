@@ -77,15 +77,22 @@ test.describe('add-ons — the main nav reflects a toggled add-on', () => {
     const classesNav = page.getByRole('link', { name: 'Group Classes', exact: true })
     await expect(classesNav).toBeVisible()
 
-    // Add-ons live inside Settings now (Settings has its own rail, hiding the
-    // main nav) — toggle Group classes off there, then check the main nav.
+    // Settings split in two: Add-ons keeps the PAID extras, and everything
+    // included with the plan moved to Configure — which is where Group classes
+    // lives, because it is free and on by default. Configure toggles in place
+    // with a switch rather than opening a "learn more" panel first.
     async function toggleClasses(off: boolean) {
-      await page.goto('/settings?tab=addons')
-      await page.getByRole('button', { name: /Group classes/ }).first().click()
+      await page.goto('/settings?tab=configure')
+      const toggle = page
+        .getByRole('switch', { name: /Group classes/ })
+        .or(page.getByLabel(/Group classes —/))
+        .first()
+      await expect(toggle).toBeVisible({ timeout: 15_000 })
       await Promise.all([
         page.waitForResponse(r => r.url().includes('/api/addons') && r.request().method() === 'POST'),
-        page.getByRole('button', { name: off ? 'Turn off Group classes' : 'Turn on Group classes' }).click(),
+        toggle.click(),
       ])
+      void off
       await page.goto('/dashboard')
     }
 
