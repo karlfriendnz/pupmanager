@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
+import { sendEmail } from '@/lib/email'
+import { isPlaceholderEmail } from '@/lib/utils'
 import crypto from 'crypto'
 import { z } from 'zod'
 
@@ -43,7 +45,12 @@ export async function POST(
     }),
   ])
 
-  if (!clientUser?.email) {
+  // A PLACEHOLDER address counts as no address. Someone registered without an
+  // email gets one at @no-email.pupmanager.app so that nothing tries to write
+  // to them; the null check alone let those through, and this route then mailed
+  // a domain that receives nothing — a bounce, and a trainer told it had been
+  // sent. Refusing here is the honest answer: there is nowhere to send it.
+  if (!clientUser?.email || isPlaceholderEmail(clientUser.email)) {
     return NextResponse.json({ error: 'Client has no email address' }, { status: 400 })
   }
   if (!trainerProfile) {
@@ -88,9 +95,9 @@ export async function POST(
   const clientName = clientUser.name ? `, ${clientUser.name}` : ''
 
   try {
-    const { Resend } = await import('resend')
-    const resend = new Resend(process.env.RESEND_API_KEY)
-    await resend.emails.send({
+    // Through sendEmail, which is where the placeholder filter and the
+    // cancelled-trainer suppression live. A direct Resend call opts out of both.
+    await sendEmail({
       from: process.env.RESEND_FROM_EMAIL!,
       to: clientUser.email,
       subject,

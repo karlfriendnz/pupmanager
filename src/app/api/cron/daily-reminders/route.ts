@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { Resend } from 'resend'
+import { sendEmail } from '@/lib/email'
+import { isPlaceholderEmail } from '@/lib/utils'
 import { trainerMailStopped } from '@/lib/access'
 
 function escapeHtml(str: string): string {
@@ -20,7 +21,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   }
 
-  const resend = new Resend(process.env.RESEND_API_KEY)
   const today = new Date()
   today.setUTCHours(0, 0, 0, 0)
 
@@ -72,8 +72,15 @@ export async function GET(req: Request) {
     // A client with no email address on file simply isn't part of an email
     // run. Count and move on — one unreachable owner must never stop the rest
     // of the night's reminders going out.
+    //
+    // "No email" includes a PLACEHOLDER address. Registering someone without an
+    // email gives them one at @no-email.pupmanager.app rather than a fake real
+    // address, precisely so nothing tries to write to them. A null check alone
+    // missed those: the address is a non-empty string, so this cron mailed it
+    // every morning, into a domain that receives nothing, one hard bounce per
+    // client per day against our sending reputation.
     const clientEmail = client.user.email
-    if (!clientEmail) {
+    if (!clientEmail || isPlaceholderEmail(clientEmail)) {
       skippedNoEmail++
       continue
     }
@@ -90,7 +97,10 @@ export async function GET(req: Request) {
     }
 
     try {
-      await resend.emails.send({
+      // Through sendEmail, not the Resend client directly. That is where the
+      // placeholder filter and the cancelled-trainer suppression live, so a
+      // direct call silently opts out of both — which is how this bug happened.
+      await sendEmail({
         from: process.env.RESEND_FROM_EMAIL!,
         to: clientEmail,
         subject: `🐕 Don't forget — ${pendingTasks.length} training task${pendingTasks.length > 1 ? 's' : ''} to complete today`,
