@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ShoppingBag, Ticket, Loader2, X } from 'lucide-react'
@@ -51,10 +51,28 @@ export function PendingRequestsPanel({
   const router = useRouter()
   const currency = useCurrency()
   const [, startTransition] = useTransition()
-  const [rows, setRows] = useState<Row[]>(() => [
+
+  // The server's answer, recomputed whenever it changes.
+  //
+  // This used to be seeded into state with `useState(() => …)`, which runs ONCE
+  // — so the router.refresh() below re-rendered this component with fresh props
+  // and it ignored every one of them. It mattered because the dashboard renders
+  // this panel TWICE, a phone copy and a desktop one: accepting in the copy you
+  // can see removed the row there optimistically, and the other copy went on
+  // showing the request forever. Same for anything that changed the list from
+  // elsewhere — another device, another tab, a decline on the client's screen.
+  const serverRows = useMemo<Row[]>(() => [
     ...initialMemberships.map(r => ({ kind: 'membership' as const, ...r })),
     ...initialProducts.map(r => ({ kind: 'product' as const, ...r })),
-  ])
+  ], [initialMemberships, initialProducts])
+
+  // Answered here, and hidden immediately rather than waiting for the round
+  // trip. Ids only, so a refreshed list is still the source of truth for
+  // everything else — and once the server drops an answered row, its id here
+  // simply stops matching anything.
+  const [answeredIds, setAnsweredIds] = useState<ReadonlySet<string>>(new Set())
+  const rows = serverRows.filter(r => !answeredIds.has(r.id))
+
   const [busyId, setBusyId] = useState<string | null>(null)
   const [confirming, setConfirming] = useState<PendingMembershipRequest | null>(null)
 
@@ -63,8 +81,13 @@ export function PendingRequestsPanel({
   async function action(row: Row, accept: boolean) {
     if (busyId) return
     setBusyId(row.id)
-    const removed = row
-    setRows(prev => prev.filter(r => r.id !== row.id))
+    const answer = (on: boolean) => setAnsweredIds(prev => {
+      const next = new Set(prev)
+      if (on) next.add(row.id)
+      else next.delete(row.id)
+      return next
+    })
+    answer(true)
     const url = row.kind === 'product'
       ? `/api/product-requests/${row.id}`
       : `/api/membership-requests/${row.id}`
@@ -76,10 +99,12 @@ export function PendingRequestsPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       })
-      if (!res.ok) setRows(prev => [removed, ...prev])
+      // Put it back if the server refused; otherwise let the refreshed list
+      // take over, which is now something this component actually notices.
+      if (!res.ok) answer(false)
       else startTransition(() => router.refresh())
     } catch {
-      setRows(prev => [removed, ...prev])
+      answer(false)
     } finally {
       setBusyId(null)
     }

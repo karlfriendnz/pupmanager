@@ -253,11 +253,17 @@ test.describe('memberships — trainer builds, client sees', () => {
 
       // It's on the screen the trainer opens every morning, saying who and what.
       // The request ROW — the one that holds both the name and its buttons.
-      const row = page.getByTestId('request-row').filter({ hasText: name })
+      // The dashboard renders this panel twice — a mobile copy and a desktop
+      // one — so the row exists in both. Take the one on screen.
+      const row = page.getByTestId('request-row')
+        .filter({ hasText: name })
+        .filter({ visible: true })
+        .first()
       await expect(row).toBeVisible({ timeout: 20_000 })
       // At least one, not exactly one: another spec's pending request may be
       // sitting in this list, and the count is not what this test is about.
-      await expect(page.getByText(/\d+ requests? from clients/).first()).toBeVisible()
+      // Same twice-rendered panel — the first copy is the hidden one.
+      await expect(page.getByText(/\d+ requests? from clients/).filter({ visible: true }).first()).toBeVisible()
       await expect(row).toContainText('Ongoing plan')
 
       // Accept THIS request, not whichever is top of the list — another spec's
@@ -273,7 +279,12 @@ test.describe('memberships — trainer builds, client sees', () => {
       await expect(dialog).toContainText(/invoice/i)
       await dialog.getByRole('button', { name: 'Accept & grant' }).click()
 
-      await expect(page.getByText(name)).toHaveCount(0, { timeout: 20_000 })
+      // The REQUEST is gone — not every mention of the package name. Once it is
+      // accepted the client is on it, so the name legitimately turns up
+      // elsewhere on the dashboard; what must disappear is the row asking the
+      // trainer to decide.
+      await expect(page.getByTestId('request-row').filter({ hasText: name }))
+        .toHaveCount(0, { timeout: 20_000 })
 
       // The client is on the package via the SAME purchase record a paid
       // checkout writes — but with no payment attached, because none was taken.

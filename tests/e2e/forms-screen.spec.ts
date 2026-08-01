@@ -23,29 +23,10 @@ async function login(page: Page, email: string, password: string) {
 }
 
 test.describe('forms screen — owner happy path', () => {
-  test('tabs and the new-form action sit on one line', async ({ page }) => {
-    await login(page, SEED.owner.email, SEED.owner.password)
-    await page.goto('/settings?tab=forms&view=forms')
-
-    const formsTab = page.getByRole('button', { name: 'forms', exact: true })
-    const fieldsTab = page.getByRole('button', { name: 'fields', exact: true })
-    const newForm = page.getByRole('button', { name: 'New form' })
-    await expect(formsTab).toBeVisible()
-    await expect(newForm).toBeVisible()
-
-    const [tabBox, actionBox] = await Promise.all([formsTab.boundingBox(), newForm.boundingBox()])
-    if (!tabBox || !actionBox) throw new Error('missing geometry')
-    // Same row: their vertical centres line up, and the action is to the right.
-    const tabMid = tabBox.y + tabBox.height / 2
-    const actionMid = actionBox.y + actionBox.height / 2
-    expect(Math.abs(tabMid - actionMid)).toBeLessThan(12)
-    expect(actionBox.x).toBeGreaterThan(tabBox.x + tabBox.width)
-
-    // Switching tabs swaps the action rather than adding a second row.
-    await fieldsTab.click()
-    await expect(page.getByRole('button', { name: 'New form' })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: 'Suggest fields' })).toBeVisible()
-  })
+  // REMOVED: 'tabs and the new-form action sit on one line'. It measured the
+  // forms/fields sub-tab pair against the New form action. The Fields tab went
+  // on 2026-07-30 (59a7104) and the field library is a row in the forms list
+  // now, so there is no tab row left for the action to line up with.
 
   test('owner builds a session form on the shared editor page and it persists', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
