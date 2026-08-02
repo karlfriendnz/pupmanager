@@ -1146,7 +1146,16 @@ function TrainerShell({
   // the app's main menu alongside it is two menus fighting for the same job.
   // Hide it in there and give the width back to the content; the top bar's back
   // arrow (and the logo) are still the way out.
-  const inSettings = pathname === '/settings' || pathname.startsWith('/settings/')
+  // Settings hides the main rail and brings its own. The form editors live at
+  // /forms/… but BELONG to Settings — `FormsManager` is rendered as a Settings
+  // tab and links out to them — so landing on one swapped the whole left menu
+  // underneath the trainer and lost them their place. Editing a form is still
+  // being in Settings; the URL is just the only thing that said otherwise.
+  const inSettings =
+    pathname === '/settings' ||
+    pathname.startsWith('/settings/') ||
+    pathname === '/forms' ||
+    pathname.startsWith('/forms/')
   const mainOffset = inSettings ? '' : collapsed ? 'md:ml-16' : 'md:ml-64'
 
   function toggleCollapse() {
