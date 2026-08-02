@@ -692,7 +692,7 @@ export function ClientProfileTabs({
 
                 {/* Session report (forms) */}
                 <div className="pt-3 border-t border-slate-100">
-                  <SessionFormReport sessionId={s.id} />
+                  <SessionFormReport sessionId={s.id} sessionStatus={s.status} />
                 </div>
               </div>
             </div>

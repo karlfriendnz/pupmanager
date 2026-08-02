@@ -430,7 +430,7 @@ export default async function SessionPage({
               block of its own. */}
           {notesOn && (
             <FlatBlock>
-              <SessionFormReport sessionId={trainingSession.id} layout="inline" autoPromptIfEmpty />
+              <SessionFormReport sessionId={trainingSession.id} sessionStatus={trainingSession.status} layout="inline" autoPromptIfEmpty />
             </FlatBlock>
           )}
 

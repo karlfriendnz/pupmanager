@@ -2754,7 +2754,7 @@ function SessionModal({
               intact. Both are still available on the full session page. */}
           {SHOW_REPORT_AND_TASKS && (
             <div className="border-t border-slate-100 pt-4">
-              <SessionFormReport sessionId={session.id} />
+              <SessionFormReport sessionId={session.id} sessionStatus={session.status} />
             </div>
           )}
           {SHOW_REPORT_AND_TASKS && (

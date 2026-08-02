@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { richTextToPlain } from '@/lib/rich-text'
+import { isSessionDone } from '@/lib/report-visibility'
 import { Button } from '@/components/ui/button'
 import { Plus, Loader2, FileText, Pencil, Trash2, Star, Link2, X, Sparkles, Check, Lock, List, Layers, ChevronLeft, ChevronRight, ChevronDown, Send } from 'lucide-react'
 import { VoiceInput } from '@/components/voice-input'
@@ -135,10 +136,20 @@ interface LinkedFieldsBundle {
  */
 export function SessionFormReport({
   sessionId,
+  sessionStatus,
   layout = 'modal',
   autoPromptIfEmpty = false,
 }: {
   sessionId: string
+  /**
+   * The session's own status, passed down from the server page. Completing a
+   * session publishes its write-up, so this is what decides whether the client
+   * can read it — and it has to arrive as a PROP, not from our own fetch: Mark
+   * complete calls router.refresh(), which re-renders the server page but does
+   * nothing to state a client component fetched on mount. Without this the card
+   * still read "Draft" after the trainer had just marked the session complete.
+   */
+  sessionStatus?: string
   layout?: 'modal' | 'inline'
   autoPromptIfEmpty?: boolean
 }) {
@@ -251,6 +262,7 @@ export function SessionFormReport({
         return (
           <InlineNotesPreview
             response={r}
+            sessionStatus={sessionStatus}
             template={template}
             linkedFieldMap={linkedFieldMap}
             onEdit={() => setEditing({ template, existing: r })}
@@ -431,22 +443,24 @@ function mapCustomFieldType(t: 'TEXT' | 'NUMBER' | 'DROPDOWN' | undefined): 'SHO
 // trainer clicks Edit.
 function InlineNotesPreview({
   response,
+  sessionStatus,
   template,
   linkedFieldMap,
   onEdit,
   onSent,
 }: {
   response: FormResponse
+  sessionStatus?: string
   template: FormTemplate
   linkedFieldMap: Map<string, { label: string; type?: 'TEXT' | 'NUMBER' | 'DROPDOWN' }>
   onEdit: () => void
   onSent: () => void
 }) {
   const filled = template.questions.filter(q => response.answers[q.id])
-  // Can the client read this? Marking the session complete is what publishes it,
-  // so the server works this out and tells us. Falling back to `sentAt` keeps an
-  // older cached response honest rather than optimistic.
-  const visible = response.visibleToClient ?? !!response.sentAt
+  // Can the client read this? Two sources, and the live one wins: the session's
+  // current status (which router.refresh() keeps fresh after Mark complete), or
+  // what the server said when this response was last fetched or saved.
+  const visible = isSessionDone(sessionStatus) || (response.visibleToClient ?? !!response.sentAt)
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
 
