@@ -737,6 +737,7 @@ model TrainerProfile {
   productCategories  ProductCategory[]
   stockMovements     StockMovement[]
   productVariants    ProductVariant[]
+  tags               Tag[]
 
   @@map("trainer_profiles")
 }
@@ -1563,6 +1564,86 @@ model SessionBuddy {
   @@map("session_buddies")
 }
 
+// ─── Tags (one list, every kind of offering) ─────────────────────────────────
+
+// A trainer's own cross-cutting label — "Puppy", "Reactivity", "Agility".
+//
+// NOT another ProductCategory. A category is a shelf in the shop and reaches
+// products only; a tag reaches ACROSS the kinds of thing a trainer sells, so
+// the same "Puppy" holds their puppy course (an isGroup Package), their puppy
+// consult (a 1:1 Package) and the clicker they want every new owner to buy (a
+// Product) at once. That is the entire point: a client asking "what have you
+// got for a new puppy?" should get ONE answer, not three lists they have to
+// join up themselves.
+//
+// DELIBERATELY NO COLOUR COLUMN. The house rule is that colour is the
+// trainer's brand accent and it is rationed — a per-tag palette would put ten
+// decorative hues on the client's browse screen fighting the one colour that
+// is supposed to mean something. (Package.color is a different job: it tints
+// the trainer's own calendar, which nobody else sees.)
+model Tag {
+  id        String @id @default(cuid())
+  trainerId String
+  name      String
+  // Case-folded copy of `name`, and the column the uniqueness is actually on.
+  // Postgres unique indexes compare case-SENSITIVELY, so ("Puppy", "puppy")
+  // would both be accepted and the trainer would end up with two tags saying
+  // the same word — which is the exact mess this feature exists to avoid.
+  // Written by the API on every create and rename; never read for display.
+  nameKey   String
+  // The trainer's own arrangement, lowest first — same idea as
+  // ProductCategory.order, and the order clients browse them in.
+  order     Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer TrainerProfile  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  items   TagAssignment[]
+
+  @@unique([trainerId, nameKey])
+  @@index([trainerId])
+  @@map("tags")
+}
+
+// One thing carrying one tag.
+//
+// ONE join table with two nullable targets rather than a PackageTag table and
+// a ProductTag table, because every read this feature exists for is "what is
+// in this tag?" — and that has to come back as one mixed list, in one order,
+// with one count. Two tables would make every one of those two queries plus a
+// merge in application code, and the counts on the tag rail would be a sum the
+// two halves could disagree about.
+//
+// The price is that Prisma cannot say "exactly one of these is set", so the
+// migration adds a CHECK (num_nonnulls("packageId","productId") = 1) — the
+// guarantee lives in the database, not in whichever route happens to write it.
+//
+// Cascade on all three sides deletes only THIS row: removing a tag drops its
+// assignments and leaves every offering and product exactly where it was, and
+// deleting a product drops its assignments and leaves the tag standing.
+model TagAssignment {
+  id        String  @id @default(cuid())
+  tagId     String
+  packageId String?
+  productId String?
+
+  createdAt DateTime @default(now())
+
+  tag     Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  package Package? @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // A thing carries a tag once. Postgres treats NULLs as distinct, so the
+  // product rows (packageId NULL) never collide with each other under the
+  // first index, and vice versa — which is what makes two of them work.
+  @@unique([tagId, packageId])
+  @@unique([tagId, productId])
+  @@index([packageId])
+  @@index([productId])
+  @@map("tag_assignments")
+}
+
 // ─── Products (trainer shop) ─────────────────────────────────────────────────
 
 // A trainer's own grouping for their shop — "Treats", "Guides", "Gear".
@@ -1644,6 +1725,7 @@ model Product {
   paymentItems    PaymentItem[]
   stockMovements  StockMovement[]
   variants        ProductVariant[]
+  tags            TagAssignment[]
 
   @@index([trainerId])
   @@index([category])
@@ -1945,6 +2027,7 @@ model Package {
   commsFlowSteps     CommsFlowStep[]
   bookingRequests    BookingRequest[]
   bookingPages       BookingPage[]
+  tags               TagAssignment[]
   defaultSessionForm SessionForm?         @relation("PackageDefaultSessionForm", fields: [defaultSessionFormId], references: [id], onDelete: SetNull)
 
   @@index([trainerId])

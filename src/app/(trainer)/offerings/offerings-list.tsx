@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  Package, GraduationCap, Ticket, CalendarPlus, Dog, ShoppingBag, Layers,
+  Package, GraduationCap, Ticket, CalendarPlus, Dog, ShoppingBag, Layers, Tag,
   type LucideIcon,
 } from 'lucide-react'
 import { FlatBlock, FlatRow } from '@/components/shared/flat-list'
@@ -25,6 +25,7 @@ const ICONS = {
   memberships: Ticket,
   products: ShoppingBag,
   library: Layers,
+  tags: Tag,
 } satisfies Record<string, LucideIcon>
 
 export type OfferingRowData = {

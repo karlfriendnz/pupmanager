@@ -27,7 +27,7 @@ export default async function OfferingsPage() {
 
   const addons = await getEnabledAddons(trainerId)
 
-  const [packages, classes, casual, events, daycare, memberships, products] = await Promise.all([
+  const [packages, classes, casual, events, daycare, memberships, products, tags] = await Promise.all([
     prisma.package.count({ where: { trainerId, isGroup: false } }),
     prisma.classRun.count({
       where: { trainerId, package: { allowDropIn: false, ...NON_EVENT_PACKAGE } },
@@ -37,6 +37,7 @@ export default async function OfferingsPage() {
     prisma.package.count({ where: { trainerId, isPuppySchool: true } }),
     prisma.membership.count({ where: { trainerId } }),
     prisma.product.count({ where: { trainerId } }),
+    prisma.tag.count({ where: { trainerId } }),
   ])
 
   // Same gating as the nav: a type whose add-on is off simply isn't offered.
@@ -55,6 +56,10 @@ export default async function OfferingsPage() {
     { href: '/memberships', label: 'Packages', icon: 'memberships', count: memberships, one: 'package', many: 'packages', on: addons.has('memberships') },
     { href: '/products', label: 'Products', icon: 'products', count: products, one: 'product', many: 'products', on: addons.has('shop') },
     { href: '/library', label: 'Library', icon: 'library', count: null, one: '', many: '', on: true },
+    // Not a type of offering — a label that crosses ALL of them, which is why
+    // it sits at the foot of the hub rather than in the nav. One "Puppy" tag
+    // can hold a course, a 1:1 session and a product at the same time.
+    { href: '/offerings/tags', label: 'Tags', icon: 'tags', count: tags, one: 'tag', many: 'tags', on: true },
   ] as const
 
   const visible: OfferingRowData[] = rows

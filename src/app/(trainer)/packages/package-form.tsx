@@ -16,6 +16,7 @@ import { ImageUploadButton } from '@/components/image-uploader'
 import { DateTimePicker } from '@/components/shared/date-time-picker'
 import { AddLocationModal } from '@/components/shared/add-location-modal'
 import { SessionSlotsEditor, newSlot, type SessionSlot } from '@/components/shared/session-slots'
+import { TagPicker, saveTags } from '@/components/shared/tag-picker'
 import { TicketTiersEditor, newTier, type TicketTier } from '@/components/shared/ticket-tiers'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
@@ -334,6 +335,10 @@ export function PackageForm({
     else { setError('Could not clone this offering.'); setCloning(false) }
   }
   const [error, setError] = useState<string | null>(null)
+  // Tags live in their own join table, not on the package row, so they are held
+  // here and written after the save — a brand-new offering has no id to hang
+  // them off until the create comes back.
+  const [tagIds, setTagIds] = useState<string[]>([])
   const [color, setColor] = useState<PackageColor | null>(existing?.color ?? null)
   const [defaultSessionFormId, setDefaultSessionFormId] = useState<string | null>(existing?.defaultSessionFormId ?? null)
   const [requireSessionNotes, setRequireSessionNotes] = useState<boolean>(existing?.requireSessionNotes ?? true)
@@ -743,6 +748,10 @@ export function PackageForm({
       return
     }
     const saved = await res.json()
+    // After the offering exists, never as part of it — the save above rebuilds
+    // class runs and sessions, and a tag tick has no business being able to
+    // fail any of that. See saveTags.
+    if (saved?.id) await saveTags({ packageId: saved.id }, tagIds)
     onSaved(
       {
         id: saved.id,
@@ -858,6 +867,17 @@ export function PackageForm({
           onChange={html => setValue('description', isRichTextEmpty(html) ? '' : html, { shouldDirty: true })}
           minHeight={120}
           theme="light"
+        />
+      </div>
+
+      {/* Tags sit with the NAME and DESCRIPTION, not in Settings, because they
+          are part of what this thing IS — the same "Puppy" a client browses by
+          also holds the puppy 1:1 and the puppy pack in the shop. */}
+      <div className="md:col-span-2">
+        <TagPicker
+          value={tagIds}
+          onChange={setTagIds}
+          loadFor={existing ? { packageId: existing.id } : undefined}
         />
       </div>
 

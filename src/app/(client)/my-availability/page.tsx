@@ -9,7 +9,8 @@ import { getTrainerAvailabilityForClient } from '@/lib/client-availability'
 import { loadPublishedMemberships } from '@/lib/client-memberships'
 import { PACKAGES_HIDDEN_FROM_CLIENTS } from '@/lib/feature-flags'
 import { mergeClientDogs } from '@/lib/dogs'
-import { BookingWizard, type WizardPackage, type WizardClass, type WizardEvent, type PreviewDay } from './booking-wizard'
+import { getEnabledAddons } from '@/lib/billing'
+import { BookingWizard, type WizardPackage, type WizardClass, type WizardEvent, type WizardTag, type WizardProduct, type PreviewDay } from './booking-wizard'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Availability' }
@@ -241,6 +242,78 @@ export default async function MyAvailabilityPage() {
     ? []
     : await loadPublishedMemberships(profile.trainerId, active.clientId)
 
+  // ─── Browse by tag ────────────────────────────────────────────────────────
+  //
+  // A tag is the trainer's answer to "what have you got for a new puppy?", and
+  // the answer is a course AND a 1:1 AND the clicker in their shop. So the tag
+  // is resolved here, across all of them, into ids the wizard already holds —
+  // rather than the wizard being handed a second, parallel catalogue.
+  //
+  // Tags point at PACKAGES, but a client books a class by its RUN, so a tagged
+  // group package reaches every open run off it. That is deliberate: the
+  // trainer tags "Puppy Foundations" once and every term of it is in the tag.
+  const shopOn = (await getEnabledAddons(profile.trainerId)).has('shop')
+  const [tagRows, taggedProducts] = await Promise.all([
+    prisma.tag.findMany({
+      where: { trainerId: profile.trainerId },
+      // The trainer's own arrangement, same as everywhere else they order things.
+      orderBy: [{ order: 'asc' }, { name: 'asc' }],
+      select: { id: true, name: true, items: { select: { packageId: true, productId: true } } },
+    }),
+    shopOn
+      ? prisma.product.findMany({
+          where: { trainerId: profile.trainerId, active: true, tags: { some: {} } },
+          orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
+          select: { id: true, name: true, imageUrl: true, priceCents: true, salePriceCents: true },
+        })
+      : [],
+  ])
+
+  const bookablePackageIds = new Set(packages.map(p => p.id))
+  const sellableProductIds = new Set(taggedProducts.map(p => p.id))
+  // packageId → the open runs off it, split the same way the lists above are.
+  const runsByPackage = new Map<string, { classes: string[]; events: string[] }>()
+  const noteRun = (packageId: string, key: 'classes' | 'events', runId: string) => {
+    const entry = runsByPackage.get(packageId) ?? { classes: [], events: [] }
+    entry[key].push(runId)
+    runsByPackage.set(packageId, entry)
+  }
+  for (const r of classRuns) noteRun(r.packageId, 'classes', r.id)
+  for (const r of eventRuns) noteRun(r.packageId, 'events', r.id)
+
+  const tags: WizardTag[] = tagRows
+    .map(t => {
+      const packageIds: string[] = []
+      const classIds: string[] = []
+      const eventIds: string[] = []
+      const productIds: string[] = []
+      for (const item of t.items) {
+        if (item.packageId) {
+          // Only what this client can actually act on. A tagged offering with
+          // self-booking off, or a class whose every run has finished, would be
+          // a row that goes nowhere.
+          if (bookablePackageIds.has(item.packageId)) packageIds.push(item.packageId)
+          const runs = runsByPackage.get(item.packageId)
+          if (runs) { classIds.push(...runs.classes); eventIds.push(...runs.events) }
+        } else if (item.productId && sellableProductIds.has(item.productId)) {
+          productIds.push(item.productId)
+        }
+      }
+      return { id: t.id, name: t.name, packageIds, classIds, eventIds, productIds }
+    })
+    // An empty tag is the trainer's business, not the client's. Showing one
+    // would be a row that opens onto nothing.
+    .filter(t => t.packageIds.length + t.classIds.length + t.eventIds.length + t.productIds.length > 0)
+
+  const products: WizardProduct[] = taggedProducts.map(p => ({
+    id: p.id,
+    name: p.name,
+    imageUrl: p.imageUrl,
+    // The sale price is the one actually charged, so it is the one quoted —
+    // same rule as the shop.
+    priceCents: p.salePriceCents ?? p.priceCents,
+  }))
+
   // This list only feeds the booking wizard's dog picker, so a dog that has
   // died is left out — there is nothing here to book them onto.
   const allDogs = mergeClientDogs(profile.dog, profile.dogs).filter(d => !d.deceasedAt)
@@ -280,6 +353,8 @@ export default async function MyAvailabilityPage() {
       packages={packages}
       classes={classes}
       events={events}
+      tags={tags}
+      products={products}
       maxTicketQuantity={MAX_TICKET_QUANTITY}
       memberships={memberships}
       dogs={allDogs}
