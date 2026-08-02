@@ -2,6 +2,10 @@
 // "read it once and do it" level. Keep steps tiny — one action per line, no
 // jargon. Searched + rendered by the trainer Help page (help-center.tsx).
 
+import { OFFERING_ARTICLES } from './content-offerings'
+import { SHOP_ARTICLES } from './content-shop'
+import { TOOL_ARTICLES } from './content-tools'
+
 export type HelpArticle = {
   slug: string
   title: string
@@ -890,6 +894,12 @@ export const HELP_ARTICLES: HelpArticle[] = [
       'Tick an item off when it\'s done. Switch to "Brain dump" for free notes — they save automatically.',
     ],
   },
+  // The rest live in sibling files, written per area so three people could work
+  // at once without fighting over one 900-line list. Same type, same voice, same
+  // categories — they are only split by who wrote them, not by what they are.
+  ...OFFERING_ARTICLES,
+  ...SHOP_ARTICLES,
+  ...TOOL_ARTICLES,
 ]
 
 export const HELP_FAQS: Faq[] = [
