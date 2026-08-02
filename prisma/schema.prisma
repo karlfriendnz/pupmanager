@@ -1498,6 +1498,37 @@ model TrainingSession {
   // sessions around doesn't fire a notification on every move.
   rescheduleNotifyPendingAt DateTime?
 
+  // ─── One occurrence of a run, changed on its own ───────────────────────────
+  //
+  // A weekly casual class runs for months. One week falls on a public holiday;
+  // another has to start an hour later. Before these three columns the only
+  // tool was DELETE — which took the register and every drop-in booking with
+  // it (both cascade), and which the nightly slot top-up would then quietly
+  // undo, because a deleted date leaves nothing behind to say it was deliberate.
+  //
+  // See lib/run-occurrences.ts. Nothing here may be re-derived elsewhere.
+
+  /// When the trainer called this ONE occurrence off. The row deliberately
+  /// STAYS: it keeps the register and the drop-in bookings that cascade off it,
+  /// it tells the client their class is cancelled rather than making it vanish,
+  /// and — the reason it is a column and not a delete — it is the tombstone
+  /// that stops the nightly top-up putting the date back.
+  ///
+  /// Everything that counts, charges, reminds or offers a session filters on
+  /// this being null.
+  cancelledAt          DateTime?
+  /// What the trainer told the client, e.g. "Labour Day". Free text, optional.
+  cancelReason         String?
+  /// When the trainer moved THIS occurrence on its own — a new time, a longer
+  /// slot, a different venue. Marks the row as hand-set, so a class-wide
+  /// rebuild or a venue propagation can't quietly put it back.
+  scheduleOverriddenAt DateTime?
+  /// Where the generator had originally put it. Only set alongside
+  /// scheduleOverriddenAt, and only ever written once — this is what lets the
+  /// slot planner recognise "I already made this one, they moved it" instead of
+  /// creating it again at the old time.
+  originalScheduledAt  DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1533,6 +1564,8 @@ model TrainingSession {
   @@index([trainerId, scheduledAt])
   @@index([clientPackageId])
   @@index([classRunId])
+  // Every count, price and roster on a run now asks for its LIVE sessions.
+  @@index([classRunId, cancelledAt])
   @@index([sessionPlanId])
   @@index([walkSeriesId])
   @@index([packageSessionSlotId])

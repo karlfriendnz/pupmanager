@@ -8,13 +8,25 @@
 // about three months in, silently.
 //
 // Deliberately the same posture as extendOngoingPackages: fill FORWARD from the
-// last session each slot already has, never fill a gap. TrainingSession has no
-// soft-delete — /api/schedule/[sessionId] hard-deletes, and syncOfferingRun
-// already refuses to rebuild a series for exactly this reason — so a top-up that
-// "restored the sessions the rule says should exist" would resurrect the public
-// holiday the trainer deleted on purpose, every night, forever.
+// last session each slot already has, never fill a gap. A top-up that "restored
+// the sessions the rule says should exist" would resurrect the public holiday
+// the trainer deleted on purpose, every night, forever.
+//
+// Filling forward is not enough on its own, though, because the two things a
+// trainer can now do to a single occurrence both move the tail:
+//
+//   • CANCELLING the last one leaves the row in place (cancelledAt set), so the
+//     tail doesn't move and the date is inert. Safe by construction — this is
+//     one of the reasons a cancellation is a column and not a delete.
+//   • MOVING one EARLIER does move the tail back, and the rule still says a
+//     session belongs at the old time. So the planner is also given the set of
+//     instants that are already spoken for — a moved session's
+//     originalScheduledAt, and a cancelled one's own time — and skips them.
+//
+// See lib/run-occurrences.ts.
 import { prisma } from './prisma'
 import { planSlotSessions, slotHorizonEnd } from './class-runs'
+import { spokenForInstants } from './run-occurrences'
 
 const DAY_MS = 86_400_000
 
@@ -80,6 +92,24 @@ export async function extendSlotRuns(
   const allRunIds = [...dueByRun.keys()]
   const runIds = allRunIds.slice(0, MAX_RUNS_PER_CALL)
 
+  // Every occurrence on these runs that was cancelled or moved by hand. Small
+  // by nature — most runs have none — and it is the only thing standing between
+  // a moved week and the cron putting it back at its old time tomorrow night.
+  const touched = await prisma.trainingSession.findMany({
+    where: {
+      classRunId: { in: allRunIds.slice(0, MAX_RUNS_PER_CALL) },
+      packageSessionSlotId: { not: null },
+      OR: [{ cancelledAt: { not: null } }, { scheduleOverriddenAt: { not: null } }],
+    },
+    select: {
+      classRunId: true, packageSessionSlotId: true,
+      scheduledAt: true, cancelledAt: true, originalScheduledAt: true,
+    },
+  })
+  // (runId, slotId) → the instants that slot must not plan again.
+  const spokenFor = new Map<string, Set<number>>()
+  for (const [key, rows] of groupBySlot(touched)) spokenFor.set(key, spokenForInstants(rows))
+
   const runs = await prisma.classRun.findMany({
     where: { id: { in: runIds } },
     select: {
@@ -135,8 +165,12 @@ export async function extendSlotRuns(
       // identical to the one creation used) and keep only what lands after the
       // tail. A session deleted mid-series stays deleted.
       const plan = planSlotSessions([slot], { runStart: run.startDate, tz, through })
+      const dead = spokenFor.get(`${run.id}:${slot.id}`)
       for (const p of plan) {
         if (p.scheduledAt.getTime() <= tail.getTime()) continue
+        // A week the trainer moved out of the way, or called off, does not come
+        // back — even when the tail has since fallen behind it.
+        if (dead?.has(p.scheduledAt.getTime())) continue
         rows.push({
           scheduledAt: p.scheduledAt,
           durationMins: p.durationMins,
@@ -177,4 +211,19 @@ export async function extendSlotRuns(
   // mirror sessions with no googleCalendarEventId, paged and resumable, and it
   // is the right place for volume like this.
   return { runsExtended, sessionsCreated, truncated: allRunIds.length > runIds.length }
+}
+
+/** (runId:slotId) → its rows. Both ids are non-null by the query's own where. */
+function groupBySlot<T extends { classRunId: string | null; packageSessionSlotId: string | null }>(
+  rows: T[],
+): Map<string, T[]> {
+  const out = new Map<string, T[]>()
+  for (const r of rows) {
+    if (!r.classRunId || !r.packageSessionSlotId) continue
+    const key = `${r.classRunId}:${r.packageSessionSlotId}`
+    const list = out.get(key) ?? []
+    list.push(r)
+    out.set(key, list)
+  }
+  return out
 }

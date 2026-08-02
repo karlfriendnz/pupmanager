@@ -31,6 +31,14 @@ export type SessionRow = {
   scheduledAt: string
   sessionIndex: number | null
   status: string
+  /** This week on its own — cancelled, or hand-set. See lib/run-occurrences. */
+  durationMins?: number | null
+  location?: string | null
+  cancelledAt?: string | null
+  cancelReason?: string | null
+  scheduleOverriddenAt?: string | null
+  /** Casual bookings held against this week, so cancelling can say who it hits. */
+  bookedCount?: number
 }
 
 /** One ticket type an event sells. Empty for every other kind of run. */

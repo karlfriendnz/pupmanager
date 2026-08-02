@@ -303,7 +303,9 @@ export async function PATCH(
   } catch (e) {
     // Refusing to move a class people have already attended is an answer the
     // trainer can act on, not a server error.
-    if (e instanceof ClassError && e.code === 'HAS_ATTENDANCE') {
+    // Same for refusing to rebuild over weeks the trainer cancelled or moved
+    // on their own — the message names the fix, so it is an answer, not a 500.
+    if (e instanceof ClassError && (e.code === 'HAS_ATTENDANCE' || e.code === 'HAS_OVERRIDES')) {
       return NextResponse.json({ error: e.message }, { status: 409 })
     }
     throw e

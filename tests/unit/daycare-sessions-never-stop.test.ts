@@ -17,11 +17,15 @@ const h = vi.hoisted(() => ({
   runFindMany: vi.fn(),
   sessionCount: vi.fn(),
   createMany: vi.fn(),
+  touchedFindMany: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
-    trainingSession: { groupBy: h.groupBy, count: h.sessionCount, createMany: h.createMany },
+    // findMany: the occurrences a trainer cancelled or moved by hand, which the
+    // top-up must not plan again (see lib/run-occurrences). None here — these
+    // specs are about the untouched case.
+    trainingSession: { groupBy: h.groupBy, count: h.sessionCount, createMany: h.createMany, findMany: h.touchedFindMany },
     classRun: { findMany: h.runFindMany },
   },
 }))
@@ -102,6 +106,7 @@ describe('extendSlotRuns — the rolling top-up', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     h.runFindMany.mockResolvedValue([run])
+    h.touchedFindMany.mockResolvedValue([])
     h.sessionCount.mockResolvedValue(12)
     h.createMany.mockResolvedValue({ count: 0 })
   })

@@ -6,7 +6,9 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, ClipboardCheck, Eye, Lock, Plus, Repeat } from 'lucide-react'
 import { ConfirmSheet } from '@/components/shared/confirm-sheet'
+import { OccurrenceActionsButton, type Occurrence } from '@/components/trainer/occurrence-actions'
 import { FlatBlock } from '@/components/shared/flat-list'
+import { cancelledLabel } from '@/lib/run-occurrences'
 import { SortableOfferingCard, SortableOfferingList } from '@/components/shared/offering-card'
 import { DefaultHomeworkEditor } from '@/components/trainer/default-homework-editor'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
@@ -79,6 +81,14 @@ export type ScheduledSession = {
   /** ISO — formatted here so every row reads the same way. */
   scheduledAt: string
   href: string
+  /**
+   * Everything needed to change THIS week on its own. Optional so the callers
+   * that render a 1:1 package's dates — where there is no run to hang an
+   * occurrence off — can carry on passing three fields.
+   */
+  occurrence?: Occurrence
+  /** Casual bookings held against this week, so cancelling can say who it hits. */
+  bookedCount?: number
 }
 
 /** Date and time as the trainer reads their day — explicit hour12, because the
@@ -744,22 +754,41 @@ function SessionRow({
  * session itself, so the whole row is the link.
  */
 function ScheduledRow({ session }: { session: ScheduledSession }) {
+  const occ = session.occurrence
+  const cancelled = occ?.cancelledAt != null
   return (
-    <Link
-      href={session.href}
-      className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-slate-50"
-    >
-      <span
-        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold tabular-nums text-slate-500"
-        aria-hidden
-      >
-        {session.sessionIndex ?? <ClipboardCheck className="h-3.5 w-3.5" strokeWidth={1.75} />}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-sm text-slate-900">
-        {whenLabel(session.scheduledAt)}
-      </span>
-      <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
-    </Link>
+    <div className="flex w-full items-center gap-3 pr-3 transition-colors active:bg-slate-50">
+      <Link href={session.href} className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left">
+        <span
+          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold tabular-nums text-slate-500"
+          aria-hidden
+        >
+          {session.sessionIndex ?? <ClipboardCheck className="h-3.5 w-3.5" strokeWidth={1.75} />}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className={`block truncate text-sm ${cancelled ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
+            {whenLabel(session.scheduledAt)}
+          </span>
+          {/* Only the weeks that are NOT the usual say anything. A line under
+              every row would be fifteen repetitions of "as normal". */}
+          {cancelled ? (
+            <span className="block truncate text-xs text-amber-600">
+              {cancelledLabel({ cancelReason: occ?.cancelReason ?? null })}
+            </span>
+          ) : occ?.scheduleOverriddenAt ? (
+            <span className="block truncate text-xs text-slate-400">Moved from the usual time</span>
+          ) : null}
+        </span>
+        <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
+      </Link>
+      {occ && (
+        <OccurrenceActionsButton
+          occurrence={occ}
+          label={whenLabel(session.scheduledAt)}
+          bookedCount={session.bookedCount}
+        />
+      )}
+    </div>
   )
 }
 

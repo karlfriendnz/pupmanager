@@ -11,6 +11,7 @@ import type { Prisma, PrismaClient } from '@/generated/prisma'
 import { effectiveBufferMins, normalizeBufferMins } from './buffer'
 import { expandRule, rollForwardToWeekday, OPEN_ENDED_OCCURRENCES } from './recurrence'
 import { zonedToUtc } from './timezone'
+import { hasPerOccurrenceEdits, LIVE_SESSION } from './run-occurrences'
 
 // Re-exported so server code can keep importing it from here; the flag
 // itself lives in the client-safe feature-flags module.
@@ -258,7 +259,9 @@ export async function wholeRunPriceCents(
   tx: Tx = prisma,
 ): Promise<number | null> {
   const sessions = await tx.trainingSession.findMany({
-    where: { classRunId },
+    // A week that has been called off is not part of what the whole run costs.
+    // Charging for it would be the most literal possible version of the bug.
+    where: { classRunId, ...LIVE_SESSION },
     select: { packageSessionSlot: { select: { priceCents: true, specialPriceCents: true } } },
   })
   if (sessions.length === 0) return pkg.dropInPriceCents
@@ -837,7 +840,13 @@ export async function syncOfferingRun(
     select: {
       id: true, name: true, location: true, startDate: true, bufferMins: true,
       package: { select: { sessionCount: true, weeksBetween: true, durationMins: true, bufferMins: true, sessionType: true } },
-      sessions: { select: { id: true, sessionIndex: true, googleCalendarEventId: true, packageSessionSlotId: true } },
+      sessions: {
+        select: {
+          id: true, sessionIndex: true, googleCalendarEventId: true, packageSessionSlotId: true,
+          // Whether any occurrence has been touched on its own — see below.
+          cancelledAt: true, scheduleOverriddenAt: true,
+        },
+      },
     },
   })
   if (runs.length !== 1) return null
@@ -879,6 +888,21 @@ export async function syncOfferingRun(
       throw new ClassError(
         'HAS_ATTENDANCE',
         "Can't change the dates of a class that already has attendance recorded. Change the other details, or cancel this class and create a new one.",
+      )
+    }
+    // Same rule for a class whose individual weeks have been edited. The
+    // rebuild below is a deleteMany + createMany: it would resurrect the public
+    // holiday the trainer called off and undo the week they moved, in one
+    // statement, on a save that was ostensibly about the session count.
+    //
+    // A refusal rather than a merge, deliberately. Merging means deciding which
+    // NEW date each old override lands on, and once the cadence itself has
+    // changed there is no honest answer — a wrong one is a class meeting on a
+    // day nobody was told about.
+    if (hasPerOccurrenceEdits(run.sessions)) {
+      throw new ClassError(
+        'HAS_OVERRIDES',
+        "Some weeks of this class have been cancelled or moved on their own. Changing the whole class's dates would undo them — put those weeks back first, or cancel this class and create a new one.",
       )
     }
   }
@@ -987,6 +1011,10 @@ export async function syncOfferingRun(
         classRunId: run.id,
         packageSessionSlotId: null,
         scheduledAt: { gte: new Date() },
+        // …and never one whose venue was set by hand. "This week only, we're at
+        // the hall" is not a thing a later save of the offering's default venue
+        // gets to quietly undo.
+        scheduleOverriddenAt: null,
       },
       data: { location: fields.location?.trim() || null },
     })
@@ -1051,7 +1079,13 @@ export async function updateClass(args: {
     where: { id: args.runId, trainerId: args.trainerId },
     include: {
       package: true,
-      sessions: { select: { id: true, sessionIndex: true, googleCalendarEventId: true } },
+      sessions: {
+        select: {
+          id: true, sessionIndex: true, googleCalendarEventId: true,
+          // Whether any occurrence has been touched on its own — see below.
+          cancelledAt: true, scheduleOverriddenAt: true,
+        },
+      },
     },
   })
   if (!run) throw new ClassError('RUN_NOT_FOUND', 'Class not found')
@@ -1069,6 +1103,16 @@ export async function updateClass(args: {
       throw new ClassError(
         'HAS_ATTENDANCE',
         "Can't reschedule a class that already has attendance recorded. Change the other details, or cancel this class and create a new one.",
+      )
+    }
+    // …and never over weeks that were cancelled or moved individually. The
+    // rebuild is a deleteMany + createMany; it would put the public holiday
+    // back and undo the moved week without saying so. Refused rather than
+    // merged — see the matching guard in syncOfferingRun.
+    if (hasPerOccurrenceEdits(run.sessions)) {
+      throw new ClassError(
+        'HAS_OVERRIDES',
+        "Some weeks of this class have been cancelled or moved on their own. Rescheduling the whole class would undo them — put those weeks back first, or cancel this class and create a new one.",
       )
     }
   }
@@ -1147,13 +1191,23 @@ export async function updateClass(args: {
       // (unlike a 1:1 package) changing its gap here is meant to apply to it.
       for (const s of run.sessions) {
         const idx = s.sessionIndex ?? 1
+        // A week the trainer set by hand keeps its own length and gap — "this
+        // one runs 90 minutes" is a decision, and a save about the class name
+        // has no business overwriting it. The TITLE still follows the class,
+        // because a renamed class whose adjusted week kept the old name reads
+        // as a different class.
+        const handSet = s.scheduleOverriddenAt !== null
         await tx.trainingSession.update({
           where: { id: s.id },
           data: {
             title: args.sessionCount > 1 ? `${args.name} — session ${idx}/${args.sessionCount}` : args.name,
-            durationMins: args.durationMins,
-            ...(args.bufferMins !== undefined && { bufferMins: buffer }),
-            sessionType: args.sessionType,
+            ...(handSet
+              ? {}
+              : {
+                  durationMins: args.durationMins,
+                  ...(args.bufferMins !== undefined && { bufferMins: buffer }),
+                  sessionType: args.sessionType,
+                }),
           },
         })
       }
@@ -1221,11 +1275,16 @@ export async function enrollInRun(args: {
       const sess = await tx.trainingSession.findFirst({
         where: { id: args.sessionId, classRunId: args.classRunId },
         select: {
-          id: true, sessionIndex: true, scheduledAt: true, status: true,
+          id: true, sessionIndex: true, scheduledAt: true, status: true, cancelledAt: true,
           packageSessionSlot: { select: { capacity: true } },
         },
       })
       if (!sess) throw new ClassError('SESSION_NOT_FOUND', 'That session isn’t part of this class')
+      // Selling a place at a class the trainer has called off is worse than
+      // selling one at a class that has already happened.
+      if (sess.cancelledAt) {
+        throw new ClassError('SESSION_CANCELLED', 'That session has been cancelled')
+      }
       if (sess.status !== 'UPCOMING' || sess.scheduledAt.getTime() <= Date.now()) {
         throw new ClassError('SESSION_PAST', 'That session has already happened')
       }

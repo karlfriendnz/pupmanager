@@ -168,7 +168,9 @@ export default async function MyAvailabilityPage() {
       trainerId: profile.trainerId,
       status: { in: ['SCHEDULED', 'RUNNING'] },
       id: { notIn: enrolledRunIds.length ? enrolledRunIds : ['__none__'] },
-      sessions: { some: { scheduledAt: { gte: now } } },
+      // …with at least one LIVE session still to come. A run whose remaining
+      // weeks have all been called off is not something to offer a place in.
+      sessions: { some: { scheduledAt: { gte: now }, cancelledAt: null } },
       // A run inherits its offering's visibility. Next term's classes can be
       // built and scheduled in November without appearing here until the
       // trainer says so — and the ticket tiers selected below go with them.
@@ -190,7 +192,8 @@ export default async function MyAvailabilityPage() {
       },
       enrollments: { where: { status: 'ENROLLED' }, select: { id: true, type: true, dropInSessionId: true, quantity: true, ticketTierId: true } },
       sessions: {
-        where: { scheduledAt: { gte: now } },
+        // A cancelled week is not bookable and must not be listed as one.
+        where: { scheduledAt: { gte: now }, cancelledAt: null },
         orderBy: { scheduledAt: 'asc' },
         select: {
           id: true, scheduledAt: true, durationMins: true, title: true,

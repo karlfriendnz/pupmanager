@@ -215,6 +215,44 @@ describe('syncOfferingRun — rescheduling', () => {
     expect(h.runUpdate).not.toHaveBeenCalled()
   })
 
+  it('REFUSES to move a class whose individual weeks were cancelled or moved', async () => {
+    // The single most important correctness property of per-occurrence edits:
+    // the rebuild is a deleteMany + createMany, so letting it run would put the
+    // public holiday back and undo the moved week — silently, on a save the
+    // trainer thought was about the session count.
+    for (const touched of [
+      { cancelledAt: new Date('2026-08-01T00:00:00.000Z'), scheduleOverriddenAt: null },
+      { cancelledAt: null, scheduleOverriddenAt: new Date('2026-08-01T00:00:00.000Z') },
+    ]) {
+      vi.clearAllMocks()
+      h.attendanceCount.mockResolvedValue(0)
+      h.membershipFindMany.mockResolvedValue([])
+      h.runFindMany.mockResolvedValue([{
+        ...RUN,
+        sessions: [
+          { id: 's1', sessionIndex: 1, googleCalendarEventId: null, packageSessionSlotId: null, cancelledAt: null, scheduleOverriddenAt: null },
+          { id: 's2', sessionIndex: 2, googleCalendarEventId: null, packageSessionSlotId: null, ...touched },
+        ],
+      }])
+      await expect(
+        syncOfferingRun(tx, 'pkg1', 'tr1', { startDate: NEW_START }),
+      ).rejects.toMatchObject({ code: 'HAS_OVERRIDES' })
+      expect(h.sessionDeleteMany).not.toHaveBeenCalled()
+      expect(h.runUpdate).not.toHaveBeenCalled()
+    }
+  })
+
+  it('leaves a HAND-SET venue alone when the offering\'s venue changes', async () => {
+    // "This week only, we're at the scout hall" is not something a later save of
+    // the class's default venue gets to quietly undo.
+    await syncOfferingRun(tx, 'pkg1', 'tr1', { location: 'The New Field' })
+    expect(h.sessionUpdateMany.mock.calls[0][0].where).toMatchObject({
+      classRunId: RUN.id,
+      packageSessionSlotId: null,
+      scheduleOverriddenAt: null,
+    })
+  })
+
   it('never rebuilds a drop-in class — its series comes from its slots', async () => {
     h.runFindMany.mockResolvedValue([{
       ...RUN,
