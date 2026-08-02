@@ -16,6 +16,7 @@ import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
 import { ClassGroupPanel } from '@/components/trainer/class-group-panel'
 import { SeriesCurriculumEditor, type ScheduledSession } from '@/components/trainer/series-curriculum-editor'
+import { OfferingViewToggle, useOfferingView } from '@/components/shared/offering-card'
 import { ClientSnapshotRow } from '@/components/shared/client-snapshot-row'
 import { DiscountManager } from '@/components/trainer/discount-manager'
 import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tabs'
@@ -107,6 +108,7 @@ export function RunDetail({
   const formatPrice = (cents: number | null): string =>
     cents === null || cents === undefined ? '—' : formatMoney(cents, currency)
   const [tab, setTab] = useState<Tab>('details')
+  const [sessionView, setSessionView] = useOfferingView('class-sessions')
   const [clientTab, setClientTab] = useState<'current' | 'past'>('current')
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
@@ -194,7 +196,7 @@ export function RunDetail({
     // also one less thing to explain.
     // Shared by /classes, /casual-classes and /doggy-daycare.
     { id: 'homework', label: 'Sessions', icon: ListChecks, badge: steps.length > 0 ? steps.length : undefined },
-    { id: 'messages', label: 'Reminders & messages', icon: Bell },
+    { id: 'messages', label: 'Reminders', icon: Bell },
     { id: 'discounts', label: 'Discounts', icon: Tag },
   ]
 
@@ -218,9 +220,28 @@ export function RunDetail({
       <div className="p-4 md:p-8 w-full min-w-0">
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
-      {/* Tabs — Details, Clients, Reminders & messages, Discounts. Icon on top
-          on a phone (the labels are too long to sit beside one at 390px). */}
-      <OfferingTabs tabs={tabs} value={tab} onChange={setTab} />
+      {/* Tabs — Details, Clients, Reminders, Discounts. Icon on top on a phone
+          (the labels are too long to sit beside one at 390px).
+
+          The tab's own actions sit on the SAME line, at the right, the way
+          every other screen in the app puts them — the roster's Enrol button
+          and seat count came off a card heading to get here. */}
+      <div className="mb-4 flex items-end justify-between gap-3">
+        <OfferingTabs tabs={tabs} value={tab} onChange={setTab} />
+        {tab === 'clients' && (
+          <span className="flex flex-shrink-0 items-center gap-2.5 pb-1.5">
+            {seatsLabel && <span className="hidden text-xs text-slate-500 sm:inline">{seatsLabel}</span>}
+            <Button variant="secondary" onClick={() => setAdding(true)}>
+              <UserPlus className="h-4 w-4" /> Enrol client
+            </Button>
+          </span>
+        )}
+        {tab === 'homework' && (
+          <span className="flex flex-shrink-0 items-center gap-2 pb-1.5">
+            <OfferingViewToggle value={sessionView} onChange={setSessionView} />
+          </span>
+        )}
+      </div>
 
       {/* Details tab: what you're selling (left, 7 of 12) + a compact clients
           snapshot (right, 5) — the same 7/5 split as the package detail and the
@@ -370,24 +391,14 @@ export function RunDetail({
         </div>
       </div>
 
-      {/* Clients tab — the full roster (current / past). */}
+      {/* Clients tab — the full roster (current / past).
+          No card around it and no "Clients" heading inside: the tab you are
+          standing on already says which is which, and a card drawn around the
+          only thing on a tab is a border separating it from nothing. The roster
+          IS the tab. Enrol and the seat count move up to the row of tabs. */}
       <div className={`flex min-w-0 flex-col gap-5 ${tab === 'clients' ? '' : 'hidden'}`}>
-          <Card>
-            <CardBody className="py-5">
-              <CardHeading
-                icon={<Users className="h-4 w-4 text-slate-400" />}
-                note={seatsLabel}
-                action={
-                  <Button variant="secondary" onClick={() => setAdding(true)}>
-                    <UserPlus className="h-4 w-4" /> Enrol client
-                  </Button>
-                }
-              >
-                Clients
-              </CardHeading>
-
               {enrollments.length === 0 ? (
-                <p className="text-sm text-slate-500 py-4 text-center">No one enrolled yet.</p>
+                <p className="rounded-xl border border-slate-200 bg-white py-8 text-center text-sm text-slate-500">No one enrolled yet.</p>
               ) : (
                 <>
                   {/* Current / past as tabs rather than two stacked tables —
@@ -434,8 +445,6 @@ export function RunDetail({
                   )}
                 </>
               )}
-            </CardBody>
-          </Card>
       </div>
 
       {/* Curriculum tab — what each session covers and the homework that
@@ -459,6 +468,7 @@ export function RunDetail({
           sessionCount={run.sessionCount}
           isGroup
           scheduledSessions={scheduledSessions}
+          view={sessionView}
         />
       </div>
 

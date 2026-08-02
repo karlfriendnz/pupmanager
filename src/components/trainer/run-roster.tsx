@@ -265,7 +265,10 @@ export function EnrollTable({
           which is where "has this one been invoiced?" went to hide.
           The first column takes the slack (`w-full`) so the rest stay tight
           against the right edge rather than drifting apart on a wide screen. */}
-      <div className="overflow-x-auto rounded-xl border border-slate-200">
+      {/* It carries its OWN white. It used to sit inside a Card and inherit
+          one; without the card the rows were the page's grey showing through,
+          which reads as a table that had failed to load. */}
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full min-w-[42rem] text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">

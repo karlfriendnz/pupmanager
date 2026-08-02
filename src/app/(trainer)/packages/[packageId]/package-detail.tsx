@@ -14,7 +14,8 @@ import { OfferingActions } from '@/components/trainer/offering-actions'
 import { Info, Users, Package as PackageIcon, Bell, MessageSquare, ListChecks } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
-import { SeriesCurriculumEditor } from '@/components/trainer/series-curriculum-editor'
+import { AddSessionButton, SeriesCurriculumEditor } from '@/components/trainer/series-curriculum-editor'
+import { OfferingViewToggle, useOfferingView } from '@/components/shared/offering-card'
 import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tabs'
 
 // 'discounts' is deliberately absent: the discount engine is built but not
@@ -89,6 +90,7 @@ const STATUS_BADGE: Record<'Active' | 'Completed' | 'Inactive', string> = {
 
 export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; clients: PackageClientRow[]; currency: string }) {
   const [tab, setTab] = useState<Tab>('details')
+  const [sessionView, setSessionView] = useOfferingView('package-sessions')
   const [clientTab, setClientTab] = useState<'current' | 'past'>('current')
 
   const formatPrice = (cents: number | null): string =>
@@ -155,8 +157,20 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
       <div className="p-4 md:p-8 w-full min-w-0">
 
         {/* Tabs — Details, Clients, Reminders & messages. Icon on top on a
-            phone (the labels are too long to sit beside one at 390px). */}
-        <OfferingTabs tabs={tabs} value={tab} onChange={setTab} />
+            phone (the labels are too long to sit beside one at 390px).
+
+            The tab's own actions sit on the SAME line, at the right, the way
+            every other screen in the app puts them. "Add a session" under the
+            list meant scrolling past every session to reach it. */}
+        <div className="mb-4 flex items-end justify-between gap-3">
+          <OfferingTabs tabs={tabs} value={tab} onChange={setTab} />
+          {tab === 'homework' && (
+            <span className="flex flex-shrink-0 items-center gap-2 pb-1.5">
+              <OfferingViewToggle value={sessionView} onChange={setSessionView} />
+              <AddSessionButton packageId={pkg.id} sessionCount={pkg.sessionCount} />
+            </span>
+          )}
+        </div>
 
         {/* Details tab: package info (left, 7 of 12) + a compact clients
             snapshot (right, 5). Same 7/5 split as the membership builder, so
@@ -359,7 +373,12 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             left two thirds of a desktop screen empty beside a form the trainer
             was scrolling. */}
         <div className={tab === 'homework' ? '' : 'hidden'}>
-          <SeriesCurriculumEditor packageId={pkg.id} sessionCount={pkg.sessionCount} isGroup={pkg.isGroup} />
+          <SeriesCurriculumEditor
+            packageId={pkg.id}
+            sessionCount={pkg.sessionCount}
+            isGroup={pkg.isGroup}
+            view={sessionView}
+          />
         </div>
 
         {/* Reminders & messages tab — automated session reminders (1:1 only). */}

@@ -97,11 +97,18 @@ export function SeriesCurriculumEditor({
    * which has no run — the list then shows the curriculum alone, as before.
    */
   scheduledSessions,
+  /**
+   * List (one row per session) or grid (a card each). The host owns the choice
+   * — the toggle sits on the tab's heading line beside "Add a session", not
+   * inside the list it reorders.
+   */
+  view = 'list',
 }: {
   packageId: string
   sessionCount: number
   isGroup?: boolean
   scheduledSessions?: ScheduledSession[]
+  view?: 'list' | 'grid'
 }) {
   const [steps, setSteps] = useState<Record<number, Step>>({})
   const [homeworkCounts, setHomeworkCounts] = useState<Record<string, number>>({})
@@ -273,7 +280,6 @@ export function SeriesCurriculumEditor({
           intro={intro}
           stepHeader={stepHeader}
         />
-        <AddSessionButton packageId={packageId} sessionCount={sessionCount} scheduled={scheduledSessions} />
       </div>
     )
   }
@@ -321,6 +327,22 @@ export function SeriesCurriculumEditor({
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <div>
+        {view === 'grid' ? (
+          // Two to four across, the same grid the shop and the library use.
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {rows.map(bucket => (
+              <SessionTile
+                key={bucketKey(bucket)}
+                bucket={bucket}
+                step={bucket === null ? undefined : steps[bucket]}
+                homework={homeworkCounts[bucketKey(bucket)] ?? 0}
+                past={bucket !== null && bucket > sessionCount}
+                scheduled={bucket === null ? undefined : scheduledByIndex.get(bucket)}
+                onOpen={() => setOpen(bucket)}
+              />
+            ))}
+          </div>
+        ) : (
         <FlatBlock>
           {rows.map(bucket => (
             <SessionRow
@@ -334,6 +356,7 @@ export function SeriesCurriculumEditor({
             />
           ))}
         </FlatBlock>
+        )}
 
         {/* Bookings that carry no session number — a drop-in class books them
             per client, so they belong to no step. */}
@@ -364,8 +387,74 @@ export function SeriesCurriculumEditor({
           </p>
         )}
 
-        <AddSessionButton packageId={packageId} sessionCount={sessionCount} scheduled={scheduledSessions} />
       </div>
+    </div>
+  )
+}
+
+/**
+ * One session as a CARD, for the grid view.
+ *
+ * Same three facts as the row — the number, what it covers, and how much is on
+ * it — laid out down instead of across, so a curriculum can be scanned as a
+ * board rather than a list. Deliberately NOT a variant of SessionRow: one
+ * component that reflows two ways is how the offering card ended up crushing
+ * its own title on a phone (AGENTS.md).
+ */
+function SessionTile({
+  bucket,
+  step,
+  homework,
+  past,
+  scheduled,
+  onOpen,
+}: {
+  bucket: Bucket
+  step: Step | undefined
+  homework: number
+  past: boolean
+  scheduled: ScheduledSession | undefined
+  onOpen: () => void
+}) {
+  const title = bucket === null ? 'Every session' : (step?.title || `Session ${bucket}`)
+  const unwritten = bucket !== null && !step?.title
+
+  return (
+    <div className="relative flex h-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex flex-1 flex-col items-start gap-2 p-4 text-left transition-colors active:bg-slate-50"
+      >
+        <span
+          className={`flex h-7 w-7 items-center justify-center rounded-full text-[12px] font-semibold tabular-nums ${
+            past ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'
+          }`}
+          aria-hidden
+        >
+          {bucket === null ? <Repeat className="h-4 w-4" strokeWidth={1.75} /> : bucket}
+        </span>
+        <span className={`line-clamp-2 text-sm font-medium ${unwritten ? 'text-slate-500' : 'text-slate-900'}`}>
+          {title}
+        </span>
+        <span className="mt-auto flex flex-col gap-0.5 text-xs text-slate-400">
+          {scheduled && <span>{whenLabel(scheduled.scheduledAt)}</span>}
+          <span>
+            {homework === 0 ? 'No homework' : homework === 1 ? '1 homework task' : `${homework} homework tasks`}
+          </span>
+          {past && <span className="text-amber-700">Past the end of this offering</span>}
+        </span>
+      </button>
+      {scheduled && (
+        <Link
+          href={scheduled.href}
+          onClick={e => e.stopPropagation()}
+          title="Open this session"
+          className="border-t border-slate-100 px-4 py-2 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800"
+        >
+          Open this session
+        </Link>
+      )}
     </div>
   )
 }
@@ -383,7 +472,7 @@ export function SeriesCurriculumEditor({
  * cohort turns up to, so "add a session" means scheduling one — a different
  * job, with a date and a time, which the schedule already does.
  */
-function AddSessionButton({
+export function AddSessionButton({
   packageId,
   sessionCount,
   scheduled,
