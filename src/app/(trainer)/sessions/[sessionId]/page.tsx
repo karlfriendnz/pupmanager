@@ -290,7 +290,11 @@ export default async function SessionPage({
         title="Session notes"
         back={clientId ? { href: `/clients/${clientId}?tab=sessions`, label: 'Back to client' } : undefined}
       />
-      <div className="p-4 md:p-8 w-full max-w-3xl lg:max-w-5xl mx-auto">
+      {/* Full width. Capped at 5xl the write-up sat in a column down the middle
+          of a desktop screen with a third of the room empty either side — and
+          the write-up is the whole job of this page, so it gets the room. The
+          rail beside it stays 20rem; only the notes column grows. */}
+      <div className="p-4 md:p-8 w-full min-w-0">
 
       {trainingSession.client?.isSample && (
         <div className="mb-4">
