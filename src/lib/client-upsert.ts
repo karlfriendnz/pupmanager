@@ -213,3 +213,32 @@ async function joinExisting(
 
   return { clientProfileId: profile.id, userId, joined: true, createdUser: false, createdDogIds: dogIds }
 }
+
+/**
+ * The `clientProfileId` back-link to put on an enquiry as it is accepted — or
+ * nothing, when another enquiry already holds it.
+ *
+ * `Enquiry.clientProfileId` is `@unique`: it was built as "the client this
+ * enquiry produced", one apiece. But a person enquires TWICE — they ask in
+ * March, get taken on, and ask again in September about a different course —
+ * and the second accept resolves to the same ClientProfile. Writing the link a
+ * second time is a P2002, which surfaced as a 500 on the trainer's Accept
+ * button and as a failed hand-over on the public sign-up run.
+ *
+ * The link is a convenience (a forward arrow on the enquiry detail), not data
+ * anything depends on, so the right answer is to skip it rather than fail the
+ * accept. The enquiry is still marked ACCEPTED and the client is still joined;
+ * only the arrow is missing, on the later of two enquiries that both point at
+ * the same person.
+ */
+export async function enquiryClientBackLink(
+  tx: TxClient,
+  clientProfileId: string,
+  enquiryId: string,
+): Promise<{ clientProfileId?: string }> {
+  const taken = await tx.enquiry.findFirst({
+    where: { clientProfileId, id: { not: enquiryId } },
+    select: { id: true },
+  })
+  return taken ? {} : { clientProfileId }
+}

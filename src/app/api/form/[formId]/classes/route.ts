@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { notifyEnquiryTrainer } from '@/lib/notify-enquiry-trainer'
 import { effectiveCapacity, seatsRemaining, PUBLIC_CLASS_ENROLLMENT_ENABLED } from '@/lib/class-runs'
+import { offeringVisibleWhere } from '@/lib/offering-visibility'
 
 // Public (unauthenticated) class self-enrolment, reached via an embed
 // form. Mirrors the form-submit pattern: we never create an account or
@@ -32,7 +33,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ formId:
     where: {
       trainerId: form.trainerId,
       status: 'SCHEDULED',
-      package: { isGroup: true, publicEnrollment: true },
+      package: { isGroup: true, publicEnrollment: true, ...offeringVisibleWhere() },
     },
     orderBy: { startDate: 'asc' },
     include: {
@@ -88,7 +89,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ formId:
       id: parsed.data.runId,
       trainerId: form.trainerId,
       status: 'SCHEDULED',
-      package: { isGroup: true, publicEnrollment: true },
+      package: { isGroup: true, publicEnrollment: true, ...offeringVisibleWhere() },
     },
     select: { id: true, name: true },
   })

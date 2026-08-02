@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
-import { sanitizeVideos, videoColumns } from '@/lib/instructional-videos'
+import { sanitizeVideos } from '@/lib/instructional-videos'
+import { legacyRows, mediaColumns, sanitizeMedia } from '@/lib/library-media'
 import { z } from 'zod'
 
 // z.url() happily accepts `javascript:…`, and these values end up in href/src —
@@ -17,14 +18,16 @@ const schema = z.object({
   // Does a client log sessions against this, or just read it? Plenty of the
   // library is reference material where reps and a rating are noise.
   wantsLog: z.boolean().optional(),
-  // The item's videos, in watch order. Left loose here and cleaned by
-  // sanitizeVideos, which is the one place the http(s) rule and the cap live —
+  // Everything attached, in order. Left loose here and cleaned by
+  // sanitizeMedia, which is the one place the http(s) rule and the cap live —
   // a second copy of that rule in a zod schema is a second copy to get wrong.
+  media: z.array(z.unknown()).optional(),
+  // ── The pre-list fields ────────────────────────────────────────────────────
+  // Still accepted, and folded into the list, so a browser holding the old page
+  // through a rolling deploy still saves what a trainer typed rather than
+  // wiping their attachments. Ignored the moment `media` is present.
   videos: z.array(z.unknown()).optional(),
-  // Written from `videos[0]` when a list is sent. Still accepted on its own so
-  // an older client (or a rolling deploy mid-flight) keeps working.
   videoUrl: webUrl.optional().nullable().or(z.literal('')),
-  // Blob URLs written by /api/library/upload; fileName is the handout's label.
   imageUrl: webUrl.optional().nullable().or(z.literal('')),
   fileUrl: webUrl.optional().nullable().or(z.literal('')),
   fileName: z.string().max(255).optional().nullable(),
@@ -58,15 +61,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ taskId
       description: parsed.data.description ?? null,
       repetitions: parsed.data.repetitions ?? null,
       ...(parsed.data.wantsLog !== undefined && { wantsLog: parsed.data.wantsLog }),
-      // A sent list wins and sets BOTH columns; with no list, the single field
-      // still works on its own and becomes a one-entry list, so the two can't
-      // drift apart whichever way the save arrived.
-      ...(parsed.data.videos !== undefined
-        ? videoColumns(sanitizeVideos(parsed.data.videos))
-        : videoColumns(parsed.data.videoUrl ? [{ url: parsed.data.videoUrl }] : [])),
-      imageUrl: parsed.data.imageUrl || null,
-      fileUrl: parsed.data.fileUrl || null,
-      fileName: parsed.data.fileName || null,
+      // ONE write for everything attached. mediaColumns derives videos,
+      // videoUrl, imageUrl, fileUrl and fileName from the list, so the list and
+      // the columns that older readers still select can never disagree.
+      //
+      // A body with no `media` came from the pre-list page, so its separate
+      // fields are read as a list in the same order the screen showed them.
+      ...mediaColumns(
+        parsed.data.media !== undefined
+          ? sanitizeMedia(parsed.data.media)
+          : legacyRows({
+              videos: parsed.data.videos !== undefined ? sanitizeVideos(parsed.data.videos) : [],
+              videoUrl: parsed.data.videoUrl || null,
+              imageUrl: parsed.data.imageUrl || null,
+              fileUrl: parsed.data.fileUrl || null,
+              fileName: parsed.data.fileName || null,
+            }),
+      ),
     },
   })
   return NextResponse.json(updated)

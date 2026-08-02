@@ -45,9 +45,20 @@ export function PublicUnifiedForm({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ contact, answers }),
       })
+      const b = await res.json().catch(() => ({}))
       if (!res.ok) {
-        const b = await res.json().catch(() => ({}))
         return typeof b.error === 'string' ? b.error : 'Could not send your details — please try again.'
+      }
+      // The trainer turned this form into a continuous run: instead of ending
+      // on a thank-you card and a wait, hand straight over to the password
+      // step. The enquiry is already saved either way, so a failure to navigate
+      // costs them nothing — hence assign, not push: this is a new page with
+      // new cookies to come, and the URL is where the run's token lives.
+      if (typeof b.continueUrl === 'string' && b.continueUrl.startsWith('/form/')) {
+        window.location.assign(b.continueUrl)
+        // Keep the button spinning until the navigation lands, rather than
+        // flashing a thank-you card that is about to be replaced.
+        return null
       }
       setDone(true)
       return null

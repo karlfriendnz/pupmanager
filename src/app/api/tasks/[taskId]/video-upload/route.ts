@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { clientVisibleHomeworkWhere } from '@/lib/homework-visibility'
 
 // Vercel Blob client-upload handshake for a client's homework-log video — the
 // SAME direct-to-Blob path the trainer's session notes use (see
@@ -24,7 +25,7 @@ export async function POST(
 
   // Only issue a token for a task that belongs to one of THIS user's profiles.
   const task = await prisma.trainingTask.findFirst({
-    where: { id: taskId, client: { userId: session.user.id } },
+    where: { id: taskId, client: { userId: session.user.id }, ...clientVisibleHomeworkWhere() },
     select: { id: true },
   })
   if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })

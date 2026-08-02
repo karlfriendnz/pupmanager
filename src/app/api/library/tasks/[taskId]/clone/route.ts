@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server'
 
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
-import { readVideos, videoColumns } from '@/lib/instructional-videos'
+import { mediaColumns, readMedia } from '@/lib/library-media'
 
 // Copy a library item. Everything about it comes across — the instructions, the
-// reps, the video, the picture, the handout — because the reason to duplicate
+// reps, and every attachment in its order — because the reason to duplicate
 // one is that the copy is nearly the same: "Sit" and "Sit at distance" differ
 // by a sentence.
 //
@@ -43,11 +43,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ taskId
         description: original.description,
         repetitions: original.repetitions,
         wantsLog: original.wantsLog,
-        // Every clip, in order — the copy is meant to be the same lesson.
-        ...videoColumns(readVideos(original)),
-        imageUrl: original.imageUrl,
-        fileUrl: original.fileUrl,
-        fileName: original.fileName,
+        // Everything attached, in order — the copy is meant to be the same
+        // lesson. readMedia so an item that predates the list copies its
+        // picture and handout too, rather than arriving empty.
+        ...mediaColumns(readMedia(original)),
         order: original.order + 1,
       },
     })

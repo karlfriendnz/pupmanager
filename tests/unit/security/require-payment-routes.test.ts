@@ -22,6 +22,7 @@ const h = vi.hoisted(() => ({
   productRequestCreate: vi.fn(),
   classEnrollmentFindFirst: vi.fn(),
   classEnrollmentUpdate: vi.fn(),
+  classEnrollmentFindMany: vi.fn(),
   trainingSessionFindFirst: vi.fn(),
   transaction: vi.fn(),
   // self-book libs
@@ -51,7 +52,13 @@ vi.mock('@/lib/prisma', () => ({
     trainerProfile: { findUnique: h.trainerFindUnique },
     bookingRequest: { create: h.bookingRequestCreate },
     productRequest: { findFirst: h.productRequestFindFirst, create: h.productRequestCreate },
-    classEnrollment: { findFirst: h.classEnrollmentFindFirst, update: h.classEnrollmentUpdate },
+    // findMany: the pay-later path now quotes the offering's discounts across
+    // the whole basket before invoicing it, so it re-reads the rows it booked.
+    classEnrollment: {
+      findFirst: h.classEnrollmentFindFirst,
+      update: h.classEnrollmentUpdate,
+      findMany: h.classEnrollmentFindMany,
+    },
     trainingSession: { findFirst: h.trainingSessionFindFirst },
     // The enrol route quotes discounts (none configured here → no change to the amounts).
     discount: { findMany: vi.fn(() => []) },
@@ -246,6 +253,8 @@ describe('POST /api/my/classes/[runId]/enroll require-payment gate', () => {
     h.trainerFindUnique.mockResolvedValue({ ...trainer })
     h.enrollInRun.mockResolvedValue({ enrollmentId: 'enr1', status: 'ENROLLED' })
     h.classEnrollmentUpdate.mockResolvedValue({})
+    // No discounts to quote here — this suite is about the payment gate.
+    h.classEnrollmentFindMany.mockResolvedValue([])
   }
   const req = () => new Request('http://x/enroll', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'FULL' }) })
   const params = { params: Promise.resolve({ runId: 'run1' }) }

@@ -41,6 +41,20 @@ export async function GET() {
   const products = await prisma.product.findMany({
     where: { trainerId },
     orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
+    // The options come with the product. The instant-sale composer has to make
+    // the trainer pick a size before it can ring one up — a varianted product's
+    // counts live on the VARIANT rows and Product.stockCount is ignored (see
+    // stock.ts), so a sale that named only the product would take a unit off a
+    // shelf nobody is counting.
+    include: {
+      variants: {
+        orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+        select: {
+          id: true, name: true, priceCents: true, salePriceCents: true,
+          stockCount: true, active: true, imageUrl: true,
+        },
+      },
+    },
   })
   return NextResponse.json(products)
 }

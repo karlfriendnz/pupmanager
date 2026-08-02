@@ -22,6 +22,7 @@ const h = vi.hoisted(() => ({
   classRunCount: vi.fn(),
   classRunFindMany: vi.fn(),
   clientPackageCount: vi.fn(),
+  trainerProfileFindUnique: vi.fn(),
 }))
 
 vi.mock('@/lib/auth', () => ({ auth: h.auth }))
@@ -38,6 +39,7 @@ vi.mock('@/lib/prisma', () => {
     },
     classRun: { count: h.classRunCount, findMany: h.classRunFindMany },
     clientPackage: { count: h.clientPackageCount },
+    trainerProfile: { findUnique: h.trainerProfileFindUnique },
   }
   return { prisma: { ...tx, $transaction: (fn: (c: typeof tx) => unknown) => fn(tx) } }
 })
@@ -80,6 +82,9 @@ beforeEach(() => {
   h.classRunCount.mockResolvedValue(0)
   h.classRunFindMany.mockResolvedValue([])
   h.clientPackageCount.mockResolvedValue(0)
+  // The create route resolves the trainer's own timezone, so a "show from"
+  // day is stored as the instant that day begins where they live.
+  h.trainerProfileFindUnique.mockResolvedValue({ user: { timezone: 'Pacific/Auckland' } })
   h.pkgAggregate.mockResolvedValue({ _max: { order: 0 } })
   h.pkgUpdate.mockImplementation(async ({ data }) => ({ id: 'pkg_1', ...data }))
   h.pkgCreate.mockImplementation(async ({ data }) => ({ id: 'pkg_new', ...data }))

@@ -3,8 +3,8 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   CalendarPlus, GraduationCap, Clock, Users, Video, MapPin, Check, CheckCircle2,
-  Loader2, ChevronLeft, ArrowRight, CalendarDays, Repeat, Ticket, PartyPopper,
-  Minus, Plus,
+  Loader2, ChevronLeft, ChevronRight, ArrowRight, CalendarDays, Repeat, Ticket, PartyPopper,
+  Minus, Plus, ShoppingBag, Tag as TagIcon, X,
 } from 'lucide-react'
 import { openExternal } from '@/lib/external-link'
 import { labelFor } from '@/lib/nav-labels'
@@ -14,6 +14,12 @@ import { MembershipCards } from '@/components/shared/membership-cards'
 import type { ClientMembership } from '@/lib/client-memberships'
 import { enumerateStartTimes, type AvailabilityRow, type BlackoutRow, type BusyInterval } from '@/lib/availability'
 import { zonedToUtc, todayInTz } from '@/lib/timezone'
+import {
+  groupSessionsByDay, monthOf, monthLabel, monthGrid, monthsWithSessions,
+  defaultOpenDay, picksOnDay, selectedInOrder, allSelectableIds,
+} from '@/lib/session-calendar'
+import type { BasketClassLine } from '@/lib/basket'
+import { useBasketOptional } from '../basket/basket-context'
 
 export interface WizardPackage {
   id: string
@@ -87,6 +93,32 @@ export interface WizardEvent {
   allowWaitlist: boolean
 }
 
+/**
+ * One of the trainer's tags, already resolved to ids this screen holds.
+ *
+ * The whole point of a tag is that it reaches ACROSS the types: "Puppy" holds a
+ * course, a 1:1 session and a product at once. So it arrives as four id lists
+ * rather than a type + a filter, and the server has already dropped anything
+ * this client can't act on.
+ */
+export interface WizardTag {
+  id: string
+  name: string
+  packageIds: string[]
+  classIds: string[]
+  eventIds: string[]
+  productIds: string[]
+}
+
+/** A shop product that carries at least one tag. Products are BOUGHT, not
+ *  booked, so these rows leave for the shop rather than entering the wizard. */
+export interface WizardProduct {
+  id: string
+  name: string
+  imageUrl: string | null
+  priceCents: number | null
+}
+
 export interface PreviewDay {
   weekday: string
   dayLabel: string
@@ -141,6 +173,13 @@ function fmtFullDate(dateStr: string): string {
 }
 function fmtMonth(dateStr: string): string { return MONTH_SHORT[Number(dateStr.split('-')[1]) - 1] }
 
+// Just the clock time of a session, in the TRAINER's zone — same reasoning as
+// fmtNextSession below: the viewer's zone is not the class's zone, and a 7:30pm
+// NZ class read as 7:30am to anyone looking from London.
+function fmtTimeInTz(iso: string, timeZone: string): string {
+  return new Date(iso).toLocaleTimeString('en-NZ', { timeZone, hour: 'numeric', minute: '2-digit' }).toUpperCase()
+}
+
 function fmtTimeLabel(hhmm: string): string {
   const [h, m] = hhmm.split(':').map(Number)
   const period = h >= 12 ? 'PM' : 'AM'
@@ -182,6 +221,11 @@ export function BookingWizard(props: {
   packages: WizardPackage[]
   classes: WizardClass[]
   events: WizardEvent[]
+  /** The trainer's tags, in their order, already emptied of anything this
+   *  client can't act on. */
+  tags: WizardTag[]
+  /** Every tagged, on-sale product — the only products this screen knows about. */
+  products: WizardProduct[]
   /** Server's ticket-quantity ceiling, so the stepper can't offer more than the API takes. */
   maxTicketQuantity: number
   memberships: ClientMembership[]
@@ -191,7 +235,7 @@ export function BookingWizard(props: {
   currency: string | null
   previewDays: PreviewDay[]
 }) {
-  const { businessName, initials, tz, availability, packages, classes, events, maxTicketQuantity, memberships, dogs, defaultDogId, acceptPayments, currency, previewDays } = props
+  const { businessName, initials, tz, availability, packages, classes, events, tags, products, maxTicketQuantity, memberships, dogs, defaultDogId, acceptPayments, currency, previewDays } = props
 
   // The trainer's own words for what they sell. A trainer who renames "1:1
   // Sessions" to "Private lessons" was still showing their clients our words in
@@ -206,9 +250,28 @@ export function BookingWizard(props: {
   }
 
   const [step, setStep] = useState<1 | 2 | 3>(1)
-  // Step 1 is a menu of offering TYPES; picking one drills into that type's list.
-  const [category, setCategory] = useState<'sessions' | 'classes' | 'events' | 'memberships' | null>(null)
+  // Step 1 is a menu of offering TYPES, plus the trainer's tags; picking either
+  // drills into a list. A tag is `tag:<id>` rather than its own state, so there
+  // is still exactly ONE thing that says what step 1 is showing — two would go
+  // out of step the first time someone forgot to clear the other.
+  const [category, setCategory] = useState<'sessions' | 'classes' | 'events' | 'memberships' | `tag:${string}` | null>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
+
+  // ─── Browse by tag ────────────────────────────────────────────────────────
+  //
+  // ONE MIXED SCREEN, not a filter per list. A tag exists precisely because the
+  // course, the 1:1 and the clicker belong together; a filter bolted onto the
+  // classes list and a second one onto the shop could never show them on the
+  // same screen, and would make the trainer keep the same word in two places to
+  // no benefit. The sections stay labelled inside it, because you BOOK a class
+  // and you BUY a clicker and pretending otherwise helps nobody.
+  const activeTag = category?.startsWith('tag:')
+    ? tags.find(t => t.id === category.slice(4)) ?? null
+    : null
+  const shownPackages = activeTag ? packages.filter(p => activeTag.packageIds.includes(p.id)) : packages
+  const shownClasses = activeTag ? classes.filter(c => activeTag.classIds.includes(c.id)) : classes
+  const shownEvents = activeTag ? events.filter(e => activeTag.eventIds.includes(e.id)) : events
+  const shownProducts = activeTag ? products.filter(p => activeTag.productIds.includes(p.id)) : []
 
   // Ticketed-event state: which ticket type, and how many.
   const [ticketTierId, setTicketTierId] = useState<string | null>(null)
@@ -312,6 +375,85 @@ export function BookingWizard(props: {
     setError(null)
     if (step === 3) setStep(2)
     else if (step === 2) { setStep(1); setSelection(null) }
+  }
+
+  // ── The basket ─────────────────────────────────────────────────────────────
+  // A client booking three casual Saturdays AND buying a long line shouldn't
+  // meet the card box three times. The basket lives in the client layout, so
+  // it's read optionally here — this wizard is also rendered in the trainer's
+  // preview harness, where there isn't one, and a hard hook would blank it.
+  const basket = useBasketOptional()
+
+  /**
+   * The current class/event choice as a basket line, or null when it isn't
+   * something a basket can hold (a 1:1 booking picks a TIME, which can't sit in
+   * a basket going stale, and a free class has nothing to charge).
+   *
+   * The estimate multiplies by the number of dogs, which the confirm summary
+   * above doesn't — the server bills per dog, so a two-dog booking that showed
+   * one dog's price in the basket would surprise them at the card box.
+   */
+  function currentBasketLine(): BasketClassLine | null {
+    const dogCount = Math.max(1, dogIds.length)
+    const dogSuffix = dogIds.length > 1 ? ` · ${dogIds.length} dogs` : ''
+    if (selection?.kind === 'class') {
+      const c = selection.cls
+      if (classType === 'DROP_IN') {
+        const chosen = c.sessions.filter(s => dropInSessionIds.includes(s.id))
+        if (chosen.length === 0) return null
+        const each = chosen.reduce((sum, s) => sum + (s.dropInPriceCents ?? c.dropInPerSessionCents ?? 0), 0)
+        if (each <= 0) return null
+        return {
+          kind: 'CLASS', classRunId: c.id, type: 'DROP_IN',
+          sessionIds: chosen.map(s => s.id), dogIds: dogIds.length ? dogIds : [null],
+          ticketTierId: null, ticketQuantity: 1,
+          name: c.name,
+          detail: `Drop-in · ${chosen.length} session${chosen.length === 1 ? '' : 's'}${dogSuffix}`,
+          imageUrl: c.imageUrl,
+          estimateCents: each * dogCount,
+        }
+      }
+      if (!c.fullPriceCents || c.fullPriceCents <= 0) return null
+      return {
+        kind: 'CLASS', classRunId: c.id, type: 'FULL', sessionIds: [],
+        dogIds: dogIds.length ? dogIds : [null], ticketTierId: null, ticketQuantity: 1,
+        name: c.name, detail: `Full course${dogSuffix}`, imageUrl: c.imageUrl,
+        estimateCents: c.fullPriceCents * dogCount,
+      }
+    }
+    if (selection?.kind === 'event') {
+      const e = selection.ev
+      // A ticketed event is priced by its TIER × how many, never by the
+      // package — the same rule the server enforces.
+      const ticketed = e.tiers.length > 0
+      const unit = ticketed ? (tier?.priceCents ?? 0) : (e.priceCents ?? 0)
+      if (unit <= 0) return null
+      if (ticketed && !tier) return null
+      return {
+        kind: 'CLASS', classRunId: e.id, type: 'FULL', sessionIds: [],
+        // A ticket is a place at an event, not a dog's spot — one dog only.
+        dogIds: ticketed ? (dogIds.length ? [dogIds[0]] : [null]) : (dogIds.length ? dogIds : [null]),
+        ticketTierId: ticketed ? tier!.id : null,
+        ticketQuantity: ticketed ? ticketQty : 1,
+        name: e.name,
+        detail: ticketed ? `${ticketQty} × ${tier!.name}` : `Event${dogSuffix}`,
+        imageUrl: e.imageUrl,
+        estimateCents: ticketed ? unit * ticketQty : unit * Math.max(1, dogIds.length),
+      }
+    }
+    return null
+  }
+
+  function addToBasket() {
+    const line = currentBasketLine()
+    if (!basket || !line) return
+    basket.add(line)
+    // Straight back to the list — "continue shopping" is the whole point. The
+    // pill in the corner is the confirmation; a done screen here would be a
+    // dead end they'd have to back out of to add the next thing.
+    setError(null)
+    setSelection(null)
+    setStep(1)
   }
 
   async function joinWaitlist() {
@@ -457,16 +599,46 @@ export function BookingWizard(props: {
                     </button>
                   )}
                 </div>
+
+                {/* The trainer's tags, BELOW the types — a second way in, not a
+                    replacement. Someone who came to book a class still finds
+                    "Group classes" first; someone who came with a problem
+                    ("I've got a new puppy") finds the tag. */}
+                {tags.length > 0 && (
+                  <div className="flex flex-col gap-3">
+                    <SectionLabel icon={<TagIcon className="h-3.5 w-3.5" />} text="Browse by tag" />
+                    {tags.map(t => {
+                      const count = t.packageIds.length + t.classIds.length + t.eventIds.length + t.productIds.length
+                      return (
+                        <button key={t.id} type="button" onClick={() => setCategory(`tag:${t.id}`)} className="group flex items-center gap-3 text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
+                          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><TagIcon className="h-5 w-5" /></span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[15px] font-semibold text-slate-900">{t.name}</span>
+                            <span className="block text-xs text-slate-500">{count} {count === 1 ? 'thing' : 'things'}</span>
+                          </span>
+                          <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </>
             ) : (
               <>
                 <button type="button" onClick={() => setCategory(null)} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 self-start"><ChevronLeft className="h-4 w-4" /> All offerings</button>
 
-            {category === 'sessions' && packages.length > 0 && (
+            {/* A tag says its own name at the top, because the row that opened
+                it is now off screen and "Puppy" is the answer the client came
+                for — not "1-on-1 sessions". */}
+            {activeTag && (
+              <StepIntro title={activeTag.name} sub={`Everything ${businessName} has under this tag.`} />
+            )}
+
+            {(category === 'sessions' || activeTag) && shownPackages.length > 0 && (
               <section>
                 <SectionLabel icon={<CalendarPlus className="h-3.5 w-3.5" />} text={term.oneToOne} />
                 <div className="flex flex-col gap-2.5">
-                  {packages.map(p => (
+                  {shownPackages.map(p => (
                     <button key={p.id} onClick={() => chooseSession(p)} className="group text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
                       <div className="flex items-start gap-3">
                         {p.imageUrl && (
@@ -495,11 +667,11 @@ export function BookingWizard(props: {
               </section>
             )}
 
-            {category === 'classes' && classes.length > 0 && (
+            {(category === 'classes' || activeTag) && shownClasses.length > 0 && (
               <section>
                 <SectionLabel icon={<GraduationCap className="h-3.5 w-3.5" />} text={term.classes} />
                 <div className="flex flex-col gap-2.5">
-                  {classes.map(c => {
+                  {shownClasses.map(c => {
                     const isFull = c.seatsLeft === 0
                     return (
                       <button key={c.id} onClick={() => chooseClass(c)} className="group text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
@@ -530,11 +702,11 @@ export function BookingWizard(props: {
               </section>
             )}
 
-            {category === 'events' && events.length > 0 && (
+            {(category === 'events' || activeTag) && shownEvents.length > 0 && (
               <section>
                 <SectionLabel icon={<PartyPopper className="h-3.5 w-3.5" />} text={term.events} />
                 <div className="flex flex-col gap-2.5">
-                  {events.map(e => {
+                  {shownEvents.map(e => {
                     const isFull = e.seatsLeft === 0
                     // A ticketed event shows the CHEAPEST ticket, marked "from",
                     // and never the package price — that number is meaningless
@@ -583,6 +755,45 @@ export function BookingWizard(props: {
                 {/* Checkout is its own flow (Stripe), so these cards buy directly
                     rather than continuing through the wizard's steps 2–3. */}
                 <MembershipCards memberships={memberships} currency={currency ?? 'nzd'} />
+              </section>
+            )}
+
+            {/* Products, ONLY inside a tag — and the reason the tag screen is
+                one screen. The client sees "Puppy Foundations" and the puppy
+                pack that goes with it in the same glance.
+
+                They leave for the shop rather than being sold here: buying a
+                thing has its own basket, stock, variants and delivery, and a
+                second checkout living in the booking wizard would be a second
+                one to keep right. The shop opens with this product's sheet
+                already up, so it is one tap either way. */}
+            {activeTag && shownProducts.length > 0 && (
+              <section>
+                <SectionLabel icon={<ShoppingBag className="h-3.5 w-3.5" />} text="From the shop" />
+                <div className="flex flex-col gap-2.5">
+                  {shownProducts.map(p => (
+                    <a
+                      key={p.id}
+                      href={`/my-shop?product=${encodeURIComponent(p.id)}`}
+                      className="group text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors"
+                    >
+                      <div className="flex items-start gap-3">
+                        {p.imageUrl && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.imageUrl} alt="" className="h-11 w-11 rounded-xl object-cover shrink-0" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[15px] font-semibold text-slate-900">{p.name}</p>
+                          <p className="mt-1 text-xs text-slate-500">In the shop</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {price(p.priceCents, currency) && <span className="text-sm font-semibold text-slate-900">{price(p.priceCents, currency)}</span>}
+                          <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
+                        </div>
+                      </div>
+                    </a>
+                  ))}
+                </div>
               </section>
             )}
               </>
@@ -659,6 +870,10 @@ export function BookingWizard(props: {
           saving={saving}
           error={error}
           onConfirm={confirm}
+          // Offered only when there IS a basket and this booking is something
+          // it can hold — a priced class/event with payments switched on.
+          onAddToBasket={basket && currentBasketLine() ? addToBasket : null}
+          inBasket={!!basket && !!currentBasketLine() && basket.has(currentBasketLine()!)}
         />
       )}
     </Shell>
@@ -824,14 +1039,10 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogIds, onT
 }) {
   const isFull = cls.seatsLeft === 0
   const paidButNoPayments = !!cls.fullPriceCents && !acceptPayments
-  const drop = price(cls.dropInPerSessionCents, currency)
   const dropping = classType === 'DROP_IN'
   // Drop-ins pick sessions; the whole class being "full" for the term doesn't
   // block a single session that still has room.
   const needsSession = dropping && dropInSessionIds.length === 0
-  // What's actually on offer: not already theirs, and not full.
-  const bookable = cls.sessions.filter(s => !s.booked && s.spacesLeft !== 0)
-  const allPicked = bookable.length > 0 && dropInSessionIds.length === bookable.length
 
   return (
     <div className="flex flex-col gap-5">
@@ -847,88 +1058,23 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogIds, onT
         </div>
       )}
 
-      {/* The one place a class's sessions are listed. Read-only for a full
-          course; the SAME list becomes the picker when dropping in — one
+      {/* The one place a class's sessions are shown. Read-only for a full
+          course; the SAME calendar becomes the picker when dropping in — one
           component, so the client never learns two different layouts. */}
       {cls.sessions.length > 0 && (
-        <div>
-          <div className="mb-2 flex items-baseline justify-between gap-3">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
-              {dropping ? 'Pick the sessions you want' : 'Session schedule'} <span className="text-slate-300">· {cls.sessions.length}</span>
-            </p>
-            {/* Taking the whole course IS ticking every session — one control
-                rather than a separate full-course mode to find first. Only
-                what's actually bookable: sessions they hold or that are full
-                aren't on offer. */}
-            {dropping && bookable.length > 0 && (
-              <button
-                type="button"
-                onClick={() => onSessionsSet(allPicked ? [] : bookable.map(s => s.id))}
-                className="shrink-0 text-xs font-semibold text-accent hover:underline"
-              >
-                {allPicked ? 'Clear all' : `Select all ${bookable.length}`}
-              </button>
-            )}
-          </div>
-          <div className="rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden">
-            {cls.sessions.map((s, i) => {
-              const sessionFull = s.spacesLeft === 0
-              const selected = dropping && dropInSessionIds.includes(s.id)
-              // Theirs already — never selectable, and it says so rather than
-              // looking like an option that silently fails.
-              const mine = dropping && s.booked
-              const rowInner = (
-                <>
-                  {/* The number badge becomes a tick once picked — several can
-                      be on at once, so each row has to say whether it's in. */}
-                  <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold shrink-0 tabular-nums ${
-                    selected ? 'bg-accent text-accent-fg' : mine ? 'bg-emerald-100 text-emerald-700' : 'bg-accent-soft text-accent'
-                  }`}>
-                    {selected || mine ? <Check className="h-4 w-4" /> : i + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-800">{fmtNextSession(s.at, tz)}</p>
-                    {s.title && <p className="text-xs text-slate-400 truncate">{s.title}</p>}
-                  </div>
-                  {dropping
-                    ? mine
-                      ? <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">You&apos;re booked</span>
-                      : (
-                        // Price first (it's what they're deciding on), spaces under it.
-                        <span className="shrink-0 text-right">
-                          {price(s.dropInPriceCents, currency) && (
-                            <span className="block text-sm font-semibold text-slate-800">{price(s.dropInPriceCents, currency)}</span>
-                          )}
-                          <span className={`block text-xs ${sessionFull ? 'text-rose-500' : 'text-emerald-600'}`}>
-                            {s.spacesLeft == null ? `${s.durationMins} min` : sessionFull ? 'Full' : `${s.spacesLeft} left`}
-                          </span>
-                        </span>
-                      )
-                    : <span className="text-xs text-slate-400 shrink-0">{s.durationMins} min</span>}
-                </>
-              )
-              return dropping ? (
-                <button
-                  key={s.id}
-                  type="button"
-                  disabled={sessionFull || mine}
-                  onClick={() => onSessionToggle(s.id)}
-                  // A session they hold isn't "unavailable" — it's theirs, so it
-                  // reads normally rather than greyed out like a full one.
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 border-t border-slate-100 first:border-t-0 text-left transition-colors ${
-                    selected ? 'bg-accent-soft' : mine ? 'bg-emerald-50/40 cursor-default' : 'hover:bg-slate-50'
-                  } ${mine ? '' : 'disabled:opacity-40 disabled:cursor-not-allowed'}`}
-                >
-                  {rowInner}
-                </button>
-              ) : (
-                <div key={s.id} className="flex items-center gap-3 px-4 py-2.5 border-t border-slate-100 first:border-t-0">
-                  {rowInner}
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        <SessionCalendar
+          // Keyed on the run: the month it is paged to and the day it is open
+          // on are about THIS class, and backing out to pick another one has to
+          // start it over rather than land on August of a term that ended.
+          key={cls.id}
+          tz={tz}
+          currency={currency}
+          sessions={cls.sessions}
+          picking={dropping}
+          selectedIds={dropInSessionIds}
+          onToggle={onSessionToggle}
+          onSet={onSessionsSet}
+        />
       )}
 
       {dogs.length > 1 && (
@@ -959,6 +1105,301 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogIds, onT
           {isFull ? (cls.allowWaitlist ? 'Continue to waitlist' : 'Class is full') : 'Continue'}
         </StickyCta>
       )}
+    </div>
+  )
+}
+
+/* ============================ session calendar ============================ */
+
+const WEEKDAY_INITIALS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
+
+/**
+ * A month calendar over a class run's sessions, with the chosen day's sessions
+ * underneath it and every pick listed at the bottom.
+ *
+ * WHY IT ISN'T A LIST ANY MORE. This used to render one row per upcoming
+ * session. That is fine for an eight-week course and unusable for a casual
+ * class: the trainer's rolling horizon put 180 sessions on a real Waggy Tails
+ * run, which came out as 180 tap targets and 10,765px of page on a 390px phone
+ * — about thirteen screens of one flat list. A month grid says the same thing
+ * in one screen because a casual class is a PATTERN ("Tuesdays and Thursdays"),
+ * and a grid is what a pattern looks like.
+ *
+ * WHY THE PICKS ARE LISTED SEPARATELY. Multi-select is the point — a client
+ * buys four Saturdays in one go. Paging to October must not lose sight of the
+ * two August dates already chosen, so the picks are derived from the whole run
+ * rather than from the month on screen, and they carry their own total. A
+ * picker that hides the selection would be a worse bug than the wall.
+ *
+ * REJECTED: a FullScreenSheet over the class screen. Step 2 already IS a full
+ * screen; an overlay on top of it is a screen over a screen, and it would have
+ * put the picks behind a "done" button instead of beside the CTA that uses them.
+ */
+function SessionCalendar({ tz, currency, sessions, picking, selectedIds, onToggle, onSet }: {
+  tz: string
+  currency: string | null
+  sessions: WizardClass['sessions']
+  /** True when the client is choosing sessions; false = read-only schedule. */
+  picking: boolean
+  selectedIds: string[]
+  onToggle: (id: string) => void
+  /** Replace the whole selection — Select all / Clear all. */
+  onSet: (ids: string[]) => void
+}) {
+  const days = useMemo(() => groupSessionsByDay(sessions, tz), [sessions, tz])
+  const months = useMemo(() => monthsWithSessions(days), [days])
+  const byDate = useMemo(() => new Map(days.map(d => [d.dateStr, d])), [days])
+  const bookableIds = useMemo(() => allSelectableIds(days), [days])
+
+  const firstDay = useMemo(() => defaultOpenDay(days), [days])
+  const [openDay, setOpenDay] = useState<string | null>(firstDay)
+  const [month, setMonth] = useState<string>(firstDay ? monthOf(firstDay) : (months[0] ?? ''))
+
+  const monthIdx = months.indexOf(month)
+  const prevMonth = monthIdx > 0 ? months[monthIdx - 1] : null
+  const nextMonth = monthIdx >= 0 && monthIdx < months.length - 1 ? months[monthIdx + 1] : null
+  const weeks = useMemo(() => (month ? monthGrid(month) : []), [month])
+
+  const day = openDay ? byDate.get(openDay) ?? null : null
+  const picked = useMemo(() => selectedInOrder(days, selectedIds), [days, selectedIds])
+  const allPicked = bookableIds.length > 0 && selectedIds.length === bookableIds.length
+  const totalCents = picked.reduce((sum, p) => sum + (p.session.dropInPriceCents ?? 0), 0)
+
+  // Paging to a month drops onto its first day with something on, so the panel
+  // underneath is never empty after an arrow tap.
+  function goMonth(to: string | null) {
+    if (!to) return
+    setMonth(to)
+    const first = days.find(d => monthOf(d.dateStr) === to && d.selectableCount > 0)
+      ?? days.find(d => monthOf(d.dateStr) === to)
+    if (first) setOpenDay(first.dateStr)
+  }
+
+  return (
+    // A query container: this sits in the wizard's centred column, which is far
+    // narrower than the window once the desktop rail takes its 17rem. The picks
+    // spread to two columns off THIS width, never the viewport's.
+    <div className="@container">
+      <div className="mb-2 flex items-baseline justify-between gap-3">
+        <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+          {picking ? 'Pick the sessions you want' : 'Session schedule'} <span className="text-slate-300">· {sessions.length}</span>
+        </p>
+        {/* Taking the whole course IS ticking every session — one control
+            rather than a separate full-course mode to find first. Only what's
+            actually bookable: sessions they hold or that are full aren't on
+            offer. */}
+        {picking && bookableIds.length > 0 && (
+          <button
+            type="button"
+            onClick={() => onSet(allPicked ? [] : bookableIds)}
+            className="shrink-0 text-xs font-semibold text-accent hover:underline"
+          >
+            {allPicked ? 'Clear all' : `Select all ${bookableIds.length}`}
+          </button>
+        )}
+      </div>
+
+      {/* ONE bordered surface with hairlines through it — the month, the day
+          it opens onto and the picks are three parts of one decision, not
+          three floating cards. */}
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-2 py-2">
+          <button
+            type="button"
+            onClick={() => goMonth(prevMonth)}
+            disabled={!prevMonth}
+            aria-label="Previous month"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50 disabled:opacity-25"
+          >
+            <ChevronLeft className="h-5 w-5" strokeWidth={1.75} />
+          </button>
+          <p aria-live="polite" className="text-sm font-semibold text-slate-900">{month ? monthLabel(month) : ''}</p>
+          <button
+            type="button"
+            onClick={() => goMonth(nextMonth)}
+            disabled={!nextMonth}
+            aria-label="Next month"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50 disabled:opacity-25"
+          >
+            <ChevronRight className="h-5 w-5" strokeWidth={1.75} />
+          </button>
+        </div>
+
+        <div className="px-2 pb-2 pt-1">
+          <div className="grid grid-cols-7">
+            {WEEKDAY_INITIALS.map(w => (
+              <div key={w} className="pb-1 text-center text-[10px] font-bold uppercase tracking-wide text-slate-400">{w}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-0.5">
+            {weeks.flat().map(dateStr => {
+              const d = byDate.get(dateStr) ?? null
+              const inMonth = monthOf(dateStr) === month
+              const picks = d ? picksOnDay(d, selectedIds) : 0
+              const open = dateStr === openDay
+              const spare = (d?.selectableCount ?? 0) > 0
+              return (
+                <button
+                  key={dateStr}
+                  type="button"
+                  disabled={!d}
+                  // A grid row spills into the neighbouring month, and those
+                  // days are real. Tapping one moves the header with it —
+                  // otherwise the panel says "Tue 1 Sep" under a title that
+                  // still reads August.
+                  onClick={() => {
+                    setOpenDay(dateStr)
+                    if (!inMonth && months.includes(monthOf(dateStr))) setMonth(monthOf(dateStr))
+                  }}
+                  aria-pressed={open}
+                  aria-label={d
+                    ? `${fmtFullDate(dateStr)} — ${d.sessions.length} session${d.sessions.length === 1 ? '' : 's'}${picks > 0 ? `, ${picks} picked` : spare ? '' : ', none left'}`
+                    : fmtFullDate(dateStr)}
+                  // Square on a phone, capped once the column has room —
+                  // otherwise a 544px column gives 75px cells and the month
+                  // alone is taller than the screen it is meant to save.
+                  className={`flex aspect-square max-h-14 flex-col items-center justify-center rounded-lg text-sm tabular-nums transition-colors ${
+                    open
+                      ? 'bg-accent font-bold text-accent-fg'
+                      : picks > 0
+                        ? 'font-semibold text-slate-900 ring-1 ring-inset ring-accent hover:bg-slate-50'
+                        : d
+                          // A spilled day, and a day with nothing left on it,
+                          // both stay lighter — so the current month reads as
+                          // one block and "there's room here" reads at a glance.
+                          ? `font-semibold hover:bg-slate-50 ${inMonth && spare ? 'text-slate-900' : 'text-slate-400'}`
+                          : `${inMonth ? 'text-slate-300' : 'text-slate-200'} cursor-default`
+                  }`}
+                >
+                  <span>{Number(dateStr.slice(8))}</span>
+                  {/* A dot row rather than a number: at a glance you want "is
+                      anything on, and have I picked it", not a count. */}
+                  <span className="mt-0.5 flex h-1.5 items-center gap-[3px]">
+                    {picks > 0
+                      ? Array.from({ length: Math.min(picks, 3) }).map((_, i) => (
+                          <span key={i} className={`h-1.5 w-1.5 rounded-full ${open ? 'bg-accent-fg' : 'bg-accent'}`} />
+                        ))
+                      : d && (
+                          <span className={`h-1.5 w-1.5 rounded-full ${open ? 'bg-accent-fg/60' : spare ? 'bg-slate-300' : 'bg-slate-200'}`} />
+                        )}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* The chosen day, opened out. 2–3 sessions is the real shape of a
+            casual class day, so this is short by construction. */}
+        {day && (
+          <div className="border-t border-slate-100">
+            <p className="px-4 pb-1 pt-3 text-xs font-bold uppercase tracking-wide text-slate-400">
+              {fmtFullDate(day.dateStr)} <span className="text-slate-300">· {day.sessions.length} session{day.sessions.length === 1 ? '' : 's'}</span>
+            </p>
+            <div>
+              {day.sessions.map(s => {
+                const full = s.spacesLeft === 0
+                const mine = s.booked
+                const selected = picking && selectedIds.includes(s.id)
+                const priceLabel = price(s.dropInPriceCents, currency)
+                const time = fmtTimeInTz(s.at, tz)
+                const inner = (
+                  <>
+                    {picking && (
+                      // A checkbox, not a badge. Several can be on at once, so
+                      // each row has to say whether it is in — and a tick box is
+                      // the one control everybody already reads that way.
+                      <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                        selected ? 'border-accent bg-accent text-accent-fg' : mine ? 'border-emerald-300 bg-emerald-50 text-emerald-600' : 'border-slate-300'
+                      }`}>
+                        {(selected || mine) && <Check className="h-4 w-4" strokeWidth={1.75} />}
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold tabular-nums text-slate-900">{time}</span>
+                      {s.title && <span className="block truncate text-xs text-slate-500">{s.title}</span>}
+                    </span>
+                    {picking && mine ? (
+                      <span className="shrink-0 text-xs font-semibold text-emerald-700">You&apos;re booked</span>
+                    ) : picking ? (
+                      <span className="shrink-0 text-right">
+                        {priceLabel && <span className="block text-sm font-semibold text-slate-900">{priceLabel}</span>}
+                        <span className={`block text-xs ${full ? 'text-rose-500' : 'text-slate-500'}`}>
+                          {s.spacesLeft == null ? `${s.durationMins} min` : full ? 'Full' : `${s.spacesLeft} left`}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="shrink-0 text-xs text-slate-500">{s.durationMins} min</span>
+                    )}
+                  </>
+                )
+                return picking ? (
+                  <button
+                    key={s.id}
+                    type="button"
+                    disabled={full || mine}
+                    onClick={() => onToggle(s.id)}
+                    // The action leads the label so a screen reader — and a
+                    // test — can find "the next one I can add" without parsing
+                    // a price out of it.
+                    aria-label={`${mine ? "You're booked" : full ? 'Full' : selected ? 'Remove' : 'Add'} ${fmtFullDate(day.dateStr)} ${time}`}
+                    className={`flex w-full items-center gap-3 border-t border-slate-100 px-4 py-3 text-left transition-colors first:border-t-0 ${
+                      selected ? 'bg-accent-soft' : mine ? 'cursor-default' : 'hover:bg-slate-50'
+                    } ${mine ? '' : 'disabled:cursor-not-allowed disabled:opacity-40'}`}
+                  >
+                    {inner}
+                  </button>
+                ) : (
+                  <div key={s.id} className="flex items-center gap-3 border-t border-slate-100 px-4 py-3 first:border-t-0">
+                    {inner}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Everything picked, whatever month it is in — the answer to "which
+            four did I choose?" without paging back to look. */}
+        {picking && picked.length > 0 && (
+          <div className="border-t border-slate-100 bg-slate-50/60">
+            <div className="flex items-baseline justify-between gap-3 px-4 pb-1 pt-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                You&apos;ve picked {picked.length}
+              </p>
+              <button type="button" onClick={() => onSet([])} className="shrink-0 text-xs font-semibold text-accent hover:underline">
+                Clear all
+              </button>
+            </div>
+            <ul className="grid grid-cols-1 gap-x-4 px-4 pb-2 @md:grid-cols-2">
+              {picked.map(({ dateStr, session }) => (
+                <li key={session.id} className="flex items-center gap-2 py-1.5 text-sm">
+                  <span className="min-w-0 flex-1 truncate text-slate-700">
+                    {fmtFullDate(dateStr)} · <span className="tabular-nums">{fmtTimeInTz(session.at, tz)}</span>
+                  </span>
+                  {price(session.dropInPriceCents, currency) && (
+                    <span className="shrink-0 tabular-nums text-slate-500">{price(session.dropInPriceCents, currency)}</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onToggle(session.id)}
+                    aria-label={`Remove ${fmtFullDate(dateStr)} ${fmtTimeInTz(session.at, tz)}`}
+                    className="-mr-1 shrink-0 rounded-md p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+                  >
+                    <X className="h-4 w-4" strokeWidth={1.75} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {totalCents > 0 && (
+              <div className="flex items-center justify-between gap-4 border-t border-slate-200/70 px-4 py-2.5">
+                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Total</span>
+                <span className="text-sm font-bold tabular-nums text-slate-900">{price(totalCents, currency)}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -1104,7 +1545,7 @@ function Row({ icon, text }: { icon: React.ReactNode; text: string }) {
 
 /* ============================ step 3 · confirm ============================ */
 
-function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, classType, dropInSessionIds, tier, ticketQty, dogName, saving, error, onConfirm }: {
+function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, classType, dropInSessionIds, tier, ticketQty, dogName, saving, error, onConfirm, onAddToBasket, inBasket }: {
   tz: string
   selection: Selection
   date: string
@@ -1119,6 +1560,9 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
   saving: boolean
   error: string | null
   onConfirm: () => void
+  /** Null when this booking can't go in a basket (free, or a 1:1 time slot). */
+  onAddToBasket: (() => void) | null
+  inBasket: boolean
 }) {
   const isSession = selection.kind === 'session'
   const pkg = selection.kind === 'session' ? selection.pkg : null
@@ -1222,6 +1666,24 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
       {error && <p className="text-sm text-rose-600">{error}</p>}
 
       <StickyCta disabled={saving} onClick={onConfirm} loading={saving}>{ctaText}</StickyCta>
+
+      {/* Only offered where it changes anything: a booking that would otherwise
+          send them to the card box on its own. Underneath the primary action,
+          because paying now is still the common case — this is for the client
+          who is also buying a lead, or booking two more Saturdays. */}
+      {willCharge && onAddToBasket && (
+        <button
+          type="button"
+          onClick={onAddToBasket}
+          className="-mt-1 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-3.5 text-[15px] font-semibold text-slate-700"
+        >
+          {inBasket ? (
+            <><Check className="h-4 w-4" strokeWidth={1.75} /> In your basket — add again</>
+          ) : (
+            <><ShoppingBag className="h-4 w-4" strokeWidth={1.75} /> Add to basket &amp; keep browsing</>
+          )}
+        </button>
+      )}
     </div>
   )
 }

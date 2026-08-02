@@ -13,6 +13,7 @@ import { runOnBookingAutomations } from '@/lib/booking-automations'
 import { createConnectCheckout } from '@/lib/connect-checkout'
 import { isConnectConfigured } from '@/lib/connect'
 import { env } from '@/lib/env'
+import { offeringVisibleWhere } from '@/lib/offering-visibility'
 
 // Public booking endpoint for a single booking page: /c/<slug>/book/<pageSlug>.
 //   GET  — current bookable slots (for the picker to refresh).
@@ -45,7 +46,9 @@ async function loadEnabledPage(slug: string, pageSlug: string) {
 async function loadPackage(trainerId: string, packageId: string | null) {
   if (!packageId) return null
   return prisma.package.findFirst({
-    where: { id: packageId, trainerId },
+    // Anonymous, and it returns the PRICE. Gated like every other client
+    // read — see lib/offering-visibility.
+    where: { id: packageId, trainerId, ...offeringVisibleWhere() },
     select: { id: true, name: true, sessionCount: true, weeksBetween: true, durationMins: true, bufferMins: true, sessionType: true, priceCents: true, specialPriceCents: true },
   })
 }

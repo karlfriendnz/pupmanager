@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { guardPermission } from '@/lib/membership'
 import { hasAddon } from '@/lib/billing'
 import { createManualSaleInvoice } from '@/lib/invoicing'
+import { fulfilInPersonSale, resolveSaleItems } from '@/lib/in-person-sale'
 
 // Paginated, searchable list of the trainer's receivables — the new
 // payment-method-agnostic `Invoice` rows (bank transfer / Xero, no Stripe
@@ -94,6 +95,11 @@ export async function GET(req: Request) {
 // pay on their own phone. Every other Invoice creation path spawns automatically
 // off an assignment; this is the only one a trainer drives directly.
 //
+// A line rung up off the catalogue also names its PRODUCT (and its VARIANT, if
+// the trainer picked a size), which is what makes it a sale rather than a
+// sentence: see src/lib/in-person-sale.ts for the shelf and the hand-over it
+// writes. A one-off "Something else" line carries neither, and is money only.
+//
 // Line validation mirrors the line-editing PATCH on [id]/route.ts — same bounds,
 // so a sale can't create something the editor would then reject.
 const postSchema = z.object({
@@ -105,6 +111,11 @@ const postSchema = z.object({
         quantity: z.number().int().min(1).max(1000),
         unitAmountCents: z.number().int().min(0).max(10_000_000),
         xeroAccountCode: z.string().max(50).nullable().optional(),
+        // Both optional and both nullable: an older composer (a phone that
+        // hasn't reloaded) sends neither, and its sale still goes through as
+        // free text rather than 400ing at the till.
+        productId: z.string().min(1).nullable().optional(),
+        variantId: z.string().min(1).nullable().optional(),
       }),
     )
     .min(1)
@@ -125,6 +136,18 @@ export async function POST(req: Request) {
   const parsed = postSchema.safeParse(await req.json().catch(() => ({})))
   if (!parsed.success) return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
 
+  // BEFORE any money: every catalogue line has to be this trainer's product,
+  // with an option that belongs to it and enough on the shelf. Refusing here
+  // means the trainer hears "only 2 Larges left" with the client still in front
+  // of them, instead of an invoice landing against a shelf that can't fill it.
+  const resolved = await resolveSaleItems(
+    ctx.companyId,
+    parsed.data.lines.flatMap(l =>
+      l.productId ? [{ productId: l.productId, variantId: l.variantId ?? null, quantity: l.quantity }] : [],
+    ),
+  )
+  if (!resolved.ok) return NextResponse.json({ error: resolved.error }, { status: 409 })
+
   try {
     const invoice = await createManualSaleInvoice({
       trainerId: ctx.companyId,
@@ -132,6 +155,19 @@ export async function POST(req: Request) {
       lines: parsed.data.lines,
       idempotencyKey: parsed.data.idempotencyKey,
     })
+    // Only a NEW sale moves stock. A repeat of the same idempotency key is the
+    // same sale — a double-tap, or a retry on a flaky connection — and the
+    // units already came off the shelf the first time round.
+    if (invoice.created && resolved.items.length > 0) {
+      await prisma.$transaction(tx =>
+        fulfilInPersonSale(tx, {
+          trainerId: ctx.companyId,
+          clientId: parsed.data.clientId,
+          userId: ctx.userId,
+          items: resolved.items,
+        }),
+      )
+    }
     return NextResponse.json({
       id: invoice.id,
       payToken: invoice.payToken,

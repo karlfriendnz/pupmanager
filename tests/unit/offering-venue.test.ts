@@ -37,6 +37,9 @@ const h = vi.hoisted(() => ({
   membershipFindMany: vi.fn(),
   runTrainerDeleteMany: vi.fn(),
   runTrainerCreateMany: vi.fn(),
+  // The create route resolves the trainer's own timezone, so "show from
+  // 1 December" is stored as the instant that day begins where they live.
+  trainerProfileFindUnique: vi.fn(() => Promise.resolve({ user: { timezone: 'Pacific/Auckland' } })),
 }))
 
 vi.mock('@/lib/auth', () => ({ auth: h.auth }))
@@ -71,6 +74,7 @@ vi.mock('@/lib/prisma', () => {
       deleteMany: h.sessionDeleteMany,
     },
     sessionAttendance: { count: h.attendanceCount },
+    trainerProfile: { findUnique: h.trainerProfileFindUnique },
   }
   return { prisma: { ...tx, $transaction: (fn: (c: typeof tx) => unknown) => fn(tx) } }
 })
@@ -132,6 +136,7 @@ beforeEach(() => {
   h.classRunCreate.mockImplementation(async ({ data }) => ({ id: 'run_new', ...data }))
   h.classRunUpdate.mockResolvedValue({ id: 'run_1' })
   h.clientPackageCount.mockResolvedValue(0)
+  h.trainerProfileFindUnique.mockResolvedValue({ user: { timezone: 'Pacific/Auckland' } })
   h.sessionCreateMany.mockResolvedValue({ count: 0 })
   h.sessionFindMany.mockResolvedValue([{ id: 'sess_1' }])
   h.sessionUpdateMany.mockResolvedValue({ count: 0 })

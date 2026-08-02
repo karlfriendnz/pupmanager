@@ -8,13 +8,19 @@ import { z } from 'zod'
 
 const postSchema = z.object({
   note: z.string().max(500).optional(),
+  // Which size/colour. Resolved against the product's own variants below — an
+  // id on its own is never trusted.
+  variantId: z.string().nullable().optional(),
 }).optional()
 
 // Verify the product belongs to the client's trainer (no cross-trainer leakage).
 async function verifyProductOwnership(productId: string, trainerId: string) {
   const product = await prisma.product.findUnique({
     where: { id: productId },
-    select: { id: true, trainerId: true, active: true, name: true },
+    select: {
+      id: true, trainerId: true, active: true, name: true,
+      variants: { where: { active: true }, select: { id: true, name: true, stockCount: true } },
+    },
   })
   if (!product || product.trainerId !== trainerId || !product.active) return null
   return product
@@ -56,28 +62,46 @@ export async function POST(
 
   // Body is optional — empty body => no note.
   let note: string | undefined
+  let variantId: string | null = null
   try {
     const text = await req.text()
     if (text) {
       const parsed = postSchema.safeParse(JSON.parse(text))
-      if (parsed.success) note = parsed.data?.note
+      if (parsed.success) {
+        note = parsed.data?.note
+        variantId = parsed.data?.variantId ?? null
+      }
     }
   } catch { /* ignore body parse errors — request still valid */ }
 
+  const variants = product.variants ?? []
+  const variant = variantId ? variants.find(v => v.id === variantId) ?? null : null
+  if (variantId && !variant) {
+    return NextResponse.json({ error: 'That option isn’t available.' }, { status: 404 })
+  }
+  // A product that HAS variants can't be asked for in the abstract — the
+  // trainer would have nothing to put in the bag.
+  if (variants.length > 0 && !variant) {
+    return NextResponse.json({ error: 'Choose an option first.' }, { status: 400 })
+  }
+
   // Idempotent: if a PENDING request already exists, return it. Avoids
-  // tripping the partial unique index on duplicate taps.
+  // tripping the partial unique index on duplicate taps. Scoped to the VARIANT
+  // as well, because asking for a Large when a Small is already on order is a
+  // second thing wanted, not a duplicate tap.
   const existing = await prisma.productRequest.findFirst({
-    where: { clientId: profile.id, productId, status: 'PENDING' },
+    where: { clientId: profile.id, productId, variantId, status: 'PENDING' },
   })
   if (existing) return NextResponse.json(existing)
 
-  if (!(await takeStock(prisma, product.id, { clientId: profile.id, note: 'Requested in the client app' }))) {
+  if (!(await takeStock(prisma, product.id, { clientId: profile.id, variantId, note: 'Requested in the client app' }))) {
     return NextResponse.json({ error: 'That item is out of stock.' }, { status: 409 })
   }
   const created = await prisma.productRequest.create({
     data: {
       clientId: profile.id,
       productId,
+      variantId,
       note: note ?? null,
       status: 'PENDING',
     },
@@ -90,6 +114,7 @@ export async function POST(
     clientId: profile.id,
     sourceType: 'PRODUCT',
     productId,
+    productVariantId: variantId,
   })
 
   // Tell the trainer a client requested a product (skip trainer-in-preview so a
@@ -99,7 +124,13 @@ export async function POST(
     await notifyTrainer(
       trainerUserId,
       'CLIENT_SHOP_ORDER',
-      { clientName: profile.user?.name ?? 'A client', dogName: profile.dog?.name ?? '', detail: `requested “${product.name}”` },
+      {
+        clientName: profile.user?.name ?? 'A client',
+        dogName: profile.dog?.name ?? '',
+        // Naming the variant is the point of the alert — "a harness" is not
+        // something the trainer can go and pick up.
+        detail: `requested “${variant ? `${product.name} — ${variant.name}` : product.name}”`,
+      },
       `/clients/${profile.id}`,
       profile.trainerId,
     )
@@ -109,18 +140,22 @@ export async function POST(
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ productId: string }> }
 ) {
   const profile = await resolveActingClient()
   if (!profile) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const { productId } = await params
+  // Cancelling the Large must leave the Small on order, so the variant narrows
+  // the delete when one is named. No variantId = every pending row for this
+  // product, which is what a product without variants has always done.
+  const variantId = new URL(req.url).searchParams.get('variantId')
 
-  // Hard delete the PENDING row. Keeps the (clientId, productId) pair
+  // Hard delete the PENDING row. Keeps the (clientId, productId, variant) pair
   // available for fresh re-requests later. FULFILLED rows are preserved.
   await prisma.productRequest.deleteMany({
-    where: { clientId: profile.id, productId, status: 'PENDING' },
+    where: { clientId: profile.id, productId, status: 'PENDING', ...(variantId ? { variantId } : {}) },
   })
 
   return NextResponse.json({ ok: true })

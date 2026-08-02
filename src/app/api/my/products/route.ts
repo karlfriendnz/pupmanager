@@ -24,6 +24,13 @@ export async function GET() {
         id: true, name: true, description: true, kind: true, priceCents: true,
         salePriceCents: true, stockCount: true,
         imageUrl: true, downloadUrl: true, category: true, featured: true,
+        // The sizes/colours a client picks between. Active only — a hidden
+        // variant is off the shop, exactly as a hidden product is.
+        variants: {
+          where: { active: true },
+          orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+          select: { id: true, name: true, priceCents: true, salePriceCents: true, stockCount: true },
+        },
       },
     }),
     prisma.productRequest.findMany({

@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/page-header'
 import { trainerRegionCode } from '@/lib/country'
+import { visibleFromDateStr } from '@/lib/offering-visibility'
 import { EditPackageForm } from './edit-package-form'
 import type { PackageColor } from '../../package-form'
 import type { Metadata } from 'next'
@@ -63,9 +64,15 @@ export default async function EditPackagePage({
       orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
       select: { id: true, name: true },
     }),
-    prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { addressCountry: true, signupCountry: true } }),
+    prisma.trainerProfile.findUnique({
+      where: { id: trainerId },
+      // timezone: "show from 1 December" is a day in the trainer's life, and the
+      // stored value is the instant that day begins for them.
+      select: { addressCountry: true, signupCountry: true, user: { select: { timezone: true } } },
+    }),
   ])
   const region = trainerProfile ? trainerRegionCode(trainerProfile) : undefined
+  const tz = trainerProfile?.user?.timezone || 'Pacific/Auckland'
 
   if (!pkg) notFound()
 
@@ -114,6 +121,7 @@ export default async function EditPackagePage({
             color: (pkg.color ?? null) as PackageColor | null,
             defaultSessionFormId: pkg.defaultSessionFormId ?? null,
             requireSessionNotes: pkg.requireSessionNotes,
+            visibleFromDate: visibleFromDateStr(pkg.visibleFrom, tz),
             isGroup: pkg.isGroup,
             isEvent: pkg.isEvent,
             capacity: pkg.capacity,

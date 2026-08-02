@@ -197,6 +197,7 @@ export function FormEditorShell({
   statusActions,
   error,
   children,
+  sidebar,
   onDelete,
   onCancel,
   onSave,
@@ -209,6 +210,15 @@ export function FormEditorShell({
   statusActions?: React.ReactNode
   error?: string | null
   children: React.ReactNode
+  /**
+   * The field palette, on the left of the form (see `_form-builder.tsx`).
+   *
+   * DESKTOP ONLY, on purpose. A 240px rail beside a form does not fit a 390px
+   * phone, and AGENTS.md makes mobile the primary layout — so below `lg` this
+   * is not rendered at all and the builder puts the very same palette in a
+   * FullScreenSheet instead. One column, tap to add.
+   */
+  sidebar?: React.ReactNode
   /** Omitted for a new form — there's nothing to delete yet. */
   onDelete?: () => Promise<void> | void
   onCancel: () => void
@@ -242,57 +252,68 @@ export function FormEditorShell({
         </div>
       )}
 
-      <div className="flex flex-col rounded-xl border border-slate-200 bg-white [&>section+section]:border-t [&>section+section]:border-slate-200">
-        {error && (
-          <p
-            role="alert"
-            className="border-b border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600 sm:px-5"
-          >
-            {error}
-          </p>
+      <div className={sidebar ? 'grid gap-4 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start' : undefined}>
+        {sidebar && (
+          // Sticky so the palette is still there when you have scrolled to
+          // question twelve. `no-scrollbar` because a visible rail here would be
+          // the second scrollbar on screen, which Karl has banned outright.
+          <aside className="no-scrollbar hidden lg:sticky lg:top-4 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
+            {sidebar}
+          </aside>
         )}
 
-        {children}
+        <div className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white [&>section+section]:border-t [&>section+section]:border-slate-200">
+          {error && (
+            <p
+              role="alert"
+              className="border-b border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600 sm:px-5"
+            >
+              {error}
+            </p>
+          )}
 
-        <div className="flex items-center gap-2 border-t border-slate-200 px-4 py-3 sm:px-5">
-          {onDelete && (
-            confirmDelete ? (
-              <div className="mr-auto flex items-center gap-1">
+          {children}
+
+          <div className="flex items-center gap-2 border-t border-slate-200 px-4 py-3 sm:px-5">
+            {onDelete && (
+              confirmDelete ? (
+                <div className="mr-auto flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(false)}
+                    className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setDeleting(true)
+                      try { await onDelete() } finally { setDeleting(false) }
+                    }}
+                    disabled={deleting}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    {deleting ? 'Deleting…' : 'Confirm delete'}
+                  </button>
+                </div>
+              ) : (
                 <button
                   type="button"
-                  onClick={() => setConfirmDelete(false)}
-                  className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setDeleting(true)
-                    try { await onDelete() } finally { setDeleting(false) }
-                  }}
-                  disabled={deleting}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                  onClick={() => setConfirmDelete(true)}
+                  className="mr-auto inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50"
                 >
                   <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
-                  {deleting ? 'Deleting…' : 'Confirm delete'}
+                  Delete
                 </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(true)}
-                className="mr-auto inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50"
-              >
-                <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
-                Delete
-              </button>
-            )
-          )}
-          <Button variant="ghost" size="sm" onClick={onCancel} className={onDelete ? '' : 'ml-auto'}>
-            Cancel
-          </Button>
-          <Button size="sm" loading={saving} onClick={onSave}>{saveLabel}</Button>
+              )
+            )}
+            <Button variant="ghost" size="sm" onClick={onCancel} className={onDelete ? '' : 'ml-auto'}>
+              Cancel
+            </Button>
+            <Button size="sm" loading={saving} onClick={onSave}>{saveLabel}</Button>
+          </div>
         </div>
       </div>
     </div>

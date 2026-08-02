@@ -13,6 +13,8 @@ const h = vi.hoisted(() => ({
   clientPackageFindUnique: vi.fn(),
   productFindFirst: vi.fn(),
   productFindUnique: vi.fn(),
+  productVariantFindFirst: vi.fn(),
+  productVariantFindUnique: vi.fn(),
   invoiceFindFirst: vi.fn(),
   invoiceFindUnique: vi.fn(),
   invoiceFindMany: vi.fn(),
@@ -34,6 +36,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     clientPackage: { findFirst: h.clientPackageFindFirst, findUnique: h.clientPackageFindUnique },
     product: { findFirst: h.productFindFirst, findUnique: h.productFindUnique },
+    productVariant: { findFirst: h.productVariantFindFirst, findUnique: h.productVariantFindUnique },
     invoice: { findFirst: h.invoiceFindFirst, findUnique: h.invoiceFindUnique, findMany: h.invoiceFindMany, create: h.invoiceCreate, update: h.invoiceUpdate },
     payment: { findUnique: h.paymentFindUnique },
     trainerProfile: { findUnique: h.trainerFindUnique },
@@ -210,6 +213,55 @@ describe('createInvoiceForAssignment', () => {
     const id = await createInvoiceForAssignment({ trainerId: 't-1', clientId: 'cp-1', sourceType: 'PRODUCT', productId: 'prod-1' })
     expect(id).toBe('inv-1')
     expect(h.invoiceCreate.mock.calls[0][0].data).toMatchObject({ amountCents: 4500, description: 'Long Line', sourceType: 'PRODUCT', sourceId: 'prod-1' })
+  })
+
+  // ── Variants ──────────────────────────────────────────────────────────────
+  // The invoice has to agree with the shop about two things: WHAT was bought
+  // and WHAT it cost. And the sourceId becomes the variant's, because
+  // idempotency is "one invoice per thing bought" — a Small and a Large are
+  // two things, and keying both on the product would bill for one of them.
+
+  it('bills a variant at its own price and names it on the line', async () => {
+    h.productFindFirst.mockResolvedValue({ name: 'Harness', priceCents: 4500, salePriceCents: null })
+    h.productVariantFindFirst.mockResolvedValue({ name: 'Large', priceCents: 6000, salePriceCents: null })
+    await createInvoiceForAssignment({
+      trainerId: 't-1', clientId: 'cp-1', sourceType: 'PRODUCT', productId: 'prod-1', productVariantId: 'v-large',
+    })
+    expect(h.invoiceCreate.mock.calls[0][0].data).toMatchObject({
+      amountCents: 6000,
+      description: 'Harness — Large',
+      sourceId: 'v-large',
+    })
+  })
+
+  it('a variant with no price of its own inherits the product’s', async () => {
+    h.productFindFirst.mockResolvedValue({ name: 'Harness', priceCents: 4500, salePriceCents: null })
+    h.productVariantFindFirst.mockResolvedValue({ name: 'Small', priceCents: null, salePriceCents: null })
+    await createInvoiceForAssignment({
+      trainerId: 't-1', clientId: 'cp-1', sourceType: 'PRODUCT', productId: 'prod-1', productVariantId: 'v-small',
+    })
+    expect(h.invoiceCreate.mock.calls[0][0].data).toMatchObject({ amountCents: 4500, description: 'Harness — Small' })
+  })
+
+  it('the Small and the Large are two separate invoices, not one', async () => {
+    h.productFindFirst.mockResolvedValue({ name: 'Harness', priceCents: 4500, salePriceCents: null })
+    h.productVariantFindFirst.mockResolvedValue({ name: 'Large', priceCents: null, salePriceCents: null })
+    await createInvoiceForAssignment({
+      trainerId: 't-1', clientId: 'cp-1', sourceType: 'PRODUCT', productId: 'prod-1', productVariantId: 'v-large',
+    })
+    // The idempotency lookup is keyed on the VARIANT, so an invoice already
+    // raised for the Small is not found here and the Large is billed too.
+    expect(h.invoiceFindFirst.mock.calls[0][0].where).toMatchObject({ sourceId: 'v-large' })
+  })
+
+  it('refuses a variant that isn’t the trainer’s, rather than billing the product', async () => {
+    h.productFindFirst.mockResolvedValue({ name: 'Harness', priceCents: 4500, salePriceCents: null })
+    h.productVariantFindFirst.mockResolvedValue(null)
+    const id = await createInvoiceForAssignment({
+      trainerId: 't-1', clientId: 'cp-1', sourceType: 'PRODUCT', productId: 'prod-1', productVariantId: 'v-elsewhere',
+    })
+    expect(id).toBeNull()
+    expect(h.invoiceCreate).not.toHaveBeenCalled()
   })
 })
 

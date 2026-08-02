@@ -7,7 +7,9 @@ import { AppInstallModal } from '../app-install-modal'
 import { computeAchievementProgress } from '@/lib/achievements'
 import { getEnabledAddons } from '@/lib/billing'
 import { mergeClientDogs } from '@/lib/dogs'
+import { productPriceSummary } from '@/lib/product-price'
 import { todayInTz, weekBoundsUtcDates } from '@/lib/timezone'
+import { clientVisibleHomeworkWhere } from '@/lib/homework-visibility'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Home' }
@@ -113,7 +115,23 @@ export default async function ClientHomePage() {
     prisma.trainingTask.findMany({
       where: {
         clientId: clientProfile.id,
-        date: { gte: weekStart, lt: weekEnd },
+        // Practice homework stays hidden until the session it came out of has
+        // run — see lib/homework-visibility.
+        AND: [
+          clientVisibleHomeworkWhere(now),
+          {
+            OR: [
+              { date: { gte: weekStart, lt: weekEnd } },
+              // Preparation for a session that hasn't happened yet stays on the
+              // list however far ahead it was handed out. It is dated at its
+              // session, so a trainer who sends "bring a hungry dog and a pot
+              // of chicken" two weeks early would otherwise have it appear the
+              // week of the class — which is the one thing preparation must
+              // never do.
+              { timing: 'BEFORE_SESSION', session: { scheduledAt: { gte: now } } },
+            ],
+          },
+        ],
       },
       orderBy: [{ date: 'asc' }, { order: 'asc' }],
       select: {
@@ -152,6 +170,12 @@ export default async function ClientHomePage() {
       take: 6,
       select: {
         id: true, name: true, kind: true, priceCents: true, salePriceCents: true, imageUrl: true,
+        // Enough to say "from $X · 3 options" rather than a single price a
+        // varianted product doesn't have.
+        variants: {
+          where: { active: true },
+          select: { priceCents: true, salePriceCents: true },
+        },
       },
     }),
     // "Your library" = the downloads THIS CLIENT actually has. It used to be
@@ -267,14 +291,19 @@ export default async function ClientHomePage() {
       }))}
       latestMessage={latestMessageProp}
       packageProgress={packageProgress}
-      featuredProducts={featuredProducts.map(p => ({
-        id: p.id,
-        name: p.name,
-        kind: p.kind as 'PHYSICAL' | 'DIGITAL',
-        priceCents: p.priceCents,
-        salePriceCents: p.salePriceCents,
-        imageUrl: p.imageUrl,
-      }))}
+      featuredProducts={featuredProducts.map(p => {
+        const summary = productPriceSummary(p, p.variants)
+        return {
+          id: p.id,
+          name: p.name,
+          kind: p.kind as 'PHYSICAL' | 'DIGITAL',
+          priceCents: p.priceCents,
+          salePriceCents: p.salePriceCents,
+          imageUrl: p.imageUrl,
+          optionCount: summary.count,
+          fromCents: summary.from,
+        }
+      })}
       libraryItems={libraryProducts.map(p => ({
         id: p.id,
         name: p.name,

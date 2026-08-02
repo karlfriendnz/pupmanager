@@ -16,6 +16,8 @@ interface SuggestedTask {
   description: string | null
   repetitions: number | null
   libraryTaskId: string | null
+  /** Preparation for the session, or practice after it. */
+  timing: 'BEFORE_SESSION' | 'AFTER_SESSION'
   /** Recipients who already have this one — never offered twice. */
   assignedClientIds: string[]
 }
@@ -159,7 +161,18 @@ export function SuggestedHomework({
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm text-slate-900">{t.title}</span>
-                {t.repetitions ? <span className="block text-xs text-slate-400">{t.repetitions} reps</span> : null}
+                {/* Only PREPARATION is called out. "After" is what homework has
+                    always meant, so labelling it too would be the app saying
+                    the same thing twice — but a trainer adding "bring a hungry
+                    dog and a pot of chicken" needs to know it goes out now. */}
+                {(t.timing === 'BEFORE_SESSION' || t.repetitions) && (
+                  <span className="block text-xs text-slate-400">
+                    {[
+                      t.timing === 'BEFORE_SESSION' ? 'Shows before the session' : null,
+                      t.repetitions ? `${t.repetitions} reps` : null,
+                    ].filter(Boolean).join(' · ')}
+                  </span>
+                )}
               </span>
             </button>
           )

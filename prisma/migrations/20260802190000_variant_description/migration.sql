@@ -1,0 +1,25 @@
+-- A variant can say something of its own.
+--
+-- Variants shipped with an `imageUrl` but no words, so a trainer with a harness
+-- in three sizes had exactly one description to work with — the product's. The
+-- thing a client actually needs at the moment they pick ("fits 12–18kg, chest
+-- 45–60cm") is per-SIZE, and typing it into the product blurb makes one
+-- paragraph that is wrong for two of the three.
+--
+-- NULL = inherit the product's description, which is the common case and the
+-- default: nothing that exists today changes. Resolution lives in one place,
+-- resolveVariantPresentation() in src/lib/product-price.ts, beside the price
+-- inheritance it mirrors.
+--
+-- Content is Tiptap HTML like every other description in the app, so it is TEXT
+-- (matching products.description) and sanitized on display, never on the way in.
+--
+-- Table names are the @@map snake_case ones (product_variants); COLUMN names
+-- are camelCase, because this schema maps tables only. Prisma MODEL names would
+-- fail 42P01 under `migrate deploy` and take the build down.
+--
+-- IF NOT EXISTS so a replay over a database that already has the column is a
+-- no-op rather than a failed migration nobody can clear.
+
+-- AlterTable
+ALTER TABLE "product_variants" ADD COLUMN IF NOT EXISTS "description" TEXT;

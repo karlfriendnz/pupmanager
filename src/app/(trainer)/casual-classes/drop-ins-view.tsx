@@ -27,6 +27,8 @@ export type RunRow = {
   dropInCount: number
   slotSummary: string | null
   upcoming: { id: string; index: number | null; label: string }[]
+  /** Built, but held back from clients until its date — see offering-visibility. */
+  notYetShowing?: boolean
   isPast: boolean
 }
 
@@ -109,6 +111,9 @@ export function DropInsView({ runs: initialRuns, currency = 'NZD' }: { runs: Run
                           dimmed={r.isPast}
                           dragHandle={handle}
                           badges={[
+                            // First, and never hidden — a trainer must never
+                            // wonder why a client can't see their class.
+                            ...(r.notYetShowing ? [{ label: 'Not showing yet', tone: 'warn' as const }] : []),
                             ...(r.dropInPriceCents != null
                               ? [{ label: `${formatMoney(r.dropInPriceCents, currency)} / session`, tone: 'warn' as const }]
                               : []),

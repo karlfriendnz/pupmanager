@@ -16,6 +16,7 @@ import { ImageUploadButton } from '@/components/image-uploader'
 import { DateTimePicker } from '@/components/shared/date-time-picker'
 import { AddLocationModal } from '@/components/shared/add-location-modal'
 import { SessionSlotsEditor, newSlot, type SessionSlot } from '@/components/shared/session-slots'
+import { TagPicker, saveTags } from '@/components/shared/tag-picker'
 import { TicketTiersEditor, newTier, type TicketTier } from '@/components/shared/ticket-tiers'
 import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
@@ -118,6 +119,20 @@ export interface PkgRow {
   publicEnrollment?: boolean
   clientSelfBook?: boolean
   selfBookRequiresApproval?: boolean
+  /**
+   * The day clients start seeing this, as `YYYY-MM-DD` in the trainer's zone.
+   * null = showing now. UNDEFINED means the loader didn't fetch it, and the
+   * form then leaves the setting alone entirely rather than clearing it — a
+   * list screen that saves a row it only half-loaded must not publish an
+   * offering the trainer had scheduled.
+   */
+  visibleFromDate?: string | null
+  /**
+   * Whether that day is still in the future — computed server-side, where the
+   * instant lives, so no list has to reason about timezones to draw a badge.
+   * The lists set this; the edit form doesn't need it.
+   */
+  notYetShowing?: boolean
   xeroAccountCode?: string | null
   requirePayment?: boolean | null
   // A drop-in class's schedule slots, as stored. Optional so loaders that don't
@@ -210,6 +225,16 @@ const formSchema = z.object({
     })
   }
 })
+
+/**
+ * Today as `YYYY-MM-DD` in the BROWSER's zone — the sensible starting value for
+ * the "hold this back until" picker. Only ever a default the trainer overwrites;
+ * whatever day they land on is resolved to midnight in their own timezone
+ * server-side, so this never decides anything.
+ */
+function todayDateStr(): string {
+  return new Date().toLocaleDateString('en-CA')
+}
 
 /** Stored slot → editor slot. Keeps the real id so a save updates in place
  *  (and every session already generated off it keeps its price). */
@@ -313,8 +338,17 @@ export function PackageForm({
     if (!confirm('Delete this offering? This can’t be undone.')) return
     setDeleting(true)
     const res = await fetch(`/api/packages/${existing.id}`, { method: 'DELETE' })
-    if (res.ok) window.location.href = '/packages'
-    else { setError('Could not delete this offering.'); setDeleting(false) }
+    // The route says both where to land (a daycare goes back to /doggy-daycare,
+    // not the 1:1 Sessions list) and, when it refuses, exactly what is in the
+    // way — "3 bookings on this daycare programme". Showing the generic line
+    // instead is what left Karl with "Could not delete this offering." and
+    // nothing to act on.
+    const body = await res.json().catch(() => null) as { redirectTo?: string; error?: string } | null
+    if (res.ok) window.location.href = body?.redirectTo ?? '/packages'
+    else {
+      setError(typeof body?.error === 'string' ? body.error : 'Could not delete this offering.')
+      setDeleting(false)
+    }
   }
   async function handleClone() {
     if (!existing || cloning) return
@@ -325,6 +359,10 @@ export function PackageForm({
     else { setError('Could not clone this offering.'); setCloning(false) }
   }
   const [error, setError] = useState<string | null>(null)
+  // Tags live in their own join table, not on the package row, so they are held
+  // here and written after the save — a brand-new offering has no id to hang
+  // them off until the create comes back.
+  const [tagIds, setTagIds] = useState<string[]>([])
   const [color, setColor] = useState<PackageColor | null>(existing?.color ?? null)
   const [defaultSessionFormId, setDefaultSessionFormId] = useState<string | null>(existing?.defaultSessionFormId ?? null)
   const [requireSessionNotes, setRequireSessionNotes] = useState<boolean>(existing?.requireSessionNotes ?? true)
@@ -474,6 +512,12 @@ export function PackageForm({
   const [xeroActive, setXeroActive] = useState(false)
   const [clientSelfBook, setClientSelfBook] = useState<boolean>(existing?.clientSelfBook ?? false)
   const [selfBookRequiresApproval, setSelfBookRequiresApproval] = useState<boolean>(existing?.selfBookRequiresApproval ?? true)
+  // When clients start seeing this. '' = showing now.
+  const [visibleFromDate, setVisibleFromDate] = useState<string>(existing?.visibleFromDate ?? '')
+  // Whether the trainer has touched the control this session. Without it, a
+  // form whose loader never fetched visibleFromDate would send null on save and
+  // silently publish a scheduled offering. See PkgRow.visibleFromDate.
+  const [visibleFromTouched, setVisibleFromTouched] = useState(false)
   const [requirePayment, setRequirePayment] = useState<boolean | null>(existing?.requirePayment ?? null)
   const { register, handleSubmit, watch, setValue, trigger, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -719,6 +763,9 @@ export function PackageForm({
         publicEnrollment: isGroup && publicEnrollment,
         clientSelfBook,
         selfBookRequiresApproval,
+        ...(existing?.visibleFromDate !== undefined || visibleFromTouched
+          ? { visibleFromDate: visibleFromDate || null }
+          : {}),
         xeroAccountCode: xeroAccountCode || null,
         requirePayment,
       }),
@@ -734,6 +781,10 @@ export function PackageForm({
       return
     }
     const saved = await res.json()
+    // After the offering exists, never as part of it — the save above rebuilds
+    // class runs and sessions, and a tag tick has no business being able to
+    // fail any of that. See saveTags.
+    if (saved?.id) await saveTags({ packageId: saved.id }, tagIds)
     onSaved(
       {
         id: saved.id,
@@ -760,6 +811,7 @@ export function PackageForm({
         publicEnrollment: saved.publicEnrollment ?? false,
         clientSelfBook: saved.clientSelfBook ?? false,
         selfBookRequiresApproval: saved.selfBookRequiresApproval ?? true,
+        visibleFromDate: visibleFromDate || null,
         xeroAccountCode: saved.xeroAccountCode ?? null,
         requirePayment: saved.requirePayment ?? null,
         assignments: existing?.assignments ?? 0,
@@ -849,6 +901,17 @@ export function PackageForm({
           onChange={html => setValue('description', isRichTextEmpty(html) ? '' : html, { shouldDirty: true })}
           minHeight={120}
           theme="light"
+        />
+      </div>
+
+      {/* Tags sit with the NAME and DESCRIPTION, not in Settings, because they
+          are part of what this thing IS — the same "Puppy" a client browses by
+          also holds the puppy 1:1 and the puppy pack in the shop. */}
+      <div className="md:col-span-2">
+        <TagPicker
+          value={tagIds}
+          onChange={setTagIds}
+          loadFor={existing ? { packageId: existing.id } : undefined}
         />
       </div>
 
@@ -1406,6 +1469,42 @@ export function PackageForm({
           </span>
         </label>
       )}
+
+      {/* ─── When clients start seeing this ─────────────────────── */}
+      <div className="md:col-span-2 rounded-xl border border-slate-200 px-3 py-2.5">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={visibleFromDate !== ''}
+            onChange={e => {
+              setVisibleFromTouched(true)
+              setVisibleFromDate(e.target.checked ? todayDateStr() : '')
+            }}
+            className="h-4 w-4 mt-0.5"
+          />
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-medium text-slate-700">Hold this back until a date</span>
+            <span className="block text-[11px] text-slate-400 mt-0.5">
+              Off, clients can see it as soon as you save. On, it stays yours alone
+              until the morning of the date you pick — so next term can be built now.
+            </span>
+          </span>
+        </label>
+        {visibleFromDate !== '' && (
+          <div className="mt-2.5 pl-7">
+            <label htmlFor="visibleFromDate" className="text-[11px] text-slate-500 block mb-1">
+              Clients see it from
+            </label>
+            <input
+              id="visibleFromDate"
+              type="date"
+              value={visibleFromDate}
+              onChange={e => { setVisibleFromTouched(true); setVisibleFromDate(e.target.value) }}
+              className="h-10 w-full max-w-[12rem] rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+            />
+          </div>
+        )}
+      </div>
 
       <div className="md:col-span-2">
         <label className="text-sm font-medium text-slate-700 block mb-1.5">Schedule colour</label>

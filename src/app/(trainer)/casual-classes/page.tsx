@@ -7,6 +7,7 @@ import { isClassRunPast, NON_EVENT_PACKAGE } from '@/lib/class-runs'
 import { DropInsView } from './drop-ins-view'
 import type { Metadata } from 'next'
 import { addonSettingsHref } from '@/lib/configurable-features'
+import { notYetShowingBadge } from '@/lib/offering-visibility'
 
 export const metadata: Metadata = { title: 'Casual Classes' }
 
@@ -56,6 +57,8 @@ export default async function DropInsPage() {
         package: {
           select: {
             id: true, name: true, description: true, capacity: true, dropInPriceCents: true,
+            // Whether clients can see this yet — the run inherits it.
+            visibleFrom: true,
             sessionSlots: { orderBy: { order: 'asc' }, select: { day: true, startTime: true, endTime: true } },
           },
         },
@@ -96,6 +99,7 @@ export default async function DropInsPage() {
             index: s.sessionIndex,
             label: formatDate(s.scheduledAt),
           })),
+          notYetShowing: notYetShowingBadge(r.package.visibleFrom, now) !== null,
           isPast: isClassRunPast(
             { status: r.status, startDate: r.startDate, lastSessionAt: r.sessions[r.sessions.length - 1]?.scheduledAt },
             now,

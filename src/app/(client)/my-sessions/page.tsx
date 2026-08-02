@@ -9,6 +9,7 @@ import { NOT_SUSPENDED, SESSIONS_NOT_SUSPENDED } from '@/lib/membership-access'
 import { CancelSessionButton } from './cancel-session-button'
 import { LeaveClassButton } from './leave-class-button'
 import type { Metadata } from 'next'
+import { cancelledLabel } from '@/lib/run-occurrences'
 
 export const metadata: Metadata = { title: 'Sessions' }
 
@@ -22,6 +23,9 @@ type Row = {
   sessionType: string
   location: string | null
   status: string
+  /** Set when the trainer called this ONE occurrence off — see run-occurrences. */
+  cancelledAt: Date | null
+  cancelReason: string | null
   isClass: boolean
   className: string | null
   classRunId: string | null
@@ -75,7 +79,7 @@ export default async function MySessionsPage() {
       // brings it straight back.
       where: { clientId: active.clientId, ...SESSIONS_NOT_SUSPENDED },
       orderBy: { scheduledAt: 'asc' },
-      select: { id: true, title: true, scheduledAt: true, durationMins: true, sessionType: true, location: true, status: true },
+      select: { id: true, title: true, scheduledAt: true, durationMins: true, sessionType: true, location: true, status: true, cancelledAt: true, cancelReason: true },
     }),
     prisma.classEnrollment.findMany({
       where: { clientId: active.clientId, status: { not: 'WITHDRAWN' }, ...NOT_SUSPENDED },
@@ -90,7 +94,9 @@ export default async function MySessionsPage() {
           select: {
             id: true,
             name: true,
-            sessions: { select: { id: true, title: true, scheduledAt: true, durationMins: true, sessionType: true, location: true, status: true } },
+            // cancelledAt: a called-off week STAYS on the client's list, marked.
+            // Vanishing is how someone turns up to a locked hall.
+            sessions: { select: { id: true, title: true, scheduledAt: true, durationMins: true, sessionType: true, location: true, status: true, cancelledAt: true, cancelReason: true } },
           },
         },
       },
@@ -129,6 +135,10 @@ export default async function MySessionsPage() {
   const upcoming = rows
     .filter(s => s.scheduledAt >= now && s.status === 'UPCOMING')
     .sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime())
+    // A cancelled week is still listed — it is a thing that WAS in their diary,
+    // and silently removing it is how somebody drives to a locked hall — but it
+    // is never the "next up" hero, which is an instruction to turn up.
+    .sort((a, b) => Number(a.cancelledAt !== null) - Number(b.cancelledAt !== null))
   const past = rows
     .filter(s => s.scheduledAt < now || DONE.includes(s.status))
     .sort((a, b) => b.scheduledAt.getTime() - a.scheduledAt.getTime())
@@ -201,12 +211,16 @@ export default async function MySessionsPage() {
                     <Link key={s.id} href={`/my-sessions/${s.id}`} className={`flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50 transition-colors ${i > 0 ? 'border-t border-slate-100' : ''}`}>
                       <DateChip date={s.scheduledAt} timeZone={tz} tone={"accent"} />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-slate-900 truncate flex items-center gap-1.5">
+                        <p className={`text-sm font-semibold truncate flex items-center gap-1.5 ${s.cancelledAt ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
                           {s.isClass && <Users className="h-3.5 w-3.5 text-teal-500 flex-shrink-0" />}{titleOf(s)}
                         </p>
-                        <p className="mt-0.5 text-xs text-slate-500">{formatDateTime(s.scheduledAt, tz)} · {s.durationMins} min</p>
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          {s.cancelledAt
+                            ? cancelledLabel(s)
+                            : `${formatDateTime(s.scheduledAt, tz)} · ${s.durationMins} min`}
+                        </p>
                       </div>
-                      {!s.isClass ? (
+                      {s.cancelledAt ? null : !s.isClass ? (
                         <CancelSessionButton sessionId={s.id} title={titleOf(s)} feeCents={feeFor(s.scheduledAt)} currency={currency} />
                       ) : leaveClassAt.has(s.id) ? (
                         <LeaveClassButton runId={leaveClassAt.get(s.id)!} className={titleOf(s)} feeCents={feeFor(s.scheduledAt)} currency={currency} />

@@ -38,6 +38,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ package
     rows.map(r => ({
       id: r.id,
       sessionIndex: r.sessionIndex,
+      timing: r.timing,
       order: r.order,
       libraryTaskId: r.libraryTaskId,
       title: r.libraryTask?.title ?? r.title ?? '',
@@ -54,6 +55,9 @@ const createSchema = z
   .object({
     // null / omitted = suggest after every session.
     sessionIndex: z.number().int().positive().nullable().optional(),
+    // Preparation or practice. Omitted means practice, which is what every row
+    // written before the flag existed means.
+    timing: z.enum(['BEFORE_SESSION', 'AFTER_SESSION']).optional(),
     libraryTaskId: z.string().nullable().optional(),
     title: z.string().min(2).nullable().optional(),
     description: z.string().nullable().optional(),
@@ -95,6 +99,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ package
     data: {
       packageId,
       sessionIndex,
+      timing: parsed.data.timing ?? 'AFTER_SESSION',
       order: (last?.order ?? -1) + 1,
       libraryTaskId: parsed.data.libraryTaskId ?? null,
       // Inline fields are only meaningful without a library item behind them.

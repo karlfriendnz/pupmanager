@@ -59,7 +59,10 @@ describe('POST /api/my/classes/[runId]/enroll — several drop-in sessions', () 
   // The free / pay-later path fans out the same way.
   it('enrols each session and invoices each one on the pay-later path', () => {
     expect(route).toContain('for (const sid of targets)')
-    expect(route).toContain('for (const r of results.filter(r => r.status === ')
+    // The enrolled set is now hoisted out of the loop so the pay-later invoices
+    // can be discounted as one basket (see the discount test below).
+    expect(route).toContain("const enrolled = results.filter(r => r.status === 'ENROLLED')")
+    expect(route).toContain('for (const r of enrolled)')
   })
 
   // A drop-in clashes only with the sessions they already hold — booking two
@@ -87,5 +90,13 @@ describe('POST /api/my/classes/[runId]/enroll — several drop-in sessions', () 
   it('applies the offering discounts to the charge', () => {
     expect(route).toContain('quoteOfferingDiscount({')
     expect(route).toContain('scaleLinesToNet(grossLines.map(l => l.unitAmount), discountTotal)')
+  })
+
+  // …and to the RECEIVABLE, not just the card charge. A pay-later booking used
+  // to skip the engine entirely, so the same basket cost less on a card than it
+  // did on an invoice — the same divergence the trainer route had.
+  it('applies them to the pay-later invoices too', () => {
+    expect(route).toContain('quoteEnrollmentDiscounts({')
+    expect(route).toContain('discountCents: discount.perEnrollment[r.enrollmentId] ?? 0')
   })
 })

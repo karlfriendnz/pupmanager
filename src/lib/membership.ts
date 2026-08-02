@@ -134,6 +134,26 @@ export async function guardPermission(permission: PermissionKey): Promise<Traine
 }
 
 /**
+ * The same guard, passed when the member holds ANY of the listed permissions.
+ *
+ * For things that sit across two catalogues at once. Tags are the case it was
+ * written for: one tag holds a course and a product, so gating the tag list on
+ * `packages.manage` alone would leave a shop-only staff member unable to see
+ * the labels their own products carry, and gating it on `products.manage`
+ * alone does the same to a trainer with the shop add-on switched off.
+ */
+export async function guardAnyPermission(
+  ...permissions: PermissionKey[]
+): Promise<TrainerContext | NextResponse> {
+  const ctx = await getTrainerContext()
+  if (!ctx) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  if (!permissions.some(p => canPermission(p, ctx.role, ctx.permissions))) {
+    return NextResponse.json({ error: 'You don’t have permission to do this.' }, { status: 403 })
+  }
+  return ctx
+}
+
+/**
  * Build a Prisma `where` fragment that scopes a query to what this member may
  * see, for the two data-scope permissions. Pass the field name that holds the
  * assigned membership id on the model being queried.

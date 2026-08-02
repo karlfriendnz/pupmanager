@@ -30,6 +30,10 @@ export async function GET(req: Request) {
     where: {
       scheduledAt: { gt: now, lte: horizon },
       status: 'UPCOMING',
+      // …and not one occurrence the trainer called off on its own. Reminding
+      // someone to turn up to the week that was cancelled is the single worst
+      // way for them to find out it was.
+      cancelledAt: null,
       OR: [{ clientId: { not: null } }, { classRunId: { not: null } }],
       // Don't remind sample clients about demo sessions (1:1 or sample class).
       // A cancelled class must never remind anyone, even if a session row was

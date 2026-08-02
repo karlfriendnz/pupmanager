@@ -70,6 +70,10 @@ export async function POST(_req: Request, { params }: { params: Promise<{ packag
       publicEnrollment: src.publicEnrollment,
       clientSelfBook: src.clientSelfBook,
       selfBookRequiresApproval: src.selfBookRequiresApproval,
+      // Carried, so duplicating next term's not-yet-showing offering doesn't
+      // publish the copy the moment it is made — which is the one thing a
+      // trainer duplicating a scheduled offering could not possibly want.
+      visibleFrom: src.visibleFrom,
       requirePayment: src.requirePayment,
       order: src.order,
     },

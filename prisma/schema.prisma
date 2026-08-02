@@ -58,6 +58,22 @@ enum SessionStatus {
   INVOICED
 }
 
+// When a piece of homework is any use to the client.
+//
+// Most homework is PRACTICE and only makes sense once the session has happened
+// — that is the default, and what every row written before this existed is.
+// Some homework is PREPARATION ("bring a hungry dog and a pot of chicken"),
+// which is worthless if it arrives after the class, so it has to be readable
+// the moment the trainer hands it out.
+//
+// The flag is set once on the offering (PackageDefaultTask) and copied onto
+// each TrainingTask at hand-out, like every other field there — homework is a
+// snapshot, so re-flagging the offering never rewrites work already given out.
+enum HomeworkTiming {
+  BEFORE_SESSION
+  AFTER_SESSION
+}
+
 enum AttachmentKind {
   IMAGE
   VIDEO
@@ -748,6 +764,8 @@ model TrainerProfile {
   locations          Location[]
   productCategories  ProductCategory[]
   stockMovements     StockMovement[]
+  productVariants    ProductVariant[]
+  tags               Tag[]
 
   @@map("trainer_profiles")
 }
@@ -1319,26 +1337,46 @@ model ClientShare {
 // ─── Training Diary & Tasks ───────────────────────────────────────────────────
 
 model TrainingTask {
-  id            String   @id @default(cuid())
+  id            String         @id @default(cuid())
   clientId      String
   dogId         String? // optional: which dog this task is for
   sessionId     String? // optional: linked training session
-  date          DateTime @db.Date
+  date          DateTime       @db.Date
   title         String
-  description   String?  @db.Text
+  description   String?        @db.Text
   repetitions   Int?
   videoUrl      String? // trainer-provided instructional link — FIRST of `videos`
   /// The instructional videos, copied from the library item at hand-out time:
   /// `[{ url, title? }]`. A snapshot like the title and description are, so
   /// re-cutting the library item never changes homework already given out.
-  videos        Json     @default("[]")
-  trainerNote   String?  @db.Text // per-task comment from the trainer
-  imageUrls     Json     @default("[]") // string[] of public image URLs
+  videos        Json           @default("[]")
+  trainerNote   String?        @db.Text // per-task comment from the trainer
+  /// Everything the trainer attached, in their order — the same shape as
+  /// LibraryTask.media, copied at hand-out time. Its arrival is what finally
+  /// gets a HANDOUT to a client: the assign path copied the picture and the
+  /// clips but had nowhere to put a PDF, so a trainer who attached one handed
+  /// out homework that had silently lost it.
+  ///
+  /// `videos`/`videoUrl`/`imageUrls` are derived from it by
+  /// lib/library-media.ts (`homeworkMediaColumns`) so the older readers — the
+  /// client's own log panel, the session screen — keep working unchanged.
+  media         Json           @default("[]")
+  imageUrls     Json           @default("[]") // string[] of public image URLs — the image rows of `media`
   /// Whether the client is asked to log sessions against this. Copied from the
   /// library item at hand-out time (LibraryTask.wantsLog) — homework is a snapshot,
   /// so changing the item later never changes work already given out.
-  wantsLog      Boolean  @default(true)
-  order         Int      @default(0) // display order within a session
+  wantsLog      Boolean        @default(true)
+  /// Preparation for the session, or practice after it. Copied from the
+  /// offering's default row at hand-out time (PackageDefaultTask.timing), and a
+  /// snapshot like everything else here.
+  ///
+  /// This is what decides whether the CLIENT can see the task yet: an
+  /// AFTER_SESSION task stays hidden until its session has run, a
+  /// BEFORE_SESSION one shows the moment it is handed out. Homework with no
+  /// session behind it has nothing to wait for and is always visible. The one
+  /// predicate lives in lib/homework-visibility.ts — never re-derive it.
+  timing        HomeworkTiming @default(AFTER_SESSION)
+  order         Int            @default(0) // display order within a session
   // Which library item this homework was created from, when it came from the
   // Library. The row stays a SNAPSHOT (title/description are copied, so editing
   // the library item never rewrites work already handed out) — this is purely a
@@ -1359,6 +1397,8 @@ model TrainingTask {
   @@index([date])
   @@index([sessionId])
   @@index([libraryTaskId])
+  // The client-visibility gate reads both on every screen that lists homework.
+  @@index([timing, sessionId])
   @@map("training_tasks")
 }
 
@@ -1480,6 +1520,37 @@ model TrainingSession {
   // sessions around doesn't fire a notification on every move.
   rescheduleNotifyPendingAt DateTime?
 
+  // ─── One occurrence of a run, changed on its own ───────────────────────────
+  //
+  // A weekly casual class runs for months. One week falls on a public holiday;
+  // another has to start an hour later. Before these three columns the only
+  // tool was DELETE — which took the register and every drop-in booking with
+  // it (both cascade), and which the nightly slot top-up would then quietly
+  // undo, because a deleted date leaves nothing behind to say it was deliberate.
+  //
+  // See lib/run-occurrences.ts. Nothing here may be re-derived elsewhere.
+
+  /// When the trainer called this ONE occurrence off. The row deliberately
+  /// STAYS: it keeps the register and the drop-in bookings that cascade off it,
+  /// it tells the client their class is cancelled rather than making it vanish,
+  /// and — the reason it is a column and not a delete — it is the tombstone
+  /// that stops the nightly top-up putting the date back.
+  ///
+  /// Everything that counts, charges, reminds or offers a session filters on
+  /// this being null.
+  cancelledAt          DateTime?
+  /// What the trainer told the client, e.g. "Labour Day". Free text, optional.
+  cancelReason         String?
+  /// When the trainer moved THIS occurrence on its own — a new time, a longer
+  /// slot, a different venue. Marks the row as hand-set, so a class-wide
+  /// rebuild or a venue propagation can't quietly put it back.
+  scheduleOverriddenAt DateTime?
+  /// Where the generator had originally put it. Only set alongside
+  /// scheduleOverriddenAt, and only ever written once — this is what lets the
+  /// slot planner recognise "I already made this one, they moved it" instead of
+  /// creating it again at the old time.
+  originalScheduledAt  DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1515,6 +1586,8 @@ model TrainingSession {
   @@index([trainerId, scheduledAt])
   @@index([clientPackageId])
   @@index([classRunId])
+  // Every count, price and roster on a run now asks for its LIVE sessions.
+  @@index([classRunId, cancelledAt])
   @@index([sessionPlanId])
   @@index([walkSeriesId])
   @@index([packageSessionSlotId])
@@ -1574,6 +1647,86 @@ model SessionBuddy {
   @@map("session_buddies")
 }
 
+// ─── Tags (one list, every kind of offering) ─────────────────────────────────
+
+// A trainer's own cross-cutting label — "Puppy", "Reactivity", "Agility".
+//
+// NOT another ProductCategory. A category is a shelf in the shop and reaches
+// products only; a tag reaches ACROSS the kinds of thing a trainer sells, so
+// the same "Puppy" holds their puppy course (an isGroup Package), their puppy
+// consult (a 1:1 Package) and the clicker they want every new owner to buy (a
+// Product) at once. That is the entire point: a client asking "what have you
+// got for a new puppy?" should get ONE answer, not three lists they have to
+// join up themselves.
+//
+// DELIBERATELY NO COLOUR COLUMN. The house rule is that colour is the
+// trainer's brand accent and it is rationed — a per-tag palette would put ten
+// decorative hues on the client's browse screen fighting the one colour that
+// is supposed to mean something. (Package.color is a different job: it tints
+// the trainer's own calendar, which nobody else sees.)
+model Tag {
+  id        String @id @default(cuid())
+  trainerId String
+  name      String
+  // Case-folded copy of `name`, and the column the uniqueness is actually on.
+  // Postgres unique indexes compare case-SENSITIVELY, so ("Puppy", "puppy")
+  // would both be accepted and the trainer would end up with two tags saying
+  // the same word — which is the exact mess this feature exists to avoid.
+  // Written by the API on every create and rename; never read for display.
+  nameKey   String
+  // The trainer's own arrangement, lowest first — same idea as
+  // ProductCategory.order, and the order clients browse them in.
+  order     Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer TrainerProfile  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  items   TagAssignment[]
+
+  @@unique([trainerId, nameKey])
+  @@index([trainerId])
+  @@map("tags")
+}
+
+// One thing carrying one tag.
+//
+// ONE join table with two nullable targets rather than a PackageTag table and
+// a ProductTag table, because every read this feature exists for is "what is
+// in this tag?" — and that has to come back as one mixed list, in one order,
+// with one count. Two tables would make every one of those two queries plus a
+// merge in application code, and the counts on the tag rail would be a sum the
+// two halves could disagree about.
+//
+// The price is that Prisma cannot say "exactly one of these is set", so the
+// migration adds a CHECK (num_nonnulls("packageId","productId") = 1) — the
+// guarantee lives in the database, not in whichever route happens to write it.
+//
+// Cascade on all three sides deletes only THIS row: removing a tag drops its
+// assignments and leaves every offering and product exactly where it was, and
+// deleting a product drops its assignments and leaves the tag standing.
+model TagAssignment {
+  id        String  @id @default(cuid())
+  tagId     String
+  packageId String?
+  productId String?
+
+  createdAt DateTime @default(now())
+
+  tag     Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  package Package? @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // A thing carries a tag once. Postgres treats NULLs as distinct, so the
+  // product rows (packageId NULL) never collide with each other under the
+  // first index, and vice versa — which is what makes two of them work.
+  @@unique([tagId, packageId])
+  @@unique([tagId, productId])
+  @@index([packageId])
+  @@index([productId])
+  @@map("tag_assignments")
+}
+
 // ─── Products (trainer shop) ─────────────────────────────────────────────────
 
 // A trainer's own grouping for their shop — "Treats", "Guides", "Gear".
@@ -1626,6 +1779,11 @@ model Product {
   // the trainer never runs out of) — the common case, and why this is nullable
   // rather than defaulting to 0, which would read as "sold out" for every
   // existing product. Counts down as items go out; the trainer tops it up.
+  //
+  // IGNORED once this product has variants: the counts then live on the
+  // variant rows, because a harness in S/M/L is three shelves, not one. See
+  // productInStock()/totalStock() in src/lib/stock.ts, which are the only
+  // places that decide which of the two to read.
   stockCount      Int?
   featured        Boolean     @default(false) // surfaces on the client home dashboard
   active          Boolean     @default(true) // hide from clients without deleting
@@ -1649,10 +1807,72 @@ model Product {
   requests        ProductRequest[]
   paymentItems    PaymentItem[]
   stockMovements  StockMovement[]
+  variants        ProductVariant[]
+  tags            TagAssignment[]
 
   @@index([trainerId])
   @@index([category])
   @@map("products")
+}
+
+// One buyable version of a product — "Small", "Large", "Red · Large".
+//
+// FLAT NAMED ROWS, not option axes. A Shopify-style ProductOption × value
+// matrix is several times the work (an axis editor, a generated combination
+// grid, partial-combination rules) and this is a dog trainer's shop: a harness
+// in three sizes and a lead in two colours. The name IS the choice the client
+// makes. Axes are the future upgrade if a trainer ever needs them, and this
+// shape does not block it — a generator would write these same rows, with the
+// axis values recorded alongside.
+model ProductVariant {
+  id        String @id @default(cuid())
+  productId String
+  // Tenant scope, denormalised off the product exactly as StockMovement does
+  // it: a variant is read in stock and sales queries that must never be able
+  // to cross businesses.
+  trainerId String
+
+  // What a client picks. Free text, because "1kg" and "Red · Large" are both
+  // the same kind of answer to "which one?".
+  name String
+  // The trainer's own code, for their supplier or their shelf label. Never
+  // shown to clients.
+  sku  String?
+
+  // NULL = inherit the product's. Five sizes at one price is the common case,
+  // so it is entered once on the product and left alone here. Resolved in ONE
+  // place — resolveVariantPricing() in src/lib/product-price.ts.
+  priceCents     Int?
+  salePriceCents Int?
+  // NULL = the product's photo. Only worth setting when the colours differ.
+  imageUrl       String?
+  // NULL = the product's description. Tiptap HTML, like every other
+  // description in the app — a trainer writes "fits 12–18kg, chest 45–60cm"
+  // against the Medium and the product blurb keeps covering the rest. Resolved
+  // in ONE place beside the prices — resolveVariantPresentation() in
+  // src/lib/product-price.ts.
+  description    String? @db.Text
+  // Units on hand for THIS variant. NULL = not tracked, the same meaning it
+  // has on Product. When a product has variants these are the counts that
+  // matter and Product.stockCount is ignored.
+  stockCount     Int?
+
+  active Boolean @default(true)
+  order  Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product      Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  trainer      TrainerProfile   @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  requests     ProductRequest[]
+  // History and sales outlive a deleted variant (SetNull on both sides), the
+  // same rule the stock ledger already applies to clients and staff.
+  movements    StockMovement[]
+  paymentItems PaymentItem[]
+
+  @@index([productId, order])
+  @@map("product_variants")
 }
 
 // A client's standing request for a product. Stays PENDING and rolls forward
@@ -1662,6 +1882,10 @@ model ProductRequest {
   id        String               @id @default(cuid())
   clientId  String
   productId String
+  // WHICH one they asked for. NULL = the product has no variants (or predates
+  // them) — without this you cannot tell whether the harness to hand over is a
+  // Small or a Large, which is the whole reason variants exist.
+  variantId String?
   status    ProductRequestStatus @default(PENDING)
 
   // Optional notes from the client when they request (e.g. "for Bella, size L")
@@ -1677,6 +1901,9 @@ model ProductRequest {
 
   client           ClientProfile    @relation(fields: [clientId], references: [id], onDelete: Cascade)
   product          Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  // A deleted variant blanks the pointer rather than deleting the order — the
+  // client still asked for something, and the product line survives.
+  variant          ProductVariant?  @relation(fields: [variantId], references: [id], onDelete: SetNull)
   fulfilledSession TrainingSession? @relation(fields: [fulfilledSessionId], references: [id], onDelete: SetNull)
 
   @@index([clientId, status])
@@ -1703,13 +1930,12 @@ enum StockMovementReason {
 // LEDGER beside the balance, written in the SAME transaction as the balance
 // change, exactly as a real inventory system keeps both.
 //
-// VARIANTS ARE COMING (size/colour SKUs under one product), which is why
-// variantId exists before anything writes it: NULL means "the product's only
-// SKU", so every row written today stays true with no backfill, and when
-// variants land a movement points at the one it moved. productId stays
-// REQUIRED so a movement is always attributable to a product even then — and
-// the BALANCE will move to the variant at that point (Product.stockCount
-// becoming the sum of its variants, or dropping away for varianted products).
+// VARIANTS LANDED (size/colour SKUs under one product). variantId was here
+// before anything wrote it, so no backfill was needed: NULL still means "the
+// product's only SKU" and every row written before variants stays true.
+// productId stays REQUIRED so a movement is always attributable to a product,
+// and the BALANCE a movement describes is the variant's `stockCount` when
+// variantId is set, the product's when it isn't.
 model StockMovement {
   id        String  @id @default(cuid())
   productId String
@@ -1735,12 +1961,14 @@ model StockMovement {
 
   createdAt DateTime @default(now())
 
-  product Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
-  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  trainer TrainerProfile  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   // History outlives the people in it: deleting a client or a staff member
-  // blanks the attribution, it does not erase the movement.
-  client  ClientProfile? @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  user    User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // blanks the attribution, it does not erase the movement. Same for a
+  // retired variant — the units still moved.
+  client  ClientProfile?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  user    User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
   @@index([productId, createdAt])
   @@index([trainerId, createdAt])
@@ -1859,6 +2087,26 @@ model Package {
   // (false). Only meaningful when clientSelfBook is true.
   clientSelfBook           Boolean     @default(false)
   selfBookRequiresApproval Boolean     @default(true)
+  /// The instant this offering starts being visible to CLIENTS. null — the
+  /// default and what every existing row means — is "visible immediately".
+  ///
+  /// A trainer sets next term's classes up in November and does not want them
+  /// on the booking screen until enrolments open. The alternative was building
+  /// them the night before, or building them hidden and remembering to unhide,
+  /// and both are how a term ends up half-listed.
+  ///
+  /// An INSTANT, not a @db.Date. The trainer picks a calendar day, but a
+  /// calendar day means nothing without a zone: this repo has already shipped a
+  /// bug where a DATE column compared against instants moved an NZ trainer's
+  /// whole week. The day is resolved to midnight in the TRAINER's timezone at
+  /// save time (startOfDayInTz), so every read is a plain instant comparison
+  /// that cannot be got wrong.
+  ///
+  /// TRAINER-side this changes nothing — they see the offering exactly as
+  /// before, marked "not yet showing". The gate is applied server-side in every
+  /// client and public read; see lib/offering-visibility.ts, and never filter
+  /// this in the browser.
+  visibleFrom              DateTime?
   // Xero revenue account code this package's invoice lines post to. Null = fall
   // back to the connection's default sales account (XeroConnection.salesAccountCode).
   xeroAccountCode          String?
@@ -1882,10 +2130,13 @@ model Package {
   commsFlowSteps     CommsFlowStep[]
   bookingRequests    BookingRequest[]
   bookingPages       BookingPage[]
+  tags               TagAssignment[]
   defaultSessionForm SessionForm?         @relation("PackageDefaultSessionForm", fields: [defaultSessionFormId], references: [id], onDelete: SetNull)
 
   @@index([trainerId])
   @@index([defaultSessionFormId])
+  // Every client-facing offering query carries the visibleFrom gate.
+  @@index([trainerId, visibleFrom])
   @@map("packages")
 }
 
@@ -2960,6 +3211,11 @@ model PaymentItem {
   clientPackageId   String? @unique
   trainingSessionId String? @unique
   productId         String?
+  // Which variant was paid for. NULL = a product with no variants, or a line
+  // that isn't a catalogue product at all (a card surcharge, an invoice
+  // settlement). "They bought a harness" is not enough to pick one off the
+  // shelf; "they bought the Large" is.
+  variantId         String?
   classEnrollmentId String? @unique
   // What to create on payment success, captured at checkout time, e.g.
   // { packageId, slotIso, dogId, bookingPageId, quantity }.
@@ -2969,6 +3225,7 @@ model PaymentItem {
   clientPackage   ClientPackage?   @relation(fields: [clientPackageId], references: [id], onDelete: SetNull)
   trainingSession TrainingSession? @relation(fields: [trainingSessionId], references: [id], onDelete: SetNull)
   product         Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variant         ProductVariant?  @relation(fields: [variantId], references: [id], onDelete: SetNull)
   classEnrollment ClassEnrollment? @relation(fields: [classEnrollmentId], references: [id], onDelete: SetNull)
 
   @@index([paymentId])
@@ -3148,13 +3405,30 @@ model LibraryTask {
   /// session screen — still selects this column, so it is written on every save
   /// rather than dropped. Retire it once nothing reads it; see instructional-videos.ts.
   videoUrl    String?
-  /// The item's videos, in the order a client watches them:
-  /// `[{ url, title? }]`. One exercise is often several short clips ("Step 1 —
-  /// approach", "Step 2 — reward"), which teaches better than one long take AND
-  /// keeps each file small enough to handle.
+  /// Just the video rows of `media`, kept in step with it. See below.
   videos      Json     @default("[]")
-  // One illustrative image and one attached document (PDF) per item. Both live
-  // in Vercel Blob; images are compressed client-side before upload.
+  /// EVERYTHING attached to this item, in the order a client meets it:
+  /// `[{ kind, url, title?, fileName? }]` where kind is image | video |
+  /// document | link.
+  ///
+  /// One list, because a picture, a handout and a clip are the same job — the
+  /// stuff a client looks at while they do the exercise — and three separate
+  /// columns made a second handout impossible to attach and gave the trainer no
+  /// say in what a client meets first.
+  ///
+  /// Json rather than a child table because nothing ever asks a question OF a
+  /// row: every read fetches the item and renders the lot, every write replaces
+  /// the lot. And homework is a SNAPSHOT of this item, so the list has to copy
+  /// across at hand-out time — one assignment here, N inserts if it were rows.
+  ///
+  /// The columns below are DERIVED from it by lib/library-media.ts
+  /// (`mediaColumns`) and written on every save: `videos`/`videoUrl` are the
+  /// video rows, `imageUrl` is the FIRST image, `fileUrl`/`fileName` the FIRST
+  /// document. They stay because the default-homework builder, the offering
+  /// suggestion list and the demo seed all still select them — a column dropped
+  /// from under a reader is a blank on a client's screen. Nothing writes them
+  /// directly any more.
+  media       Json     @default("[]")
   imageUrl    String?
   fileUrl     String?
   fileName    String? // original filename, for the download link's label
@@ -3195,11 +3469,14 @@ model LibraryTask {
 // Lives on Package because Package is the template for BOTH a 1:1 consult
 // (isGroup=false) and a group class (isGroup=true), so one editor covers both.
 model PackageDefaultTask {
-  id            String  @id @default(cuid())
+  id            String         @id @default(cuid())
   packageId     String
   // 1-based session number within the offering ("session 3 of 6").
   // null = suggest after EVERY session.
   sessionIndex  Int?
+  // Whether this one is preparation for the session or practice after it.
+  // Copied onto the TrainingTask at hand-out time — see HomeworkTiming.
+  timing        HomeworkTiming @default(AFTER_SESSION)
   // When set, the text is read LIVE from the library item at suggest time, so
   // editing the library keeps every offering's defaults current. The snapshot
   // is taken at confirm, exactly like any other library assignment.
@@ -3207,10 +3484,10 @@ model PackageDefaultTask {
   // Inline one-off default, for something that isn't worth a library item.
   // Ignored when libraryTaskId is set.
   title         String?
-  description   String? @db.Text
+  description   String?        @db.Text
   repetitions   Int?
   videoUrl      String?
-  order         Int     @default(0)
+  order         Int            @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -4249,15 +4526,39 @@ model Form {
   inviteShowDiaryButton Boolean @default(true)
   inviteButtonLabel     String? @db.Text
 
-  // Draft flag — a draft is hidden from the invite picker and 404s publicly.
-  isActive Boolean @default(true)
+  // ── One continuous run (enquiry → account → intake → their diary) ─────────
+  //
+  // Off, a public enquiry ends at a thank-you card and the person waits for the
+  // trainer to accept them: "check your email, then start again". On, the
+  // submission hands straight over to a password step and then to the intake
+  // form, and they end up looking at their own diary without ever leaving the
+  // run. Karl, 2026-08-02: "I want the enquiry form and the booking step to
+  // feel like one continuous thing for the client."
+  //
+  // Turning it on IS the trainer's consent to admit whoever finishes: it is
+  // their own form, on their own website, and only they can flip this. That is
+  // why the run may create a ClientProfile where the /c/<slug>/join path
+  // deliberately may not — there, nobody had said yes to anything.
+  continueToAccount    Boolean @default(false)
+  // The intake form asked once the account exists. Must be one of THIS
+  // trainer's forms with usableAsIntake (checked server-side on save). Null =
+  // no intake step; they land straight on their diary.
+  continueIntakeFormId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  trainer         TrainerProfile  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  assignedClients ClientProfile[] @relation("ClientIntakeForm")
-  enquiries       Enquiry[]       @relation("EnquiryUnifiedForm")
+  // Draft flag — a draft is hidden from the invite picker and 404s publicly.
+  isActive Boolean @default(true)
+
+  trainer            TrainerProfile  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  assignedClients    ClientProfile[] @relation("ClientIntakeForm")
+  enquiries          Enquiry[]       @relation("EnquiryUnifiedForm")
+  // Self-relation: the intake form this enquiry form hands over to. SetNull so
+  // deleting the intake form turns the handover off rather than deleting the
+  // enquiry form with it.
+  continueIntakeForm Form?           @relation("FormContinuationIntake", fields: [continueIntakeFormId], references: [id], onDelete: SetNull)
+  continuationOf     Form[]          @relation("FormContinuationIntake")
 
   @@unique([trainerId, slug])
   @@index([trainerId])
@@ -4401,6 +4702,26 @@ model Enquiry {
   followupReminderLevel Int           @default(0)
   // Populated after Accept; gives a forward link to the resulting client.
   clientProfileId       String?       @unique
+
+  // ── The continuous run's handover (Form.continueToAccount) ────────────────
+  //
+  // The enquiry row is written FIRST and the account second, on purpose: if the
+  // person walks away at the password step the trainer still has a name, an
+  // email and a phone number and can reply by hand. A run that stranded the
+  // trainer would be worse than no run at all.
+  //
+  // What carries them from step to step is this token — sha256(plain +
+  // AUTH_SECRET), the same shape as the accept-magic-link, so the plaintext
+  // only ever exists in the person's URL bar and their inbox. It is what makes
+  // the step SAFE: the account step takes its email address from THIS ROW, not
+  // from anything posted to it, so there is no field an attacker can point at
+  // somebody else's address.
+  continuationTokenHash String?   @unique
+  continuationExpiresAt DateTime?
+  // Single use. Stamped when the account is created (or the already-registered
+  // person signs in and is joined), so a link left in browser history or a
+  // forwarded email cannot re-run the handover.
+  continuationUsedAt    DateTime?
 
   // Set when the enquiry came from the public Calendly-style booking page:
   // the prospect's chosen slot (UTC instant) and the package they picked

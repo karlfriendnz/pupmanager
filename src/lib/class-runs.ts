@@ -11,6 +11,7 @@ import type { Prisma, PrismaClient } from '@/generated/prisma'
 import { effectiveBufferMins, normalizeBufferMins } from './buffer'
 import { expandRule, rollForwardToWeekday, OPEN_ENDED_OCCURRENCES } from './recurrence'
 import { zonedToUtc } from './timezone'
+import { hasPerOccurrenceEdits, LIVE_SESSION } from './run-occurrences'
 
 // Re-exported so server code can keep importing it from here; the flag
 // itself lives in the client-safe feature-flags module.
@@ -72,6 +73,39 @@ export type ScheduleSlot = {
   assignedMembershipIds: string[]
 }
 
+/**
+ * How far ahead a slot-scheduled run keeps sessions on the books.
+ *
+ * `OPEN_ENDED_OCCURRENCES` (12) is a COUNT, and a count is the wrong unit for a
+ * thing that is meant to run forever. A daycare's slots are written with a bare
+ * `FREQ=WEEKLY` (see PuppySchoolSetup), so each one stopped dead after 12
+ * occurrences — twelve weeks — and `planSlotSessions` only ever ran once, at
+ * creation. Nothing topped it up: `extendOngoingPackages` only walks 1:1
+ * `ClientPackage` assignments. So a daycare's board and the client booking
+ * wizard simply emptied about three months after it was set up, with nothing on
+ * screen to explain it.
+ *
+ * The horizon is therefore stated as a DATE — "keep 12 months of sessions
+ * ahead" — not a number of occurrences: a parent has to be able to book a year
+ * out whether the timetable is one evening a week or fifteen day-parts a week.
+ * `OPEN_ENDED_OCCURRENCES` keeps its old meaning everywhere else it's used.
+ */
+export const SLOT_HORIZON_MONTHS = 12
+
+/**
+ * Hard per-slot ceiling on expansion, so a rule nobody expected (FREQ=DAILY, or
+ * a multi-day weekly one) can't turn a date horizon into an unbounded write.
+ * 400 comfortably covers a year of daily occurrences.
+ */
+const SLOT_HORIZON_MAX_PER_SLOT = 400
+
+/** The far edge of the rolling horizon, `SLOT_HORIZON_MONTHS` past `from`. */
+export function slotHorizonEnd(from: Date = new Date()): Date {
+  const out = new Date(from)
+  out.setMonth(out.getMonth() + SLOT_HORIZON_MONTHS)
+  return out
+}
+
 /** One session a slot will produce, ready to be written as a TrainingSession. */
 export type PlannedSession = {
   slotId: string
@@ -106,9 +140,19 @@ export function slotDurationMins(startTime: string, endTime: string): number {
  */
 export function planSlotSessions(
   slots: ScheduleSlot[],
-  opts: { runStart: Date; tz: string; maxPerSlot?: number },
+  opts: {
+    runStart: Date
+    tz: string
+    maxPerSlot?: number
+    /**
+     * Stop each slot's series at this DATE rather than after a fixed number of
+     * occurrences — the rolling horizon (see SLOT_HORIZON_MONTHS). A slot whose
+     * own rule ends sooner (COUNT / UNTIL) still ends where it says.
+     */
+    through?: Date
+  },
 ): PlannedSession[] {
-  const max = opts.maxPerSlot ?? OPEN_ENDED_OCCURRENCES
+  const max = opts.maxPerSlot ?? (opts.through ? SLOT_HORIZON_MAX_PER_SLOT : OPEN_ENDED_OCCURRENCES)
   const out: PlannedSession[] = []
 
   for (const slot of [...slots].sort((a, b) => a.order - b.order)) {
@@ -116,6 +160,9 @@ export function planSlotSessions(
     const duration = slotDurationMins(slot.startTime, slot.endTime)
     const [h, m] = (slot.startTime || '00:00').split(':').map(Number)
     for (const d of expandRule(slot.recurrenceRule ?? '', anchor, max)) {
+      // expandRule emits ascending dates, so the first one past the horizon ends
+      // this slot's series.
+      if (opts.through && d.getTime() > opts.through.getTime()) break
       out.push({
         slotId: slot.id,
         scheduledAt: zonedToUtc(
@@ -212,7 +259,9 @@ export async function wholeRunPriceCents(
   tx: Tx = prisma,
 ): Promise<number | null> {
   const sessions = await tx.trainingSession.findMany({
-    where: { classRunId },
+    // A week that has been called off is not part of what the whole run costs.
+    // Charging for it would be the most literal possible version of the bug.
+    where: { classRunId, ...LIVE_SESSION },
     select: { packageSessionSlot: { select: { priceCents: true, specialPriceCents: true } } },
   })
   if (sessions.length === 0) return pkg.dropInPriceCents
@@ -541,8 +590,14 @@ export async function createClassRunIn(
   // time, venue and gap); everything else uses the flat N-sessions-every-W-weeks
   // cadence. Both end up as one chronological series on the run.
   const tz = pkg.trainer.user?.timezone || 'Pacific/Auckland'
+  // Lay the full rolling horizon down at creation, not 12 occurrences: a daycare
+  // set up today has to be bookable a year out from the moment it exists, and a
+  // horizon the cron fills in later would still LOOK like it stops until the
+  // cron next ran. Measured from the run's start when that's in the future, so
+  // a programme scheduled for next March still gets its whole first year.
+  const horizonFrom = args.startDate.getTime() > Date.now() ? args.startDate : new Date()
   const planned = pkg.sessionSlots.length
-    ? planSlotSessions(pkg.sessionSlots, { runStart: args.startDate, tz })
+    ? planSlotSessions(pkg.sessionSlots, { runStart: args.startDate, tz, through: slotHorizonEnd(horizonFrom) })
     : null
   const rows = planned
     ? planned.map((s) => {
@@ -585,10 +640,14 @@ export async function createClassRunIn(
       trainerId: args.trainerId,
       classRunId: run.id,
       sessionIndex: i + 1,
+      // "Session 3/6" is the right label for a six-week course. It is nonsense
+      // on a slot-scheduled run, which has no end to count towards and now holds
+      // a year of dates — "session 187/780" is noise, and the denominator would
+      // be a lie the moment the horizon is topped up.
       title:
-        rows.length > 1
-          ? `${args.name} — session ${i + 1}/${rows.length}`
-          : args.name,
+        planned || rows.length <= 1
+          ? args.name
+          : `${args.name} — session ${i + 1}/${rows.length}`,
       sessionType: pkg.sessionType,
       ...r,
     })),
@@ -781,7 +840,13 @@ export async function syncOfferingRun(
     select: {
       id: true, name: true, location: true, startDate: true, bufferMins: true,
       package: { select: { sessionCount: true, weeksBetween: true, durationMins: true, bufferMins: true, sessionType: true } },
-      sessions: { select: { id: true, sessionIndex: true, googleCalendarEventId: true, packageSessionSlotId: true } },
+      sessions: {
+        select: {
+          id: true, sessionIndex: true, googleCalendarEventId: true, packageSessionSlotId: true,
+          // Whether any occurrence has been touched on its own — see below.
+          cancelledAt: true, scheduleOverriddenAt: true,
+        },
+      },
     },
   })
   if (runs.length !== 1) return null
@@ -823,6 +888,21 @@ export async function syncOfferingRun(
       throw new ClassError(
         'HAS_ATTENDANCE',
         "Can't change the dates of a class that already has attendance recorded. Change the other details, or cancel this class and create a new one.",
+      )
+    }
+    // Same rule for a class whose individual weeks have been edited. The
+    // rebuild below is a deleteMany + createMany: it would resurrect the public
+    // holiday the trainer called off and undo the week they moved, in one
+    // statement, on a save that was ostensibly about the session count.
+    //
+    // A refusal rather than a merge, deliberately. Merging means deciding which
+    // NEW date each old override lands on, and once the cadence itself has
+    // changed there is no honest answer — a wrong one is a class meeting on a
+    // day nobody was told about.
+    if (hasPerOccurrenceEdits(run.sessions)) {
+      throw new ClassError(
+        'HAS_OVERRIDES',
+        "Some weeks of this class have been cancelled or moved on their own. Changing the whole class's dates would undo them — put those weeks back first, or cancel this class and create a new one.",
       )
     }
   }
@@ -931,6 +1011,10 @@ export async function syncOfferingRun(
         classRunId: run.id,
         packageSessionSlotId: null,
         scheduledAt: { gte: new Date() },
+        // …and never one whose venue was set by hand. "This week only, we're at
+        // the hall" is not a thing a later save of the offering's default venue
+        // gets to quietly undo.
+        scheduleOverriddenAt: null,
       },
       data: { location: fields.location?.trim() || null },
     })
@@ -995,7 +1079,13 @@ export async function updateClass(args: {
     where: { id: args.runId, trainerId: args.trainerId },
     include: {
       package: true,
-      sessions: { select: { id: true, sessionIndex: true, googleCalendarEventId: true } },
+      sessions: {
+        select: {
+          id: true, sessionIndex: true, googleCalendarEventId: true,
+          // Whether any occurrence has been touched on its own — see below.
+          cancelledAt: true, scheduleOverriddenAt: true,
+        },
+      },
     },
   })
   if (!run) throw new ClassError('RUN_NOT_FOUND', 'Class not found')
@@ -1013,6 +1103,16 @@ export async function updateClass(args: {
       throw new ClassError(
         'HAS_ATTENDANCE',
         "Can't reschedule a class that already has attendance recorded. Change the other details, or cancel this class and create a new one.",
+      )
+    }
+    // …and never over weeks that were cancelled or moved individually. The
+    // rebuild is a deleteMany + createMany; it would put the public holiday
+    // back and undo the moved week without saying so. Refused rather than
+    // merged — see the matching guard in syncOfferingRun.
+    if (hasPerOccurrenceEdits(run.sessions)) {
+      throw new ClassError(
+        'HAS_OVERRIDES',
+        "Some weeks of this class have been cancelled or moved on their own. Rescheduling the whole class would undo them — put those weeks back first, or cancel this class and create a new one.",
       )
     }
   }
@@ -1091,13 +1191,23 @@ export async function updateClass(args: {
       // (unlike a 1:1 package) changing its gap here is meant to apply to it.
       for (const s of run.sessions) {
         const idx = s.sessionIndex ?? 1
+        // A week the trainer set by hand keeps its own length and gap — "this
+        // one runs 90 minutes" is a decision, and a save about the class name
+        // has no business overwriting it. The TITLE still follows the class,
+        // because a renamed class whose adjusted week kept the old name reads
+        // as a different class.
+        const handSet = s.scheduleOverriddenAt !== null
         await tx.trainingSession.update({
           where: { id: s.id },
           data: {
             title: args.sessionCount > 1 ? `${args.name} — session ${idx}/${args.sessionCount}` : args.name,
-            durationMins: args.durationMins,
-            ...(args.bufferMins !== undefined && { bufferMins: buffer }),
-            sessionType: args.sessionType,
+            ...(handSet
+              ? {}
+              : {
+                  durationMins: args.durationMins,
+                  ...(args.bufferMins !== undefined && { bufferMins: buffer }),
+                  sessionType: args.sessionType,
+                }),
           },
         })
       }
@@ -1165,11 +1275,16 @@ export async function enrollInRun(args: {
       const sess = await tx.trainingSession.findFirst({
         where: { id: args.sessionId, classRunId: args.classRunId },
         select: {
-          id: true, sessionIndex: true, scheduledAt: true, status: true,
+          id: true, sessionIndex: true, scheduledAt: true, status: true, cancelledAt: true,
           packageSessionSlot: { select: { capacity: true } },
         },
       })
       if (!sess) throw new ClassError('SESSION_NOT_FOUND', 'That session isn’t part of this class')
+      // Selling a place at a class the trainer has called off is worse than
+      // selling one at a class that has already happened.
+      if (sess.cancelledAt) {
+        throw new ClassError('SESSION_CANCELLED', 'That session has been cancelled')
+      }
       if (sess.status !== 'UPCOMING' || sess.scheduledAt.getTime() <= Date.now()) {
         throw new ClassError('SESSION_PAST', 'That session has already happened')
       }

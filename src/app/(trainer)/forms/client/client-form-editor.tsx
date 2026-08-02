@@ -11,9 +11,9 @@ import {
 import type { CustomFieldOption, FormStep, Question } from '@/lib/session-form-builder'
 import {
   FORM_INPUT, FORM_QUIET_ACTION, FORM_TEXTAREA,
-  FormEditorSection, FormEditorShell, FormField, FormRowGroup, FormToggleRow,
+  FormEditorSection, FormField, FormRowGroup, FormToggleRow,
 } from '../_form-editor-shell'
-import { QuestionsSection } from '../_question-list'
+import { FormBuilder } from '../_form-builder'
 
 // Platform default copy for the invite email, mirrored from src/lib/enquiries.ts
 // (DEFAULT_WELCOME_*). Kept as literals because that module is server-only.
@@ -37,6 +37,15 @@ export interface ClientFormInitial {
   inviteShowDiaryButton: boolean
   inviteButtonLabel: string | null
   isActive: boolean
+  continueToAccount: boolean
+  continueIntakeFormId: string | null
+}
+
+/** One of this trainer's other forms that could be asked after signing up. */
+export interface IntakeFormOption {
+  id: string
+  name: string
+  isActive: boolean
 }
 
 function newStepId() { return Math.random().toString(36).slice(2, 10) }
@@ -46,17 +55,21 @@ function newStepId() { return Math.random().toString(36).slice(2, 10) }
  * an intake form assigned at invite time, and a public website enquiry form.
  * Which it is (or both) is two switches, not two editors.
  *
- * Wears the same FormEditorShell as the session and lead-capture editors, and
- * shares the question list with them (`_question-list.tsx`), so a trainer only
- * ever learns one screen.
+ * Runs the shared FormBuilder (`_form-builder.tsx`) — palette on the left, the
+ * form on the right, settings on their own panel — which is the SAME builder the
+ * session-form editor runs. Karl, 2026-08-02: "There should not be 2 different
+ * interfaces." What differs between the two is props, not a second screen.
  */
 export function ClientFormEditor({
   initial,
   customFields,
+  intakeForms = [],
   newFormUse,
 }: {
   initial: ClientFormInitial | null
   customFields: CustomFieldOption[]
+  /** This trainer's intake forms, for the "and then ask them" picker. */
+  intakeForms?: IntakeFormOption[]
   /**
    * Which job a BRAND-NEW form is being created for, from the door the trainer
    * came through on /forms/new. Only sets the starting position — both switches
@@ -86,6 +99,8 @@ export function ClientFormEditor({
   const [inviteShowDiaryButton, setInviteShowDiaryButton] = useState(initial?.inviteShowDiaryButton ?? true)
   const [inviteButtonLabel, setInviteButtonLabel] = useState(initial?.inviteButtonLabel ?? '')
   const [isActive, setIsActive] = useState(initial?.isActive ?? true)
+  const [continueToAccount, setContinueToAccount] = useState(initial?.continueToAccount ?? false)
+  const [continueIntakeFormId, setContinueIntakeFormId] = useState(initial?.continueIntakeFormId ?? '')
   const [togglingActive, setTogglingActive] = useState(false)
   const [saving, setSaving] = useState(false)
   const [duplicating, setDuplicating] = useState(false)
@@ -159,6 +174,11 @@ export function ClientFormEditor({
       inviteButtonLabel: inviteButtonLabel.trim() || null,
       // Live state, so toggling Published then hitting Save keeps the toggle.
       isActive,
+      // Only ever an enquiry form's business. Sent as false on an intake-only
+      // form so switching "where it's used" off also switches the run off,
+      // rather than leaving a setting live on a form that has no public link.
+      continueToAccount: asEnquiry && continueToAccount,
+      continueIntakeFormId: asEnquiry && continueToAccount ? continueIntakeFormId || null : null,
     }
     try {
       const res = await fetch(isNew ? '/api/forms' : `/api/forms/${initial!.id}`, {
@@ -221,7 +241,16 @@ export function ClientFormEditor({
   const stepFallback = steps[0]?.id ?? null
 
   return (
-    <FormEditorShell
+    <FormBuilder
+      questions={questions}
+      onChange={setQuestions}
+      customFields={customFields}
+      allowConditional
+      minQuestions={1}
+      activeStep={steps.length ? activeStep : null}
+      stepFallback={stepFallback}
+      questionsTitle={steps.length ? `Questions · ${steps.find(s => s.id === activeStep)?.title ?? 'Page 1'}` : 'Questions'}
+      questionsHint="Drag a question by its handle to reorder it. A question can be set to only appear when an earlier answer matches."
       status={initial ? { isActive, busy: togglingActive, onToggle: onToggleActive } : undefined}
       statusActions={initial ? (
         <>
@@ -251,7 +280,7 @@ export function ClientFormEditor({
       onSave={save}
       saving={saving}
       saveLabel={initial ? 'Save changes' : 'Create form'}
-    >
+      above={<>
       <FormEditorSection title="Basics">
         <FormField label="Form name" required>
           <input
@@ -346,20 +375,54 @@ export function ClientFormEditor({
           </FormRowGroup>
         )}
       </FormEditorSection>
-
-      <QuestionsSection
-        questions={questions}
-        onChange={setQuestions}
-        customFields={customFields}
-        title={steps.length ? `Questions · ${steps.find(s => s.id === activeStep)?.title ?? 'Page 1'}` : 'Questions'}
-        hint="Drag a question by its handle to reorder it. A question can be set to only appear when an earlier answer matches."
-        allowConditional
-        minQuestions={1}
-        activeStep={steps.length ? activeStep : null}
-        stepFallback={stepFallback}
-      />
-
+      </>}
+      settingsLabel="Settings"
+      settings={<>
       {asEnquiry && (
+        <FormEditorSection
+          title="After they submit"
+          hint="Where the person ends up once they've filled this in."
+        >
+          <FormRowGroup>
+            <FormToggleRow
+              label="Take them straight on to setting up their account"
+              hint={continueToAccount
+                ? 'They pick a password, answer your intake form, and land on their own diary — all in one go. They are your client from that moment; there is nothing for you to accept.'
+                : 'They see a thank-you message and wait for you. The enquiry lands in your list to accept or decline as usual.'}
+              checked={continueToAccount}
+              onChange={setContinueToAccount}
+            />
+          </FormRowGroup>
+
+          {continueToAccount && (
+            <FormField
+              label="And then ask them"
+              hint={
+                intakeForms.length === 0
+                  ? 'You have no intake forms yet. They will go straight to their diary until you make one.'
+                  : 'Asked once, right after they pick a password. Leave it as “Nothing” to send them straight to their diary.'
+              }
+            >
+              <select
+                value={continueIntakeFormId}
+                onChange={e => setContinueIntakeFormId(e.target.value)}
+                aria-label="Intake form to ask after sign-up"
+                className={FORM_INPUT}
+                disabled={intakeForms.length === 0}
+              >
+                <option value="">Nothing — straight to their diary</option>
+                {intakeForms.map(f => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}{f.isActive ? '' : ' (draft)'}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          )}
+        </FormEditorSection>
+      )}
+
+      {asEnquiry && !continueToAccount && (
         <FormEditorSection title="Success page" hint="What they see once they've hit submit.">
           <FormField label="Heading">
             <input
@@ -437,6 +500,7 @@ export function ClientFormEditor({
           )}
         </FormEditorSection>
       )}
-    </FormEditorShell>
+      </>}
+    />
   )
 }

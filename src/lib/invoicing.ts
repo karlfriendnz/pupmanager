@@ -7,7 +7,8 @@ import { ensureClientXeroContact } from './xero-sync'
 import { postPaymentThroughClearing, isSurchargeItem } from './xero-clearing'
 import { createXeroInvoice, fetchXeroInvoiceState } from './xero'
 import { sessionDropInPriceCents, wholeRunPriceCents } from './class-runs'
-import { effectivePriceCents, isOnSale } from './product-price'
+import { scaleLinesToNet } from './discounts/quote'
+import { effectivePriceCents, isOnSale, resolveVariantPricing } from './product-price'
 import { env } from './env'
 import { currencySymbol } from './money'
 
@@ -45,6 +46,78 @@ function deferSideEffects(fn: () => void): void {
   }
 }
 
+/**
+ * Everything needed to price ONE class enrolment.
+ *
+ * Spelled out as an interface rather than inferred from a single Prisma select
+ * so that every caller's own query is type-checked against it: the price of a
+ * class is now read from here by BOTH the invoice and the discount quoter, and
+ * a select that silently drops a field would quietly change what someone is
+ * charged.
+ */
+export interface ClassEnrollmentPricingRow {
+  type: string
+  quantity: number | null
+  joinedAtIndex: number | null
+  ticketTier: { name: string; priceCents: number | null } | null
+  dropInSession: { packageSessionSlot: { priceCents: number | null; specialPriceCents: number | null } | null } | null
+  classRun: {
+    id: string
+    name: string
+    package: {
+      priceCents: number | null
+      specialPriceCents: number | null
+      dropInPriceCents: number | null
+      allowDropIn: boolean
+    }
+  }
+}
+
+/**
+ * What ONE class enrolment costs, before any discount, and how to label it.
+ *
+ * THE one place a single enrolment is priced. It used to be inlined in
+ * createInvoiceForAssignment, which meant anything else that wanted to know
+ * what a booking costs — the discount quoter below, notably — had to re-derive
+ * it. Two code paths computing a class price independently is exactly how a
+ * live customer got billed wrong twice (see the note in lib/class-runs.ts), so
+ * there is only one now.
+ */
+export async function priceClassEnrollment(enr: ClassEnrollmentPricingRow): Promise<{
+  unitAmountCents: number | null
+  quantity: number
+  amountCents: number | null
+  description: string
+}> {
+  const pkg = enr.classRun.package
+  const quantity = Math.max(1, enr.quantity ?? 1)
+  // A class priced PER SESSION (allowDropIn) has no whole-course price to read:
+  // the pricing card is hidden on its edit form, so any figure left in
+  // priceCents is stale — typed before the class became a casual one, and
+  // invisible to the trainer ever since. Reading it billed a full run as a
+  // single session. Same reasoning as ticket tiers, which have overridden
+  // priceCents outright since d736544 and for the same reason.
+  const fullSeatCents = pkg.allowDropIn
+    ? (await wholeRunPriceCents(enr.classRun.id, pkg)) ?? pkg.specialPriceCents ?? pkg.priceCents
+    : (pkg.specialPriceCents ?? pkg.priceCents ?? await wholeRunPriceCents(enr.classRun.id, pkg))
+  const unitAmountCents = enr.ticketTier
+    ? enr.ticketTier.priceCents
+    : enr.type === 'DROP_IN'
+      ? sessionDropInPriceCents(enr.dropInSession?.packageSessionSlot, pkg)
+      : fullSeatCents
+  const ticketNote = enr.ticketTier
+    ? ` (${enr.ticketTier.name}${quantity > 1 ? ` × ${quantity}` : ''})`
+    : enr.type === 'DROP_IN'
+      ? ` (drop-in${enr.joinedAtIndex ? ` · session ${enr.joinedAtIndex}` : ''})`
+      : ''
+  return {
+    unitAmountCents,
+    quantity,
+    amountCents: unitAmountCents == null ? null : unitAmountCents * quantity,
+    description: enr.classRun.name + ticketNote,
+  }
+}
+
 export interface AssignmentInvoiceInput {
   trainerId: string
   clientId: string
@@ -52,6 +125,15 @@ export interface AssignmentInvoiceInput {
   // Exactly one of these, matching sourceType. Also the idempotency sourceId.
   clientPackageId?: string
   productId?: string
+  /**
+   * Which variant of the product, when the client picked one.
+   *
+   * It is also the IDEMPOTENCY key for a varianted product — see below. A
+   * client who orders a Small and then a Large has bought two things, and
+   * keying both on the product id would hand the second one the first one's
+   * invoice and bill them once.
+   */
+  productVariantId?: string | null
   classEnrollmentId?: string
   /**
    * Whether to email the client about this invoice. Default true.
@@ -63,6 +145,24 @@ export interface AssignmentInvoiceInput {
    * client genuinely has been given the link.
    */
   notifyClient?: boolean
+  /**
+   * The offering's discounts, already quoted for the WHOLE booking this invoice
+   * belongs to, in cents off. Optional and 0 by default — an invoice with no
+   * discount is byte-for-byte what it always was.
+   *
+   * Why the caller quotes it rather than this function: the rules are
+   * basket-shaped ("book 5 days, get one free", "second dog half price"), so
+   * they only fire when the whole basket is evaluated together. Quoting one
+   * enrolment at a time here would silently never fire them — which is exactly
+   * the bug this closes: a client self-booking got the discount (the checkout
+   * calls quoteOfferingDiscount), while the trainer booking the SAME client
+   * into the SAME days got a full-price invoice. Same day, two prices.
+   *
+   * It is applied by scaling the line amounts with scaleLinesToNet — the same
+   * helper the client's Stripe checkout uses — so the two paths can't round
+   * apart. The invoice's own amountCents stays the authoritative total.
+   */
+  discountCents?: number
 }
 
 /**
@@ -76,10 +176,15 @@ export interface AssignmentInvoiceInput {
  */
 export async function createInvoiceForAssignment(input: AssignmentInvoiceInput): Promise<string | null> {
   try {
+    // For a varianted product the sourceId is the VARIANT id, not the
+    // product's: idempotency is "one invoice per thing bought", and the Small
+    // and the Large are two things. The Xero account lookup follows the same
+    // rule (it falls through a variant to its product), and a product with no
+    // variants is unchanged — its sourceId is still its own id.
     const sourceId =
       input.sourceType === 'PACKAGE' ? input.clientPackageId
       : input.sourceType === 'CLASS_ENROLLMENT' ? input.classEnrollmentId
-      : input.productId
+      : (input.productVariantId || input.productId)
     if (!sourceId) return null
 
     // Resolve the amount + label. (The per-source Xero account code is resolved
@@ -150,7 +255,6 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
         },
       })
       if (!enr) return null
-      const pkg = enr.classRun.package
 
       // Several ticket types bought in one action: one invoice, a line per type,
       // each priced off its OWN tier. Never the offering's flat price — that
@@ -205,43 +309,76 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
         // and the direct cost of the fix above. The whole run is the sum of its
         // sessions, taken slot by slot because a casual class is free to price
         // each session differently.
-        quantity = Math.max(1, enr.quantity ?? 1)
-        // A class priced PER SESSION (allowDropIn) has no whole-course price to
-        // read: the pricing card is hidden on its edit form, so any figure left
-        // in priceCents is stale — typed before the class became a casual one,
-        // and invisible to the trainer ever since. Reading it billed a full run
-        // as a single session. Same reasoning as ticket tiers, which have
-        // overridden priceCents outright since d736544 and for the same reason.
-        const fullSeatCents = pkg.allowDropIn
-          ? (await wholeRunPriceCents(enr.classRun.id, pkg)) ?? pkg.specialPriceCents ?? pkg.priceCents
-          : (pkg.specialPriceCents ?? pkg.priceCents ?? await wholeRunPriceCents(enr.classRun.id, pkg))
-        unitAmountCents = enr.ticketTier
-          ? enr.ticketTier.priceCents
-          : enr.type === 'DROP_IN'
-            ? sessionDropInPriceCents(enr.dropInSession?.packageSessionSlot, pkg)
-            : fullSeatCents
-        amountCents = unitAmountCents == null ? null : unitAmountCents * quantity
-        const ticketNote = enr.ticketTier
-          ? ` (${enr.ticketTier.name}${quantity > 1 ? ` × ${quantity}` : ''})`
-          : enr.type === 'DROP_IN'
-            ? ` (drop-in${enr.joinedAtIndex ? ` · session ${enr.joinedAtIndex}` : ''})`
-            : ''
-        description = enr.classRun.name + ticketNote
+        //
+        // All of that now lives in priceClassEnrollment, shared with the
+        // discount quoter, so the figure the discount is calculated against and
+        // the figure on the invoice can never be two different numbers.
+        const priced = await priceClassEnrollment(enr)
+        quantity = priced.quantity
+        unitAmountCents = priced.unitAmountCents
+        amountCents = priced.amountCents
+        description = priced.description
       }
     } else {
+      // The PRODUCT is always looked up by productId — sourceId may be a
+      // variant id, which is an idempotency key, not a product.
       const product = await prisma.product.findFirst({
-        where: { id: sourceId, trainerId: input.trainerId },
+        where: { id: input.productId, trainerId: input.trainerId },
         select: { name: true, priceCents: true, salePriceCents: true },
       })
       if (!product) return null
+      // Which one they picked, and what THAT costs. A variant with no price of
+      // its own inherits the product's, resolved in the one helper so the
+      // invoice can never disagree with the price on the shop page.
+      const variant = input.productVariantId
+        ? await prisma.productVariant.findFirst({
+            where: { id: input.productVariantId, trainerId: input.trainerId },
+            select: { name: true, priceCents: true, salePriceCents: true },
+          })
+        : null
+      if (input.productVariantId && !variant) return null
+
+      const pricing = resolveVariantPricing(product, variant)
       // On sale means on sale on the invoice too — same rule as a package's
       // specialPriceCents a few branches up.
-      amountCents = effectivePriceCents(product)
-      description = isOnSale(product) ? `${product.name} (sale)` : product.name
+      amountCents = effectivePriceCents(pricing)
+      const label = variant ? `${product.name} — ${variant.name}` : product.name
+      description = isOnSale(pricing) ? `${label} (sale)` : label
     }
 
     // Skip free / unpriced items — nothing to invoice.
     if (!amountCents || amountCents <= 0) return null
+
+    // Take the booking's discount off the lines.
+    //
+    // It goes on the LINES, not as a negative "Discount" line of its own: the
+    // receivables editor validates unitAmountCents with `min(0)`, so a negative
+    // line would be rejected the moment a trainer opened the invoice and saved
+    // it. scaleLinesToNet is the helper the client's Stripe checkout already
+    // uses for exactly this, so the invoice and the card charge land on the
+    // same cents — including the rounding remainder.
+    const discountCents = Math.max(0, Math.round(input.discountCents ?? 0))
+    if (discountCents > 0) {
+      if (extraLines) {
+        const net = scaleLinesToNet(extraLines.map(l => l.amountCents), discountCents)
+        extraLines = extraLines.map((l, i) => ({
+          ...l,
+          amountCents: net[i],
+          // The line total is what's owed; the unit price is derived back off it
+          // so a "3 × General" line still reads sensibly. Any half-cent lands in
+          // the unit price, never in the total.
+          unitAmountCents: Math.round(net[i] / Math.max(1, l.quantity)),
+        }))
+        amountCents = extraLines.reduce((n, l) => n + l.amountCents, 0)
+      } else {
+        amountCents = Math.max(0, amountCents - discountCents)
+        unitAmountCents = Math.round(amountCents / quantity)
+      }
+      // A discount that wipes the whole thing out leaves nothing to invoice —
+      // same rule as a free class above, rather than a $0 receivable to chase.
+      if (amountCents <= 0) return null
+      description = `${description} (discount applied)`
+    }
 
     // Idempotency: at most one invoice per (trainer, client, source). A repeat
     // assignment of the same source is a no-op (returns the existing id) and
@@ -376,7 +513,11 @@ export interface ManualSaleInput {
  * phone, which mints a Stripe Checkout Session via the same direct-charge path
  * as every other purchase. No new Stripe code, and nothing to install.
  *
- * Idempotent on (trainer, client, 'MANUAL', idempotencyKey).
+ * Idempotent on (trainer, client, 'MANUAL', idempotencyKey) — and it SAYS which
+ * of the two happened. A repeat key hands back the invoice that already exists,
+ * and the caller must be able to tell that apart from a fresh sale, because the
+ * stock behind an in-person sale has already come off the shelf: taking it
+ * again on a double-tap would show four harnesses sold where two went out.
  *
  * NOT best-effort, unlike its siblings in this file: this IS the trainer's
  * action rather than a side effect of one, so a failure must surface instead of
@@ -386,7 +527,7 @@ export interface ManualSaleInput {
  */
 export async function createManualSaleInvoice(
   input: ManualSaleInput,
-): Promise<{ id: string; payToken: string | null; amountCents: number }> {
+): Promise<{ id: string; payToken: string | null; amountCents: number; created: boolean }> {
   if (input.lines.length === 0) throw new Error('a sale needs at least one line')
 
   // Scope the client to this trainer — an id alone must never be enough to
@@ -418,7 +559,7 @@ export async function createManualSaleInvoice(
     },
     select: { id: true, payToken: true, amountCents: true },
   })
-  if (existing) return existing
+  if (existing) return { ...existing, created: false }
 
   const trainer = await prisma.trainerProfile.findUnique({
     where: { id: input.trainerId },
@@ -478,7 +619,7 @@ export async function createManualSaleInvoice(
     return Promise.all(tasks)
   })
 
-  return invoice
+  return { ...invoice, created: true }
 }
 
 /**
@@ -702,7 +843,16 @@ async function pushReceivableToXero(invoiceId: string, updateExisting: boolean):
         where: { id: invoice.sourceId },
         select: { xeroAccountCode: true },
       })
-      sourceCode = product?.xeroAccountCode ?? null
+      // sourceId is a VARIANT id when the client picked a size. A variant has
+      // no account code of its own — the income account is a fact about the
+      // product — so fall through to it rather than silently defaulting.
+      const viaVariant = product
+        ? null
+        : await prisma.productVariant.findUnique({
+            where: { id: invoice.sourceId },
+            select: { product: { select: { xeroAccountCode: true } } },
+          })
+      sourceCode = product?.xeroAccountCode ?? viaVariant?.product?.xeroAccountCode ?? null
     } else if (invoice.sourceType === 'CLASS_ENROLLMENT' && invoice.sourceId) {
       const enr = await prisma.classEnrollment.findUnique({
         where: { id: invoice.sourceId },

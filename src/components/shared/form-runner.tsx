@@ -7,6 +7,7 @@ import { RichText } from '@/components/shared/rich-text'
 import { clientFieldLabel, clientFieldInputType } from '@/lib/client-fields'
 import { hasOptions, isQuestionVisible } from '@/lib/session-form-builder'
 import type { FormStep, Question } from '@/lib/session-form-builder'
+import { PublicFormShell } from '@/components/shared/public-form-shell'
 
 /**
  * The one renderer for a unified Form, wherever a person fills it in.
@@ -158,46 +159,15 @@ export function FormRunner({
     : 'flex flex-col gap-5'
 
   return (
-    <div className="min-h-dvh bg-slate-50 px-4 py-10">
-      <div className="mx-auto w-full max-w-lg">
-        <div className="mb-8 text-center">
-          {trainerLogoUrl && (
-            // Plain <img>: the logo is an arbitrary remote URL and this page is
-            // public, so next/image's optimiser has nothing to gain. Height-
-            // constrained only, so the image keeps its real aspect.
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={trainerLogoUrl}
-              alt={businessName}
-              className="mx-auto mb-4 h-24 w-auto max-w-[280px] object-contain"
-            />
-          )}
-          <p className="mb-2 text-sm font-medium text-[var(--accent,#2563eb)]">{businessName}</p>
-          <h1 className="text-2xl font-bold text-slate-900">{heading}</h1>
-        </div>
-
-        {/* Progress — hidden on a single-page form, where "Step 1 of 1" is
-            noise. Matches the dots on the field-library intake gate. */}
-        {steps.length > 1 && (
-          <div className="mb-6 flex flex-col items-center gap-2">
-            <div className="flex items-center gap-1.5">
-              {steps.map((s, i) => (
-                <div
-                  key={s.id}
-                  aria-hidden
-                  className={`h-1.5 rounded-full ${
-                    i < stepIndex ? 'w-6 bg-emerald-500'
-                    : i === stepIndex ? 'w-8 bg-[var(--accent,#2563eb)]'
-                    : 'w-6 bg-slate-200'
-                  }`}
-                />
-              ))}
-            </div>
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-              Step {stepIndex + 1} of {steps.length}
-            </p>
-          </div>
-        )}
+    <PublicFormShell
+      businessName={businessName}
+      trainerLogoUrl={trainerLogoUrl}
+      heading={heading}
+      // Progress — hidden on a single-page form, where "Step 1 of 1" is noise.
+      progress={{ index: stepIndex, total: steps.length }}
+      reviewScope={`Step ${stepIndex + 1} of ${steps.length} · ${steps[stepIndex].title}`}
+    >
+      <>
 
         <div className={cardClass}>
           {steps.length > 1 && (
@@ -254,8 +224,8 @@ export function FormRunner({
             {!isLast && <ArrowRight className="h-4 w-4" />}
           </Button>
         </div>
-      </div>
-    </div>
+      </>
+    </PublicFormShell>
   )
 }
 

@@ -12,9 +12,13 @@ import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
 // the trainer writes up their notes, and confirmed in one tap — which is the
 // whole point: the same five library items, picked once instead of every time.
 
+type Timing = 'BEFORE_SESSION' | 'AFTER_SESSION'
+
 interface Row {
   id: string
   sessionIndex: number | null
+  /** Preparation for the session, or practice after it. */
+  timing: Timing
   order: number
   libraryTaskId: string | null
   title: string
@@ -133,6 +137,25 @@ export function DefaultHomeworkEditor({
     await fetch(`/api/trainer/packages/${packageId}/default-homework/${id}`, { method: 'DELETE' })
   }
 
+  /**
+   * Flip one row between preparation and practice. Optimistic — it is a
+   * two-state toggle on a row already on screen, so waiting on the round trip
+   * would just make it feel broken. A failed save is put back.
+   */
+  async function setTiming(id: string, timing: Timing) {
+    const before = rows
+    setRows(prev => (prev ?? []).map(r => (r.id === id ? { ...r, timing } : r)))
+    const res = await fetch(`/api/trainer/packages/${packageId}/default-homework/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timing }),
+    })
+    if (!res.ok) {
+      setRows(before)
+      setError('Could not change when that one shows.')
+    }
+  }
+
   const allLibraryTasks = useMemo(() => {
     if (!library) return [] as (LibTask & { path: string })[]
     return library.flatMap(ty => ty.themes.flatMap(th => th.tasks.map(t => ({ ...t, path: `${ty.name} · ${th.name}` }))))
@@ -152,7 +175,9 @@ export function DefaultHomeworkEditor({
         <p className="text-sm leading-relaxed text-slate-500">
           The homework you normally hand out on this offering. Nothing is sent on its
           own — when you write up a session, these are waiting for you to confirm in
-          one tap, and you can edit or drop any of them per client afterwards.
+          one tap, and you can edit or drop any of them per client afterwards. Mark
+          anything they need to do first as <em>before</em>, and it reaches them as
+          soon as you hand it over rather than once the session has run.
         </p>
       ))}
 
@@ -189,6 +214,11 @@ export function DefaultHomeworkEditor({
                       {r.libraryPath ?? 'One-off'}
                       {r.repetitions ? ` · ${r.repetitions} reps` : ''}
                     </p>
+                    <TimingToggle
+                      value={r.timing}
+                      noun={noun.toLocaleLowerCase('en-NZ')}
+                      onChange={t => setTiming(r.id, t)}
+                    />
                   </div>
                   <button
                     type="button"
@@ -223,6 +253,53 @@ export function DefaultHomeworkEditor({
           onClose={() => setPicking('closed')}
         />
       )}
+    </div>
+  )
+}
+
+/**
+ * When this one reaches the client: before the session, or after it.
+ *
+ * A two-state segment rather than a checkbox, because neither state is the
+ * "off" one — "bring a hungry dog and a pot of chicken" is as deliberate a
+ * choice as "practise the recall twice a day", and a lone ticked box saying
+ * "before" leaves the trainer guessing what unticked means.
+ */
+function TimingToggle({
+  value,
+  noun,
+  onChange,
+}: {
+  value: Timing
+  noun: string
+  onChange: (t: Timing) => void
+}) {
+  const options: { key: Timing; label: string }[] = [
+    { key: 'BEFORE_SESSION', label: `Before the ${noun}` },
+    { key: 'AFTER_SESSION', label: `After the ${noun}` },
+  ]
+  return (
+    <div
+      role="group"
+      aria-label="When this shows to the client"
+      className="mt-2 inline-flex rounded-lg bg-slate-100 p-0.5"
+    >
+      {options.map(o => {
+        const on = value === o.key
+        return (
+          <button
+            key={o.key}
+            type="button"
+            aria-pressed={on}
+            onClick={() => onChange(o.key)}
+            className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+              on ? 'bg-white font-medium text-slate-900' : 'text-slate-500 active:text-slate-700'
+            }`}
+          >
+            {o.label}
+          </button>
+        )
+      })}
     </div>
   )
 }

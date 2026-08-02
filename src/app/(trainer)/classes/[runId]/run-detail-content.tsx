@@ -40,7 +40,14 @@ export async function ClassRunDetailContent({
         package: { select: { id: true, name: true, description: true, allowDropIn: true, allowWaitlist: true, priceCents: true, dropInPriceCents: true, durationMins: true, bufferMins: true, sessionType: true, capacity: true, weeksBetween: true, sessionCount: true, defaultSessionFormId: true } },
         sessions: {
           orderBy: { sessionIndex: 'asc' },
-          select: { id: true, title: true, scheduledAt: true, sessionIndex: true, status: true },
+          select: {
+            id: true, title: true, scheduledAt: true, sessionIndex: true, status: true,
+            // One week of a run, changed on its own — see lib/run-occurrences.
+            durationMins: true, location: true,
+            cancelledAt: true, cancelReason: true, scheduleOverriddenAt: true,
+            // Who a cancellation actually hits: the people who booked THIS week.
+            _count: { select: { dropInEnrollments: true } },
+          },
         },
         enrollments: {
           orderBy: [{ status: 'asc' }, { waitlistPosition: 'asc' }, { enrolledAt: 'asc' }],
@@ -160,6 +167,12 @@ export async function ClassRunDetailContent({
         scheduledAt: s.scheduledAt.toISOString(),
         sessionIndex: s.sessionIndex,
         status: s.status,
+        durationMins: s.durationMins,
+        location: s.location,
+        cancelledAt: s.cancelledAt?.toISOString() ?? null,
+        cancelReason: s.cancelReason,
+        scheduleOverriddenAt: s.scheduleOverriddenAt?.toISOString() ?? null,
+        bookedCount: s._count.dropInEnrollments,
       }))}
       enrollments={run.enrollments.map(e => {
         const attended = e.attendance.filter(a => a.status === 'PRESENT' || a.status === 'LATE' || a.status === 'MAKEUP').length

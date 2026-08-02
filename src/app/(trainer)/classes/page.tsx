@@ -8,6 +8,7 @@ import { formatDate } from '@/lib/utils'
 import { ClassesView } from './classes-view'
 import type { Metadata } from 'next'
 import { addonSettingsHref } from '@/lib/configurable-features'
+import { notYetShowingBadge } from '@/lib/offering-visibility'
 
 export const metadata: Metadata = { title: 'Group Classes' }
 
@@ -45,6 +46,8 @@ export default async function ClassesPage({
         package: {
           select: {
             id: true, name: true, description: true, capacity: true, durationMins: true, priceCents: true, specialPriceCents: true,
+            // Whether clients can see this yet — the run inherits it.
+            visibleFrom: true,
             // How many curriculum steps this class runs, if any — a SERIES.
             // A count, not the steps themselves: the list only says "6 steps".
             _count: { select: { sessionPlans: true } },
@@ -101,6 +104,7 @@ export default async function ClassesPage({
         capacity: r.capacity ?? r.package.capacity ?? null,
         imageUrl: r.imageUrl,
         trainerNames: r.assignedTrainers.map(a => a.membership.user.name ?? 'Team member'),
+        notYetShowing: notYetShowingBadge(r.package.visibleFrom, now) !== null,
         isPast: isClassRunPast(
           { status: r.status, startDate: r.startDate, lastSessionAt: r.sessions[0]?.scheduledAt },
           now,

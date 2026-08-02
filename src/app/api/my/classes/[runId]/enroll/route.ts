@@ -15,7 +15,9 @@ import { enforceRateLimit } from '@/lib/rate-limit'
 import { notifyTrainer } from '@/lib/trainer-notify'
 import { notifyClient } from '@/lib/client-notify'
 import { quoteOfferingDiscount, scaleLinesToNet } from '@/lib/discounts/quote'
+import { quoteEnrollmentDiscounts } from '@/lib/discounts/booking-discount'
 import { env } from '@/lib/env'
+import { offeringVisibleRelationWhere } from '@/lib/offering-visibility'
 
 // Client self-enrolment into a group class run. Free classes (or trainers not
 // taking payments) enrol straight away; a priced class with payments on is
@@ -76,7 +78,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   const { runId } = await params
 
   const run = await prisma.classRun.findFirst({
-    where: { id: runId, trainerId: profile.trainerId },
+    // The visibility gate is on the ENROL, not just the list a client browses:
+    // a run id is guessable, and this response hands back the whole offering
+    // plus every ticket tier. See lib/offering-visibility.
+    where: { id: runId, trainerId: profile.trainerId, ...offeringVisibleRelationWhere() },
     // The offering's ticket tiers come along because they, not the package's
     // price, are what a ticketed event costs.
     include: { package: { include: { ticketTiers: { orderBy: { order: 'asc' } } } } },
@@ -373,13 +378,31 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     }
     const result = results[0]
     if (payLater) {
-      for (const r of results.filter(r => r.status === 'ENROLLED')) {
+      const enrolled = results.filter(r => r.status === 'ENROLLED')
+      // The discount has to come off the receivable too. Above, a pay-NOW
+      // booking has it scaled into the checkout lines; pay-later skipped the
+      // engine entirely, so the same booking cost less on a card than it did on
+      // an invoice. Quoted through the shared helper the trainer's own
+      // enrolment route uses, so all three routes to the same booking land on
+      // the same number.
+      // Best-effort: they are already enrolled, so a failed quote costs them the
+      // saving on one invoice rather than their place.
+      const discount = await quoteEnrollmentDiscounts({
+        trainerId: profile.trainerId,
+        clientId: profile.id,
+        enrollmentIds: enrolled.map(r => r.enrollmentId),
+      }).catch((err) => {
+        console.error('[class enrol] pay-later discount quote failed', runId, err)
+        return { discountTotal: 0, perEnrollment: {} as Record<string, number> }
+      })
+      for (const r of enrolled) {
         await prisma.classEnrollment.update({ where: { id: r.enrollmentId }, data: { invoicedAt: new Date() } }).catch(() => {})
         await createInvoiceForAssignment({
           trainerId: profile.trainerId,
           clientId: profile.id,
           sourceType: 'CLASS_ENROLLMENT',
           classEnrollmentId: r.enrollmentId,
+          discountCents: discount.perEnrollment[r.enrollmentId] ?? 0,
           notifyClient: false,
         })
       }

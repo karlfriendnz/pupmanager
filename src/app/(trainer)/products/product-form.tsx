@@ -8,6 +8,7 @@ import { Alert } from '@/components/ui/alert'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { XeroAccountField } from '@/components/shared/xero-account-field'
 import { SectionLabel } from '@/components/shared/flat-list'
+import { TagPicker, saveTags } from '@/components/shared/tag-picker'
 import { isRichTextEmpty } from '@/lib/rich-text'
 import { compressImageFile } from '@/lib/compress-image'
 import { readApiError } from '@/lib/api-error'
@@ -85,12 +86,19 @@ export function ProductForm({
   isNew,
   existingCategories,
   heading,
+  variantCount = 0,
 }: {
   initial: ProductDraft
   isNew: boolean
   existingCategories: ProductCategoryOption[]
   /** The page's tab strip. Given one, it shares the actions' row and hairline. */
   heading?: React.ReactNode
+  /**
+   * How many options this product has. Above zero the counts live on THEM, so
+   * this form must not offer a number that nothing reads — it points at the
+   * Options tab instead.
+   */
+  variantCount?: number
 }) {
   const router = useRouter()
   const currency = useCurrency()
@@ -106,6 +114,10 @@ export function ProductForm({
   // '' is Uncategorised; this sentinel opens the "type a new name" field. A
   // real category can never be called it — it is not a name a select shows.
   const [addingCategory, setAddingCategory] = useState(false)
+  // Tags live in their own join table, not on the product row, so they are held
+  // here and written after the save — a new product has no id to hang them off
+  // until the create comes back.
+  const [tagIds, setTagIds] = useState<string[]>([])
   const [stockOpen, setStockOpen] = useState(false)
   const [uploadingImg, setUploadingImg] = useState(false)
   const [uploadingDownload, setUploadingDownload] = useState(false)
@@ -239,6 +251,9 @@ export function ProductForm({
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { setError(readApiError(body)); return }
+      // After the product exists, never as part of it — see saveTags. A tag
+      // that didn't stick is a chip to re-tap; a failed product save is worse.
+      await saveTags({ productId: isNew ? body.id : draft.id }, tagIds)
       router.push(isNew ? `/products/${body.id}` : '/products')
       router.refresh()
     } finally {
@@ -269,6 +284,30 @@ export function ProductForm({
       <div className="sticky top-0 z-20 -mx-4 flex items-end justify-between gap-3 border-b border-slate-200 bg-slate-50/95 px-4 pb-1.5 pt-1 backdrop-blur md:mx-0 md:px-0">
         {heading ?? <span />}
         <span className="flex flex-shrink-0 items-center gap-2 pb-1">
+        {/* See it the way a client does. A plain <a>, not router.push: the
+            target is a route handler that has to set the preview cookie on its
+            own redirect, which the client router would swallow.
+
+            Only on a saved product — a preview renders what is IN the database,
+            so offering it beside an unsaved draft would show the trainer the
+            old version of the thing they are looking at. */}
+        {!isNew && (
+          <a
+            href={`/products/${draft.id}/preview`}
+            // A NEW TAB, deliberately. Preview renders what is SAVED, so
+            // navigating away from a form with unsaved edits would throw them
+            // out to look at a version that does not include them — losing work
+            // to go and see the wrong thing. A tab also lets the trainer keep
+            // editing on one side and re-read the client's view on the other.
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Opens your shop in a new tab, as one of your clients sees it. Shows what's saved."
+            className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 rounded-xl px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 active:bg-slate-200"
+          >
+            <Eye className="h-4 w-4" strokeWidth={1.75} />
+            Preview
+          </a>
+        )}
         <Button variant="ghost" size="sm" onClick={() => router.push('/products')}>Cancel</Button>
         <Button size="sm" loading={saving} onClick={save} disabled={!draft.name.trim()}>
           {isNew ? 'Create product' : 'Save changes'}
@@ -346,7 +385,18 @@ export function ProductForm({
               product being created has no history to keep and nowhere to put
               it, so /products/new still takes an opening count directly. */}
           <div className="flex flex-col gap-1.5 border-t border-slate-200 p-4">
-            {isNew ? (
+            {variantCount > 0 ? (
+              // The counts live on the options once there are any — a harness
+              // in S/M/L is three shelves. Showing a fourth number here that
+              // nothing reads is worse than showing none.
+              <>
+                <p className="text-sm font-medium text-slate-700">Units on hand</p>
+                <p className="text-sm text-slate-500">
+                  Counted per option now — {variantCount} of them. Open the
+                  Options tab to add stock.
+                </p>
+              </>
+            ) : isNew ? (
               <>
                 <label htmlFor="product-stock" className="text-sm font-medium text-slate-700">Units on hand</label>
                 <input
@@ -422,6 +472,17 @@ export function ProductForm({
                 ? 'It is created when you save, and appears as a shelf on your shop.'
                 : 'Which shelf this sits on in your shop.'}
             </p>
+          </div>
+
+          {/* Under Category on purpose, and separate from it. A category is a
+              shelf in THIS shop; a tag reaches out of the shop and gathers this
+              product up with the class and the 1:1 session it goes with. */}
+          <div className="border-t border-slate-200 p-4">
+            <TagPicker
+              value={tagIds}
+              onChange={setTagIds}
+              loadFor={isNew ? undefined : { productId: draft.id }}
+            />
           </div>
           </div>
 

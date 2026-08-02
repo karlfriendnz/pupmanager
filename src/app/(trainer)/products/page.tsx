@@ -31,6 +31,15 @@ export default async function ProductsPage({
       select: {
         id: true, name: true, kind: true, priceCents: true, salePriceCents: true,
         imageUrl: true, stockCount: true, categoryId: true, featured: true, active: true,
+        // Enough to price and count a varianted product honestly in the table.
+        // Active only: "3 options" has to mean three a client could pick, and
+        // a retired size shouldn't drag the "from" price down to a number
+        // nobody can buy at.
+        variants: {
+          where: { active: true },
+          orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+          select: { priceCents: true, salePriceCents: true, stockCount: true, active: true },
+        },
       },
     }),
     prisma.productCategory.findMany({
@@ -57,6 +66,7 @@ export default async function ProductsPage({
           categoryId: p.categoryId,
           featured: p.featured,
           active: p.active,
+          variants: p.variants,
         }))}
       />
     </>

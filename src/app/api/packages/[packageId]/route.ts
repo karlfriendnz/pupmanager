@@ -6,12 +6,15 @@ import { z } from 'zod'
 import { MAX_BUFFER_MINS } from '@/lib/buffer'
 import { syncOfferingRun, ClassError } from '@/lib/class-runs'
 import { syncClassSessions, removeClassEvents } from '@/lib/class-session-sync'
+import { extendSlotRuns } from '@/lib/extend-slot-runs'
 import {
   slotSchema, replacePackageSlots, derivedDropInFields,
   ticketTierSchema, replaceTicketTiers,
 } from '@/lib/package-slots'
 import { isValidSpecialPrice, SPECIAL_PRICE_TOO_HIGH } from '@/lib/special-price'
 import { resolvePackagePricing } from '@/lib/session-pricing'
+import { offeringListHref, offeringKindLabel } from '@/lib/run-kind'
+import { visibleFromInstant } from '@/lib/offering-visibility'
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -44,6 +47,11 @@ const updateSchema = z.object({
   publicEnrollment: z.boolean().optional(),
   clientSelfBook: z.boolean().optional(),
   selfBookRequiresApproval: z.boolean().optional(),
+  // The calendar DAY clients start seeing this, in the trainer's own zone.
+  // null clears the schedule (visible immediately); OMITTING it changes
+  // nothing, which is what lets a list screen save an offering it never loaded
+  // the field for. See lib/offering-visibility.
+  visibleFromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   xeroAccountCode: z.string().max(50).nullable().optional(),
   // Tri-state "require payment to book": null = inherit trainer default.
   requirePayment: z.boolean().nullable().optional(),
@@ -176,9 +184,23 @@ export async function PATCH(
   const {
     sessionSlots, ticketTiers,
     scheduleNote, location, imageUrl, assignedMembershipIds, startAt, status, removeSessionIds,
+    visibleFromDate,
     ...columns
   } = parsed.data
   const dropIn = sessionSlots ? derivedDropInFields(sessionSlots) : null
+
+  // A DAY in the trainer's zone becomes the instant that day begins for them.
+  // Pulled out of `columns` rather than spread with them because the column is
+  // an instant and the payload is a date string — and because omitting the key
+  // has to mean "leave it alone", not "publish now".
+  if (visibleFromDate !== undefined) {
+    const tz =
+      (await prisma.trainerProfile.findUnique({
+        where: { id: trainerId },
+        select: { user: { select: { timezone: true } } },
+      }))?.user?.timezone || 'Pacific/Auckland'
+    ;(columns as Record<string, unknown>).visibleFrom = visibleFromInstant(visibleFromDate, tz)
+  }
 
   // Write the settled price only when the patch actually said something about
   // pricing (or about the session count the total is derived from). Every other
@@ -282,7 +304,9 @@ export async function PATCH(
   } catch (e) {
     // Refusing to move a class people have already attended is an answer the
     // trainer can act on, not a server error.
-    if (e instanceof ClassError && e.code === 'HAS_ATTENDANCE') {
+    // Same for refusing to rebuild over weeks the trainer cancelled or moved
+    // on their own — the message names the fix, so it is an answer, not a 500.
+    if (e instanceof ClassError && (e.code === 'HAS_ATTENDANCE' || e.code === 'HAS_OVERRIDES')) {
       return NextResponse.json({ error: e.message }, { status: 409 })
     }
     throw e
@@ -290,6 +314,29 @@ export async function PATCH(
 
   if (createdSessionIds.length) await syncClassSessions(createdSessionIds)
   if (deletedEventIds.length) await removeClassEvents(trainerId, deletedEventIds)
+
+  // A day-part added to a daycare that already exists gets its sessions here.
+  //
+  // This is the SAME generator the nightly cron runs, scoped to this offering —
+  // not a second implementation, and deliberately not one. The bug being fixed
+  // existed precisely because generating a slot's series happened at exactly one
+  // call site (creation); a fix that added a second one would be the same shape
+  // of mistake. The generator decides what a new slot is owed and what it must
+  // never touch; this line only says "now, not tonight", because the trainer is
+  // looking at the board and an empty column with no explanation is the thing
+  // they reported.
+  //
+  // Outside the transaction — extendSlotRuns owns its own reads and writes — and
+  // failure is not the save's problem: the slots are committed, and tonight's
+  // cron finishes the job. Making the trainer re-save a save that worked would
+  // be the worse answer.
+  if (sessionSlots) {
+    try {
+      await extendSlotRuns({ trainerId, packageId })
+    } catch (e) {
+      console.error('[packages] could not fill new day-parts', packageId, e)
+    }
+  }
 
   return NextResponse.json(pkg)
 }
@@ -308,10 +355,112 @@ export async function DELETE(
   if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const { packageId } = await params
-  if (!(await ownPackage(packageId, trainerId))) {
+  const pkg = await ownPackage(packageId, trainerId)
+  if (!pkg) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  await prisma.package.delete({ where: { id: packageId } })
-  return NextResponse.json({ ok: true })
+  // Where the trainer lands afterwards. NOT always /packages — that's the 1:1
+  // Sessions list, and a daycare-only trainer doesn't have it in their nav.
+  const redirectTo = offeringListHref(pkg)
+  const kind = offeringKindLabel(pkg)
+
+  // ── What is actually standing in the way ────────────────────────────────────
+  //
+  // ClassRun.package is `onDelete: Restrict` in the schema. This route used to
+  // call prisma.package.delete blind, with no pre-check and no catch: Postgres
+  // refused, the route 500'd, and the form printed its generic "Could not delete
+  // this offering." A DAYCARE hit it every single time, because POST
+  // /api/packages schedules the run inside the same transaction that creates the
+  // programme — a daycare offering always has one. Classes and events only
+  // escaped it because trainers habitually delete the run first.
+  const runs = await prisma.classRun.findMany({
+    where: { packageId, trainerId },
+    select: { id: true, sessions: { select: { googleCalendarEventId: true } } },
+  })
+  const runIds = runs.map((r) => r.id)
+
+  // Deleting a run cascades its enrolments AND its sessions away, and the
+  // receivable raised for an enrolment is only a SOFT link (Invoice.sourceType
+  // 'CLASS_ENROLLMENT' + sourceId, deliberately no FK) — so cascading would
+  // leave invoices pointing at rows that no longer exist, with no way back.
+  // Money and bookings are precisely what a trainer cannot re-enter from memory,
+  // so anything with people or money on it REFUSES with a reason they can act
+  // on. Only a run nobody has booked and nobody has been billed for is cleared
+  // out of the way, because that one is just scaffolding the create step built.
+  if (runIds.length > 0) {
+    const [booked, attended] = await Promise.all([
+      prisma.classEnrollment.count({ where: { classRunId: { in: runIds } } }),
+      prisma.sessionAttendance.count({ where: { session: { classRunId: { in: runIds } } } }),
+    ])
+    if (booked > 0) {
+      return NextResponse.json(
+        {
+          error: `${booked} booking${booked === 1 ? '' : 's'} on this ${kind}. Remove ${booked === 1 ? 'it' : 'them'} first, then delete it.`,
+        },
+        { status: 409 },
+      )
+    }
+    if (attended > 0) {
+      return NextResponse.json(
+        { error: `This ${kind} has attendance recorded. Delete the sessions first, then delete it.` },
+        { status: 409 },
+      )
+    }
+  }
+
+  // The 1:1 side has no Restrict to stop it, which is worse rather than better:
+  // ClientPackage cascades off the package, so deleting a 1:1 offering silently
+  // took its assignments with it and orphaned every invoice raised against them
+  // (same soft sourceType/sourceId link). Same rule as above — money refuses.
+  const assignments = await prisma.clientPackage.findMany({
+    where: { packageId },
+    select: { id: true },
+  })
+  if (assignments.length > 0) {
+    const assignmentIds = assignments.map((a) => a.id)
+    const [invoiced, paid] = await Promise.all([
+      prisma.invoice.count({
+        where: { trainerId, sourceType: 'PACKAGE', sourceId: { in: assignmentIds } },
+      }),
+      prisma.paymentItem.count({ where: { clientPackageId: { in: assignmentIds } } }),
+    ])
+    if (invoiced > 0 || paid > 0) {
+      return NextResponse.json(
+        { error: `This ${kind} has been billed for. Deleting it would orphan those invoices — cancel them first.` },
+        { status: 409 },
+      )
+    }
+  }
+
+  // Capture the mirrored Google event ids BEFORE the cascade wipes them, so the
+  // trainer's calendar can be cleaned up after the local delete (same shape as
+  // the class DELETE route).
+  const deletedEventIds = runs
+    .flatMap((r) => r.sessions.map((s) => s.googleCalendarEventId))
+    .filter((id): id is string => !!id)
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (runIds.length > 0) {
+        // Sessions cascade off the run at the FK level, but delete them
+        // explicitly and tenant-scoped so the intent is enforced here too.
+        await tx.trainingSession.deleteMany({ where: { classRunId: { in: runIds }, trainerId } })
+        await tx.classRun.deleteMany({ where: { id: { in: runIds }, trainerId } })
+      }
+      await tx.package.delete({ where: { id: packageId } })
+    })
+  } catch (err) {
+    // A delete the DB refuses is still an answer the trainer should see, not a
+    // blank 500 — this is the catch whose absence caused the reported bug.
+    console.error('[packages] delete failed', err)
+    return NextResponse.json(
+      { error: 'Could not delete this offering. Please try again.' },
+      { status: 500 },
+    )
+  }
+
+  if (deletedEventIds.length) await removeClassEvents(trainerId, deletedEventIds)
+
+  return NextResponse.json({ ok: true, redirectTo })
 }

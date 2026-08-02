@@ -30,6 +30,8 @@ type RunRow = {
   capacity: number | null
   imageUrl: string | null
   trainerNames: string[]
+  /** Built, but held back from clients until its date — see offering-visibility. */
+  notYetShowing?: boolean
   isPast: boolean
 }
 
@@ -135,6 +137,9 @@ export function ClassesView({
                           dimmed={r.isPast}
                           dragHandle={handle}
                           badges={[
+                            // First, and never hidden — a trainer must never
+                            // wonder why a client can't see their class.
+                            ...(r.notYetShowing ? [{ label: 'Not showing yet', tone: 'warn' as const }] : []),
                             { label: r.status.charAt(0) + r.status.slice(1).toLowerCase(), tone: STATUS_TONE[r.status] },
                             ...(r.priceCents != null ? [{ label: formatMoney(r.priceCents, currency), tone: 'accent' as const }] : []),
                           ]}

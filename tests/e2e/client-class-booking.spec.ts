@@ -109,11 +109,13 @@ test.describe('a client enrols themselves from Offerings', () => {
       await page.getByRole('button', { name: /Group classes/ }).click()
       await page.getByRole('button', { name: new RegExp(name) }).click()
 
-      // A drop-in class opens straight into the session picker. Each row is a
-      // button led by its number badge, so "1 …" is the first session.
+      // A drop-in class opens straight into the session picker: a month
+      // calendar, already open on the first day with room. Each session on
+      // that day is a row whose label LEADS with the action, so "Add …" is
+      // the first thing this client can pick.
       await expect(page.getByRole('heading', { name })).toBeVisible({ timeout: 15_000 })
       await expect(page.getByText('Pick the sessions you want')).toBeVisible()
-      await page.getByRole('button', { name: /^1\s/ }).click()
+      await page.getByRole('button', { name: /^Add / }).first().click()
       await page.getByRole('button', { name: /Continue · 1 session/ }).click()
 
       await expect(page.getByRole('heading', { name: 'Confirm your booking' })).toBeVisible()

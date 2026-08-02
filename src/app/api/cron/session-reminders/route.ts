@@ -32,6 +32,10 @@ export async function GET(req: Request) {
     where: {
       scheduledAt: { lte: new Date(nowMs + MAX_LEAD_MIN * 60_000) },
       status: 'UPCOMING',
+      // …and not one occurrence the trainer called off on its own. Reminding
+      // someone to turn up to the week that was cancelled is the single worst
+      // way for them to find out it was.
+      cancelledAt: null,
       OR: [
         { reminderPushSentAt: null },
         { notesReminderPushSentAt: null },

@@ -17,6 +17,8 @@ import { renderUnifiedForm } from '@/lib/unified-form-render'
 import { PreviewBanner, PREVIEW_SHELL_CLASS } from './preview-banner'
 import { PreviewProvider } from './preview-context'
 import { PreviewOnboardingGuide } from './preview-onboarding-guide'
+import { BasketProvider } from './basket/basket-context'
+import { BasketBar } from './basket/basket-bar'
 import { ReviewMount } from '@/components/review/review-mount'
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
@@ -319,7 +321,15 @@ export default async function ClientLayout({ children }: { children: React.React
       >
         <PreviewProvider value={active.isPreview}>
           <CurrencyProvider currency={clientProfile.trainer.payoutCurrency ?? 'nzd'}>
-            {children}
+            {/* The basket wraps the whole client app, not just the shop: a
+                client adds a harness in one tab of their life and three casual
+                classes in another, and pays for the lot once. Keyed by the
+                ACTIVE ClientProfile, so a basket can never follow them across
+                to a different trainer's checkout. */}
+            <BasketProvider clientProfileId={clientProfile.id}>
+              {children}
+              <BasketBar />
+            </BasketProvider>
           </CurrencyProvider>
         </PreviewProvider>
       </AppShell>

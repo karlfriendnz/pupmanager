@@ -19,6 +19,7 @@ import { StatusToggle } from './status-toggle'
 import { DogGalleryManager } from './dog-gallery-manager'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
+import { effectivePriceCents, resolveVariantPricing } from '@/lib/product-price'
 import Link from 'next/link'
 
 type Tab = 'overview' | 'sessions' | 'dogs' | 'details' | 'achievements' | 'communication' | 'notes' | 'invoices' | 'training'
@@ -94,16 +95,24 @@ interface ShopProduct {
   name: string
   kind: 'PHYSICAL' | 'DIGITAL'
   priceCents: number | null
+  salePriceCents?: number | null
   imageUrl: string | null
   category: string | null
   // Whether the product is visible in the client's own shop. The trainer can
   // still add a hidden product to a client; the picker badges it so they know.
   active: boolean
+  /**
+   * Sizes/colours. Empty = the product is added in one tap, exactly as before.
+   * With any, the row opens into them — a client can't be handed "a harness".
+   */
+  variants?: { id: string; name: string; priceCents: number | null; salePriceCents: number | null; stockCount: number | null }[]
 }
 
 interface PendingProductRequest {
   id: string
   note: string | null
+  /** Which one was ordered, when the product has options. */
+  variant?: { id: string; name: string } | null
   product: { id: string; name: string; kind: 'PHYSICAL' | 'DIGITAL'; imageUrl: string | null }
 }
 
@@ -204,22 +213,24 @@ export function ClientProfileTabs({
     }
   }
 
-  async function addProductRequest(productId: string) {
+  async function addProductRequest(productId: string, variantId: string | null) {
     const res = await fetch(`/api/clients/${clientId}/product-requests`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productId }),
+      body: JSON.stringify({ productId, variantId }),
     })
     if (!res.ok) return
     const created = await res.json()
     const product = products.find(p => p.id === productId)
     if (!product) return
+    const variant = product.variants?.find(v => v.id === variantId) ?? null
     // Avoid duplicate state if the API returned an existing PENDING row.
     setPendingRequests(prev => {
       if (prev.some(r => r.id === created.id)) return prev
       return [...prev, {
         id: created.id,
         note: created.note ?? null,
+        variant: variant ? { id: variant.id, name: variant.name } : null,
         product: { id: product.id, name: product.name, kind: product.kind, imageUrl: product.imageUrl },
       }]
     })
@@ -498,7 +509,9 @@ export function ClientProfileTabs({
                         className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-900 bg-amber-50 border border-amber-100 pl-3 pr-1.5 py-1 rounded-full"
                         title={r.note ?? undefined}
                       >
-                        {r.product.name}
+                        {/* The option is part of the name here — "a harness"
+                            is not something anyone can go and fetch. */}
+                        {r.variant ? `${r.product.name} — ${r.variant.name}` : r.product.name}
                         <button
                           onClick={() => dismissRequest(r.id)}
                           disabled={busyRequestId === r.id}
@@ -890,9 +903,13 @@ export function ClientProfileTabs({
       {pickerOpen && (
         <ProductPickerModal
           products={products}
-          requestedIds={new Set(pendingRequests.map(r => r.product.id))}
+          // A varianted product is "added" per OPTION, so the two sets are
+          // separate: the product row only greys out for things sold as one
+          // thing. A client can have the Small and then also want the Large.
+          requestedIds={new Set(pendingRequests.filter(r => !r.variant).map(r => r.product.id))}
+          requestedVariantIds={new Set(pendingRequests.map(r => r.variant?.id).filter((id): id is string => !!id))}
           onClose={() => setPickerOpen(false)}
-          onPick={async (id) => { await addProductRequest(id) }}
+          onPick={async (id, variantId) => { await addProductRequest(id, variantId) }}
         />
       )}
     </>
@@ -902,17 +919,25 @@ export function ClientProfileTabs({
 function ProductPickerModal({
   products,
   requestedIds,
+  requestedVariantIds,
   onClose,
   onPick,
 }: {
   products: ShopProduct[]
   requestedIds: Set<string>
+  /** Options already on order for this client. */
+  requestedVariantIds: Set<string>
   onClose: () => void
-  onPick: (productId: string) => void | Promise<void>
+  onPick: (productId: string, variantId: string | null) => void | Promise<void>
 }) {
   const currency = useCurrency()
   const [search, setSearch] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
+  // A product with options OPENS instead of adding — the options appear
+  // underneath it, in the same list. A second modal on top of this one to ask
+  // "which size?" would be a sheet over a sheet, and the answer is three rows
+  // long.
+  const [openId, setOpenId] = useState<string | null>(null)
 
   const filtered = products.filter(p =>
     !search.trim() || p.name.toLowerCase().includes(search.toLowerCase())
@@ -930,9 +955,9 @@ function ProductPickerModal({
     }
   }
 
-  async function pick(id: string) {
-    setBusyId(id)
-    try { await onPick(id) }
+  async function pick(id: string, variantId: string | null = null) {
+    setBusyId(variantId ?? id)
+    try { await onPick(id, variantId) }
     finally { setBusyId(null) }
   }
 
@@ -967,13 +992,19 @@ function ProductPickerModal({
                   </p>
                   <div className="flex flex-col">
                     {g.items.map(p => {
+                      const variants = p.variants ?? []
                       const already = requestedIds.has(p.id)
+                      const expanded = openId === p.id
                       return (
+                        <div key={p.id}>
                         <button
-                          key={p.id}
-                          onClick={() => !already && pick(p.id)}
+                          onClick={() => {
+                            if (already) return
+                            if (variants.length > 0) { setOpenId(expanded ? null : p.id); return }
+                            void pick(p.id)
+                          }}
                           disabled={already || busyId === p.id}
-                          className={`flex items-center gap-3 px-2 py-2 -mx-2 rounded-xl text-left transition-colors ${
+                          className={`flex w-full items-center gap-3 px-2 py-2 -mx-2 rounded-xl text-left transition-colors ${
                             already ? 'opacity-60 cursor-default' : 'hover:bg-slate-50'
                           }`}
                         >
@@ -1000,6 +1031,7 @@ function ProductPickerModal({
                               {p.priceCents != null ? formatMoney(p.priceCents, currency) : 'Contact'}
                               {' · '}
                               {p.kind === 'DIGITAL' ? 'Digital' : 'Physical'}
+                              {variants.length > 0 && ` · ${variants.length} options`}
                             </p>
                           </div>
                           {already ? (
@@ -1008,10 +1040,45 @@ function ProductPickerModal({
                             </span>
                           ) : busyId === p.id ? (
                             <Loader2 className="h-4 w-4 animate-spin text-slate-400 flex-shrink-0" />
+                          ) : variants.length > 0 ? (
+                            <span className="text-xs text-slate-400 flex-shrink-0">{expanded ? 'Hide' : 'Choose'}</span>
                           ) : (
                             <Plus className="h-4 w-4 text-slate-400 flex-shrink-0" />
                           )}
                         </button>
+
+                        {expanded && (
+                          <div className="ml-13 mb-1 overflow-hidden rounded-xl border border-slate-200 divide-y divide-slate-100">
+                            {variants.map(v => {
+                              const on = requestedVariantIds.has(v.id)
+                              const cents = effectivePriceCents(resolveVariantPricing(p, v))
+                              return (
+                                <button
+                                  key={v.id}
+                                  onClick={() => !on && pick(p.id, v.id)}
+                                  disabled={on || busyId === v.id}
+                                  className={`flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
+                                    on ? 'opacity-60 cursor-default' : 'hover:bg-slate-50'
+                                  }`}
+                                >
+                                  <span className="min-w-0 flex-1 truncate text-sm text-slate-900">{v.name}</span>
+                                  <span className="flex-shrink-0 text-xs tabular-nums text-slate-500">
+                                    {cents != null ? formatMoney(cents, currency) : 'Contact'}
+                                    {v.stockCount != null && ` · ${v.stockCount} left`}
+                                  </span>
+                                  {on ? (
+                                    <Check className="h-3.5 w-3.5 flex-shrink-0 text-emerald-600" />
+                                  ) : busyId === v.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 flex-shrink-0 animate-spin text-slate-400" />
+                                  ) : (
+                                    <Plus className="h-3.5 w-3.5 flex-shrink-0 text-slate-400" />
+                                  )}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        )}
+                        </div>
                       )
                     })}
                   </div>

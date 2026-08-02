@@ -131,8 +131,18 @@ describe('createManualSaleInvoice — idempotency', () => {
 
     const res = await createManualSaleInvoice(input())
 
-    expect(res).toEqual({ id: 'inv_existing', payToken: 'tok_existing', amountCents: 2500 })
+    expect(res).toEqual({ id: 'inv_existing', payToken: 'tok_existing', amountCents: 2500, created: false })
     expect(h.invoiceCreate).not.toHaveBeenCalled()
+  })
+
+  // The caller has to be able to tell a fresh sale from a replayed one: an
+  // in-person sale takes units off the shelf, and a double-tap that re-took
+  // them would show four harnesses sold where two went out the door.
+  it('says `created` so the caller knows whether stock has already moved', async () => {
+    await expect(createManualSaleInvoice(input())).resolves.toMatchObject({ created: true })
+
+    h.invoiceFindFirst.mockResolvedValue({ id: 'inv_existing', payToken: 'tok_existing', amountCents: 2500 })
+    await expect(createManualSaleInvoice(input())).resolves.toMatchObject({ created: false })
   })
 
   it('looks the key up scoped to trainer + client + MANUAL', async () => {

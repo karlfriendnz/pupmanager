@@ -85,6 +85,12 @@ export const formSchema = z.object({
   inviteShowDiaryButton: z.boolean().optional(),
   inviteButtonLabel: z.string().max(60).nullable().optional(),
   isActive: z.boolean().optional(),
+  // The continuous run: enquiry → password → intake → their own diary.
+  // `continueIntakeFormId` is checked against the trainer's own intake forms
+  // before it is written (resolveContinuationIntakeForm) — this only says the
+  // shape is a string.
+  continueToAccount: z.boolean().optional(),
+  continueIntakeFormId: z.string().max(60).nullable().optional(),
 })
 
 // Editing a form — everything optional so a PATCH can send just what changed
@@ -210,4 +216,37 @@ export async function uniqueFormSlug(trainerId: string, base: string, excludeId?
     if (!taken.has(candidate)) return candidate
   }
   return `${root}-${Date.now()}`
+}
+
+/**
+ * Resolve the intake form a continuous run hands over to, from the id the
+ * browser sent.
+ *
+ * The tenant check is the point. `continueIntakeFormId` arrives from a form
+ * editor in a browser, and a form id belonging to another business would render
+ * that business's questions — and their custom fields — to a stranger who
+ * enquired here. So the id is looked up as "one of THIS trainer's intake forms"
+ * or it becomes null; there is no third answer.
+ *
+ * Returns `undefined` when the caller sent nothing (a PATCH that changed
+ * something else entirely), so the column is left alone.
+ */
+export async function resolveContinuationIntakeForm(
+  raw: string | null | undefined,
+  trainerId: string,
+  /** The form being saved — it cannot hand over to itself. */
+  selfId?: string,
+): Promise<string | null | undefined> {
+  if (raw === undefined) return undefined
+  const id = raw?.trim()
+  if (!id) return null
+  // Handing over to itself would put a person who just answered these questions
+  // straight back into them. Not an error worth failing a save over — the
+  // handover simply doesn't happen.
+  if (selfId && id === selfId) return null
+  const form = await prisma.form.findFirst({
+    where: { id, trainerId, usableAsIntake: true },
+    select: { id: true },
+  })
+  return form?.id ?? null
 }

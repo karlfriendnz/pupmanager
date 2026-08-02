@@ -15,6 +15,7 @@ async function ownedRow(trainerId: string, packageId: string, rowId: string) {
 
 const patchSchema = z.object({
   sessionIndex: z.number().int().positive().nullable().optional(),
+  timing: z.enum(['BEFORE_SESSION', 'AFTER_SESSION']).optional(),
   order: z.number().int().min(0).optional(),
   title: z.string().min(2).nullable().optional(),
   description: z.string().nullable().optional(),
@@ -36,6 +37,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ packag
   const data: Record<string, unknown> = {}
   if ('sessionIndex' in d) data.sessionIndex = d.sessionIndex ?? null
   if (d.order !== undefined) data.order = d.order
+  // Timing is settable even on a library-backed row: the same library item can
+  // be preparation on one offering and practice on another, so unlike the text
+  // it belongs to THIS row rather than to the library.
+  if (d.timing !== undefined) data.timing = d.timing
   // The text of a library-backed default lives in the library; editing it here
   // would silently fork the two. Those fields are ignored for such rows.
   if (!row.libraryTaskId) {

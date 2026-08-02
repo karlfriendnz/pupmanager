@@ -122,13 +122,27 @@ export default async function ClientDetailPage({
           // own shop view; the picker badges hidden items so the trainer knows.
           where: { trainerId: clientAccess.trainerId },
           orderBy: [{ category: 'asc' }, { order: 'asc' }, { createdAt: 'desc' }],
-          select: { id: true, name: true, kind: true, priceCents: true, imageUrl: true, category: true, active: true },
+          select: {
+            id: true, name: true, kind: true, priceCents: true, salePriceCents: true,
+            imageUrl: true, category: true, active: true,
+            // Active options only: this picker RECORDS a handover, and handing
+            // over a size the trainer has retired isn't something to make easy.
+            variants: {
+              where: { active: true },
+              orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+              select: { id: true, name: true, priceCents: true, salePriceCents: true, stockCount: true },
+            },
+          },
         })
       : Promise.resolve([]),
     prisma.productRequest.findMany({
       where: { clientId, status: 'PENDING' },
       orderBy: { createdAt: 'asc' },
-      select: { id: true, note: true, product: { select: { id: true, name: true, kind: true, imageUrl: true } } },
+      select: {
+        id: true, note: true,
+        variant: { select: { id: true, name: true } },
+        product: { select: { id: true, name: true, kind: true, imageUrl: true } },
+      },
     }),
     prisma.trainerProfile.findUnique({
       where: { id: access.trainerId },
@@ -406,13 +420,16 @@ export default async function ClientDetailPage({
           name: p.name,
           kind: p.kind as 'PHYSICAL' | 'DIGITAL',
           priceCents: p.priceCents,
+          salePriceCents: p.salePriceCents,
           imageUrl: p.imageUrl,
           category: p.category,
           active: p.active,
+          variants: p.variants,
         }))}
         pendingProductRequests={pendingProductRequests.map(r => ({
           id: r.id,
           note: r.note,
+          variant: r.variant,
           product: {
             id: r.product.id,
             name: r.product.name,

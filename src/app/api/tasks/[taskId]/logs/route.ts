@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { clientVisibleHomeworkWhere } from '@/lib/homework-visibility'
 import { safeEvaluate } from '@/lib/achievements'
 import { notifyTrainer } from '@/lib/trainer-notify'
 import { z } from 'zod'
@@ -45,7 +46,7 @@ export async function POST(
   // We pull the task title + the client's name/dog + trainer routing here so the
   // per-log and all-done notifications don't each need a second lookup.
   const task = await prisma.trainingTask.findFirst({
-    where: { id: taskId, client: { userId: session.user.id } },
+    where: { id: taskId, client: { userId: session.user.id }, ...clientVisibleHomeworkWhere() },
     select: {
       id: true,
       clientId: true,

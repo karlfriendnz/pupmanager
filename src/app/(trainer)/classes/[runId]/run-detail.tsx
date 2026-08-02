@@ -157,6 +157,20 @@ export function RunDetail({
     sessionIndex: s.sessionIndex,
     scheduledAt: s.scheduledAt,
     href: `${basePath}/${run.id}/sessions/${s.id}`,
+    // Everything the "cancel / move just this one" sheet needs. It is a RUN,
+    // so every row has one — a 1:1 package's dates, which share this list,
+    // don't.
+    occurrence: {
+      id: s.id,
+      runId: run.id,
+      scheduledAt: s.scheduledAt,
+      durationMins: s.durationMins ?? run.durationMins,
+      location: s.location ?? null,
+      cancelledAt: s.cancelledAt ?? null,
+      cancelReason: s.cancelReason ?? null,
+      scheduleOverriddenAt: s.scheduleOverriddenAt ?? null,
+    },
+    bookedCount: s.bookedCount,
   }))
 
   // Revenue estimate: full price per non-withdrawn enrolment (drop-ins excluded

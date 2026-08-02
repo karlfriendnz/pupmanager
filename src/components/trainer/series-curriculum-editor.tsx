@@ -1,11 +1,15 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, ClipboardCheck, Eye, Lock, Plus, Repeat } from 'lucide-react'
 import { ConfirmSheet } from '@/components/shared/confirm-sheet'
+import { OccurrenceActionsButton, type Occurrence } from '@/components/trainer/occurrence-actions'
 import { FlatBlock } from '@/components/shared/flat-list'
+import { cancelledLabel } from '@/lib/run-occurrences'
+import { SortableOfferingCard, SortableOfferingList } from '@/components/shared/offering-card'
 import { DefaultHomeworkEditor } from '@/components/trainer/default-homework-editor'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 
@@ -45,6 +49,14 @@ import { RichTextEditor } from '@/components/shared/rich-text-editor'
 // homework count, opening the plan on click and the session screen on the link.
 // It is OPTIONAL because a 1:1 package has no run and therefore no dates, and
 // the editor has to work exactly as it did without them.
+//
+// THE LIST DRAGS INTO ORDER. A curriculum is written once and then rethought —
+// "actually, do loose-lead first" — and doing that by retyping six plans and
+// re-picking their homework is how a trainer decides not to bother. Dragging a
+// row moves its plan AND its homework together, in one transaction on the
+// server, because the two are joined only by the session number they share and
+// moving one without the other silently mismatches them. See the `reorder`
+// callback, and /api/trainer/packages/[packageId]/session-plans/reorder.
 
 interface Step {
   id: string
@@ -69,6 +81,14 @@ export type ScheduledSession = {
   /** ISO — formatted here so every row reads the same way. */
   scheduledAt: string
   href: string
+  /**
+   * Everything needed to change THIS week on its own. Optional so the callers
+   * that render a 1:1 package's dates — where there is no run to hang an
+   * occurrence off — can carry on passing three fields.
+   */
+  occurrence?: Occurrence
+  /** Casual bookings held against this week, so cancelling can say who it hits. */
+  bookedCount?: number
 }
 
 /** Date and time as the trainer reads their day — explicit hour12, because the
@@ -191,6 +211,74 @@ export function SeriesCurriculumEditor({
     [packageId, steps, load],
   )
 
+  /**
+   * Drag a session to a new place in the curriculum.
+   *
+   * `orderedIds` is the numbered rows in their new arrangement, so the content
+   * of `orderedIds[i]` belongs on the i-th of those same numbers. The NUMBERS
+   * do not travel — 1..6 stay 1..6 down the screen — what moves is the plan and
+   * the homework sitting on each, which is what the trainer means by "teach
+   * loose-lead in week 1 this time".
+   *
+   * The "every session" bucket is never in this list: it belongs to no session,
+   * so there is no position for it to be dragged to.
+   *
+   * The DATES never move either. `scheduledByIndex` is built from the host's
+   * props and is untouched here, and the server writes nothing to
+   * TrainingSession — a class run keeps every booking exactly where the cohort
+   * expects it, and only what is taught that week changes.
+   *
+   * Applied locally first because the whole list re-labels at once: waiting on a
+   * round-trip leaves the row you dropped sitting in its old place, and the
+   * obvious reading of that is that the drag didn't take.
+   */
+  const reorder = useCallback(
+    async (orderedIds: string[]) => {
+      const from = orderedIds.map(Number)
+      if (from.some(Number.isNaN)) return
+      const to = [...from].sort((a, b) => a - b)
+
+      setError(null)
+      setSteps(prev => {
+        const next: Record<number, Step> = {}
+        // Anything outside the dragged set keeps its number untouched.
+        for (const [key, step] of Object.entries(prev)) {
+          if (!from.includes(Number(key))) next[Number(key)] = step
+        }
+        from.forEach((old, i) => {
+          const step = prev[old]
+          if (step) next[to[i]] = { ...step, sessionIndex: to[i] }
+        })
+        return next
+      })
+      // Counts move with their session for the same reason the rows do — a list
+      // that renames a session but leaves "3 homework tasks" behind is the exact
+      // confusion this feature exists to remove.
+      setHomeworkCounts(prev => {
+        const next: Record<string, number> = {}
+        for (const [key, count] of Object.entries(prev)) {
+          if (key === 'every' || !from.includes(Number(key))) next[key] = count
+        }
+        from.forEach((old, i) => {
+          const count = prev[bucketKey(old)]
+          if (count !== undefined) next[bucketKey(to[i])] = count
+        })
+        return next
+      })
+
+      const res = await fetch(`/api/trainer/packages/${packageId}/session-plans/reorder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order: from }),
+      })
+      if (!res.ok) setError('Could not save that order.')
+      // Re-read either way: on failure to undo the optimistic move, on success
+      // to confirm the plans and the homework agree about what moved where.
+      await loadAll()
+    },
+    [packageId, loadAll],
+  )
+
   const intro = (
     <p className="text-sm leading-relaxed text-slate-500">
       What each session covers, and the homework that follows it — your clients
@@ -238,16 +326,21 @@ export function SeriesCurriculumEditor({
     [scheduledSessions],
   )
 
-  const rows: Bucket[] = useMemo(() => {
-    const numbered = new Set<number>([
+  /** Every numbered session on screen, ascending. The draggable set. */
+  const numbered: number[] = useMemo(() => {
+    const set = new Set<number>([
       ...Array.from({ length: Math.max(0, sessionCount) }, (_, i) => i + 1),
       ...overrun,
       // A session booked beyond the offering's own count still has to appear —
       // it is in the diary, and a list that hides it is worse than a long one.
       ...scheduledByIndex.keys(),
     ])
-    return [...[...numbered].sort((a, b) => a - b), null]
+    return [...set].sort((a, b) => a - b)
   }, [sessionCount, overrun, scheduledByIndex])
+
+  // The "every session" bucket rides along at the end of the grid, where it has
+  // always been. It is NOT part of `numbered` — see `reorder` below.
+  const rows: Bucket[] = useMemo(() => [...numbered, null], [numbered])
 
   // Steps with no session booked to cover them. A six-step curriculum on a
   // five-week run is a real mistake, and a list of what IS booked can only show
@@ -352,19 +445,43 @@ export function SeriesCurriculumEditor({
             ))}
           </div>
         ) : (
-        <FlatBlock>
-          {rows.map(bucket => (
+        // DRAGGABLE, in the list view only. The grid is a board you scan; the
+        // list is the curriculum read in order, which is the thing being
+        // rearranged. One session has no order to change, so the grip is only
+        // hung on lists with something to move.
+        //
+        // Keyed by the session NUMBER, which is stable for the whole drag —
+        // dnd-kit needs an id that survives the reorder, and the numbers stay
+        // put while the content moves between them.
+        <SortableOfferingList ids={numbered.map(String)} onReorder={reorder}>
+          <FlatBlock>
+            {numbered.map(bucket => (
+              <SortableOfferingCard key={bucket} id={String(bucket)}>
+                {handle => (
+                  <SessionRow
+                    bucket={bucket}
+                    step={steps[bucket]}
+                    homework={homeworkCounts[bucketKey(bucket)] ?? 0}
+                    past={bucket > sessionCount}
+                    scheduled={scheduledByIndex.get(bucket)}
+                    onOpen={() => { setOpen(bucket); onViewingListChange?.(false) }}
+                    handle={numbered.length > 1 ? handle : undefined}
+                  />
+                )}
+              </SortableOfferingCard>
+            ))}
+            {/* Outside the sortable set on purpose: "every session" homework
+                belongs to no session, so there is no position to drag it to. */}
             <SessionRow
-              key={bucketKey(bucket)}
-              bucket={bucket}
-              step={bucket === null ? undefined : steps[bucket]}
-              homework={homeworkCounts[bucketKey(bucket)] ?? 0}
-              past={bucket !== null && bucket > sessionCount}
-              scheduled={bucket === null ? undefined : scheduledByIndex.get(bucket)}
-              onOpen={() => { setOpen(bucket); onViewingListChange?.(false) }}
+              bucket={null}
+              step={undefined}
+              homework={homeworkCounts[bucketKey(null)] ?? 0}
+              past={false}
+              scheduled={undefined}
+              onOpen={() => { setOpen(null); onViewingListChange?.(false) }}
             />
-          ))}
-        </FlatBlock>
+          </FlatBlock>
+        </SortableOfferingList>
         )}
 
         {/* Bookings that carry no session number — a drop-in class books them
@@ -556,6 +673,7 @@ function SessionRow({
   past,
   scheduled,
   onOpen,
+  handle,
 }: {
   bucket: Bucket
   step: Step | undefined
@@ -564,6 +682,11 @@ function SessionRow({
   /** Its slot in the diary, when this session is actually booked. */
   scheduled: ScheduledSession | undefined
   onOpen: () => void
+  /**
+   * The grip this row is dragged by, when the row is part of a reorderable
+   * list. Omitted for the "every session" bucket and for a one-row list.
+   */
+  handle?: ReactNode
 }) {
   const title = bucket === null ? 'Every session' : (step?.title || `Session ${bucket}`)
   const unwritten = bucket !== null && !step?.title
@@ -585,10 +708,14 @@ function SessionRow({
   // on one line, so the link stops the click rather than doing both.
   return (
     <div className="flex items-stretch">
+      {/* The grip sits OUTSIDE the button. Nesting it would put a button inside
+          a button — invalid HTML that React warns about, and the drag listeners
+          would fight the row's own click. */}
+      {handle && <div className="flex flex-shrink-0 items-start pl-1.5 pt-3">{handle}</div>}
       <button
         type="button"
         onClick={onOpen}
-        className="flex min-w-0 flex-1 items-start gap-3 px-4 py-3 text-left transition-colors active:bg-slate-50"
+        className={`flex min-w-0 flex-1 items-start gap-3 py-3 pr-4 text-left transition-colors active:bg-slate-50 ${handle ? 'pl-2' : 'pl-4'}`}
       >
         <span
           className={`mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums ${
@@ -627,22 +754,41 @@ function SessionRow({
  * session itself, so the whole row is the link.
  */
 function ScheduledRow({ session }: { session: ScheduledSession }) {
+  const occ = session.occurrence
+  const cancelled = occ?.cancelledAt != null
   return (
-    <Link
-      href={session.href}
-      className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors active:bg-slate-50"
-    >
-      <span
-        className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold tabular-nums text-slate-500"
-        aria-hidden
-      >
-        {session.sessionIndex ?? <ClipboardCheck className="h-3.5 w-3.5" strokeWidth={1.75} />}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-sm text-slate-900">
-        {whenLabel(session.scheduledAt)}
-      </span>
-      <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
-    </Link>
+    <div className="flex w-full items-center gap-3 pr-3 transition-colors active:bg-slate-50">
+      <Link href={session.href} className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left">
+        <span
+          className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold tabular-nums text-slate-500"
+          aria-hidden
+        >
+          {session.sessionIndex ?? <ClipboardCheck className="h-3.5 w-3.5" strokeWidth={1.75} />}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className={`block truncate text-sm ${cancelled ? 'text-slate-400 line-through' : 'text-slate-900'}`}>
+            {whenLabel(session.scheduledAt)}
+          </span>
+          {/* Only the weeks that are NOT the usual say anything. A line under
+              every row would be fifteen repetitions of "as normal". */}
+          {cancelled ? (
+            <span className="block truncate text-xs text-amber-600">
+              {cancelledLabel({ cancelReason: occ?.cancelReason ?? null })}
+            </span>
+          ) : occ?.scheduleOverriddenAt ? (
+            <span className="block truncate text-xs text-slate-400">Moved from the usual time</span>
+          ) : null}
+        </span>
+        <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
+      </Link>
+      {occ && (
+        <OccurrenceActionsButton
+          occurrence={occ}
+          label={whenLabel(session.scheduledAt)}
+          bookedCount={session.bookedCount}
+        />
+      )}
+    </div>
   )
 }
 
