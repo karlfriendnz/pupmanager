@@ -1,13 +1,14 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { BreedSelect } from '@/components/shared/breed-select'
 import { Alert } from '@/components/ui/alert'
-import { Plus, Trash2, X } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
+import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
 
 export type CustomField = {
   id: string
@@ -48,11 +49,11 @@ function CustomFieldInput({ field, value, onChange }: { field: CustomField; valu
   )
 }
 
-// Adding a client is a focused flow, not a page you browse from: it owns the
-// whole viewport (`fixed inset-0`, above the shell's z-40 sidebar/top bar/tab
-// bar) so the main nav is out of the way until it's finished or cancelled.
-// That's the same call the offering wizard makes, done from the page instead of
-// from app-shell so no other screen is affected.
+// Adding a client is a focused flow, not a page you browse from — so it goes in
+// the house overlay (FullScreenSheet): the whole viewport on a phone, above the
+// shell's z-40 chrome, and a centred panel over the dimmed app from `sm` up.
+// The sheet owns the body-scroll lock, the Escape key and the close button, so
+// this file no longer hand-rolls any of the three.
 //
 // Its three sections are TABS, not a wizard: a trainer who only wants a name
 // and a phone number shouldn't have to click Next past two screens to save, so
@@ -88,13 +89,10 @@ export function CreateClientForm({
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
-  // Never two scrollbars (AGENTS.md standing rule): this surface scrolls, so
-  // the page underneath must not for as long as it's up.
-  useEffect(() => {
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = previous }
-  }, [])
+  // Closing goes to the client list rather than back, so it lands somewhere
+  // sensible whichever screen's "+" opened it. Stable, because the sheet keys
+  // its Escape listener and its scroll lock off this.
+  const close = useCallback(() => { router.push('/clients') }, [router])
 
   const setCustom = (key: string, v: string) => setCustomValues(prev => ({ ...prev, [key]: v }))
   const updateDog = (i: number, patch: Partial<DogDraft>) => setDogs(prev => prev.map((d, idx) => idx === i ? { ...d, ...patch } : d))
@@ -194,51 +192,52 @@ export function CreateClientForm({
   ]
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white">
-      {/* Title row and a way out — this screen owns the viewport, so it brings
-          its own chrome (AGENTS.md: full screens, not dropdowns). */}
-      <div
-        className="flex items-center gap-3 border-b border-slate-200 px-4 py-3"
-        style={{ paddingTop: 'calc(0.75rem + min(env(safe-area-inset-top, 0px), 1rem))' }}
-      >
-        <button
-          type="button"
-          onClick={() => router.push('/clients')}
-          aria-label="Close"
-          className="-ml-1 flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 active:bg-slate-100"
+    <FullScreenSheet
+      title="New client"
+      onClose={close}
+      // A form with paired fields (breed beside weight) reads badly squeezed
+      // into the width a list of choices wants.
+      size="lg"
+      headerExtra={
+        // Section tabs. Flat text tabs on one hairline that runs the full width —
+        // no pill track, nothing tinted. Outside the scroll region so the strip
+        // stays put while a long tab scrolls under it.
+        <div className="flex flex-shrink-0 gap-5 overflow-x-auto border-b border-slate-200 bg-white px-4 no-scrollbar">
+          {steps.map(s => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setStep(s.id)}
+              aria-current={step === s.id ? 'page' : undefined}
+              className={`shrink-0 -mb-px border-b-2 py-2.5 text-sm font-medium transition-colors ${
+                step === s.id
+                  ? 'border-slate-900 text-slate-900'
+                  : 'border-transparent text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {s.label}
+              {s.note && <span className="ml-1.5 text-[11px] font-normal tabular-nums text-slate-400">{s.note}</span>}
+            </button>
+          ))}
+        </div>
+      }
+      footer={
+        // Reachable from any tab, so a trainer who only wanted a name and a
+        // phone number saves without touring the others.
+        <div className="flex items-center justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={close} disabled={busy}>Cancel</Button>
+          <Button type="submit" form="new-client-form" loading={busy}>Create client</Button>
+        </div>
+      }
+    >
+      {/* Which tab a review pin was made on — without this every pin on this
+          screen collapses onto one indistinguishable page key (AGENTS.md). */}
+      <div data-review-scope={`New client — ${steps.find(s => s.id === step)?.label}`}>
+        <form
+          id="new-client-form"
+          onSubmit={e => { e.preventDefault(); submit() }}
+          className="flex flex-col gap-4"
         >
-          <X className="h-5 w-5" strokeWidth={1.75} />
-        </button>
-        <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900">New client</h1>
-      </div>
-
-      {/* Section tabs. Flat text tabs on one hairline that runs the full width —
-          no pill track, nothing tinted. */}
-      <div className="flex gap-5 overflow-x-auto border-b border-slate-200 px-4 no-scrollbar">
-        {steps.map(s => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => setStep(s.id)}
-            aria-current={step === s.id ? 'page' : undefined}
-            className={`shrink-0 -mb-px border-b-2 py-2.5 text-sm font-medium transition-colors ${
-              step === s.id
-                ? 'border-slate-900 text-slate-900'
-                : 'border-transparent text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            {s.label}
-            {s.note && <span className="ml-1.5 text-[11px] font-normal tabular-nums text-slate-400">{s.note}</span>}
-          </button>
-        ))}
-      </div>
-
-      <form
-        id="new-client-form"
-        onSubmit={e => { e.preventDefault(); submit() }}
-        className="min-h-0 flex-1 overflow-y-auto no-scrollbar"
-      >
-        <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-4 md:p-6">
           {error && <Alert variant="error">{error}</Alert>}
           {done && <Alert variant="success">Client created — opening their profile…</Alert>}
 
@@ -354,18 +353,8 @@ export function CreateClientForm({
               </div>
             )}
           </div>
-        </div>
-      </form>
-
-      {/* Pinned action bar — reachable from any tab, so a trainer who only
-          wanted a name and a phone number saves without touring the others. */}
-      <div
-        className="flex items-center justify-end gap-2 border-t border-slate-200 px-4 py-3"
-        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
-      >
-        <Button type="button" variant="ghost" onClick={() => router.push('/clients')} disabled={busy}>Cancel</Button>
-        <Button type="submit" form="new-client-form" loading={busy}>Create client</Button>
+        </form>
       </div>
-    </div>
+    </FullScreenSheet>
   )
 }

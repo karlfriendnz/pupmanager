@@ -1,7 +1,16 @@
 'use client'
 
-import { type ReactNode } from 'react'
+import { useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+
+// "Have we hydrated yet?" as an external store: the server snapshot is false and
+// the client snapshot is true, and nothing ever changes after that — so the
+// subscribe callback has nothing to do. This is the shape React sanctions for a
+// render that must differ between the two passes; a setState-in-an-effect does
+// the same job but is a cascading render, which the lint rule rightly rejects.
+const neverChanges = () => () => {}
+const onTheClient = () => true
+const onTheServer = () => false
 
 // Renders its children into <body> via a React portal so a modal's
 // `position: fixed` overlay anchors to the real viewport.
@@ -13,9 +22,17 @@ import { createPortal } from 'react-dom'
 // to the ~56px bar instead of the viewport and render clipped at the top.
 // Portaling the overlay to <body> escapes that containing block.
 //
-// SSR-safe: returns null on the server (no `document`). Callers only mount this
-// after a client-side open toggle, so there's no hydration mismatch.
+// Portals AFTER mount, not on the first client render. A portal cannot be
+// hydrated against server HTML — React has to build it fresh — so an overlay
+// that is already open when the page is server-rendered (the /clients/invite
+// route IS its sheet) blew up with "Hydration failed": the server sent nothing
+// here and the client's first pass produced a <div>. Rendering null until the
+// effect runs makes both passes agree, then the portal appears a frame later.
+//
+// Every other caller opens on a click, long after mount, so nothing about them
+// changes.
 export function ModalPortal({ children }: { children: ReactNode }) {
-  if (typeof document === 'undefined') return null
+  const hydrated = useSyncExternalStore(neverChanges, onTheClient, onTheServer)
+  if (!hydrated || typeof document === 'undefined') return null
   return createPortal(children, document.body)
 }

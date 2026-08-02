@@ -46,10 +46,16 @@ ${trainerProfile?.businessName ?? 'Your Trainer'}`
     appliesTo: (f.appliesTo ?? 'OWNER') as 'OWNER' | 'DOG',
   }))
 
-  // No PageHeader and no intro copy: CreateClientForm takes the whole viewport
-  // (its own title row, close button and tab strip), which is what puts the
-  // main nav out of the way for the duration of the flow. A header underneath
-  // would only be a second title nobody can see.
+  // No PageHeader and no intro copy: CreateClientForm is an overlay with its
+  // own title row, close button and tab strip — the whole viewport on a phone,
+  // a centred panel on desktop. A header underneath would only be a second
+  // title, and on desktop it would show through the dimmed backdrop saying the
+  // same thing twice.
+  //
+  // The overlay IS this route rather than something the Clients list opens, so
+  // /clients/invite keeps working typed, bookmarked or followed from an email —
+  // and the three places that open it (the Clients empty state, the top-bar "+"
+  // and the floating "+") keep pushing the same URL and need no change.
   return (
     <CreateClientForm
       customFields={fields}

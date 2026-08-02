@@ -23,12 +23,25 @@ import { ModalPortal } from '@/components/shared/modal-portal'
  * `backdrop-blur`, and a filtered ancestor becomes the containing block for a
  * `position: fixed` child.
  */
+/**
+ * How wide the centred panel gets on desktop. Not a second layout: the phone is
+ * the whole screen either way, and the panel's insides are laid out the same at
+ * both widths. A picker of one-line rows reads badly stretched, and a form with
+ * paired fields reads badly squeezed — this is the container being responsive,
+ * which is the only place AGENTS.md allows the difference to live.
+ */
+const PANEL_WIDTH = {
+  md: 'sm:max-w-lg',
+  lg: 'sm:max-w-2xl',
+} as const
+
 export function FullScreenSheet({
   title,
   sub,
   onClose,
   headerExtra,
   footer,
+  size = 'md',
   children,
 }: {
   title: string
@@ -38,6 +51,8 @@ export function FullScreenSheet({
   headerExtra?: ReactNode
   /** Pinned to the bottom, outside the scroll region — e.g. the confirm button. */
   footer?: ReactNode
+  /** Desktop panel width. `lg` for a form; the default suits a list of choices. */
+  size?: keyof typeof PANEL_WIDTH
   children: ReactNode
 }) {
   useEffect(() => {
@@ -70,7 +85,7 @@ export function FullScreenSheet({
           // does not say which session, and a screen reader (or a test) landing
           // on the dialog gets only its label.
           aria-label={sub ? `${title} — ${sub}` : title}
-          className="relative flex h-full w-full flex-col bg-slate-50 sm:h-auto sm:max-h-[85vh] sm:max-w-lg sm:overflow-hidden sm:rounded-2xl sm:border sm:border-slate-200 sm:shadow-xl"
+          className={`relative flex h-full w-full flex-col bg-slate-50 sm:h-auto sm:max-h-[85vh] sm:overflow-hidden sm:rounded-2xl sm:border sm:border-slate-200 sm:shadow-xl ${PANEL_WIDTH[size]}`}
         >
           <div className="flex flex-shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 pt-[env(safe-area-inset-top)] sm:pt-0">
             <div className="min-w-0 flex-1 py-3.5">
