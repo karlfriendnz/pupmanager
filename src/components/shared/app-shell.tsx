@@ -826,6 +826,7 @@ function LockedNavRow({
 // context so each page's title shows here. Mobile keeps its own bottom bar.
 function TrainerTopBar({
   collapsed,
+  navHovered = false,
   onToggle,
   trainerLogo,
   trainerIcon,
@@ -843,6 +844,8 @@ function TrainerTopBar({
   isDualProfile = false,
 }: {
   collapsed: boolean
+  /** Pointer is over the rail below — reveals the toggle without hovering it. */
+  navHovered?: boolean
   onToggle: () => void
   trainerLogo?: string | null
   trainerIcon?: string | null
@@ -907,7 +910,9 @@ function TrainerTopBar({
         className={cn(
           'absolute top-1/2 -translate-y-1/2 grid h-8 w-8 place-items-center rounded-lg',
           'bg-white text-slate-600 ring-1 ring-slate-200 shadow-sm',
-          'opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100',
+          'transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100',
+          // Anywhere on the rail counts, not just the logo square itself.
+          navHovered ? 'opacity-100' : 'opacity-0',
           'hover:bg-slate-50',
           collapsed ? 'left-1/2 -translate-x-1/2' : 'left-5',
         )}
@@ -1072,6 +1077,8 @@ function TrainerShell({
   const desktopTopRow = desktopNav.filter(i => i.section === 'overview')
   const desktopRest = desktopNav.filter(i => i.section !== 'overview')
   const [collapsed, setCollapsed] = useState(false)
+  // True while the pointer is anywhere over the desktop rail — see the <aside>.
+  const [navHovered, setNavHovered] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   // Submenu flyouts render position:fixed so they escape the nav's
   // overflow-y-auto clip; we capture the hovered row's top on mouseenter.
@@ -1198,6 +1205,7 @@ function TrainerShell({
     <div className="flex min-h-screen flex-col md:flex-row">
       <TrainerTopBar
         collapsed={collapsed}
+        navHovered={navHovered}
         onToggle={toggleCollapse}
         trainerLogo={trainerLogo}
         trainerIcon={trainerIcon}
@@ -1231,7 +1239,16 @@ function TrainerShell({
 
       {/* Sidebar — sits below the full-width top bar (which owns the logo).
           Hidden inside Settings, which brings its own rail. */}
-      <aside className={cn('hidden md:flex-col md:fixed md:top-[calc(3.5rem_+_var(--app-safe-top))] md:bottom-0 md:left-0 md:z-40 bg-white border-r border-slate-100 transition-all duration-200', inSettings ? 'md:hidden' : 'md:flex', sidebarWidth)}>
+      {/* Hovering ANYWHERE on the rail reveals the expand/collapse chevron up in
+          the logo square. It has to be React state rather than `group-hover`:
+          the logo lives in the fixed top bar and the rail is a separate
+          element, so no CSS group can span both. Pointer events only — a touch
+          device has no hover, and there the chevron is always shown. */}
+      <aside
+        onMouseEnter={() => setNavHovered(true)}
+        onMouseLeave={() => setNavHovered(false)}
+        className={cn('hidden md:flex-col md:fixed md:top-[calc(3.5rem_+_var(--app-safe-top))] md:bottom-0 md:left-0 md:z-40 bg-white border-r border-slate-100 transition-all duration-200', inSettings ? 'md:hidden' : 'md:flex', sidebarWidth)}
+      >
         {/* Scrolls, but shows no bars: overflow-x-hidden kills the horizontal
             one the collapsed rail was getting from its icon tiles, and
             .no-scrollbar hides the vertical track while keeping the scroll. */}
