@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { optionalAssetUrlSchema } from '@/lib/asset-url'
 import { validateSalePrice } from '@/lib/product-price'
+import { recordOpeningBalance } from '@/lib/stock'
 
 const createSchema = z.object({
   name: z.string().min(1).max(120),
@@ -65,24 +66,38 @@ export async function POST(req: Request) {
   const priceError = validateSalePrice(priceCents, salePriceCents)
   if (priceError) return NextResponse.json({ error: priceError }, { status: 400 })
 
-  const product = await prisma.product.create({
-    data: {
-      trainerId,
-      name: parsed.data.name,
-      description: parsed.data.description || null,
-      kind: parsed.data.kind,
-      priceCents,
-      salePriceCents,
-      stockCount: parsed.data.stockCount ?? null,
-      imageUrl: parsed.data.imageUrl || null,
-      downloadUrl: parsed.data.downloadUrl || null,
-      category: parsed.data.category?.trim() || null,
-      categoryId: parsed.data.categoryId || null,
-      featured: parsed.data.featured ?? false,
-      xeroAccountCode: parsed.data.xeroAccountCode || null,
-      requirePayment: parsed.data.requirePayment ?? null,
-      active: parsed.data.active ?? true,
-    },
+  // Created and its opening balance recorded together. A product born with 12
+  // on hand has to start its ledger at 12, or the sum of its movements says 0
+  // against a shelf holding twelve from the very first day.
+  const product = await prisma.$transaction(async tx => {
+    const created = await tx.product.create({
+      data: {
+        trainerId,
+        name: parsed.data.name,
+        description: parsed.data.description || null,
+        kind: parsed.data.kind,
+        priceCents,
+        salePriceCents,
+        stockCount: parsed.data.stockCount ?? null,
+        imageUrl: parsed.data.imageUrl || null,
+        downloadUrl: parsed.data.downloadUrl || null,
+        category: parsed.data.category?.trim() || null,
+        categoryId: parsed.data.categoryId || null,
+        featured: parsed.data.featured ?? false,
+        xeroAccountCode: parsed.data.xeroAccountCode || null,
+        requirePayment: parsed.data.requirePayment ?? null,
+        active: parsed.data.active ?? true,
+      },
+    })
+    if (created.stockCount !== null) {
+      await recordOpeningBalance(tx, {
+        productId: created.id,
+        trainerId,
+        units: created.stockCount,
+        userId: session.user.id,
+      })
+    }
+    return created
   })
   return NextResponse.json(product, { status: 201 })
 }

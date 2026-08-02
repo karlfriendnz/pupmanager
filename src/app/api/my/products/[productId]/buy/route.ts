@@ -100,7 +100,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
     })
     if (!existing) {
       // One unit off the shelf. Refused rather than oversold.
-      if (!(await takeStock(prisma, product.id))) {
+      if (!(await takeStock(prisma, product.id, { clientId: profile.id, note: 'Bought in the client app, pay later' }))) {
         return NextResponse.json({ error: 'That item is out of stock.' }, { status: 409 })
       }
       await prisma.productRequest.create({

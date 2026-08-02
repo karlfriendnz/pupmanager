@@ -51,8 +51,14 @@ export async function POST(
   if (existing) return NextResponse.json(existing)
 
   // One unit off the shelf; a tracked product that's run out is refused so the
-  // trainer finds out here rather than when they go to hand it over.
-  if (!(await takeStock(prisma, parsed.data.productId))) {
+  // trainer finds out here rather than when they go to hand it over. The
+  // ledger line names both the client it went to and the trainer who did it,
+  // which is the pair you need when a count looks wrong a fortnight later.
+  if (!(await takeStock(prisma, parsed.data.productId, {
+    clientId,
+    userId: session.user.id,
+    note: 'Added to a client by their trainer',
+  }))) {
     return NextResponse.json({ error: 'That item is out of stock.' }, { status: 409 })
   }
 

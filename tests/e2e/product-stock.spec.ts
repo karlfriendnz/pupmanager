@@ -159,6 +159,86 @@ test.describe('product stock', () => {
     }
   })
 
+  test('every change leaves a line, and the lines sum to the count', async ({ page }) => {
+    // The whole point of the ledger: a shelf you can explain. If the movements
+    // stop summing to stockCount, the two have drifted and the history is
+    // decoration.
+    const prisma = await makePrisma()
+    let productId: string | null = null
+    try {
+      const product = await makeProduct(prisma, 3)
+      productId = product.id
+
+      await login(page, SEED.owner.email, SEED.owner.password)
+
+      // A sale, through the ordinary route — nothing here knows about stock.
+      const sold = await page.request.post(`/api/clients/${SEED.assignedClientId}/product-requests`, {
+        data: { productId: product.id },
+      })
+      expect([200, 201], await sold.text()).toContain(sold.status())
+
+      // A delivery, and a breakage.
+      const received = await page.request.post(`/api/products/${product.id}/stock`, {
+        data: { quantity: 6, reason: 'RECEIVED', note: 'Wholesaler' },
+      })
+      expect(received.status(), await received.text()).toBe(200)
+      const damaged = await page.request.post(`/api/products/${product.id}/stock`, {
+        data: { quantity: 2, reason: 'DAMAGED' },
+      })
+      expect(damaged.status(), await damaged.text()).toBe(200)
+
+      const after = await prisma.product.findUnique({
+        where: { id: product.id }, select: { stockCount: true },
+      })
+      expect(after?.stockCount, '3 − 1 + 6 − 2').toBe(6)
+
+      const movements = await prisma.stockMovement.findMany({ where: { productId: product.id } })
+      // The opening 3 was written straight to the row by the fixture rather than
+      // through the app, so the ledger accounts for everything SINCE: the
+      // balance is that opening count plus the sum of the lines.
+      expect(movements.map(m => m.reason).sort()).toEqual(['DAMAGED', 'RECEIVED', 'SOLD'])
+      expect(3 + movements.reduce((sum, m) => sum + m.delta, 0)).toBe(after?.stockCount)
+      const sale = movements.find(m => m.reason === 'SOLD')!
+      expect(sale.balanceAfter, 'the balance it left behind is stored, not recomputed').toBe(2)
+      expect(sale.clientId, 'a sale names who it went to').toBe(SEED.assignedClientId)
+    } finally {
+      if (productId) {
+        await prisma.productRequest.deleteMany({ where: { productId } }).catch(() => {})
+        await prisma.product.delete({ where: { id: productId } }).catch(() => {})
+      }
+      await prisma.$disconnect()
+    }
+  })
+
+  test('another business cannot read or move this shelf', async ({ page }) => {
+    // A movement names the client it went to, so a ledger reachable by product
+    // id alone would be a list of someone else's customers.
+    const prisma = await makePrisma()
+    let productId: string | null = null
+    try {
+      const product = await makeProduct(prisma, 5)
+      productId = product.id
+
+      await login(page, SEED.businessB.ownerEmail, SEED.businessB.ownerPassword)
+
+      const read = await page.request.get(`/api/products/${product.id}/stock`)
+      expect(read.status()).toBe(404)
+      const write = await page.request.post(`/api/products/${product.id}/stock`, {
+        data: { quantity: 99, reason: 'RECEIVED' },
+      })
+      expect(write.status()).toBe(404)
+
+      expect((await prisma.product.findUnique({
+        where: { id: product.id }, select: { stockCount: true },
+      }))?.stockCount, 'untouched').toBe(5)
+    } finally {
+      if (productId) {
+        await prisma.product.delete({ where: { id: productId } }).catch(() => {})
+      }
+      await prisma.$disconnect()
+    }
+  })
+
   test('a client sees the count, and cannot buy what has run out', async ({ page }) => {
     const prisma = await makePrisma()
     let productId: string | null = null

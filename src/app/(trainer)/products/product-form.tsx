@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils'
 import { Copy, Eye, EyeOff, ImagePlus, Loader2, MoreHorizontal, Star, Trash2 } from 'lucide-react'
 import { ActionSheet, type SheetAction } from '@/components/shared/action-sheet'
 import { ConfirmSheet } from '@/components/shared/confirm-sheet'
+import { StockSheet } from './stock-sheet'
 
 export type Kind = 'PHYSICAL' | 'DIGITAL'
 
@@ -105,6 +106,7 @@ export function ProductForm({
   // '' is Uncategorised; this sentinel opens the "type a new name" field. A
   // real category can never be called it — it is not a name a select shows.
   const [addingCategory, setAddingCategory] = useState(false)
+  const [stockOpen, setStockOpen] = useState(false)
   const [uploadingImg, setUploadingImg] = useState(false)
   const [uploadingDownload, setUploadingDownload] = useState(false)
   const imgInputRef = useRef<HTMLInputElement>(null)
@@ -215,7 +217,10 @@ export function ProductForm({
       kind: draft.kind,
       priceCents: parsedPrice,
       salePriceCents: parsedSale,
-      stockCount: draft.stockCount ?? null,
+      // Only on create. On an existing product the ledger owns the count, and
+      // sending the value this page loaded with would quietly undo whatever
+      // the Add stock sheet recorded while the form sat open.
+      ...(isNew ? { stockCount: draft.stockCount ?? null } : {}),
       imageUrl: draft.imageUrl,
       downloadUrl: draft.downloadUrl,
       category: draft.category,
@@ -279,6 +284,16 @@ export function ProductForm({
         </span>
       </div>
 
+      {stockOpen && (
+        <StockSheet
+          productId={draft.id}
+          productName={draft.name}
+          stockCount={draft.stockCount}
+          onClose={() => setStockOpen(false)}
+          onChanged={next => update('stockCount', next)}
+        />
+      )}
+
       {confirmDelete && (
         <ConfirmSheet
           title={`Delete “${draft.name}”?`}
@@ -322,23 +337,51 @@ export function ProductForm({
 
           {/* Stock sits with the listing, under the description. It is a fact
               ABOUT this item like its name and its words are — a section of its
-              own for one number put a heading and a card around it. */}
+              own for one number put a heading and a card around it.
+
+              On a product that EXISTS the count is TEXT, not a field. Typing 9
+              over 12 recorded nothing about the three that went, so the number
+              was the only thing anyone could ever know. It changes through Add
+              stock now, which asks what happened and keeps the history. A
+              product being created has no history to keep and nowhere to put
+              it, so /products/new still takes an opening count directly. */}
           <div className="flex flex-col gap-1.5 border-t border-slate-200 p-4">
-            <label htmlFor="product-stock" className="text-sm font-medium text-slate-700">Units on hand</label>
-            <input
-              id="product-stock"
-              type="number"
-              min="0"
-              step="1"
-              inputMode="numeric"
-              value={draft.stockCount ?? ''}
-              onChange={e => update('stockCount', e.target.value === '' ? null : Math.max(0, Math.floor(Number(e.target.value))))}
-              placeholder="Leave blank if you don't count this"
-              className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p className="text-xs text-slate-500">
-              Counts down as items go out. At zero it stops being sellable until you add more.
-            </p>
+            {isNew ? (
+              <>
+                <label htmlFor="product-stock" className="text-sm font-medium text-slate-700">Units on hand</label>
+                <input
+                  id="product-stock"
+                  type="number"
+                  min="0"
+                  step="1"
+                  inputMode="numeric"
+                  value={draft.stockCount ?? ''}
+                  onChange={e => update('stockCount', e.target.value === '' ? null : Math.max(0, Math.floor(Number(e.target.value))))}
+                  placeholder="Leave blank if you don't count this"
+                  className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-slate-500">
+                  Counts down as items go out. At zero it stops being sellable until you add more.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-slate-700">Units on hand</p>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">
+                      {draft.stockCount ?? <span className="text-base font-normal text-slate-500">Not counted</span>}
+                    </p>
+                  </div>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setStockOpen(true)}>
+                    {draft.stockCount === null ? 'Start counting' : 'Add stock'}
+                  </Button>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Counts down as items go out. At zero it stops being sellable until you add more.
+                </p>
+              </>
+            )}
           </div>
 
           {/* A real <select>, not a <datalist>.

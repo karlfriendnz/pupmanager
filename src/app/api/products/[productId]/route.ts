@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { optionalAssetUrlSchema } from '@/lib/asset-url'
 import { validateSalePrice } from '@/lib/product-price'
+import { setStockCount } from '@/lib/stock'
 
 const patchSchema = z.object({
   name: z.string().min(1).max(120).optional(),
@@ -66,25 +67,37 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ produc
   const priceError = validateSalePrice(nextPrice, nextSale)
   if (priceError) return NextResponse.json({ error: priceError }, { status: 400 })
 
-  const product = await prisma.product.update({
-    where: { id: productId },
-    data: {
-      ...(data.name !== undefined && { name: data.name }),
-      ...(data.description !== undefined && { description: data.description || null }),
-      ...(data.kind !== undefined && { kind: data.kind }),
-      ...(data.priceCents !== undefined && { priceCents: data.priceCents }),
-      ...(data.salePriceCents !== undefined && { salePriceCents: data.salePriceCents }),
-      ...(data.stockCount !== undefined && { stockCount: data.stockCount }),
-      ...(data.imageUrl !== undefined && { imageUrl: data.imageUrl || null }),
-      ...(data.downloadUrl !== undefined && { downloadUrl: data.downloadUrl || null }),
-      ...(data.category !== undefined && { category: data.category?.trim() || null }),
-      ...(data.categoryId !== undefined && { categoryId: data.categoryId || null }),
-      ...(data.featured !== undefined && { featured: data.featured }),
-      ...(data.xeroAccountCode !== undefined && { xeroAccountCode: data.xeroAccountCode || null }),
-      ...(data.active !== undefined && { active: data.active }),
-      ...(data.order !== undefined && { order: data.order }),
-      ...(data.requirePayment !== undefined && { requirePayment: data.requirePayment }),
-    },
+  // Stock is NOT patched inline with the rest. A number typed over this field
+  // is a trainer saying "I counted, it is nine" — or, on a product that had no
+  // count at all, "start counting this" — and both have to leave a line in the
+  // ledger or the balance and its history part company on the quietest edit
+  // there is. setStockCount is the only writer that knows which of the two it
+  // was looking at.
+  const product = await prisma.$transaction(async tx => {
+    const updated = await tx.product.update({
+      where: { id: productId },
+      data: {
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.description !== undefined && { description: data.description || null }),
+        ...(data.kind !== undefined && { kind: data.kind }),
+        ...(data.priceCents !== undefined && { priceCents: data.priceCents }),
+        ...(data.salePriceCents !== undefined && { salePriceCents: data.salePriceCents }),
+        ...(data.imageUrl !== undefined && { imageUrl: data.imageUrl || null }),
+        ...(data.downloadUrl !== undefined && { downloadUrl: data.downloadUrl || null }),
+        ...(data.category !== undefined && { category: data.category?.trim() || null }),
+        ...(data.categoryId !== undefined && { categoryId: data.categoryId || null }),
+        ...(data.featured !== undefined && { featured: data.featured }),
+        ...(data.xeroAccountCode !== undefined && { xeroAccountCode: data.xeroAccountCode || null }),
+        ...(data.active !== undefined && { active: data.active }),
+        ...(data.order !== undefined && { order: data.order }),
+        ...(data.requirePayment !== undefined && { requirePayment: data.requirePayment }),
+      },
+    })
+    if (data.stockCount === undefined) return updated
+    const stockCount = await setStockCount(tx, productId, data.stockCount, {
+      userId: session.user.id,
+    })
+    return { ...updated, stockCount }
   })
   return NextResponse.json(product)
 }

@@ -14,12 +14,15 @@ const h = vi.hoisted(() => ({
   update: vi.fn(),
   findUnique: vi.fn(),
   del: vi.fn(),
+  movementCreate: vi.fn(),
 }))
 
 vi.mock('@/lib/auth', () => ({ auth: h.auth }))
 vi.mock('@/lib/membership', () => ({ guardPermission: h.guardPermission }))
-vi.mock('@/lib/prisma', () => ({
-  prisma: {
+// Both routes now save the product and its stock ledger in ONE transaction, so
+// the mock has to be a client the callback can use — same shape, passed through.
+vi.mock('@/lib/prisma', () => {
+  const client = {
     product: {
       create: h.create,
       update: h.update,
@@ -27,8 +30,11 @@ vi.mock('@/lib/prisma', () => ({
       delete: h.del,
       findMany: vi.fn(),
     },
-  },
-}))
+    stockMovement: { create: h.movementCreate },
+    $transaction: (fn: (tx: unknown) => unknown) => fn(client),
+  }
+  return { prisma: client }
+})
 
 import { POST } from '@/app/api/products/route'
 import { PATCH } from '@/app/api/products/[productId]/route'
@@ -55,7 +61,10 @@ beforeEach(() => {
   for (const fn of Object.values(h)) fn.mockReset()
   h.guardPermission.mockResolvedValue({ companyId: TRAINER, role: 'OWNER' })
   h.auth.mockResolvedValue({ user: { role: 'TRAINER', trainerId: TRAINER } })
-  h.findUnique.mockResolvedValue({ id: PRODUCT, trainerId: TRAINER })
+  // stockCount is on here because the stock ledger reads it back to work out
+  // whether a PATCH changed the count at all — an unchanged number writes no
+  // movement and no second update.
+  h.findUnique.mockResolvedValue({ id: PRODUCT, trainerId: TRAINER, stockCount: null })
   h.create.mockImplementation(({ data }: { data: object }) => ({ id: PRODUCT, ...data }))
   h.update.mockImplementation(({ data }: { data: object }) => ({ id: PRODUCT, ...data }))
 })

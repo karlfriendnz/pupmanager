@@ -147,7 +147,7 @@ export async function fulfilMembershipInTx(
         // Take stock per unit. A membership that's already been paid for is
         // still granted if the shelf is empty — the trainer owes them the item
         // either way — but the count never goes negative.
-        await takeStock(tx, item.productId)
+        await takeStock(tx, item.productId, { clientId: args.clientId, note: `Package: ${membership.name}` })
         await tx.productRequest.create({
           data: { clientId: args.clientId, productId: item.productId, status: 'FULFILLED', fulfilledAt: now, note: `Package: ${membership.name}` },
         })
@@ -202,7 +202,7 @@ export async function regrantRenewalItems(
     for (let i = 0; i < Math.max(1, item.quantity); i++) {
       // Same rule as first fulfilment: an empty shelf still owes them the item,
       // but the count never goes negative.
-      await takeStock(tx, item.productId)
+      await takeStock(tx, item.productId, { clientId: args.clientId, note: `Package renewal: ${membership.name}` })
       await tx.productRequest.create({
         data: {
           clientId: args.clientId,

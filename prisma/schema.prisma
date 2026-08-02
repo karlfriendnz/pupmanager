@@ -172,6 +172,9 @@ model User {
   // "Not now" choices on add-on nudges, remembered across devices.
   nudgeDismissals NudgeDismissal[]
 
+  // Stock the person themselves moved — a delivery booked in, a write-off.
+  stockMovements StockMovement[]
+
   @@map("users")
 }
 
@@ -732,6 +735,7 @@ model TrainerProfile {
   linkPage           LinkPage?
   locations          Location[]
   productCategories  ProductCategory[]
+  stockMovements     StockMovement[]
 
   @@map("trainer_profiles")
 }
@@ -1219,6 +1223,7 @@ model ClientProfile {
   payments             Payment[]
   invoices             Invoice[]
   enquiry              Enquiry?
+  stockMovements       StockMovement[]
 
   @@unique([userId, trainerId])
   @@index([userId])
@@ -1631,6 +1636,7 @@ model Product {
   productCategory ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   requests        ProductRequest[]
   paymentItems    PaymentItem[]
+  stockMovements  StockMovement[]
 
   @@index([trainerId])
   @@index([category])
@@ -1664,6 +1670,69 @@ model ProductRequest {
   @@index([clientId, status])
   @@index([productId])
   @@map("product_requests")
+}
+
+// ─── Stock ledger ─────────────────────────────────────────────────────────────
+
+enum StockMovementReason {
+  RECEIVED // a delivery arrived
+  SOLD // out the door to a client
+  RETURNED // came back on the shelf
+  DAMAGED
+  LOST
+  CORRECTION // a stocktake, or the trainer starting to count this at all
+}
+
+// One line of a product's stock history.
+//
+// `Product.stockCount` stays the running balance — ten places read it (the
+// products table, the client shop, inStock(), stockLabel()) and a groupBy on
+// every product-list render would be paid for on every page. So this is a
+// LEDGER beside the balance, written in the SAME transaction as the balance
+// change, exactly as a real inventory system keeps both.
+//
+// VARIANTS ARE COMING (size/colour SKUs under one product), which is why
+// variantId exists before anything writes it: NULL means "the product's only
+// SKU", so every row written today stays true with no backfill, and when
+// variants land a movement points at the one it moved. productId stays
+// REQUIRED so a movement is always attributable to a product even then — and
+// the BALANCE will move to the variant at that point (Product.stockCount
+// becoming the sum of its variants, or dropping away for varianted products).
+model StockMovement {
+  id        String  @id @default(cuid())
+  productId String
+  variantId String?
+  // Tenant scope, denormalised off the product on purpose: a ledger query must
+  // never be able to cross businesses, and history is read by trainer far more
+  // often than it is written.
+  trainerId String
+
+  delta        Int // + on the shelf, − off it
+  reason       StockMovementReason
+  note         String?             @db.Text
+  // What stockCount became. Lets the history render without replaying every
+  // sum from the beginning, and makes drift between ledger and balance visible
+  // rather than silent.
+  balanceAfter Int?
+
+  // Who it went to, when it was a sale; who did it, when a person did. Both
+  // nullable — a Stripe webhook fulfilling an order has no user, and a
+  // delivery booked in has no client.
+  clientId String?
+  userId   String?
+
+  createdAt DateTime @default(now())
+
+  product Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  // History outlives the people in it: deleting a client or a staff member
+  // blanks the attribution, it does not erase the movement.
+  client  ClientProfile? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  user    User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([productId, createdAt])
+  @@index([trainerId, createdAt])
+  @@map("stock_movements")
 }
 
 // ─── Packages ─────────────────────────────────────────────────────────────────
