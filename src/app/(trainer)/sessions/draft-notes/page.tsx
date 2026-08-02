@@ -118,7 +118,11 @@ export default async function DraftNotesPage() {
         // No decorative icon in the actions slot — beside the "+" and search on
         // a phone it reads as a third button that does nothing.
       />
-      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
+      {/* Full width, like every other list. A draft row is a time, a title, a
+          dog and a client name, and the centred column was spending the last
+          four hundred pixels of a desktop screen on margin while truncating the
+          client's name into the middle of it. */}
+      <div className="w-full p-4 md:p-8">
         {rows.length === 0 ? (
           <div className="rounded-2xl bg-white border border-dashed border-slate-200 p-10 text-center">
             <FilePen className="h-8 w-8 mx-auto text-slate-300" />
