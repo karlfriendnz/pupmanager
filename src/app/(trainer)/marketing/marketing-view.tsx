@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Mail, Megaphone, CheckCircle2, Settings2, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { AddOfferingButton, OfferingListBar } from '@/components/shared/offering-card'
 import { SendingDomainPanel } from './sending-domain-panel'
 
 interface BroadcastRow {
@@ -48,9 +48,45 @@ export function MarketingView({ domainVerified, trialDomain, sendingFromEmail, c
         </div>
       )}
 
-      {/* Sending-domain setup lives here. Not verified → the setup panel is the
-          first thing the trainer sees. Verified → a compact "send" card with a
-          collapsible link to manage/disconnect the domain. */}
+      {/* The one action this screen has, as a real button at the top beside
+          nothing else — the same place "New tag" and "New achievement" sit. It
+          used to be buried on the right of a card two thirds of the way down,
+          which is where a trainer with forty sent emails had to go looking for
+          the only thing they came here to do.
+
+          It stays visible on a phone: the create circle in the corner makes
+          offerings, clients and sales, and a campaign is none of them.
+
+          Disabled rather than hidden when it can't be pressed, because the
+          reason is worth saying — no permission, no mailable clients, or no
+          sending address yet, which the panel underneath then walks through. */}
+      <OfferingListBar
+        action={canCompose ? (
+          <AddOfferingButton href="/marketing/new" label="New email" />
+        ) : (
+          <Button
+            type="button"
+            disabled
+            title={
+              !canSend ? 'You do not have permission to send messages'
+                : !sendingReady ? 'Set up a sending address first'
+                : 'No clients can be emailed yet'
+            }
+          >
+            <Mail className="h-4 w-4" />
+            New email
+          </Button>
+        )}
+      />
+
+      {/* Sending-domain setup. Not verified → the setup panel, because nothing
+          else on this screen can happen until it is. Verified → one quiet line
+          saying who can be reached and from what address, with the settings
+          folded away behind a link.
+
+          It was a card with a brand-tinted tile behind a mail icon, which the
+          house style has no room for and which made the loudest thing on the
+          page a status the trainer reads once. */}
       {!sendingReady ? (
         <div className="mb-6">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Set up email sending</h2>
@@ -61,56 +97,26 @@ export function MarketingView({ domainVerified, trialDomain, sendingFromEmail, c
           <SendingDomainPanel onChange={() => router.refresh()} />
         </div>
       ) : (
-        <Card className="mb-6 p-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-[var(--pm-brand-50)] text-[var(--pm-brand-600)]">
-                <Mail className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold text-slate-900">Email your clients</h2>
-                <p className="mt-0.5 text-sm text-slate-600">
-                  {eligibleCount} active {eligibleCount === 1 ? 'client' : 'clients'} can be emailed
-                  {domainVerified && sendingFromEmail
-                    ? <> from <span className="font-medium text-slate-700">{sendingFromEmail}</span></>
-                    : <> from your <span className="font-medium text-slate-700">PupManager test address</span></>}.
-                </p>
-              </div>
-            </div>
-            {canCompose ? (
-              <Link
-                href="/marketing/new"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-medium text-white transition-all bg-[var(--pm-brand-600)] hover:bg-[var(--pm-brand-700)] active:bg-[var(--pm-brand-700)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pm-brand-500)] focus-visible:ring-offset-2"
-              >
-                <Mail className="h-4 w-4" />
-                New email
-              </Link>
-            ) : (
-              <Button
-                type="button"
-                disabled
-                title={!canSend ? 'You do not have permission to send messages' : eligibleCount === 0 ? 'No eligible clients' : undefined}
-              >
-                <Mail className="h-4 w-4" />
-                New email
-              </Button>
-            )}
-          </div>
+        <div className="mb-6">
+          <p className="text-sm text-slate-600">
+            {eligibleCount} active {eligibleCount === 1 ? 'client' : 'clients'} can be emailed
+            {domainVerified && sendingFromEmail
+              ? <> from <span className="font-medium text-slate-700">{sendingFromEmail}</span></>
+              : <> from your <span className="font-medium text-slate-700">PupManager test address</span></>}.
+            {' '}Want to email just some of them? Select them on the{' '}
+            <Link href="/clients" className="underline hover:no-underline">Clients</Link> page.
+          </p>
           {canSend && eligibleCount === 0 && (
-            <p className="mt-3 text-xs text-slate-400">
+            <p className="mt-1 text-xs text-slate-400">
               No active clients with an email address yet. Add clients, or check who&rsquo;s opted out.
             </p>
           )}
-          <p className="mt-3 text-xs text-slate-400">
-            Want to email just some clients? Select them on the{' '}
-            <Link href="/clients" className="underline hover:no-underline">Clients</Link> page.
-          </p>
           <button
             type="button"
             onClick={() => setShowDomainSetup(o => !o)}
-            className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-700"
+            className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-700"
           >
-            <Settings2 className="h-3.5 w-3.5" />
+            <Settings2 className="h-3.5 w-3.5" strokeWidth={1.75} />
             {showDomainSetup
               ? 'Hide sending domain settings'
               : domainVerified ? 'Manage sending domain' : 'Set up your own domain'}
@@ -120,7 +126,7 @@ export function MarketingView({ domainVerified, trialDomain, sendingFromEmail, c
               <SendingDomainPanel onChange={() => router.refresh()} />
             </div>
           )}
-        </Card>
+        </div>
       )}
 
       {/* Past broadcasts */}
@@ -151,9 +157,12 @@ export function MarketingView({ domainVerified, trialDomain, sendingFromEmail, c
                   {new Date(b.createdAt).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </p>
               </div>
+              {/* Three plain figures. Opened was blue and Clicked was green,
+                  which is colour doing a job the column headings already do —
+                  and the only colour on a screen that otherwise has none. */}
               <span className="text-right text-sm font-semibold tabular-nums text-slate-700">{b.recipientCount}</span>
-              <span className="text-right text-sm font-semibold tabular-nums text-blue-600">{b.opened}</span>
-              <span className="text-right text-sm font-semibold tabular-nums text-emerald-600">{b.clicked}</span>
+              <span className="text-right text-sm font-semibold tabular-nums text-slate-700">{b.opened}</span>
+              <span className="text-right text-sm font-semibold tabular-nums text-slate-700">{b.clicked}</span>
               <ChevronRight className="h-4 w-4 text-slate-300 justify-self-end" />
             </Link>
           ))}

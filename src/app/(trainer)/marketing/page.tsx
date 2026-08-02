@@ -83,7 +83,8 @@ export default async function MarketingPage({
   return (
     <>
       <PageHeader title="Marketing" />
-      <div className="p-4 md:p-8 w-full max-w-4xl mx-auto">
+      {/* Full width, like every other list. */}
+      <div className="w-full p-4 md:p-8">
         <MarketingView
           businessName={trainer?.businessName ?? ''}
           domainVerified={!!trainer?.domainVerifiedAt}
