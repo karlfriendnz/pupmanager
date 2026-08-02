@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, Plus, Tag as TagIcon, Trash2, X } from 'lucide-react'
+import Link from 'next/link'
+import { Check, ChevronRight, Pencil, Plus, Tag as TagIcon, Trash2, X } from 'lucide-react'
 import {
   closestCenter,
   useSensor,
@@ -167,16 +168,30 @@ export function TagsView({ tags: initial }: { tags: TagRow[] }) {
                         </span>
                       ) : (
                         <>
-                          <button
-                            type="button"
-                            onClick={() => { setEditingId(t.id); setEditName(t.name) }}
-                            className="flex min-w-0 flex-1 items-center gap-2.5 py-3 pr-2 text-left"
+                          {/* The row OPENS the tag now — "3 things" is a
+                              promise the row has to be able to keep. Renaming
+                              moved to the pencil beside it: a tap that used to
+                              put a text box under the finger now answers "what
+                              is in here?", which is what a trainer taps a tag
+                              to find out. */}
+                          <Link
+                            href={`/offerings/tags/${t.id}`}
+                            className="flex min-w-0 flex-1 items-center gap-2.5 py-3 pr-1 text-left"
                           >
                             <TagIcon className="h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
                             <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{t.name}</span>
                             <span className="flex-shrink-0 text-xs text-slate-400">
                               {t.items === 0 ? 'Empty' : `${t.items} ${t.items === 1 ? 'thing' : 'things'}`}
                             </span>
+                            <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-300" strokeWidth={1.75} />
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => { setEditingId(t.id); setEditName(t.name) }}
+                            aria-label={`Rename ${t.name}`}
+                            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                          >
+                            <Pencil className="h-4 w-4" strokeWidth={1.75} />
                           </button>
                           <button
                             type="button"

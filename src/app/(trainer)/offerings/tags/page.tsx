@@ -9,12 +9,16 @@ import { TagsView } from './tags-view'
 export const metadata: Metadata = { title: 'Tags' }
 
 /**
- * Tags live UNDER /offerings rather than in the left nav.
+ * Tags live under /offerings, and are reached BOTH from the hub and from the
+ * left menu — but the menu row only appears once a tag exists.
  *
- * A tag is not a place a trainer works — it is a property of the things they
- * sell — and /offerings is already "one hub for everything a trainer sells".
- * A nav entry would also need a NAV_LABEL_CATALOG row so trainers could rename
- * it, for a screen most of them will open twice a year.
+ * The route stayed put when the menu entry arrived (Karl, 2026-08-02) because
+ * the two ways in answer different questions. The hub row is where a trainer
+ * MEETS the idea, so it shows at zero and reads "No tags yet — tap to create
+ * one"; the menu row is for the trainer who already thinks in tags and wants
+ * them one tap away. A menu row at zero would be neither: a permanent line of
+ * chrome naming a concept its owner has never used. See hiddenNavHrefs in
+ * (trainer)/layout.tsx for how the count reaches the shell.
  *
  * No add-on gate: a tag reaches offerings as well as products, so a trainer
  * with the shop switched off still has plenty to label.

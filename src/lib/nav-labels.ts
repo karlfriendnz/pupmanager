@@ -111,6 +111,9 @@ export const NAV_LABEL_CATALOG: readonly RenameableEntry[] = [
   { key: '/casual-classes', defaultLabel: 'Casual Classes', isSection: false, examples: ['Drop-ins', 'Pay as you go', 'Casual sessions'] },
   { key: '/events', defaultLabel: 'Events', isSection: false, examples: ['Seminars', 'Workshops', 'Talks'] },
   { key: '/memberships', defaultLabel: 'Packages', isSection: false, examples: ['Memberships', 'Plans', 'Bundles'] },
+  // Renameable like the rest of Offerings: "Tags" is our word for it, and a
+  // trainer who thinks in themes or streams should get to say so.
+  { key: '/offerings/tags', defaultLabel: 'Tags', isSection: false, examples: ['Labels', 'Themes', 'Streams'] },
 
   { key: '/library', defaultLabel: 'Library', isSection: false, examples: ['Resources', 'Guides', 'Downloads'] },
   { key: '/products', defaultLabel: 'Products', isSection: false, examples: ['Shop', 'Store', 'Merch'] },

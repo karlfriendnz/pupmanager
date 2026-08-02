@@ -190,3 +190,34 @@ export async function saveTags(
   }).catch(() => null)
   return !!res?.ok
 }
+
+/**
+ * Take ONE tag off a thing, from the tag's own screen.
+ *
+ * Read-then-write against the SAME endpoint the editors save through, rather
+ * than a new "delete this assignment" route. The assign endpoint has set
+ * semantics, so the whole list has to be sent — and re-reading it first is what
+ * stops this screen, which only knows about one tag, from silently wiping the
+ * other tags the thing carries.
+ *
+ * The alternative was a DELETE route taking a tag id and a target. It would
+ * have been one request instead of two, and a second place for the two-ended
+ * tenant rule to be got right — on a gesture a trainer performs a handful of
+ * times a year. Reusing the proven write was the cheaper answer.
+ */
+export async function removeTagFrom(
+  target: { packageId: string } | { productId: string },
+  tagId: string,
+): Promise<boolean> {
+  const query = 'packageId' in target
+    ? `packageId=${encodeURIComponent(target.packageId)}`
+    : `productId=${encodeURIComponent(target.productId)}`
+  const res = await fetch(`/api/tags/assign?${query}`).catch(() => null)
+  const body = await res?.json().catch(() => null)
+  if (!res?.ok || !Array.isArray(body?.tagIds)) return false
+  const remaining = (body.tagIds as string[]).filter(id => id !== tagId)
+  // Nothing to do if it wasn't on there — another tab got here first, and the
+  // trainer's screen is already showing the answer they wanted.
+  if (remaining.length === body.tagIds.length) return true
+  return saveTags(target, remaining)
+}
