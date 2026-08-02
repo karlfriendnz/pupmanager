@@ -419,14 +419,19 @@ function ColumnPicker({
   const [open, setOpen] = useState(false)
   return (
     <span className="relative hidden md:inline-flex">
+      {/* The icon alone. "Columns" beside a column icon is the icon read out
+          loud, and it was the widest control in a row that already holds an
+          Add button and a view toggle. The name lives on the tooltip and the
+          accessible label, where a screen reader still gets it. */}
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
+        aria-label="Choose columns"
         title="Choose columns"
-        className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50"
       >
-        <Columns3 className="h-4 w-4" strokeWidth={1.75} /> Columns
+        <Columns3 className="h-4 w-4" strokeWidth={1.75} />
       </button>
       {open && (
         <>
