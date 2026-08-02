@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { upload } from '@vercel/blob/client'
 import {
-  Plus, Download, Loader2, Trash2, Pencil, ExternalLink, Copy, Check, Code2, Users, X, Upload, Mail,
+  Download, Loader2, Trash2, Pencil, ExternalLink, Copy, Check, Code2, X, Upload, Mail,
   Image as ImageIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -11,6 +11,7 @@ import { Card, CardBody } from '@/components/ui/card'
 import { compressImageFile } from '@/lib/compress-image'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { isRichTextEmpty } from '@/lib/rich-text'
+import { AddOfferingButton, OfferingListBar, OfferingTabs } from '@/components/shared/offering-card'
 import { LeadMagnetPreview } from './lead-magnet-preview'
 
 interface Branding { businessName: string; logoUrl: string | null; accent: string }
@@ -98,21 +99,35 @@ export function LeadMagnetsManager({
 
   return (
     <>
-      {/* Tabs */}
-      <div className="mb-6 flex gap-1 rounded-2xl bg-slate-100 p-1">
-        <TabButton active={tab === 'downloads'} onClick={() => setTab('downloads')} icon={<Download className="h-4 w-4" />} label="Downloads" />
-        <TabButton active={tab === 'list'} onClick={() => setTab('list')} icon={<Users className="h-4 w-4" />} label={`Mailing list (${subscribedCount})`} />
-      </div>
+      {/* Underline tabs on the shared hairline, with the add button on the
+          right of the same row — the pill track they replace was the one
+          control shape the house style has no room for, and it put the count
+          of subscribers inside a label rather than beside it where every other
+          tab count in the app lives.
+
+          No view toggle. A magnet card is title, status, filename, sign-up
+          count and three actions on one row; at a third of the width that row
+          wraps into a mess, and a trainer has a handful of these, not forty.
+          The grid would be a control with nothing behind it. */}
+      <OfferingListBar
+        action={tab === 'downloads'
+          ? <AddOfferingButton label="New lead magnet" onClick={() => setCreating(true)} />
+          : undefined}
+      >
+        <OfferingTabs
+          value={tab}
+          onChange={setTab}
+          tabs={[
+            { id: 'downloads' as const, label: 'Downloads', count: magnets.length },
+            { id: 'list' as const, label: 'Mailing list', count: subscribedCount },
+          ]}
+        />
+      </OfferingListBar>
 
       {tab === 'downloads' ? (
         <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-slate-500">Offer a free download behind a sign-up form. Each sign-up joins your mailing list.</p>
-            <Button onClick={() => setCreating(true)}><Plus className="mr-1.5 h-4 w-4" /> New lead magnet</Button>
-          </div>
-
           {magnets.length === 0 ? (
-            <Card><CardBody className="py-12 text-center text-sm text-slate-400">No lead magnets yet — create your first free download.</CardBody></Card>
+            <Card><CardBody className="py-12 text-center text-sm text-slate-400">No lead magnets yet — create your first free download. Each sign-up joins your mailing list.</CardBody></Card>
           ) : (
             magnets.map((m) => (
               <MagnetCard key={m.id} magnet={m} path={publicPath(m)} onEdit={() => setEditing(m)} onDelete={() => remove(m.id)} />
@@ -127,17 +142,6 @@ export function LeadMagnetsManager({
         <MagnetEditor magnet={editing} branding={branding} onClose={() => { setEditing(null); setCreating(false) }} onSaved={onSaved} />
       )}
     </>
-  )
-}
-
-function TabButton({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors ${active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-    >
-      {icon}{label}
-    </button>
   )
 }
 
