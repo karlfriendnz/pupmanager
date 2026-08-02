@@ -35,7 +35,8 @@ export default async function FinancesPage() {
   return (
     <>
       <PageHeader title="Finances" />
-      <div className="p-4 md:p-8 w-full max-w-2xl md:max-w-[960px] mx-auto">
+      {/* Full width, like every other list. */}
+      <div className="w-full p-4 md:p-8">
         <FinancesView />
       </div>
       {showPaymentsNudge && paymentsNudge && (
