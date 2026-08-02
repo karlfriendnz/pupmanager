@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { SEED, TEST_DATABASE_URL } from './test-db'
+import { todayInTz } from '../../src/lib/timezone'
 
 // The same information, entered from each end, checked from the other. Most
 // bugs in an app with two audiences live in the gap between them: something
@@ -37,7 +38,11 @@ async function dismissAppPrompt(page: Page) {
   if (await gate.isVisible().catch(() => false)) await gate.click()
 }
 
-const today = () => new Date().toISOString().slice(0, 10)
+// The date a trainer's own picker would send for "today": their calendar day,
+// not the host's UTC one. The seeded trainer is Pacific/Auckland (User.timezone
+// default) and the client home windows "This week" in the trainer's zone, so a
+// UTC date here reads as last week for the twelve hours NZ runs ahead of it.
+const today = () => todayInTz('Pacific/Auckland')
 
 test.describe('entered one side, checked from the other', () => {
   test('a dog added by the owner reaches the trainer — and the reverse', async ({ page }) => {
