@@ -114,7 +114,17 @@ async function turnOnFreeAddons(page: Page) {
  * What matters is where that leaves the trainer — they are sent to billing
  * setup, not left with a button that quietly does nothing.
  */
-async function paidAddonAsksForASubscription(page: Page, id: string, name: string) {
+/**
+ * A paid add-on, switched on DURING the free trial.
+ *
+ * This used to assert the opposite: /api/addons answered `needsSubscription`
+ * and the grid bounced the trainer to billing setup. Karl's call (2026-08-02)
+ * was that the only way to TRY a paid extra should not be to end your own trial
+ * and start paying — so a trialist switches it on now and is invoiced when the
+ * trial ends. An EXPIRED trial with no subscription still gets sent to billing;
+ * that path is covered by unit tests, because this journey is inside its trial.
+ */
+async function paidAddonSwitchesOnDuringTrial(page: Page, id: string, name: string) {
   await page.goto('/settings?tab=addons')
   const card = page.getByTestId(`addon-card-${id}`)
   await expect(card, `no add-on card for ${id}`).toBeVisible({ timeout: 15_000 })
@@ -124,10 +134,9 @@ async function paidAddonAsksForASubscription(page: Page, id: string, name: strin
   await expect(turnOn).toBeVisible({ timeout: 10_000 })
   await turnOn.click()
 
-  // Not an error message — the trainer is taken to the place that fixes it.
-  // /api/addons answers `needsSubscription`, and the grid sends them straight
-  // to billing setup rather than leaving them to work out what "no" meant.
-  await page.waitForURL(/\/billing\/setup/, { timeout: 15_000 })
+  // It stays on this screen and the add-on goes live — no bounce to billing.
+  await expect(page.getByRole('button', { name: `Turn on ${name}` })).toHaveCount(0, { timeout: 15_000 })
+  expect(page.url()).not.toMatch(/\/billing\/setup/)
 }
 
 
@@ -178,7 +187,7 @@ test('a brand-new trainer builds a business, takes on clients, and talks to them
     await turnOnFreeAddons(page)
 
     // The paid ones cannot be bought on a trial, and say so.
-    await paidAddonAsksForASubscription(page, 'achievements', 'Client achievements')
+    await paidAddonSwitchesOnDuringTrial(page, 'achievements', 'Client achievements')
 
     // Granted directly so the rest of the journey can walk the features they
     // gate. Getting here for real means subscribing, which is Stripe's job and
@@ -230,9 +239,14 @@ test('a brand-new trainer builds a business, takes on clients, and talks to them
       where: { id: oneOff.id },
       data: { clientSelfBook: true, selfBookRequiresApproval: false, priceCents: 0 },
     })
+    // The WHOLE day, every day — not 09:00–17:00. Step 12 relies on the wizard
+    // offering a slot TODAY, so office hours made this spec pass in the morning
+    // and fail after 5pm: by then today had no bookable time left and the
+    // earliest slot fell to tomorrow, which the trainer's current-week schedule
+    // does not show. A test that only passes before dinner is a broken test.
     await prisma.availabilitySlot.createMany({
       data: [1, 2, 3, 4, 5, 6, 7].map(dayOfWeek => ({
-        trainerId: profile!.id, dayOfWeek, startTime: '09:00', endTime: '17:00', cadenceWeeks: 1,
+        trainerId: profile!.id, dayOfWeek, startTime: '00:00', endTime: '23:59', cadenceWeeks: 1,
       })),
     })
 

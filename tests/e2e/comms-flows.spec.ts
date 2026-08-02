@@ -59,9 +59,9 @@ test.describe('automated communication flows', () => {
       expect((await create.json()).channels).toEqual(['PUSH'])
       expect(await prisma.commsFlowStep.count({ where: { classRunId: runA } })).toBe(1)
 
-      // It renders on the class page, under its own "Reminders & messages" tab.
+      // It renders on the class page, under its own "Reminders" tab.
       await page.goto(`/classes/${runA}`)
-      await page.getByRole('button', { name: 'Reminders & messages' }).click()
+      await page.getByRole('button', { name: 'Reminders' }).click()
       // exact: the Preview icon button carries an sr-only "Preview <title>" label,
       // so a substring match hits both it and the row title. The sr-only label is
       // correct a11y, not duplication — the assertion just has to be precise.
@@ -152,7 +152,7 @@ test.describe('automated communication flows', () => {
 
       // And the editor shows the email content, not just the push line.
       await page.goto(`/classes/${b.classRunId}`)
-      await page.getByRole('button', { name: 'Reminders & messages' }).click()
+      await page.getByRole('button', { name: 'Reminders' }).click()
       // exact: see above — the Preview button's sr-only label also contains this.
       await expect(page.getByText('E2E What to bring', { exact: true })).toBeVisible({ timeout: 15_000 })
     } finally {
@@ -233,7 +233,7 @@ test.describe('automated communication flows', () => {
       }
 
       await page.goto(`/classes/${b.classRunId}`)
-      await page.getByRole('button', { name: 'Reminders & messages' }).click()
+      await page.getByRole('button', { name: 'Reminders' }).click()
       // exact: as above, the Preview button's sr-only label contains the title.
       await expect(page.getByText('E2E First', { exact: true })).toBeVisible({ timeout: 15_000 })
 
@@ -321,7 +321,7 @@ test.describe('automated communication flows', () => {
       const stepId = (await create.json()).id as string
 
       await page.goto(`/classes/${b.classRunId}`)
-      await page.getByRole('button', { name: 'Reminders & messages' }).click()
+      await page.getByRole('button', { name: 'Reminders' }).click()
       await expect(page.getByText('E2E Placeholder Step', { exact: true })).toBeVisible({ timeout: 15_000 })
       await page.locator('ol > li').first().getByRole('button').first().click()
       const sheet = page.getByRole('dialog', { name: 'Message' })

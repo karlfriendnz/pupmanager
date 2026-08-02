@@ -66,7 +66,10 @@ export function FullScreenSheet({
         <div
           role="dialog"
           aria-modal="true"
-          aria-label={title}
+          // The sub is part of the NAME, not decoration: "Add homework" alone
+          // does not say which session, and a screen reader (or a test) landing
+          // on the dialog gets only its label.
+          aria-label={sub ? `${title} — ${sub}` : title}
           className="relative flex h-full w-full flex-col bg-slate-50 sm:h-auto sm:max-h-[85vh] sm:max-w-lg sm:overflow-hidden sm:rounded-2xl sm:border sm:border-slate-200 sm:shadow-xl"
         >
           <div className="flex flex-shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 pt-[env(safe-area-inset-top)] sm:pt-0">

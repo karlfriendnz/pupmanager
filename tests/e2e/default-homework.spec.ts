@@ -36,7 +36,7 @@ test('a trainer sets an offering\'s default homework from their library, then ta
 
   // Adding opens a FULL SCREEN library picker, not a dropdown.
   await page.getByRole('button', { name: 'Add homework' }).first().click()
-  const picker = page.getByRole('dialog', { name: /Add homework to/ })
+  const picker = page.getByRole('dialog', { name: /Add homework/ })
   await expect(picker).toBeVisible()
   await picker.getByRole('button', { name: new RegExp(LIB.itemTitle) }).click()
   await picker.getByRole('button', { name: 'Close' }).click()
