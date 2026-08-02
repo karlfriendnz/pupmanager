@@ -104,16 +104,6 @@ export function SessionReport({
         </Card>
       )}
 
-      {/* Photos & videos from this session — placed near the top so they
-          set the scene before the trainer's narrative + tasks. */}
-      {attachments.length > 0 && (
-        <Card className="mb-6 rounded-none">
-          <div className="px-6 py-5">
-            <ReportAttachmentsGallery attachments={attachments} />
-          </div>
-        </Card>
-      )}
-
       {/* Opening blocks — per-response message wins, otherwise the form's intro */}
       {formResponses.map(r => {
         const intro = r.introMessage || r.form.introText || ''
@@ -169,6 +159,21 @@ export function SessionReport({
           </Card>
         )
       })}
+
+      {/* Photos & videos from this session. They sit AFTER the write-up and
+          BEFORE the homework because that is the order Karl asked for —
+          questions, then media, then homework — and it is the order the report
+          reads in: the trainer says what happened, the photos show it, and the
+          practice that follows from it comes last, next to nothing. Above the
+          questions they were a gallery with no caption, arriving before anyone
+          had said what the session was. */}
+      {attachments.length > 0 && (
+        <Card className="mb-6 rounded-none">
+          <div className="px-6 py-5">
+            <ReportAttachmentsGallery attachments={attachments} />
+          </div>
+        </Card>
+      )}
 
       {/* Tasks for the client to practise */}
       {tasks.length > 0 && (
