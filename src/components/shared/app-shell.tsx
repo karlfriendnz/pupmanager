@@ -46,10 +46,11 @@ const TRAINER_NAV: NavItem[] = [
   { href: '/dashboard',    label: 'Dashboard',    icon: LayoutDashboard, section: 'overview' },
   { href: '/messages',     label: 'Messages',     icon: MessageSquare,   section: 'overview' },
   { href: '/schedule',     label: 'Schedule',     icon: Calendar,        section: 'overview' },
-  // When you take bookings. It lives in the schedule's cog panel too, but that
-  // button lost its "View" label at Karl's request and he then couldn't find
-  // this — too important a setting to reach only through an unlabelled icon.
-  { href: '/schedule?availability=1', label: 'Availability', icon: Clock,  section: 'overview', child: true },
+  // No Availability entry. It was added here when the schedule's cog button lost
+  // its "View" label and Karl couldn't find the setting; it goes back to living
+  // in that panel alone (Karl, 2026-08-02). Its lock in nav-labels.ts stays put
+  // on purpose — belt and braces, so a future re-add doesn't quietly become
+  // renameable.
 
   { href: '/clients',      label: 'Clients',      icon: Users,           section: 'clients' },
   { href: '/enquiries',    label: 'Enquiries',    icon: Inbox,           section: 'clients', child: true },

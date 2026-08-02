@@ -209,81 +209,97 @@ export function ItemEditor({ item, themeHref }: { item: EditableItem; themeHref:
                 aria-label={`Ask the client to log sessions — ${wantsLog ? 'on' : 'off'}`}
               />
             </div>
-            <div className="flex flex-col gap-4 sm:flex-row">
-              <div className="sm:w-32">
-                <label htmlFor="item-reps" className="block text-[13px] font-medium text-slate-700">Repetitions</label>
-                <input
-                  id="item-reps"
-                  type="number"
-                  min={1}
-                  inputMode="numeric"
-                  value={repetitions}
-                  onChange={e => { setRepetitions(e.target.value); touched() }}
-                  className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                />
-              </div>
-              <div className="min-w-0 flex-1">
+            {/* Repetitions gets the row to itself. It is one small number and it
+                belongs to the LOG question above it — how many times they should
+                do this — not to the three attachments below, which are what the
+                item contains. */}
+            <div className="w-full sm:w-32">
+              <label htmlFor="item-reps" className="block text-[13px] font-medium text-slate-700">Repetitions</label>
+              <input
+                id="item-reps"
+                type="number"
+                min={1}
+                inputMode="numeric"
+                value={repetitions}
+                onChange={e => { setRepetitions(e.target.value); touched() }}
+                className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
+              />
+            </div>
+          </div>
+
+          {/* ── What's attached: video, picture, handout ──────────────────────
+              Three columns across on a wide screen, stacked below. They are the
+              same KIND of thing — the media a trainer hangs off this exercise —
+              so they read as one row of choices rather than three sections of
+              one control each, which is what made the page long.
+
+              A CONTAINER query, not a viewport one: this sits beside a 17rem
+              rail, so a wide window is not a wide column. */}
+          <div className="px-4 py-4">
+            <div className="grid gap-5 @2xl:grid-cols-3">
+              {/* ── Video ── */}
+              <div className="min-w-0">
                 <label htmlFor="item-video" className="block text-[13px] font-medium text-slate-700">Video</label>
                 <input
                   id="item-video"
                   type="url"
-                  placeholder="Paste a link, or upload below"
+                  placeholder="Paste a YouTube link"
                   value={videoUrl}
                   onChange={e => { setVideoUrl(e.target.value); touched() }}
                   className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
                 />
                 {/* Two ways to get a video on an item, because trainers have both:
                     a YouTube link they already share, or a clip they filmed and
-                    have nowhere to host. The upload writes into the same field, so
-                    everything downstream (the client app, the plan) is unchanged. */}
+                    have nowhere to host. Both are named on screen — the field
+                    used to say "paste a link" and leave you guessing which links
+                    it meant. The upload writes into the same field, so everything
+                    downstream (the client app, the plan) is unchanged. */}
                 <VideoUploadButton
                   uploadUrl={`/api/library/items/${item.id}/video-upload`}
                   onUploaded={url => { setVideoUrl(url); touched() }}
-                  label={videoUrl ? 'Replace with an upload' : 'Upload a clip'}
+                  label={videoUrl ? 'Replace with an upload' : 'or upload a clip'}
                   className="mt-2"
                 />
               </div>
-            </div>
-          </div>
 
-          {/* ── Picture ── */}
-          <div className="px-4 py-4">
-            <p className="text-[13px] font-medium text-slate-700">Picture</p>
-            {imageUrl ? (
-              <div className="mt-2 flex items-start gap-3">
-                <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl border border-slate-200">
-                  <Image src={imageUrl} alt="" fill sizes="80px" className="object-cover" unoptimized />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => { setImageUrl(null); touched() }}
-                  className="flex items-center gap-1.5 py-2 text-sm text-slate-500"
-                >
-                  <X className="h-4 w-4" strokeWidth={1.75} />
-                  Remove picture
-                </button>
+              {/* ── Picture ── */}
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium text-slate-700">Picture</p>
+                {imageUrl ? (
+                  <div className="mt-2 flex items-start gap-3">
+                    <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-xl border border-slate-200">
+                      <Image src={imageUrl} alt="" fill sizes="80px" className="object-cover" unoptimized />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setImageUrl(null); touched() }}
+                      className="flex items-center gap-1.5 py-2 text-sm text-slate-500"
+                    >
+                      <X className="h-4 w-4" strokeWidth={1.75} />
+                      Remove picture
+                    </button>
+                  </div>
+                ) : (
+                  <label className="mt-2 flex w-fit cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-700 active:bg-slate-50">
+                    {uploading === 'image'
+                      ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+                      : <ImageIcon className="h-4 w-4" strokeWidth={1.75} />}
+                    {uploading === 'image' ? 'Uploading…' : 'Add a picture'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={uploading !== null}
+                      onChange={pickImage}
+                    />
+                  </label>
+                )}
               </div>
-            ) : (
-              <label className="mt-2 flex w-fit cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-700 active:bg-slate-50">
-                {uploading === 'image'
-                  ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
-                  : <ImageIcon className="h-4 w-4" strokeWidth={1.75} />}
-                {uploading === 'image' ? 'Uploading…' : 'Add a picture'}
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  disabled={uploading !== null}
-                  onChange={pickImage}
-                />
-              </label>
-            )}
-          </div>
 
-          {/* ── Handout ── */}
-          <div className="px-4 py-4">
-            <p className="text-[13px] font-medium text-slate-700">Handout (PDF)</p>
-            {fileUrl ? (
+              {/* ── Handout ── */}
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium text-slate-700">Handout (PDF)</p>
+                {fileUrl ? (
               <div className="mt-2">
                 <a
                   href={fileUrl}
@@ -326,10 +342,11 @@ export function ItemEditor({ item, themeHref }: { item: EditableItem; themeHref:
                   onChange={pickFile}
                 />
               </label>
-            )}
-            <p className="mt-2 text-[13px] text-slate-500">Up to 20 MB.</p>
+                )}
+                <p className="mt-2 text-[13px] text-slate-500">Up to 20 MB.</p>
+              </div>
+            </div>
           </div>
-
         </FlatBlock>
       </section>
     </>

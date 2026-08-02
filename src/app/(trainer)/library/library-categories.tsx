@@ -181,17 +181,22 @@ function CategoryRow({ category, dragHandle }: { category: CategoryTile; dragHan
       {dragHandle}
       <Layers className="h-4 w-4 text-slate-400" strokeWidth={1.75} />
 
-      {/* The link is wrapped rather than being the grid cell itself: as a bare
-          grid item its box is the line box, which sits a few pixels proud of
-          the cells either side of it. A flex cell centres it against the row. */}
-      <span className="flex min-w-0 items-center">
-        <Link
-          href={`/library/type/${category.id}`}
-          className="truncate text-sm font-medium text-slate-900 hover:underline"
-        >
-          {category.name}
-        </Link>
-      </span>
+      {/* The link CENTRES ITS OWN TEXT, and the truncation moves to a span
+          inside it. globals.css gives every <a> a 44px minimum touch target, so
+          this cell is a 44px box in a 56px row while the counts beside it are
+          20px line boxes. All three are centred as grid items — but the text
+          inside a 44px block sits at the TOP of it, which put the name a dozen
+          pixels above the numbers it is meant to line up with. Centring inside
+          the link is what actually lines the TEXT up.
+
+          Truncation has to go on the inner span: `text-overflow` does nothing
+          on a flex container, whose text is an anonymous flex item. */}
+      <Link
+        href={`/library/type/${category.id}`}
+        className="flex min-w-0 items-center text-sm font-medium text-slate-900 hover:underline"
+      >
+        <span className="truncate">{category.name}</span>
+      </Link>
 
       {/* Just the figures. "2 themes · 1 item" is a phrase for a tile, where
           there is no heading to say which number is which; down a column the

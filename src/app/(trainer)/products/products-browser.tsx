@@ -532,17 +532,23 @@ function ProductTile({
       {dragHandle}
       {thumb('h-9 w-9 rounded-lg border border-slate-100 object-cover', 'h-4 w-4')}
 
-      {/* The link is wrapped rather than being the grid cell itself: as a bare
-          grid item its box is the line box, which sat a few pixels proud of
-          the cells either side of it. A flex cell centres it against the row. */}
-      <span className="flex min-w-0 items-center">
-        <Link
-          href={`/products/${product.id}`}
-          className="truncate text-sm font-medium text-slate-900 hover:underline"
-        >
-          {product.name}
-        </Link>
-      </span>
+      {/* The link CENTRES ITS OWN TEXT, and the truncation moves to a span
+          inside it. globals.css gives every <a> a 44px minimum touch target, so
+          this cell is a 44px box in a 56px row while the price beside it is a
+          20px line box. Both are centred as grid items — but the text inside a
+          44px block sits at the TOP of it, which put the product name a dozen
+          pixels above its own price. Centring inside the link is what lines the
+          TEXT up; an outer flex cell only re-centres a box that was already
+          centred, which is why the previous attempt at this didn't take.
+
+          Truncation has to go on the inner span: `text-overflow` does nothing
+          on a flex container, whose text is an anonymous flex item. */}
+      <Link
+        href={`/products/${product.id}`}
+        className="flex min-w-0 items-center text-sm font-medium text-slate-900 hover:underline"
+      >
+        <span className="truncate">{product.name}</span>
+      </Link>
 
       {chosen.has('category') && (
         <span className={`${OPTIONAL_CELL} truncate text-sm text-slate-500`}>{categoryName ?? '—'}</span>
