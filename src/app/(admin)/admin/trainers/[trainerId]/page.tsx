@@ -4,9 +4,10 @@ import Link from 'next/link'
 import { getOnboardingFabState } from '@/lib/onboarding/state'
 import { getTrainerEmailReport } from '@/lib/onboarding/email-report'
 import { formatDate, formatDateTime } from '@/lib/utils'
-import { ArrowLeft, LogIn, Check } from 'lucide-react'
+import { ArrowLeft, LogIn, Check, AlertTriangle } from 'lucide-react'
 import { TrainerDetailActions } from './trainer-detail-actions'
 import { AddonHistoryCard } from './addon-history-card'
+import { checkSubscriptionHealth } from '@/lib/subscription-health'
 import { AdminTrainerNotes } from './admin-trainer-notes'
 import { TrainerDangerZone } from './trainer-danger-zone'
 import type { ReactNode } from 'react'
@@ -49,6 +50,10 @@ export default async function AdminTrainerDetailPage({
           signupCountry: true,
           gracePeriodUntil: true,
           seatCount: true,
+          // Read so we can ask Stripe whether the subscription we think they
+          // have actually exists — see the health note below.
+          stripeSubscriptionId: true,
+          sandboxBilling: true,
           // Rollout gates, shown and flipped in the actions panel below.
           recurringPaymentsEnabled: true,
           tapToPayEnabled: true,
@@ -64,7 +69,7 @@ export default async function AdminTrainerDetailPage({
   const p = user.trainerProfile
 
   // Same live-derived signals the table used, now computed once for the detail.
-  const [sampleCount, fab, report, notes, tasks, addonGrants] = await Promise.all([
+  const [sampleCount, fab, report, notes, tasks, addonGrants, addonRows, subHealth] = await Promise.all([
     prisma.clientProfile.count({ where: { trainerId: p.id, isSample: true } }),
     getOnboardingFabState(p.id),
     getTrainerEmailReport(p.id),
@@ -75,6 +80,13 @@ export default async function AdminTrainerDetailPage({
       where: { trainerId: p.id, grantedByAdmin: true, active: true },
       select: { itemId: true, expiresAt: true },
     }),
+    // Every add-on row, so the switch card can show what's actually on.
+    prisma.trainerAddon.findMany({
+      where: { trainerId: p.id },
+      select: { itemId: true, active: true, grantedByAdmin: true, stripeSubscriptionItemId: true },
+    }),
+    // One Stripe read: does the subscription we hold for them still exist?
+    checkSubscriptionHealth({ stripeSubscriptionId: p.stripeSubscriptionId, sandboxBilling: p.sandboxBilling }),
   ])
   const done = fab.steps.filter(s => s.status === 'completed').length
   const total = fab.totalSteps
@@ -157,6 +169,43 @@ export default async function AdminTrainerDetailPage({
         ))}
       </div>
 
+      {/* ── Is their billing link real? ──────────────────────────────────────
+          Mersea Mutts' TrainerProfile named a subscription that does not exist
+          in the live Stripe account. Everything in the product behaved as if
+          they were subscribed while the truth was only discoverable by reading a
+          Vercel log after they complained — and a missing subscription usually
+          means nobody is charging them. So it is asked once, here, on the page
+          somebody already opens when a customer has a billing question. Silent
+          when the answer is "fine". */}
+      {subHealth.state === 'missing' && (
+        <div className="mb-4 rounded-2xl border border-rose-500/50 bg-rose-950/40 p-4">
+          <p className="flex items-center gap-2 text-sm font-semibold text-rose-200">
+            <AlertTriangle className="h-4 w-4" strokeWidth={1.75} /> Their subscription does not exist in Stripe
+          </p>
+          <p className="mt-1 text-sm text-rose-300">
+            We hold <code className="text-rose-200">{subHealth.id}</code>, and Stripe says there is no such
+            subscription. Add-ons cannot be changed while this is true, and they may not be being billed at
+            all. Check the customer in Stripe, then point this account at the live subscription.
+          </p>
+        </div>
+      )}
+      {subHealth.state === 'inactive' && (
+        <div className="mb-4 rounded-2xl border border-amber-500/40 bg-amber-950/30 p-4">
+          <p className="text-sm text-amber-200">
+            Their Stripe subscription <code>{subHealth.id}</code> is <strong>{subHealth.status}</strong>, so it
+            isn’t billing. Add-ons can’t be changed until there’s a live subscription.
+          </p>
+        </div>
+      )}
+      {subHealth.state === 'unknown' && (
+        <div className="mb-4 rounded-2xl border border-slate-600 bg-slate-800/60 p-4">
+          <p className="text-sm text-slate-400">
+            Couldn’t check their subscription with Stripe just now — {subHealth.detail}. This says nothing
+            about the subscription itself.
+          </p>
+        </div>
+      )}
+
       {/* Two columns from lg up: the diary on the left, where it's read
           alongside the controls rather than buried under them; the account
           controls on the right. Stacks on narrow screens, notes first. */}
@@ -183,6 +232,12 @@ export default async function AdminTrainerDetailPage({
             recurringPaymentsEnabled={p.recurringPaymentsEnabled}
             tapToPayEnabled={p.tapToPayEnabled}
             addonGrants={addonGrants.map(g => ({ itemId: g.itemId, expiresAt: g.expiresAt ? g.expiresAt.toISOString() : null }))}
+            addonState={addonRows.map(r => ({
+              itemId: r.itemId,
+              active: r.active,
+              grantedByAdmin: r.grantedByAdmin,
+              billed: r.stripeSubscriptionItemId !== null,
+            }))}
           />
 
       {/* Who changed an add-on, when, and what happened — including us. */}

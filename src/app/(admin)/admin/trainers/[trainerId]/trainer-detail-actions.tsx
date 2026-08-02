@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Check, X, Loader2, Gift } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import { ADDONS } from '@/lib/pricing'
+import { apiErrorMessage } from '@/lib/api-error-message'
 
 // All the mutating controls for a single trainer, laid out as full-page cards.
 // These call the same /api/admin/trainers/[id] endpoints the old inline table
@@ -27,11 +28,22 @@ type Props = {
   tapToPayEnabled: boolean
   // Active admin comp grants: free add-on previews with an optional expiry.
   addonGrants: { itemId: string; expiresAt: string | null }[]
+  // Every TrainerAddon row this business holds — what's on, and which of those
+  // are a real billed line item on their Stripe subscription.
+  addonState: { itemId: string; active: boolean; grantedByAdmin: boolean; billed: boolean }[]
 }
 
 // Add-ons an admin can comp — everything in the catalog except coming-soon
 // previews (which aren't usable yet).
 const GRANTABLE_ADDONS = ADDONS.filter(a => !a.comingSoon).map(a => ({ id: a.id, name: a.name }))
+
+// The same set, but carrying whether it costs anything — the admin needs to know
+// which of these buttons puts a charge on a real customer's invoice.
+const SWITCHABLE_ADDONS = ADDONS.filter(a => !a.comingSoon).map(a => ({
+  id: a.id,
+  name: a.name,
+  free: !!a.free,
+}))
 
 const DAY_MS = 24 * 60 * 60 * 1000
 // yyyy-mm-dd N days from now, for the default expiry date input.
@@ -99,6 +111,45 @@ export function TrainerDetailActions(props: Props) {
 
   // End-of-day ISO for a yyyy-mm-dd date input, so a comp lasts the whole day.
   const endOfDayISO = (ymd: string) => new Date(`${ymd}T23:59:59`).toISOString()
+
+  // ── Throw the trainer's own switch, for them ──────────────────────────────
+  // PATCHes the same route the comps POST to, but a PATCH runs the REAL change:
+  // the same applyAddonChange the trainer's Add-ons page calls, so it goes
+  // through Stripe and lands on their invoice. Never a direct database edit —
+  // that is how a customer ends up with a paid feature nobody is charging for.
+  const [changingId, setChangingId] = useState<string | null>(null)
+  const [changeNote, setChangeNote] = useState<string | null>(null)
+  const addonOn = new Map(props.addonState.map(a => [a.itemId, a]))
+
+  async function changeAddon(itemId: string, active: boolean) {
+    setChangingId(itemId)
+    setError(null)
+    setChangeNote(null)
+    try {
+      const res = await fetch(`/api/admin/trainers/${props.id}/addons`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId, active }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        // The route's own sentence, verbatim — it is the same one the trainer
+        // would have seen, which is the point of an admin trying it here.
+        setError(apiErrorMessage(body, res.status, { fallback: 'Failed to change add-on' }))
+        return
+      }
+      setChangeNote(
+        body.comped ? 'Changed with no charge (sandbox account).'
+          : body.billsAtTrialEnd ? 'On now, free until their trial ends — it joins the bill when they subscribe.'
+          : 'Done — their Stripe subscription was updated, pro-rated to their next invoice.',
+      )
+      router.refresh()
+    } catch {
+      setError('Could not reach the server. Nothing was changed.')
+    } finally {
+      setChangingId(null)
+    }
+  }
 
   // Shared PATCH helper — every subscription/account action funnels through it.
   async function patch(body: Record<string, unknown>, setBusy: (b: boolean) => void, fail: string) {
@@ -380,6 +431,56 @@ export function TrainerDetailActions(props: Props) {
                   }`}
                 >
                   {busy ? '…' : g.on ? 'Switch off' : 'Switch on'}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+
+      {/* Their own add-on switches, thrown by us — through Stripe, not the DB */}
+      <div className={card}>
+        <h2 className={cardTitle}>Add-ons (their real switch)</h2>
+        <p className="text-sm text-slate-400 mb-4">
+          Turns an add-on on or off exactly as the trainer would, through Stripe — a paid
+          one is added to their subscription and pro-rated onto their next invoice. Use
+          this when they can’t do it themselves. For a free trial of a paid add-on, use
+          Add-on comps above instead; this one charges them.
+        </p>
+
+        {changeNote && (
+          <p className="mb-3 rounded-xl border border-emerald-700/50 bg-emerald-950/40 px-3 py-2 text-sm text-emerald-300">{changeNote}</p>
+        )}
+
+        <ul className="flex flex-col gap-2">
+          {SWITCHABLE_ADDONS.map(a => {
+            const row = addonOn.get(a.id)
+            const on = row?.active ?? false
+            const busy = changingId === a.id
+            return (
+              <li key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-slate-700 bg-slate-900/50 px-3 py-2.5">
+                <span className="text-sm font-medium text-slate-200">{a.name}</span>
+                {on
+                  ? <span className="text-xs text-emerald-300">On</span>
+                  : <span className="text-xs text-slate-500">Off</span>}
+                <span className="text-xs text-slate-600">{a.free ? 'Free' : 'Paid'}</span>
+                {row?.grantedByAdmin && <span className="text-xs text-amber-300">Comped</span>}
+                {on && !a.free && !row?.billed && (
+                  // On locally with no Stripe line behind it — a trial switch-on,
+                  // or a subscription we never managed to update. Worth naming:
+                  // it is a paid feature nobody is being charged for.
+                  <span className="text-xs text-amber-300">Not billed</span>
+                )}
+                <button
+                  onClick={() => changeAddon(a.id, !on)}
+                  disabled={busy || changingId !== null}
+                  className={`ml-auto text-xs px-3 h-8 rounded-lg disabled:opacity-50 ${
+                    on
+                      ? 'text-rose-300 hover:text-rose-200 border border-rose-500/40'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
+                >
+                  {busy ? '…' : on ? 'Switch off' : 'Switch on'}
                 </button>
               </li>
             )
