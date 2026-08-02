@@ -6,7 +6,7 @@ import { RichText } from '@/components/shared/rich-text'
 import { useRouter } from 'next/navigation'
 import {
   Star, Package as PackageIcon, FileDown, Download, ShoppingBag, X, Tag,
-  Check, Loader2, CreditCard,
+  Check, Loader2, CreditCard, EyeOff,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatMoney } from '@/lib/money'
@@ -57,6 +57,13 @@ interface Product {
    * trainer would otherwise have no idea what to hand over.
    */
   variants?: Variant[]
+  /**
+   * Set ONLY for the hidden product a trainer opened via ?product= while
+   * previewing. It is kept out of the grid and labelled in the sheet: a
+   * preview that showed a client's shop with an unpublished product sitting in
+   * it would be lying about the one thing it exists to answer.
+   */
+  hiddenFromShop?: boolean
 }
 
 function formatPrice(cents: number | null, currency: string | null) {
@@ -68,16 +75,24 @@ export function ShopGrid({
   products,
   acceptPayments = false,
   currency = null,
+  openProductId = null,
 }: {
   products: Product[]
   acceptPayments?: boolean
   currency?: string | null
+  /** ?product= — the sheet this page was linked straight to. */
+  openProductId?: string | null
 }) {
   const router = useRouter()
   const native = useIsNative()
   const [, startTransition] = useTransition()
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
-  const [open, setOpen] = useState<Product | null>(null)
+  // Deep link: the sheet is open on arrival when the URL named a product.
+  // Initial state only, so closing it stays closed and an ordinary visit —
+  // which is every visit without the param — behaves exactly as before.
+  const [open, setOpen] = useState<Product | null>(
+    () => products.find(p => p.id === openProductId) ?? null,
+  )
   // Optimistic overrides for the requested flag — keys are product IDs.
   const [optimisticRequested, setOptimisticRequested] = useState<Record<string, boolean>>({})
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -159,31 +174,48 @@ export function ShopGrid({
     }
   }
 
+  // The shop proper. A hidden product handed in for preview is deliberately
+  // NOT part of it — the grid, the chips and the "opening soon" empty state all
+  // have to answer "what does my client see", and it is not one of the things
+  // they see. It exists on this screen only as something the sheet can open.
+  const catalog = useMemo(() => products.filter(p => !p.hiddenFromShop), [products])
+
   const categories = useMemo(() => {
-    return Array.from(new Set(products.map(p => p.category).filter(Boolean) as string[])).sort()
-  }, [products])
+    return Array.from(new Set(catalog.map(p => p.category).filter(Boolean) as string[])).sort()
+  }, [catalog])
 
   const visible = useMemo(() => {
-    if (!activeCategory) return products
-    return products.filter(p => p.category === activeCategory)
-  }, [products, activeCategory])
+    if (!activeCategory) return catalog
+    return catalog.filter(p => p.category === activeCategory)
+  }, [catalog, activeCategory])
 
-  if (products.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center text-center py-12">
-        <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-amber-100 to-rose-100 flex items-center justify-center">
-          <ShoppingBag className="h-7 w-7 text-amber-600" />
-        </div>
-        <p className="mt-4 text-sm font-medium text-slate-600">Shop is opening soon</p>
-        <p className="mt-1 text-xs text-slate-400 max-w-xs">
-          Products for you and your dog are on their way.
-        </p>
-      </div>
-    )
+  // Closing a deep-linked sheet drops the param, so a refresh or a Back doesn't
+  // reopen the thing the trainer just dismissed.
+  function close() {
+    setOpen(null)
+    setPickedVariantId(null)
+    if (openProductId) startTransition(() => router.replace('/my-shop', { scroll: false }))
   }
+
+  // Empty shop, but keep rendering: in preview the sheet may be the only thing
+  // on this screen, and returning early here would show the trainer an "opening
+  // soon" page with nothing on it instead of the product they clicked Preview on.
+  const shopIsEmpty = catalog.length === 0
 
   return (
     <div className="flex flex-col gap-5">
+      {shopIsEmpty && (
+        <div className="flex flex-col items-center justify-center text-center py-12">
+          <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-amber-100 to-rose-100 flex items-center justify-center">
+            <ShoppingBag className="h-7 w-7 text-amber-600" />
+          </div>
+          <p className="mt-4 text-sm font-medium text-slate-600">Shop is opening soon</p>
+          <p className="mt-1 text-xs text-slate-400 max-w-xs">
+            Products for you and your dog are on their way.
+          </p>
+        </div>
+      )}
+
       {/* Category chips */}
       {categories.length > 0 && (
         <div className="flex gap-2 overflow-x-auto -mx-5 px-5 lg:mx-0 lg:px-0 pb-1 no-scrollbar">
@@ -199,6 +231,7 @@ export function ShopGrid({
       )}
 
       {/* Grid */}
+      {!shopIsEmpty && (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {visible.map(p => (
           <button
@@ -238,6 +271,7 @@ export function ShopGrid({
           </button>
         ))}
       </div>
+      )}
 
       {/* Detail modal */}
       {open && (
@@ -249,7 +283,7 @@ export function ShopGrid({
           native={native}
           pickedVariantId={pickedVariantId}
           onPickVariant={setPickedVariantId}
-          onClose={() => { setOpen(null); setPickedVariantId(null) }}
+          onClose={close}
           onToggleRequest={() => toggleRequest(open, pickedVariantId)}
           onBuy={() => buy(open, pickedVariantId)}
           busy={busyId === open.id}
@@ -473,6 +507,15 @@ function ProductModal({
               <p className="text-[11px] uppercase tracking-wide text-slate-400 font-medium mb-1">{product.category}</p>
             )}
             <h2 className="text-xl font-bold text-slate-900">{product.name}</h2>
+            {/* The whole reason a trainer previews an unfinished product is to
+                see it before anyone else can. Say so on the screen, or this
+                reads as though it is already on sale. */}
+            {product.hiddenFromShop && (
+              <p className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-600">
+                <EyeOff className="h-3 w-3" strokeWidth={1.75} />
+                Hidden — no client can see this yet
+              </p>
+            )}
             <ProductPrice
               product={pricing}
               currency={currency ?? 'nzd'}

@@ -3,14 +3,28 @@ import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { clientLabelFor, sanitizeNavLabels } from '@/lib/nav-labels'
 import { getEnabledAddons } from '@/lib/billing'
+import { listShopProducts, loadPreviewOnlyProduct } from '@/lib/shop-catalog'
 import { ShopGrid } from './shop-grid'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Shop' }
 
-export default async function MyShopPage() {
+/**
+ * ?product=<id> opens that product's sheet on top of the shop.
+ *
+ * A query param rather than a /my-shop/[productId] route because the shop IS a
+ * grid with a sheet over it — a route would have to render the grid a second
+ * time to put anything behind the sheet. This way the link is shareable, Back
+ * closes it, and with the param absent nothing about the page changes.
+ */
+export default async function MyShopPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ product?: string }>
+}) {
   const active = await getActiveClient()
   if (!active) redirect('/login')
+  const { product: openProductId = null } = await searchParams
 
   const profile = await prisma.clientProfile.findUnique({
     where: { id: active.clientId },
@@ -45,39 +59,20 @@ export default async function MyShopPage() {
   // and their Connect account can actually take charges.
   const acceptPayments = profile.trainer.acceptPaymentsEnabled && profile.trainer.connectChargesEnabled
 
-  const [products, pendingRequests] = await Promise.all([
-    prisma.product.findMany({
-      where: { trainerId: profile.trainerId, active: true },
-      orderBy: [{ featured: 'desc' }, { category: 'asc' }, { order: 'asc' }, { createdAt: 'desc' }],
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        kind: true,
-        priceCents: true,
-        salePriceCents: true,
-        stockCount: true,
-        imageUrl: true,
-        downloadUrl: true,
-        category: true,
-        featured: true,
-        // The sizes/colours a client picks between. Only the ACTIVE ones — a
-        // hidden variant is off the shop, exactly as a hidden product is.
-        variants: {
-          where: { active: true },
-          orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
-          select: {
-            id: true, name: true, priceCents: true, salePriceCents: true, stockCount: true,
-            // The photo and the words for THIS one. Null on either = the
-            // product's, which is what nearly every variant carries.
-            imageUrl: true, description: true,
-          },
-        },
-      },
-    }),
+  const [products, pendingRequests, hiddenPreview] = await Promise.all([
+    listShopProducts(profile.trainerId),
     prisma.productRequest.findMany({
       where: { clientId: profile.id, status: { in: ['PENDING', 'FULFILLED'] } },
       select: { productId: true, status: true },
+    }),
+    // The point of previewing is usually a product that ISN'T live yet, so the
+    // list above — which is exactly what a client may see — won't contain it.
+    // Fetched separately and only for a trainer in preview; a real client
+    // passing the same ?product= gets null and an ordinary shop.
+    loadPreviewOnlyProduct({
+      trainerId: profile.trainerId,
+      productId: openProductId,
+      isPreview: active.isPreview,
     }),
   ])
 
@@ -96,22 +91,48 @@ export default async function MyShopPage() {
         <ShopGrid
           acceptPayments={acceptPayments}
           currency={profile.trainer.payoutCurrency}
-          products={products.map(p => ({
-            id: p.id,
-            name: p.name,
-            description: p.description,
-            kind: p.kind as 'PHYSICAL' | 'DIGITAL',
-            priceCents: p.priceCents,
-            salePriceCents: p.salePriceCents,
-            stockCount: p.stockCount,
-            imageUrl: p.imageUrl,
-            downloadUrl: p.downloadUrl,
-            category: p.category,
-            featured: p.featured,
-            variants: p.variants,
-            requested: requestedIds.has(p.id),
-            purchased: purchasedIds.has(p.id),
-          }))}
+          openProductId={openProductId}
+          products={[
+            ...products.map(p => ({
+              id: p.id,
+              name: p.name,
+              description: p.description,
+              kind: p.kind as 'PHYSICAL' | 'DIGITAL',
+              priceCents: p.priceCents,
+              salePriceCents: p.salePriceCents,
+              stockCount: p.stockCount,
+              imageUrl: p.imageUrl,
+              downloadUrl: p.downloadUrl,
+              category: p.category,
+              featured: p.featured,
+              variants: p.variants,
+              requested: requestedIds.has(p.id),
+              purchased: purchasedIds.has(p.id),
+            })),
+            // Rides along so the sheet has something to open, flagged so the
+            // GRID leaves it out — the grid is meant to be exactly what the
+            // client sees, and a hidden product sitting in it would be the one
+            // thing a preview must never claim.
+            ...(hiddenPreview
+              ? [{
+                  id: hiddenPreview.id,
+                  name: hiddenPreview.name,
+                  description: hiddenPreview.description,
+                  kind: hiddenPreview.kind as 'PHYSICAL' | 'DIGITAL',
+                  priceCents: hiddenPreview.priceCents,
+                  salePriceCents: hiddenPreview.salePriceCents,
+                  stockCount: hiddenPreview.stockCount,
+                  imageUrl: hiddenPreview.imageUrl,
+                  downloadUrl: hiddenPreview.downloadUrl,
+                  category: hiddenPreview.category,
+                  featured: hiddenPreview.featured,
+                  variants: hiddenPreview.variants,
+                  requested: false,
+                  purchased: false,
+                  hiddenFromShop: true,
+                }]
+              : []),
+          ]}
         />
       </div>
     </div>
