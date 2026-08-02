@@ -189,6 +189,142 @@ test('an item is edited on its own page, in rich text, and shows who has it', as
   }
 })
 
+// ── Organising the categories ───────────────────────────────────────────────
+// The order a trainer drags their categories into is the order getLibraryTree
+// reads, so it sets the landing grid, the desktop rail and the drill-down on a
+// phone. These make their own categories rather than leaning on the seed: the
+// specs share one database, and a second seeded category would move counts
+// under every other library test.
+
+const TEMP_A = 'E2E Yak Manners'
+const TEMP_B = 'E2E Zebra Recall'
+
+async function makeCategory(page: Page, name: string): Promise<string> {
+  const res = await page.request.post('/api/library/types', { data: { name } })
+  expect(res.status()).toBe(201)
+  return (await res.json()).id as string
+}
+
+test('categories are dragged into the order the trainer wants', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await login(page, SEED.owner.email, SEED.owner.password)
+
+  // Created in this order, so they arrive at the end of the list in it.
+  const yakId = await makeCategory(page, TEMP_A)
+  const zebraId = await makeCategory(page, TEMP_B)
+  const prisma = db()
+
+  try {
+    await page.goto('/library')
+    // List view, so the grid is one column and "up" is the row above — in the
+    // two-across grid the same keypress means something else.
+    await page.getByRole('button', { name: 'List view' }).click()
+
+    const categories = page.getByRole('region', { name: 'Categories' })
+    const names = categories.getByRole('link')
+    await expect(names.filter({ hasText: TEMP_A })).toBeVisible()
+
+    // Yak was made first, so it sits above Zebra.
+    const before = await names.allInnerTexts()
+    expect(before.findIndex(t => t.includes(TEMP_A))).toBeLessThan(
+      before.findIndex(t => t.includes(TEMP_B)),
+    )
+
+    // Dragged by the keyboard rather than the mouse: dnd-kit ships a keyboard
+    // sensor for exactly this, and it is the same code path a pointer drag ends
+    // in — without the flake of synthesising drag coordinates.
+    //
+    // Each key gets its own beat. dnd-kit settles a lift asynchronously — it
+    // measures every droppable rect first — and three presses fired back to
+    // back arrive before it is listening, which reads as a category that lifts
+    // and then never lets go.
+    const grips = categories.getByRole('button', { name: 'Drag to reorder' })
+    const zebra = grips.nth(await names.count() - 1)
+    await zebra.focus()
+
+    await page.keyboard.press('Space')
+    await expect(zebra).toHaveAttribute('aria-pressed', 'true')
+
+    await page.keyboard.press('ArrowUp')
+    await page.waitForTimeout(250)
+
+    await page.keyboard.press('Space')
+    // Nothing is being held any more — the drop committed rather than the drag
+    // still sitting open, which is the difference the DOM order below depends
+    // on: dnd-kit moves items with transforms mid-drag and only re-renders the
+    // list when onDragEnd lands.
+    await expect(
+      categories.getByRole('button', { name: 'Drag to reorder', pressed: true }),
+    ).toHaveCount(0)
+
+    // The page moved it…
+    await expect(async () => {
+      const after = await names.allInnerTexts()
+      expect(after.findIndex(t => t.includes(TEMP_B))).toBeLessThan(
+        after.findIndex(t => t.includes(TEMP_A)),
+      )
+    }).toPass({ timeout: 10_000 })
+
+    // …and it stuck. This is the assertion that matters: an order that only
+    // exists in React state is a page that rearranges itself on reload.
+    await expect(async () => {
+      const rows = await prisma.libraryType.findMany({
+        where: { id: { in: [yakId, zebraId] } },
+        select: { id: true, order: true },
+      })
+      const order = Object.fromEntries(rows.map(r => [r.id, r.order]))
+      expect(order[zebraId]).toBeLessThan(order[yakId]!)
+    }).toPass({ timeout: 10_000 })
+
+    // And a fresh load agrees — the rail reads the same `order` the grid does.
+    await page.reload()
+    await expect(async () => {
+      const reloaded = await page.getByRole('region', { name: 'Categories' }).getByRole('link').allInnerTexts()
+      expect(reloaded.findIndex(t => t.includes(TEMP_B))).toBeLessThan(
+        reloaded.findIndex(t => t.includes(TEMP_A)),
+      )
+    }).toPass({ timeout: 10_000 })
+  } finally {
+    await prisma.libraryType.deleteMany({ where: { id: { in: [yakId, zebraId] } } })
+    await prisma.$disconnect()
+  }
+})
+
+test('another business’s categories cannot be reordered', async ({ page }) => {
+  await login(page, SEED.owner.email, SEED.owner.password)
+  const prisma = db()
+
+  try {
+    // Business B's category, reached through the theme the seed pins.
+    const theirs = await prisma.libraryTheme.findUnique({
+      where: { id: LIB.businessBThemeId },
+      select: { typeId: true },
+    })
+    const theirTypeId = theirs!.typeId
+    const wasOrder = (await prisma.libraryType.findUnique({
+      where: { id: theirTypeId }, select: { order: true },
+    }))!.order
+
+    // Alone, it is simply not found.
+    const alone = await page.request.post('/api/library/types/reorder', { data: { ids: [theirTypeId] } })
+    expect(alone.status()).toBe(404)
+
+    // And smuggled in beside a category Business A really does own, the whole
+    // request is refused — not partly applied to the caller's own rows.
+    const mixed = await page.request.post('/api/library/types/reorder', {
+      data: { ids: [theirTypeId, LIB.typeId] },
+    })
+    expect(mixed.status()).toBe(404)
+
+    const after = await prisma.libraryType.findUnique({
+      where: { id: theirTypeId }, select: { order: true },
+    })
+    expect(after!.order).toBe(wasOrder)
+  } finally {
+    await prisma.$disconnect()
+  }
+})
+
 test('another business’s library is unreachable', async ({ page }) => {
   await login(page, SEED.owner.email, SEED.owner.password)
 
