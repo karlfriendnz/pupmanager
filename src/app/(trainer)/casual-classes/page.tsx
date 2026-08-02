@@ -8,6 +8,7 @@ import { DropInsView } from './drop-ins-view'
 import type { Metadata } from 'next'
 import { addonSettingsHref } from '@/lib/configurable-features'
 import { notYetShowingBadge } from '@/lib/offering-visibility'
+import { listOfferingTags } from '@/lib/tags'
 
 export const metadata: Metadata = { title: 'Casual Classes' }
 
@@ -43,7 +44,7 @@ export default async function DropInsPage() {
 
   const now = new Date()
 
-  const [runs, trainer] = await Promise.all([
+  const [runs, trainer, tagIndex] = await Promise.all([
     prisma.classRun.findMany({
       // Puppy schools are drop-in-flagged (each day-part books like a drop-in)
       // but live in their own workspace, so keep them off the drop-ins list.
@@ -69,11 +70,15 @@ export default async function DropInsPage() {
       },
     }),
     prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { payoutCurrency: true } }),
+    // The tags live on the PACKAGE behind each run, not on the run itself —
+    // one query for the trainer's whole arrangement and everything carrying it.
+    listOfferingTags(trainerId),
   ])
 
   return (
     <DropInsView
       currency={(trainer?.payoutCurrency ?? 'NZD').toUpperCase()}
+      tagOrder={tagIndex.order}
       runs={runs.map(r => {
         const capacity = r.capacity ?? r.package.capacity ?? null
         const enrolled = r.enrollments.length
@@ -104,6 +109,7 @@ export default async function DropInsPage() {
             { status: r.status, startDate: r.startDate, lastSessionAt: r.sessions[r.sessions.length - 1]?.scheduledAt },
             now,
           ),
+          tags: tagIndex.byPackage[r.package.id] ?? [],
         }
       })}
     />

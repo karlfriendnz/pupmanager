@@ -1,14 +1,16 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { GraduationCap, Users, MapPin, CalendarDays, Repeat, Pencil, Copy, UserCog, Route } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import { ConnectPaymentsModal } from '../settings/connect-payments-prompt'
 import {
   OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingButton, OfferingPage,
-  OfferingListBar, useOfferingView, OfferingItems, SortableOfferingList, SortableOfferingCard,   type OfferingFact, type OfferingBadge,
+  OfferingListBar, useOfferingView, OfferingItems, SortableOfferingList, SortableOfferingCard,
+  useOfferingGrouping, OfferingGroups,   type OfferingFact, type OfferingBadge,
 } from '@/components/shared/offering-card'
+import { canGroupByTag, type TagRef } from '@/lib/offering-grouping'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
 import { formatMoney } from '@/lib/money'
 
@@ -33,6 +35,8 @@ type RunRow = {
   /** Built, but held back from clients until its date — see offering-visibility. */
   notYetShowing?: boolean
   isPast: boolean
+  /** The tags on the PACKAGE behind this run — a run carries none of its own. */
+  tags: TagRef[]
 }
 
 const STATUS_TONE: Record<RunRow['status'], OfferingBadge['tone']> = {
@@ -46,14 +50,18 @@ const STATUS_TONE: Record<RunRow['status'], OfferingBadge['tone']> = {
 // the one place a class is defined AND scheduled. This list only links to it.
 export function ClassesView({
   runs: initialRuns,
+  tagOrder = [],
   connectName: initialConnectName = null,
   currency = 'NZD',
 }: {
   runs: RunRow[]
+  /** Tag ids in the trainer's own arrangement — group headings follow it. */
+  tagOrder?: string[]
   connectName?: string | null
   currency?: string
 }) {
   const [view, setView] = useOfferingView('classes')
+  const [grouped, setGrouped] = useOfferingGrouping('classes')
 
   const router = useRouter()
   // Set (to the new class's name) when the wizard bounced back here after
@@ -81,6 +89,41 @@ export function ClassesView({
     } finally { setCloning(null) }
   }
 
+  // Grouping is offered against the TAB, not the whole list — group what is
+  // shown. A Past tab with nothing tagged in it can only produce one heading
+  // reading "No tag", so the control goes away there.
+  const canGroup = canGroupByTag(shown, r => r.tags)
+  const groupNow = grouped && canGroup
+
+  // One card, both branches, so the grouped list and the draggable one cannot
+  // drift. `handle` is absent while grouped, deliberately — see OfferingGroups.
+  function classCard(r: RunRow, handle?: ReactNode) {
+    return (
+      <OfferingCard
+        key={r.id}
+        href={`/classes/${r.id}`}
+        title={r.name}
+        description={r.description}
+        imageUrl={r.imageUrl}
+        tile={{ icon: <GraduationCap className="h-5 w-5" />, className: 'bg-blue-50 text-blue-600' }}
+        dimmed={r.isPast}
+        dragHandle={handle}
+        badges={[
+          // First, and never hidden — a trainer must never wonder why a
+          // client can't see their class.
+          ...(r.notYetShowing ? [{ label: 'Not showing yet', tone: 'warn' as const }] : []),
+          { label: r.status.charAt(0) + r.status.slice(1).toLowerCase(), tone: STATUS_TONE[r.status] },
+          ...(r.priceCents != null ? [{ label: formatMoney(r.priceCents, currency), tone: 'accent' as const }] : []),
+        ]}
+        facts={classFacts(r)}
+        actions={[
+          { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: () => router.push(`/packages/${r.packageId}/edit`) },
+          { icon: <Copy className="h-4 w-4" />, label: 'Duplicate', onClick: () => clone(r.packageId), disabled: cloning === r.packageId },
+        ]}
+      />
+    )
+  }
+
   return (
     <>
       <PageHeader
@@ -103,6 +146,8 @@ export function ClassesView({
               view={view}
               onView={setView}
               action={<AddOfferingButton href="/offerings/new?kind=group" label="New class" />}
+              grouped={canGroup ? grouped : undefined}
+              onGrouped={canGroup ? setGrouped : undefined}
             >
               <OfferingTabs
                 value={tab}
@@ -122,34 +167,16 @@ export function ClassesView({
                   ? 'Classes move here once their last session has been, or when you mark them complete or cancelled.'
                   : 'Every class you have has finished. Start a new one to fill the calendar.'}
               />
+            ) : groupNow ? (
+              <OfferingGroups rows={shown} tagsOf={r => r.tags} tagOrder={tagOrder} view={view}>
+                {r => classCard(r)}
+              </OfferingGroups>
             ) : (
               <SortableOfferingList ids={shown.map(r => r.id)} onReorder={reorder}>
                 <OfferingItems view={view}>
                   {shown.map(r => (
                     <SortableOfferingCard key={r.id} id={r.id}>
-                      {handle => (
-                        <OfferingCard
-                          href={`/classes/${r.id}`}
-                          title={r.name}
-                          description={r.description}
-                          imageUrl={r.imageUrl}
-                          tile={{ icon: <GraduationCap className="h-5 w-5" />, className: 'bg-blue-50 text-blue-600' }}
-                          dimmed={r.isPast}
-                          dragHandle={handle}
-                          badges={[
-                            // First, and never hidden — a trainer must never
-                            // wonder why a client can't see their class.
-                            ...(r.notYetShowing ? [{ label: 'Not showing yet', tone: 'warn' as const }] : []),
-                            { label: r.status.charAt(0) + r.status.slice(1).toLowerCase(), tone: STATUS_TONE[r.status] },
-                            ...(r.priceCents != null ? [{ label: formatMoney(r.priceCents, currency), tone: 'accent' as const }] : []),
-                          ]}
-                          facts={classFacts(r)}
-                          actions={[
-                            { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: () => router.push(`/packages/${r.packageId}/edit`) },
-                            { icon: <Copy className="h-4 w-4" />, label: 'Duplicate', onClick: () => clone(r.packageId), disabled: cloning === r.packageId },
-                          ]}
-                        />
-                      )}
+                      {handle => classCard(r, handle)}
                     </SortableOfferingCard>
                   ))}
                 </OfferingItems>

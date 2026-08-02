@@ -5,6 +5,7 @@ import { hasAddon } from '@/lib/billing'
 import { PackagesView } from './packages-view'
 import { isPackagePast, type PackageAssignment } from './past-packages'
 import { notYetShowingBadge, visibleFromDateStr } from '@/lib/offering-visibility'
+import { listOfferingTags } from '@/lib/tags'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: '1:1 Sessions' }
@@ -26,7 +27,7 @@ export default async function PackagesPage({
 
   const { connect } = await searchParams
 
-  const [packages, assignments, trainer] = await Promise.all([
+  const [packages, assignments, trainer, tagIndex] = await Promise.all([
     prisma.package.findMany({
       // 1:1 packages only. A group package is the template behind a class and
       // belongs under Group Classes — listing it here showed the same thing in
@@ -52,6 +53,8 @@ export default async function PackagesPage({
       // trainer typed, for the "hold this back until" picker.
       select: { payoutCurrency: true, user: { select: { timezone: true } } },
     }),
+    // One query for every tag on the page, plus the trainer's tag arrangement.
+    listOfferingTags(trainerId),
   ])
   const currency = (trainer?.payoutCurrency ?? 'NZD').toUpperCase()
   const tz = trainer?.user?.timezone || 'Pacific/Auckland'
@@ -103,7 +106,9 @@ export default async function PackagesPage({
         // it and find the Curriculum tab.
         seriesSteps: p._count.sessionPlans,
         isPast: isPackagePast(byPackage.get(p.id) ?? [], now),
+        tags: tagIndex.byPackage[p.id] ?? [],
       }))}
+      tagOrder={tagIndex.order}
       connectName={connect ?? null}
       currency={currency}
     />

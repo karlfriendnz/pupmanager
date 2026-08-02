@@ -9,6 +9,7 @@ import { ClassesView } from './classes-view'
 import type { Metadata } from 'next'
 import { addonSettingsHref } from '@/lib/configurable-features'
 import { notYetShowingBadge } from '@/lib/offering-visibility'
+import { listOfferingTags } from '@/lib/tags'
 
 export const metadata: Metadata = { title: 'Group Classes' }
 
@@ -25,7 +26,7 @@ export default async function ClassesPage({
   // Gated by the Group classes add-on (default-on; hidden + blocked when off).
   if (!(await hasAddon(trainerId, 'classes'))) redirect(addonSettingsHref('classes'))
 
-  const [runs, trainer] = await Promise.all([
+  const [runs, trainer, tagIndex] = await Promise.all([
     prisma.classRun.findMany({
       // Group classes only. Drop-in classes and one-off events are ClassRuns
       // too, but they have their own pages — without this they'd be listed here
@@ -67,6 +68,10 @@ export default async function ClassesPage({
       where: { id: trainerId },
       select: { connectChargesEnabled: true, sandboxBilling: true, payoutCurrency: true },
     }),
+    // One query for every tag on the page, plus the trainer's tag arrangement.
+    // A run has no tags of its own — the tag is on the PACKAGE behind it, which
+    // is the thing a trainer edits, so it is looked up through packageId.
+    listOfferingTags(trainerId),
   ])
   const currency = (trainer?.payoutCurrency ?? 'NZD').toUpperCase()
 
@@ -109,7 +114,9 @@ export default async function ClassesPage({
           { status: r.status, startDate: r.startDate, lastSessionAt: r.sessions[0]?.scheduledAt },
           now,
         ),
+        tags: tagIndex.byPackage[r.package.id] ?? [],
       }))}
+      tagOrder={tagIndex.order}
       connectName={promptConnect ? (connect ?? null) : null}
       currency={currency}
     />

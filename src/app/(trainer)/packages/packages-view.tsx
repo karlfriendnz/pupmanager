@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Package as PackageIcon,
@@ -12,14 +12,16 @@ import { type PackageColor, type PkgRow } from './package-form'
 import { formatMoney } from '@/lib/money'
 import {
   OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingButton, OfferingPage,
-  OfferingListBar, useOfferingView, OfferingItems, SortableOfferingList, SortableOfferingCard,   type OfferingFact, type OfferingBadge,
+  OfferingListBar, useOfferingView, OfferingItems, SortableOfferingList, SortableOfferingCard,
+  useOfferingGrouping, OfferingGroups,   type OfferingFact, type OfferingBadge,
 } from '@/components/shared/offering-card'
+import { canGroupByTag, type TagRef } from '@/lib/offering-grouping'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
 
 export type { SessionFormOption } from './package-form'
 
 /** A package plus whether it's finished — see ./past-packages for the rule. */
-export type PackageListRow = PkgRow & { isPast: boolean }
+export type PackageListRow = PkgRow & { isPast: boolean; tags: TagRef[] }
 
 // Static class map — Tailwind purges dynamic class names so each package
 // colour needs its own listed pair here.
@@ -41,16 +43,20 @@ function packageIconClasses(color: PackageColor | null): string {
 
 export function PackagesView({
   initialPackages,
+  tagOrder = [],
   connectName = null,
   currency = 'NZD',
 }: {
   initialPackages: PackageListRow[]
+  /** Tag ids in the trainer's own arrangement — group headings follow it. */
+  tagOrder?: string[]
   // Set (to the new package's name) when we've just created a priced package
   // and want to pop the connect-Stripe modal over the list.
   connectName?: string | null
   currency?: string
 }) {
   const [view, setView] = useOfferingView('packages')
+  const [grouped, setGrouped] = useOfferingGrouping('packages')
 
   const router = useRouter()
   const [tab, setTab] = useState<'current' | 'past'>('current')
@@ -62,6 +68,37 @@ export function PackagesView({
   const current = packages.filter(p => !p.isPast)
   const past = packages.filter(p => p.isPast)
   const shown = tab === 'past' ? past : current
+
+  // Grouping is offered against the TAB, not the whole list: a Past tab with no
+  // tags on anything in it can only produce one heading reading "No tag", so
+  // the control goes away there even though Current still has it.
+  const canGroup = canGroupByTag(shown, p => p.tags)
+  const groupNow = grouped && canGroup
+
+  // One card, both branches. Written once so the grouped list and the
+  // draggable one cannot drift into two different cards — which is how the
+  // four offering lists ended up needing OfferingCard in the first place.
+  // `handle` is absent while grouped, deliberately: see OfferingGroups.
+  function packageCard(p: PackageListRow, handle?: ReactNode) {
+    return (
+      <OfferingCard
+        key={p.id}
+        href={`/packages/${p.id}`}
+        title={p.name}
+        description={p.description}
+        imageUrl={p.imageUrl}
+        tile={{ icon: <PackageIcon className="h-5 w-5" />, className: packageIconClasses(p.color) }}
+        badges={packageBadges(p, currency)}
+        facts={packageFacts(p)}
+        dimmed={p.isPast}
+        dragHandle={handle}
+        /* No row actions. Three icons on every card is a lot of chrome on a
+           list you mostly read, and the card already opens the offering —
+           where OfferingActions carries Edit, Duplicate and Delete. Nothing
+           is lost, it just takes one click to get to. */
+      />
+    )
+  }
 
   return (
     <>
@@ -85,6 +122,8 @@ export function PackagesView({
               view={view}
               onView={setView}
               action={<AddOfferingButton href="/offerings/new?kind=onetoone" label="New 1:1 session" />}
+              grouped={canGroup ? grouped : undefined}
+              onGrouped={canGroup ? setGrouped : undefined}
             >
               <OfferingTabs
                 value={tab}
@@ -104,29 +143,16 @@ export function PackagesView({
                   ? 'A 1:1 session moves here once everyone you assigned it to has had their last session. It stays put while anyone still has one to come.'
                   : 'Every 1:1 session you have has run its course. Make a new one, or duplicate one from Past to start it again.'}
               />
+            ) : groupNow ? (
+              <OfferingGroups rows={shown} tagsOf={p => p.tags} tagOrder={tagOrder} view={view}>
+                {p => packageCard(p)}
+              </OfferingGroups>
             ) : (
               <SortableOfferingList ids={shown.map(p => p.id)} onReorder={reorder}>
                 <OfferingItems view={view}>
                   {shown.map(p => (
                     <SortableOfferingCard key={p.id} id={p.id}>
-                      {handle => (
-                        <OfferingCard
-                          href={`/packages/${p.id}`}
-                          title={p.name}
-                          description={p.description}
-                          imageUrl={p.imageUrl}
-                          tile={{ icon: <PackageIcon className="h-5 w-5" />, className: packageIconClasses(p.color) }}
-                          badges={packageBadges(p, currency)}
-                          facts={packageFacts(p)}
-                          dimmed={p.isPast}
-                          dragHandle={handle}
-                          /* No row actions. Three icons on every card is a lot
-                             of chrome on a list you mostly read, and the card
-                             already opens the offering — where OfferingActions
-                             carries Edit, Duplicate and Delete. Nothing is lost,
-                             it just takes one click to get to. */
-                        />
-                      )}
+                      {handle => packageCard(p, handle)}
                     </SortableOfferingCard>
                   ))}
                 </OfferingItems>

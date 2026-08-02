@@ -8,6 +8,7 @@ import { formatDate } from '@/lib/utils'
 import { EventsView } from './events-view'
 import { addonSettingsHref } from '@/lib/configurable-features'
 import { notYetShowingBadge } from '@/lib/offering-visibility'
+import { listOfferingTags } from '@/lib/tags'
 
 export const metadata: Metadata = { title: 'Events' }
 
@@ -27,7 +28,9 @@ export default async function EventsPage() {
   if (!trainerId) redirect('/login')
   if (!(await hasAddon(trainerId, 'events'))) redirect(addonSettingsHref('events'))
 
-  const runs = await prisma.classRun.findMany({
+  // The tags live on the PACKAGE behind each event, not on the run — one query
+  // for the trainer's whole tag arrangement and everything carrying it.
+  const [runs, tagIndex] = await Promise.all([prisma.classRun.findMany({
     where: { trainerId, package: EVENT_PACKAGE },
     // Trainer's arranged order first; date breaks ties (and is the whole order
     // until anything has been dragged).
@@ -47,7 +50,7 @@ export default async function EventsPage() {
       // rows would show "6 of 30 booked" for an event that has sold 14.
       enrollments: { where: { status: 'ENROLLED' }, select: { id: true, quantity: true } },
     },
-  })
+  }), listOfferingTags(trainerId)])
 
   const now = new Date()
 
@@ -74,8 +77,10 @@ export default async function EventsPage() {
           // An event is done once its date has been, or it was closed off.
           notYetShowing: notYetShowingBadge(r.package.visibleFrom, now) !== null,
           isPast: r.status === 'COMPLETED' || r.status === 'CANCELLED' || at.getTime() < now.getTime(),
+          tags: tagIndex.byPackage[r.package.id] ?? [],
         }
       })}
+      tagOrder={tagIndex.order}
       currency={(await prisma.trainerProfile.findUnique({
         where: { id: trainerId },
         select: { payoutCurrency: true },

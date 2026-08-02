@@ -1,13 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { Ticket, Users, CalendarDays, MapPin, Repeat, Pencil, Copy } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import {
   OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingButton, OfferingPage,
-  OfferingListBar, useOfferingView, OfferingItems, SortableOfferingList, SortableOfferingCard,   type OfferingFact,
+  OfferingListBar, useOfferingView, OfferingItems, SortableOfferingList, SortableOfferingCard,
+  useOfferingGrouping, OfferingGroups,   type OfferingFact,
 } from '@/components/shared/offering-card'
+import { canGroupByTag, type TagRef } from '@/lib/offering-grouping'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
 import { formatMoney } from '@/lib/money'
 
@@ -30,10 +32,18 @@ export type RunRow = {
   /** Built, but held back from clients until its date — see offering-visibility. */
   notYetShowing?: boolean
   isPast: boolean
+  /** The tags on the PACKAGE behind this run — a run carries none of its own. */
+  tags: TagRef[]
 }
 
-export function DropInsView({ runs: initialRuns, currency = 'NZD' }: { runs: RunRow[]; currency?: string }) {
+export function DropInsView({ runs: initialRuns, tagOrder = [], currency = 'NZD' }: {
+  runs: RunRow[]
+  /** Tag ids in the trainer's own arrangement — group headings follow it. */
+  tagOrder?: string[]
+  currency?: string
+}) {
   const [view, setView] = useOfferingView('casual-classes')
+  const [grouped, setGrouped] = useOfferingGrouping('casual-classes')
 
   const router = useRouter()
   const [tab, setTab] = useState<'current' | 'past'>('current')
@@ -53,6 +63,48 @@ export function DropInsView({ runs: initialRuns, currency = 'NZD' }: { runs: Run
       const created = await res.json() as { id: string }
       router.push(`/packages/${created.id}/edit`)
     } finally { setCloning(null) }
+  }
+
+  // Grouping is offered against the TAB, not the whole list — group what is
+  // shown. A Past tab with nothing tagged in it can only produce one heading
+  // reading "No tag", so the control goes away there.
+  const canGroup = canGroupByTag(shown, r => r.tags)
+  const groupNow = grouped && canGroup
+
+  // One card, both branches, so the grouped list and the draggable one cannot
+  // drift. `handle` is absent while grouped, deliberately — see OfferingGroups.
+  function dropInCard(r: RunRow, handle?: ReactNode) {
+    return (
+      <OfferingCard
+        key={r.id}
+        href={`/casual-classes/${r.id}`}
+        title={r.name}
+        description={r.description}
+        imageUrl={r.imageUrl}
+        tile={{ icon: <Ticket className="h-5 w-5" />, className: 'bg-amber-50 text-amber-600' }}
+        dimmed={r.isPast}
+        dragHandle={handle}
+        badges={[
+          // First, and never hidden — a trainer must never wonder why a
+          // client can't see their class.
+          ...(r.notYetShowing ? [{ label: 'Not showing yet', tone: 'warn' as const }] : []),
+          ...(r.dropInPriceCents != null
+            ? [{ label: `${formatMoney(r.dropInPriceCents, currency)} / session`, tone: 'warn' as const }]
+            : []),
+          ...(r.dropInCount > 0
+            ? [{ label: `${r.dropInCount} casual booking${r.dropInCount === 1 ? '' : 's'}`, tone: 'muted' as const }]
+            : []),
+        ]}
+        facts={dropInFacts(r)}
+        note={r.upcoming.length === 0 && !r.isPast
+          ? { label: 'No sessions left to drop into', tone: 'warn' }
+          : null}
+        actions={[
+          { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: () => router.push(`/packages/${r.packageId}/edit`) },
+          { icon: <Copy className="h-4 w-4" />, label: 'Duplicate', onClick: () => clone(r.packageId), disabled: cloning === r.packageId },
+        ]}
+      />
+    )
   }
 
   return (
@@ -77,6 +129,8 @@ export function DropInsView({ runs: initialRuns, currency = 'NZD' }: { runs: Run
               view={view}
               onView={setView}
               action={<AddOfferingButton href="/offerings/new?kind=dropin" label="New casual class" />}
+              grouped={canGroup ? grouped : undefined}
+              onGrouped={canGroup ? setGrouped : undefined}
             >
               <OfferingTabs
                 value={tab}
@@ -96,41 +150,16 @@ export function DropInsView({ runs: initialRuns, currency = 'NZD' }: { runs: Run
                   ? 'Casual classes move here once their last session has been.'
                   : 'No classes are currently taking casual bookings. Set one up and clients can book a single session.'}
               />
+            ) : groupNow ? (
+              <OfferingGroups rows={shown} tagsOf={r => r.tags} tagOrder={tagOrder} view={view}>
+                {r => dropInCard(r)}
+              </OfferingGroups>
             ) : (
               <SortableOfferingList ids={shown.map(r => r.id)} onReorder={reorder}>
                 <OfferingItems view={view}>
                   {shown.map(r => (
                     <SortableOfferingCard key={r.id} id={r.id}>
-                      {handle => (
-                        <OfferingCard
-                          href={`/casual-classes/${r.id}`}
-                          title={r.name}
-                          description={r.description}
-                          imageUrl={r.imageUrl}
-                          tile={{ icon: <Ticket className="h-5 w-5" />, className: 'bg-amber-50 text-amber-600' }}
-                          dimmed={r.isPast}
-                          dragHandle={handle}
-                          badges={[
-                            // First, and never hidden — a trainer must never
-                            // wonder why a client can't see their class.
-                            ...(r.notYetShowing ? [{ label: 'Not showing yet', tone: 'warn' as const }] : []),
-                            ...(r.dropInPriceCents != null
-                              ? [{ label: `${formatMoney(r.dropInPriceCents, currency)} / session`, tone: 'warn' as const }]
-                              : []),
-                            ...(r.dropInCount > 0
-                              ? [{ label: `${r.dropInCount} casual booking${r.dropInCount === 1 ? '' : 's'}`, tone: 'muted' as const }]
-                              : []),
-                          ]}
-                          facts={dropInFacts(r)}
-                          note={r.upcoming.length === 0 && !r.isPast
-                            ? { label: 'No sessions left to drop into', tone: 'warn' }
-                            : null}
-                          actions={[
-                            { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: () => router.push(`/packages/${r.packageId}/edit`) },
-                            { icon: <Copy className="h-4 w-4" />, label: 'Duplicate', onClick: () => clone(r.packageId), disabled: cloning === r.packageId },
-                          ]}
-                        />
-                      )}
+                      {handle => dropInCard(r, handle)}
                     </SortableOfferingCard>
                   ))}
                 </OfferingItems>

@@ -1,13 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { CalendarPlus, MapPin, Users, Ticket, Pencil, Copy, CalendarDays } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import {
   OfferingCard, OfferingTabs, OfferingEmpty, OfferingTabEmpty, AddOfferingButton, OfferingPage,
-  OfferingListBar, useOfferingView, OfferingItems, SortableOfferingList, SortableOfferingCard,   type OfferingFact,
+  OfferingListBar, useOfferingView, OfferingItems, SortableOfferingList, SortableOfferingCard,
+  useOfferingGrouping, OfferingGroups,   type OfferingFact,
 } from '@/components/shared/offering-card'
+import { canGroupByTag, type TagRef } from '@/lib/offering-grouping'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
 import { formatMoney } from '@/lib/money'
 
@@ -30,10 +32,18 @@ export type EventRow = {
   /** Built, but held back from clients until its date — see offering-visibility. */
   notYetShowing?: boolean
   isPast: boolean
+  /** The tags on the PACKAGE behind this event — a run carries none of its own. */
+  tags: TagRef[]
 }
 
-export function EventsView({ events: initialEvents, currency }: { events: EventRow[]; currency: string }) {
+export function EventsView({ events: initialEvents, tagOrder = [], currency }: {
+  events: EventRow[]
+  /** Tag ids in the trainer's own arrangement — group headings follow it. */
+  tagOrder?: string[]
+  currency: string
+}) {
   const [view, setView] = useOfferingView('events')
+  const [grouped, setGrouped] = useOfferingGrouping('events')
 
   const router = useRouter()
   const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming')
@@ -55,6 +65,44 @@ export function EventsView({ events: initialEvents, currency }: { events: EventR
       const created = await res.json() as { id: string }
       router.push(`/packages/${created.id}/edit`)
     } finally { setCloning(null) }
+  }
+
+  // Grouping is offered against the TAB, not the whole list — group what is
+  // shown. A Past tab with nothing tagged in it can only produce one heading
+  // reading "No tag", so the control goes away there.
+  const canGroup = canGroupByTag(shown, e => e.tags)
+  const groupNow = grouped && canGroup
+
+  // One card, both branches, so the grouped list and the draggable one cannot
+  // drift. `handle` is absent while grouped, deliberately — see OfferingGroups.
+  function eventCard(e: EventRow, handle?: ReactNode) {
+    const ticket = ticketLabel(e, currency)
+    return (
+      <OfferingCard
+        key={e.id}
+        // An event has its own screen. It used to open the group-class one,
+        // which lit up Group Classes in the nav for something that isn't a class.
+        href={`/events/${e.id}`}
+        title={e.name}
+        description={e.description}
+        imageUrl={e.imageUrl}
+        tile={{ icon: <CalendarPlus className="h-5 w-5" />, className: 'bg-violet-50 text-violet-600' }}
+        dimmed={e.isPast}
+        dragHandle={handle}
+        badges={[
+          // First, and never hidden — a trainer must never wonder why a
+          // client can't see their event.
+          ...(e.notYetShowing ? [{ label: 'Not showing yet', tone: 'warn' as const }] : []),
+          ...(e.status === 'CANCELLED' ? [{ label: 'Cancelled', tone: 'bad' as const }] : []),
+          ...(ticket ? [{ label: ticket, tone: 'accent' as const }] : []),
+        ]}
+        facts={eventFacts(e, currency)}
+        actions={[
+          { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: () => router.push(`/packages/${e.packageId}/edit`) },
+          { icon: <Copy className="h-4 w-4" />, label: 'Duplicate', onClick: () => clone(e.packageId), disabled: cloning === e.packageId },
+        ]}
+      />
+    )
   }
 
   return (
@@ -79,6 +127,8 @@ export function EventsView({ events: initialEvents, currency }: { events: EventR
               view={view}
               onView={setView}
               action={<AddOfferingButton href="/offerings/new?kind=oneoff" label="New event" />}
+              grouped={canGroup ? grouped : undefined}
+              onGrouped={canGroup ? setGrouped : undefined}
             >
               <OfferingTabs
                 value={tab}
@@ -98,37 +148,16 @@ export function EventsView({ events: initialEvents, currency }: { events: EventR
                   ? 'Events move here once their date has been, or when you mark them complete or cancelled.'
                   : 'Every event you have has been. Put another one in the diary.'}
               />
+            ) : groupNow ? (
+              <OfferingGroups rows={shown} tagsOf={e => e.tags} tagOrder={tagOrder} view={view}>
+                {e => eventCard(e)}
+              </OfferingGroups>
             ) : (
               <SortableOfferingList ids={shown.map(e => e.id)} onReorder={reorder}>
                 <OfferingItems view={view}>
                   {shown.map(e => (
                     <SortableOfferingCard key={e.id} id={e.id}>
-                      {handle => (
-                        <OfferingCard
-                          // An event has its own screen. It used to open the
-                          // group-class one, which lit up Group Classes in the
-                          // nav for something that isn't a class.
-                          href={`/events/${e.id}`}
-                          title={e.name}
-                          description={e.description}
-                          imageUrl={e.imageUrl}
-                          tile={{ icon: <CalendarPlus className="h-5 w-5" />, className: 'bg-violet-50 text-violet-600' }}
-                          dimmed={e.isPast}
-                          dragHandle={handle}
-                          badges={[
-                            // First, and never hidden — a trainer must never
-                            // wonder why a client can't see their event.
-                            ...(e.notYetShowing ? [{ label: 'Not showing yet', tone: 'warn' as const }] : []),
-                            ...(e.status === 'CANCELLED' ? [{ label: 'Cancelled', tone: 'bad' as const }] : []),
-                            ...(ticketLabel(e, currency) ? [{ label: ticketLabel(e, currency)!, tone: 'accent' as const }] : []),
-                          ]}
-                          facts={eventFacts(e, currency)}
-                          actions={[
-                            { icon: <Pencil className="h-4 w-4" />, label: 'Edit', onClick: () => router.push(`/packages/${e.packageId}/edit`) },
-                            { icon: <Copy className="h-4 w-4" />, label: 'Duplicate', onClick: () => clone(e.packageId), disabled: cloning === e.packageId },
-                          ]}
-                        />
-                      )}
+                      {handle => eventCard(e, handle)}
                     </SortableOfferingCard>
                   ))}
                 </OfferingItems>
