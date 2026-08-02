@@ -13,8 +13,11 @@ import { DaycarePanel, type DaycareSchool } from './daycare-panel'
 //   • no daycare yet          → <PuppySchoolSetup>, the same form the board
 //                               used to open (components/trainer/puppy-school-setup)
 //   • the offering's name/price → the real package editor at /packages/:id/edit
-//   • the day-parts            → <SessionSlotsEditor>, the same slot editor the
-//                               drop-in class form uses (components/shared/session-slots)
+//   • the day-parts            → a table you read down, one row per part, and a
+//                               row opens <SessionSlotsEditor> — the same slot
+//                               editor the drop-in class form uses
+//                               (components/shared/session-slots) — in a
+//                               FullScreenSheet
 // Nothing here is a second editor of anything.
 export async function DaycareTab({ companyId }: { companyId: string }) {
   const [pkgs, locations, profile] = await Promise.all([
