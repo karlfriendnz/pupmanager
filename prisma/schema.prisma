@@ -610,6 +610,18 @@ model TrainerProfile {
   // lower-case (Stripe convention). Seeded from signupCountry on first onboard.
   // SEPARATE from the per-checkout currency used by the subscription flow.
   payoutCurrency            String?
+  // ─── Stripe Terminal / Tap to Pay ──────────────────────────────────────────
+  // Terminal requires every in-person payment to be attached to a LOCATION, so
+  // Stripe knows where the tap physically happened (fraud + dispute rules).
+  // Locations live ON THE CONNECTED ACCOUNT, not on the platform, because we
+  // take direct charges — so this is created with the Stripe-Account header and
+  // is meaningless without connectAccountId. Created lazily the first time a
+  // trainer taps, from their business name + postal address.
+  //
+  // Also the name the CARDHOLDER sees on the tap screen: Stripe shows the
+  // location's display_name, so a wrong value here is a wrong merchant name on
+  // a stranger's phone. It is re-derived if the trainer renames their business.
+  terminalLocationId        String?
   // What this trainer calls the things in their own left menu — a map of nav key
   // to their word for it ({"/packages": "Private lessons"}). A groomer says
   // "Services", a daycare says "Programmes"; the software shouldn't insist.
