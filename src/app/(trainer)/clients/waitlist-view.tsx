@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
-import { Plus, X, GripVertical, Clock, CalendarCheck, UserCheck, Trash2, Pencil } from 'lucide-react'
+import { X, GripVertical, Clock, CalendarCheck, UserCheck, Trash2, Pencil } from 'lucide-react'
 import {
   PointerSensor,
   useSensor,
@@ -16,6 +16,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import { DndArea } from '@/components/shared/dnd-area'
+import { AddOfferingButton, OfferingListBar, OfferingTabs } from '@/components/shared/offering-card'
 import {
   SortableContext,
   useSortable,
@@ -135,34 +136,29 @@ export function WaitlistView({
 
   return (
     <div>
-      <div className="flex items-start justify-between gap-3 mb-5">
-        <p className="text-sm text-slate-500 max-w-md">
-          People you want to take on but have no slot for yet — drag to prioritise, book when one opens.
-        </p>
-        <Button onClick={() => setShowAdd(true)} className="flex-shrink-0">
-          <Plus className="h-4 w-4" /> Add to waitlist
-        </Button>
-      </div>
-      {error && <Alert variant="error" className="mb-4">{error}</Alert>}
+      {/* The status filters ARE the tabs — they are one exclusive choice over
+          one list, with a count each, which is what tabs are for. They were
+          pill chips, the one control shape the house style has no room for. */}
+      <OfferingListBar
+        action={<AddOfferingButton label="Add to waitlist" onClick={() => setShowAdd(true)} />}
+      >
+        <OfferingTabs
+          value={filter}
+          onChange={setFilter}
+          tabs={FILTERS.map(f => ({
+            id: f.key,
+            label: f.label,
+            count: f.key === 'ALL' ? entries.length : entries.filter(e => e.status === f.key).length,
+          }))}
+        />
+      </OfferingListBar>
 
-        <div className="flex gap-1.5 mb-5 flex-wrap">
-          {FILTERS.map(f => {
-            const count = f.key === 'ALL' ? entries.length : entries.filter(e => e.status === f.key).length
-            return (
-              <button
-                key={f.key}
-                onClick={() => setFilter(f.key)}
-                className={`text-sm px-3 py-1.5 rounded-full border transition-colors ${
-                  filter === f.key
-                    ? 'border-blue-500 bg-blue-50 text-blue-700'
-                    : 'border-slate-200 text-slate-600 hover:border-slate-300'
-                }`}
-              >
-                {f.label} <span className="text-slate-400">{count}</span>
-              </button>
-            )
-          })}
-        </div>
+      {/* Kept, where the rest of the helper prose went: that the ORDER is
+          something the trainer sets, and how, is the one thing about this
+          screen no icon says on its own. */}
+      <p className="mb-3 text-sm text-slate-500">Drag to prioritise — book them when a slot opens.</p>
+
+      {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
         {visible.length === 0 ? (
           <Card>

@@ -436,8 +436,16 @@ export function OfferingViewToggle({ value, onChange }: { value: OfferingView; o
  */
 export function OfferingListBar({ children, view, onView, action, grouped, onGrouped }: {
   children?: ReactNode
-  view: OfferingView
-  onView: (v: OfferingView) => void
+  /**
+   * The chosen view. OPTIONAL, and omitting it hides the toggle — for a list
+   * where a grid would be a worse way to read the same thing. The waitlist is
+   * the case: it is a queue the trainer has dragged into the order they mean
+   * to work it, and a grid wraps that order left-to-right across columns,
+   * which is precisely how you lose "who is next". A control with nothing
+   * useful behind it is worse than no control.
+   */
+  view?: OfferingView
+  onView?: (v: OfferingView) => void
   /** The "new one of these" action, sat beside the view toggle. */
   action?: ReactNode
   /**
@@ -457,7 +465,7 @@ export function OfferingListBar({ children, view, onView, action, grouped, onGro
       <div className={`flex flex-shrink-0 items-center gap-2 ${children ? 'pb-1.5' : ''}`}>
         {action}
         {canGroup && <OfferingGroupToggle value={grouped} onChange={onGrouped} />}
-        <OfferingViewToggle value={view} onChange={onView} />
+        {view !== undefined && onView !== undefined && <OfferingViewToggle value={view} onChange={onView} />}
       </div>
     </div>
   )
@@ -654,7 +662,12 @@ export function OfferingTabs<T extends string>({
   return (
     // The hairline these sit on belongs to OfferingListBar, so the view toggle
     // shares it; `-mb-px` laps the active underline over it.
-    <div className="flex gap-5">
+    //
+    // Scrolls sideways rather than running under the add button beside it. Two
+    // tabs and a button fit a 390px phone; the waitlist's four do not, and the
+    // ones that did not fit were simply invisible underneath it. `no-scrollbar`
+    // because a rail here would be the second one on screen.
+    <div className="flex gap-5 overflow-x-auto no-scrollbar">
       {tabs.map(t => (
         <button
           key={t.id}

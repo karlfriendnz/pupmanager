@@ -62,7 +62,7 @@ export default async function WaitlistPage() {
   return (
     <>
       <PageHeader title="Waitlist" />
-      <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
+      <div className="w-full p-4 md:p-8">
         <WaitlistView initialEntries={data.entries} clients={data.clients} packages={data.packages} />
       </div>
     </>
