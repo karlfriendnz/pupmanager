@@ -291,17 +291,14 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           </div>
         </div>
 
-        {/* Clients tab — the full roster (current / past). */}
+        {/* Clients tab — the full roster (current / past).
+            No card around it, and no "Clients" heading inside: the tab you are
+            standing on already says which is which, and a card drawn around
+            the only thing on a tab is a border that separates it from nothing.
+            The roster is the tab. */}
         <div className={`flex min-w-0 flex-col gap-5 ${tab === 'clients' ? '' : 'hidden'}`}>
-
-            <Card>
-              <CardBody className="py-5">
-                <CardHeading icon={<Users className="h-4 w-4 text-slate-400" />} count={rows.length}>
-                  Clients
-                </CardHeading>
-
                 {rows.length === 0 ? (
-                  <div className="py-10 text-center text-slate-400">
+                  <div className="rounded-xl border border-slate-200 bg-white py-10 text-center text-slate-400">
                     <PackageIcon className="h-10 w-10 mx-auto mb-2 opacity-30" />
                     <p className="text-sm">No one has been assigned this package yet.</p>
                   </div>
@@ -350,15 +347,18 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
                     )}
                   </>
                 )}
-              </CardBody>
-            </Card>
           </div>
 
         {/* Curriculum tab — what each session covers and the homework that
             follows it. One editor, not two: `SeriesCurriculumEditor` renders
             the homework editor with a plan field over each session's bucket, so
-            a 1:1 session with no steps named looks exactly as it did before. */}
-        <div className={tab === 'homework' ? 'max-w-2xl' : 'hidden'}>
+            a 1:1 session with no steps named looks exactly as it did before.
+
+            Full width, not max-w-2xl: a session's plan and its homework sit
+            side by side once there is room, and capping the column at 42rem
+            left two thirds of a desktop screen empty beside a form the trainer
+            was scrolling. */}
+        <div className={tab === 'homework' ? '' : 'hidden'}>
           <SeriesCurriculumEditor packageId={pkg.id} sessionCount={pkg.sessionCount} isGroup={pkg.isGroup} />
         </div>
 
@@ -400,7 +400,11 @@ function ClientTable({
     // A real data table: a bordered surface with its own header band, the
     // client column taking the slack so the rest stay tight rather than
     // drifting apart across a wide screen. Matches the class roster.
-    <div className="overflow-x-auto rounded-xl border border-slate-200">
+    //
+    // It carries its OWN white. It used to sit inside a Card and inherit one;
+    // without the card the rows were the page's grey showing through, which
+    // read as a table that had failed to load.
+    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
       <table className="w-full min-w-[38rem] text-sm">
         <thead>
           <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">

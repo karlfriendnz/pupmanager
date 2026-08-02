@@ -50,19 +50,19 @@ export function ItemTabs({
   // is a labelled button rather than a row buried under the register of who
   // already has it. It lives here, beside ⋯, which is why the dialog is owned
   // at this level rather than inside the holders panel.
-  const actions = (
-    <>
-      <button
-        type="button"
-        onClick={() => setAssigning(true)}
-        className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-      >
-        <Send className="h-4 w-4 text-slate-500" strokeWidth={1.75} />
-        Give this to a client
-      </button>
-      <ItemActions item={item} themeHref={themeHref} />
-    </>
+  // "Assign", not "Give this to a client" — a button label is a verb, and the
+  // long sentence pushed Save off the edge of a phone.
+  const leading = (
+    <button
+      type="button"
+      onClick={() => setAssigning(true)}
+      className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+    >
+      <Send className="h-4 w-4 text-slate-500" strokeWidth={1.75} />
+      Assign
+    </button>
   )
+  const actions = <ItemActions item={item} themeHref={themeHref} />
 
   const strip = (
     <div className="flex gap-5">
@@ -76,9 +76,9 @@ export function ItemTabs({
   return (
     <div data-review-scope={`Tab: ${tab === 'item' ? 'Item' : 'Who has this'}`}>
       {tab === 'item' ? (
-        <ItemEditor item={item} themeHref={themeHref} heading={strip} actions={actions} />
+        <ItemEditor item={item} themeHref={themeHref} heading={strip} leading={leading} actions={actions} />
       ) : (
-        <ItemHolders holders={holders} heading={strip} actions={actions} />
+        <ItemHolders holders={holders} heading={strip} leading={leading} actions={actions} />
       )}
 
       {assigning && (

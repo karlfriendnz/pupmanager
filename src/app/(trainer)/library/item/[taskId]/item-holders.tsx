@@ -42,11 +42,14 @@ function shortDate(iso: string) {
 export function ItemHolders({
   holders,
   heading,
+  leading,
   actions,
 }: {
   holders: Holder[]
   /** The tab strip, in place of a plain "Who has this" label. */
   heading?: React.ReactNode
+  /** The screen's primary action, e.g. Assign. */
+  leading?: React.ReactNode
   /** Duplicate / Delete — the same control the Item tab shows. */
   actions?: React.ReactNode
 }) {
@@ -56,7 +59,7 @@ export function ItemHolders({
       {heading ? (
         <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-200">
           {heading}
-          <span className="flex items-center gap-1.5 pb-1.5">{actions}</span>
+          <span className="flex items-center gap-1.5 pb-1.5">{leading}{actions}</span>
         </div>
       ) : (
         <SectionLabel>Who has this</SectionLabel>

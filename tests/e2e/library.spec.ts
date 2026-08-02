@@ -213,7 +213,7 @@ test('an item is edited on its own page, in rich text, and shows who has it', as
   await page.getByRole('button', { name: /Who has this/ }).click()
   await expect(page.getByText('Nobody has this yet')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Give this to a client' }).click()
+  await page.getByRole('button', { name: 'Assign' }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible()
   // The overlay locks the page behind it — never two scrollbars.
@@ -449,7 +449,7 @@ test('the item screen is two tabs, and keeps its actions across both', async ({ 
   // The editor is GONE, not hidden — a second copy of a mounted editor is a
   // second copy of its drag contexts and its uploads.
   await expect(page.getByLabel('Name')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Give this to a client' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Assign' })).toBeVisible()
 
   // Duplicate/Delete belong to the item, not to a tab, so they stay put —
   // switching tabs to delete something would be a strange trip.
@@ -493,7 +493,7 @@ test('an item holds several clips, in order, and all of them reach the client', 
 
     // ── Handing it out carries BOTH ──────────────────────────────────────────
     await page.getByRole('button', { name: /Who has this/ }).click()
-    await page.getByRole('button', { name: 'Give this to a client' }).click()
+    await page.getByRole('button', { name: 'Assign' }).click()
     const dialog = page.getByRole('dialog')
     await dialog.getByLabel('Client').fill('Unassigned')
     await dialog.getByRole('button', { name: /Unassigned Client/ }).click()

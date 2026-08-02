@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ChevronLeft, ChevronRight, ClipboardCheck, Eye, Lock, Repeat } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { ChevronLeft, ChevronRight, ClipboardCheck, Eye, Lock, Plus, Repeat } from 'lucide-react'
+import { ConfirmSheet } from '@/components/shared/confirm-sheet'
 import { FlatBlock } from '@/components/shared/flat-list'
 import { DefaultHomeworkEditor } from '@/components/trainer/default-homework-editor'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
@@ -271,6 +273,7 @@ export function SeriesCurriculumEditor({
           intro={intro}
           stepHeader={stepHeader}
         />
+        <AddSessionButton packageId={packageId} sessionCount={sessionCount} scheduled={scheduledSessions} />
       </div>
     )
   }
@@ -360,8 +363,84 @@ export function SeriesCurriculumEditor({
             {unscheduledSteps === 1 ? ' has' : ' have'} no session booked for {unscheduledSteps === 1 ? 'it' : 'them'}.
           </p>
         )}
+
+        <AddSessionButton packageId={packageId} sessionCount={sessionCount} scheduled={scheduledSessions} />
       </div>
     </div>
+  )
+}
+
+/**
+ * Grow the offering by one session.
+ *
+ * It ASKS FIRST, which a one-tap "+" would not. `sessionCount` is what the
+ * offering sells, and the packages PATCH recalculates the settled price
+ * whenever it changes — so on anything priced per session this button changes
+ * what a client pays. That is worth a sentence, not a surprise on the next
+ * invoice.
+ *
+ * Not offered on a class RUN. There the sessions are real diary entries a
+ * cohort turns up to, so "add a session" means scheduling one — a different
+ * job, with a date and a time, which the schedule already does.
+ */
+function AddSessionButton({
+  packageId,
+  sessionCount,
+  scheduled,
+}: {
+  packageId: string
+  sessionCount: number
+  scheduled?: ScheduledSession[]
+}) {
+  const router = useRouter()
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState<string | null>(null)
+
+  if (scheduled !== undefined) return null
+
+  async function add() {
+    setBusy(true)
+    setFailed(null)
+    try {
+      const res = await fetch(`/api/packages/${packageId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionCount: sessionCount + 1 }),
+      })
+      if (!res.ok) { setFailed('Could not add a session.'); return }
+      setConfirming(false)
+      router.refresh()
+    } catch {
+      setFailed('Could not add a session.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setConfirming(true)}
+        className="mt-3 inline-flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+      >
+        <Plus className="h-4 w-4 text-slate-500" strokeWidth={2.25} />
+        Add a session
+      </button>
+      {failed && <p className="mt-2 px-1 text-xs text-red-600">{failed}</p>}
+
+      {confirming && (
+        <ConfirmSheet
+          title={`Run ${sessionCount + 1} sessions?`}
+          body={`This offering runs ${sessionCount} at the moment. If it is priced per session, the total price moves with the count — check it before anyone books.`}
+          confirmLabel="Add a session"
+          busy={busy}
+          onCancel={() => setConfirming(false)}
+          onConfirm={add}
+        />
+      )}
+    </>
   )
 }
 

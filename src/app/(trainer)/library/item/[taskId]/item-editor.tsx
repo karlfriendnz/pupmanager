@@ -45,12 +45,15 @@ export function ItemEditor({
   item,
   themeHref,
   heading,
+  leading,
   actions,
 }: {
   item: EditableItem
   themeHref: string
   /** The tab strip, in place of a plain "Item" label. */
   heading?: React.ReactNode
+  /** Sits BEFORE Save — the screen's primary action, e.g. Assign. */
+  leading?: React.ReactNode
   /** Duplicate / Delete — owned by the screen, so both tabs show the same one. */
   actions?: React.ReactNode
 }) {
@@ -158,6 +161,7 @@ export function ItemEditor({
 
   const headerActions = (
     <>
+      {leading}
       {saved && <span className="text-[13px] text-slate-500">Saved.</span>}
       <Button onClick={save} loading={saving} disabled={!title.trim() || uploading !== null}>
         Save
