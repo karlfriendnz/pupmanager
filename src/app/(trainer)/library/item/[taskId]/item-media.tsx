@@ -45,20 +45,28 @@ export function ItemMedia({
   videoUploadUrl: string
 }) {
   const [adding, setAdding] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const full = media.length >= MAX_MEDIA
 
-  function add(row: MediaItem) {
-    setError(null)
-    if (full) { setError(`That's the limit — ${MAX_MEDIA} things on one item.`); return }
+  /**
+   * Add a row — or hand back the sentence saying why not.
+   *
+   * The refusal is RETURNED rather than shown from here because the sheet is
+   * still open when it happens, and on a phone the sheet IS the screen: a
+   * message painted on the page underneath is a message nobody can read, and
+   * a `javascript:` link would look to the trainer as though nothing happened
+   * at all. The sheet renders it where they are actually looking.
+   */
+  function add(row: MediaItem): string | null {
+    if (full) return `That's the limit — ${MAX_MEDIA} things on one item.`
     // The same rules the server applies, so anything it would reject is refused
     // here with a sentence instead of silently vanishing on save.
     const [clean] = sanitizeMedia([row])
-    if (!clean) { setError('That needs to be a full http(s) link.'); return }
-    if (media.some(m => m.url === clean.url)) { setError('That is already on this item.'); return }
+    if (!clean) return 'That needs to be a full http(s) link.'
+    if (media.some(m => m.url === clean.url)) return 'That is already on this item.'
     onChange([...media, clean])
     setAdding(false)
+    return null
   }
 
   function setTitle(index: number, title: string) {
@@ -66,7 +74,6 @@ export function ItemMedia({
   }
 
   function remove(index: number) {
-    setError(null)
     onChange(media.filter((_, i) => i !== index))
   }
 
@@ -80,7 +87,7 @@ export function ItemMedia({
         <p className="text-[13px] font-medium text-slate-700">Media</p>
         <button
           type="button"
-          onClick={() => { setError(null); setAdding(true) }}
+          onClick={() => setAdding(true)}
           disabled={full}
           className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
         >
@@ -148,8 +155,6 @@ export function ItemMedia({
         </p>
       )}
 
-      {error && <p className="mt-2 text-[13px] text-red-600">{error}</p>}
-
       {adding && (
         <AddMediaSheet
           videoUploadUrl={videoUploadUrl}
@@ -211,7 +216,8 @@ function AddMediaSheet({
   onClose,
 }: {
   videoUploadUrl: string
-  onAdd: (row: MediaItem) => void
+  /** Adds the row, or returns the sentence saying why it was refused. */
+  onAdd: (row: MediaItem) => string | null
   onClose: () => void
 }) {
   const [kind, setKind] = useState<MediaKind | null>(null)
@@ -223,12 +229,17 @@ function AddMediaSheet({
   const chosen = KIND_CHOICES.find(c => c.kind === kind) ?? null
 
   function submit(row: Partial<MediaItem> & { url: string }) {
-    onAdd({
-      kind: kind ?? 'link',
-      url: row.url,
-      ...(title.trim() ? { title: title.trim() } : {}),
-      ...(row.fileName ? { fileName: row.fileName } : {}),
-    })
+    // A refused row leaves the sheet open with the reason under the field —
+    // `javascript:alert(1)` pasted into "Video link" has to say so, not close
+    // silently and look like it worked.
+    setError(
+      onAdd({
+        kind: kind ?? 'link',
+        url: row.url,
+        ...(title.trim() ? { title: title.trim() } : {}),
+        ...(row.fileName ? { fileName: row.fileName } : {}),
+      }),
+    )
   }
 
   async function pickImage(e: React.ChangeEvent<HTMLInputElement>) {
