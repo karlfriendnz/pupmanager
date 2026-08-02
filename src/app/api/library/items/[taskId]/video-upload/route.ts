@@ -55,7 +55,19 @@ export async function POST(
         let sizeBytes = 0
         try { sizeBytes = JSON.parse(clientPayloadStr ?? '{}')?.sizeBytes ?? 0 } catch { /* ignore */ }
         if (sizeBytes > VIDEO_MAX) throw new Error('Video exceeds 100 MB')
-        return { maximumSizeInBytes: VIDEO_MAX }
+        return {
+          maximumSizeInBytes: VIDEO_MAX,
+          // Blob refuses a second upload to the same path, and phone clips
+          // arrive with the same name constantly (IMG_1234.mov, and whatever
+          // safeName() makes of it). An item holds SEVERAL videos now, so the
+          // second one collided with the first and the trainer got Blob's own
+          // "This blob already exists" in the UI.
+          //
+          // A suffix, NOT allowOverwrite: overwriting a path leaves the old
+          // bytes cached and served, so a replaced clip plays as the one it
+          // replaced.
+          addRandomSuffix: true,
+        }
       },
       // Nothing to persist — the URL is saved by the item's PATCH.
       onUploadCompleted: async () => {},

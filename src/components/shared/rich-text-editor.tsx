@@ -141,8 +141,18 @@ function Toolbar({ editor, theme }: { editor: Editor; theme: Theme }) {
       {/* Text colour — a swatch that opens a preset palette. Buttons (not a
           native colour input) so the text selection isn't lost on open. */}
       <span className="relative">
-        <ToolbarBtn {...cls} label="Text colour" active={showColors || !!currentColor}
-          on={() => setShowColors(v => !v)}>
+        {/* A quiet grey when it is open, not the accent fill the other buttons
+            use. "Active" here does not mean the text is coloured the way
+            "active" on B means the text is bold — it means this popover is
+            open — and a filled accent behind a coloured letter makes the one
+            thing the button is showing you unreadable. */}
+        <ToolbarBtn
+          {...cls}
+          activeCls={theme === 'dark' ? 'bg-slate-700 text-slate-100' : 'bg-slate-200 text-slate-700'}
+          label="Text colour"
+          active={showColors || !!currentColor}
+          on={() => setShowColors(v => !v)}
+        >
           <Baseline className="h-4 w-4" style={currentColor ? { color: currentColor } : undefined} />
         </ToolbarBtn>
         {/* Palette is wide enough for four swatches a row: globals.css forces

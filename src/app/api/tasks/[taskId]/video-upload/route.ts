@@ -43,7 +43,14 @@ export async function POST(
         let sizeBytes = 0
         try { sizeBytes = JSON.parse(clientPayloadStr ?? '{}')?.sizeBytes ?? 0 } catch { /* ignore */ }
         if (sizeBytes > VIDEO_MAX) throw new Error('Video exceeds 100 MB')
-        return { maximumSizeInBytes: VIDEO_MAX }
+        return {
+          maximumSizeInBytes: VIDEO_MAX,
+          // A client logging practice week after week uploads IMG_1234.mov
+          // every time. Without a suffix the second one is refused with Blob's
+          // own "This blob already exists". Suffix rather than overwrite —
+          // overwriting leaves the old bytes cached and served.
+          addRandomSuffix: true,
+        }
       },
       // Nothing to persist — the URL is saved on the TrainingLog by the log POST.
       onUploadCompleted: async () => {},
