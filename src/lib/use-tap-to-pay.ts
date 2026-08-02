@@ -25,7 +25,11 @@ import { tapToPayPluginAvailable } from '@/lib/tap-to-pay-native'
 // button are equally useless and this feature's whole risk is failing in front
 // of a paying customer.
 
-export type TapToPayServerReason = 'COUNTRY_UNSUPPORTED' | 'ADDON_REQUIRED' | 'PAYMENTS_REQUIRED'
+export type TapToPayServerReason =
+  | 'NOT_ENABLED'
+  | 'COUNTRY_UNSUPPORTED'
+  | 'ADDON_REQUIRED'
+  | 'PAYMENTS_REQUIRED'
 
 export interface TapToPayEligibility {
   eligible: boolean
@@ -51,7 +55,12 @@ export interface TapToPayState {
   merchantName: string | null
 }
 
-const SERVER_MESSAGES: Record<TapToPayServerReason, string> = {
+const SERVER_MESSAGES: Record<TapToPayServerReason, string | null> = {
+  // Deliberately nothing to say. NOT_ENABLED is our rollout switch — the
+  // trainer has done nothing wrong and can do nothing about it, so the sale
+  // composer stays exactly as it was before this feature existed rather than
+  // growing a sentence about a button they cannot have.
+  NOT_ENABLED: null,
   // Named, not "your country" — a South African trainer should get a real
   // answer rather than a shrug, because this one will never change for them.
   COUNTRY_UNSUPPORTED:

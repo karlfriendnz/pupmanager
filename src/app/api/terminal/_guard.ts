@@ -14,6 +14,14 @@ import { tapToPayCountrySupported } from '@/lib/terminal'
 // (`billing.view` + `pos`): Tap to Pay is a way of taking an in-person payment,
 // not a new product. A trainer who can already take a payment by QR should not
 // have to buy anything else to take the same payment by tap.
+//
+// On top of that sits one gate the add-on cannot express:
+// TrainerProfile.tapToPayEnabled, our rollout switch. Every Instant-sale
+// customer already holds `pos`, so without this column merging the feature
+// would have switched it on for all of them at once. It is checked FIRST,
+// before the add-on and before the country, because it is the only "no" that is
+// ours rather than theirs — there is nothing for a trainer to fix and nothing
+// worth telling them.
 
 export interface TapToPayTrainer {
   trainerId: string
@@ -36,13 +44,14 @@ export async function guardTapToPay(): Promise<TapToPayTrainer | NextResponse> {
   const ctx = await guardPermission('billing.view')
   if (ctx instanceof NextResponse) return ctx
 
-  if (!(await hasAddon(ctx.companyId, 'pos'))) {
-    return NextResponse.json({ error: 'ADDON_REQUIRED' }, { status: 403 })
-  }
-
+  // The tenant is `ctx.companyId` — the caller's own session — and never a
+  // trainer id from the request. Every route below reads its switch off THIS
+  // row, so there is no body a caller could send to be someone who is switched
+  // on.
   const trainer = await prisma.trainerProfile.findUnique({
     where: { id: ctx.companyId },
     select: {
+      tapToPayEnabled: true,
       acceptPaymentsEnabled: true,
       connectChargesEnabled: true,
       connectAccountId: true,
@@ -55,6 +64,17 @@ export async function guardTapToPay(): Promise<TapToPayTrainer | NextResponse> {
     },
   })
   if (!trainer) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  // Not switched on for this business. Answered before the add-on so a trainer
+  // we have not rolled out to is never told to go and buy something that would
+  // still leave them here.
+  if (!trainer.tapToPayEnabled) {
+    return NextResponse.json({ error: 'NOT_ENABLED' }, { status: 403 })
+  }
+
+  if (!(await hasAddon(ctx.companyId, 'pos'))) {
+    return NextResponse.json({ error: 'ADDON_REQUIRED' }, { status: 403 })
+  }
 
   if (!trainer.acceptPaymentsEnabled || !trainer.connectChargesEnabled || !trainer.connectAccountId) {
     return NextResponse.json({ error: 'PAYMENTS_REQUIRED' }, { status: 409 })

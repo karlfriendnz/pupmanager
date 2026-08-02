@@ -73,6 +73,14 @@ export function TapToPayRow() {
   // about whether a trainer can take cards is worse than a beat of silence.
   if (loading || !state) return null
 
+  // The one case where the row genuinely should not exist. Everything else this
+  // component says is a fact about the TRAINER's business — their country, their
+  // add-on, their Stripe setup — and is worth a sentence even when the answer is
+  // no. NOT_ENABLED is a fact about US: we have not rolled Tap to Pay out to
+  // them yet. A row that names a feature and then explains they may not have it
+  // is a dead row, and a dead row is a support email.
+  if (state.reason === 'NOT_ENABLED') return null
+
   const accepted = state.terms.accepted
 
   return (

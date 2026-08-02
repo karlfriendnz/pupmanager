@@ -29,6 +29,12 @@ const schema = z.object({
   // why it lives on the admin route rather than in trainer settings. A trainer
   // must not be able to switch their own clients onto a brand-new billing path.
   recurringPaymentsEnabled: z.boolean().optional(),
+  // Rollout gate for Tap to Pay (taking a card on the trainer's own phone).
+  // Same reasoning as the line above, and here for the same reason: the `pos`
+  // add-on the trainer bought says they sell in person, it does not say the
+  // code is ready for them. Admin-only, never a trainer setting — a business
+  // cannot switch itself into a rollout.
+  tapToPayEnabled: z.boolean().optional(),
 })
 
 async function requireAdmin() {
@@ -48,7 +54,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ traine
   const user = await prisma.user.findUnique({ where: { id: trainerId, role: 'TRAINER' } })
   if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const { name, email, businessName, gracePeriodUntil, isInternal, active, applyTrialDays, seatCount, conversionLikelihood, recurringPaymentsEnabled } = parsed.data
+  const { name, email, businessName, gracePeriodUntil, isInternal, active, applyTrialDays, seatCount, conversionLikelihood, recurringPaymentsEnabled, tapToPayEnabled } = parsed.data
 
   if (email && email !== user.email) {
     const conflict = await prisma.user.findUnique({ where: { email } })
@@ -83,6 +89,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ traine
     ...(conversionLikelihood !== undefined && { conversionLikelihood }),
     // The recurring-memberships pilot gate.
     ...(recurringPaymentsEnabled !== undefined && { recurringPaymentsEnabled }),
+    // The Tap to Pay pilot gate.
+    ...(tapToPayEnabled !== undefined && { tapToPayEnabled }),
   }
   if (Object.keys(profileData).length > 0) {
     await prisma.trainerProfile.update({

@@ -655,6 +655,18 @@ model TrainerProfile {
   //                they're ready and then fail in front of a customer.
   tapToPayTermsLinkedAt     DateTime?
   tapToPayTermsAcceptedAt   DateTime?
+  // Rollout gate for Tap to Pay, same shape and same reasoning as
+  // recurringPaymentsEnabled below: a column, not an env var, so switching one
+  // customer on is a click rather than a redeploy of every other customer's app.
+  // Off for everyone until deliberately turned on — a trainer must never
+  // discover this feature by accident, because the first thing it does is take
+  // a stranger's card on their phone.
+  //
+  // NOT the same question as the `pos` add-on. The add-on is what the trainer
+  // bought; this is whether the code is ready for them, and only we can answer
+  // it — the tap needs a native build carrying Apple's entitlement, and a
+  // trainer holding last month's app has the screens but not the radio code.
+  tapToPayEnabled           Boolean   @default(false)
   // What this trainer calls the things in their own left menu — a map of nav key
   // to their word for it ({"/packages": "Private lessons"}). A groomer says
   // "Services", a daycare says "Programmes"; the software shouldn't insist.

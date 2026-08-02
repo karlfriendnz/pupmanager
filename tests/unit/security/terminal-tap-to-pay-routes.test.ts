@@ -78,6 +78,10 @@ const req = (path: string, body: unknown = {}) =>
   })
 
 const NZ_TRAINER = {
+  // Switched on for the rollout. Off is the default in the database and has its
+  // own file (tap-to-pay-rollout-gate.test.ts); everything here is about what
+  // happens once a business is past that gate.
+  tapToPayEnabled: true,
   acceptPaymentsEnabled: true,
   connectChargesEnabled: true,
   connectAccountId: 'acct_trainer',
@@ -334,6 +338,7 @@ describe('the gate', () => {
 describe('eligibility, which renders a screen rather than refusing one', () => {
   it('reports the country problem ahead of the fixable ones', async () => {
     h.trainerFindUnique.mockResolvedValue({
+      tapToPayEnabled: true,
       acceptPaymentsEnabled: false, connectChargesEnabled: false, connectAccountId: null,
       addressCountry: 'South Africa', signupCountry: 'ZA',
     })

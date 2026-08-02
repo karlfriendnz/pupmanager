@@ -1,0 +1,27 @@
+-- Tap to Pay is switched on ONE TRAINER AT A TIME, from a column.
+--
+-- The `pos` add-on is not enough of a gate on its own: it is what a trainer
+-- bought, and every existing Instant-sale customer already has it. Merging Tap
+-- to Pay would therefore have handed the feature to all of them at once, for a
+-- tap that cannot work until a native build carrying Apple's entitlement is in
+-- the stores. This column is the difference between "you paid for in-person
+-- sales" and "the code is ready for you".
+--
+-- A column rather than an env var, deliberately, and for the same reason
+-- recurringPaymentsEnabled is one: CONNECT_LIVE_ALLOWLIST was replaced because
+-- switching a single customer on should not mean redeploying every other
+-- customer's app, and because the value of an env var is invisible from inside
+-- the product that is behaving differently because of it.
+--
+-- DEFAULT false is the load-bearing part. A trainer who signs up tomorrow must
+-- not inherit this — the first thing it does is take a stranger's card on their
+-- phone.
+--
+-- Table name is the @@map'd snake_case one ("trainer_profiles"), NOT the Prisma
+-- model name — `migrate deploy` fails 42P01 on the model name and takes the
+-- production build down with it.
+--
+-- IF NOT EXISTS because this file is replayed twice under
+-- `psql -v ON_ERROR_STOP=1` and a second ALTER would abort the run.
+ALTER TABLE "trainer_profiles"
+    ADD COLUMN IF NOT EXISTS "tapToPayEnabled" BOOLEAN NOT NULL DEFAULT false;

@@ -48,6 +48,9 @@ export default async function AdminTrainerDetailPage({
           signupCountry: true,
           gracePeriodUntil: true,
           seatCount: true,
+          // Rollout gates, shown and flipped in the actions panel below.
+          recurringPaymentsEnabled: true,
+          tapToPayEnabled: true,
           phone: true,
           subscriptionPlan: { select: { name: true } },
           _count: { select: { clients: true, members: true } },
@@ -176,6 +179,8 @@ export default async function AdminTrainerDetailPage({
             gracePeriodUntil={graceUntil ? graceUntil.toISOString() : null}
             seatCount={p.seatCount}
             isInternal={p.isInternal}
+            recurringPaymentsEnabled={p.recurringPaymentsEnabled}
+            tapToPayEnabled={p.tapToPayEnabled}
             addonGrants={addonGrants.map(g => ({ itemId: g.itemId, expiresAt: g.expiresAt ? g.expiresAt.toISOString() : null }))}
           />
 

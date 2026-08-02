@@ -21,6 +21,10 @@ type Props = {
   gracePeriodUntil: string | null
   seatCount: number
   isInternal: boolean
+  // Rollout gates — features that are merged but off until a business is
+  // deliberately switched on. Both default false in the database.
+  recurringPaymentsEnabled: boolean
+  tapToPayEnabled: boolean
   // Active admin comp grants: free add-on previews with an optional expiry.
   addonGrants: { itemId: string; expiresAt: string | null }[]
 }
@@ -59,6 +63,8 @@ export function TrainerDetailActions(props: Props) {
   const [savingGrace, setSavingGrace] = useState(false)
   const [savingSeats, setSavingSeats] = useState(false)
   const [savingInternal, setSavingInternal] = useState(false)
+  // One busy key for the gates — which gate is mid-save, or null.
+  const [savingGate, setSavingGate] = useState<string | null>(null)
 
   // Add-on comps.
   const grantedIds = new Set(props.addonGrants.map(g => g.itemId))
@@ -138,6 +144,24 @@ export function TrainerDetailActions(props: Props) {
     const ok = await patch({ applyTrialDays: customTrialDays }, setSavingTrial, 'Failed to apply trial')
     if (ok) setCustomTrial('')
   }
+
+  // The rollout gates, described in the words of the person deciding. Each is a
+  // boolean column on TrainerProfile that the PATCH route already accepts —
+  // adding a gate is one entry here, not a screen.
+  const gates: { field: string; name: string; on: boolean; blurb: string }[] = [
+    {
+      field: 'tapToPayEnabled',
+      name: 'Tap to Pay',
+      on: props.tapToPayEnabled,
+      blurb: 'Take a card on the trainer’s own phone. Needs a native build carrying Apple’s entitlement — switching this on before one is in the stores gives them a row that cannot work.',
+    },
+    {
+      field: 'recurringPaymentsEnabled',
+      name: 'Recurring memberships',
+      on: props.recurringPaymentsEnabled,
+      blurb: 'Their clients can subscribe to a membership — a real Stripe Subscription on this trainer’s connected account, charged every month until cancelled.',
+    },
+  ]
 
   const graceUntil = props.gracePeriodUntil ? new Date(props.gracePeriodUntil) : null
   const graceActive = !!graceUntil && graceUntil.getTime() > Date.now()
@@ -322,6 +346,45 @@ export function TrainerDetailActions(props: Props) {
             </button>
           </div>
         )}
+      </div>
+
+      {/* Rollout gates — merged features, off until someone decides otherwise */}
+      <div className={card}>
+        <h2 className={cardTitle}>Rollout gates</h2>
+        <p className="text-sm text-slate-400 mb-4">
+          Features that are built and shipped but off for everyone until a business
+          is switched on here. Off is the default and the safe answer — a new
+          account never inherits one of these.
+        </p>
+        <ul className="flex flex-col gap-2">
+          {gates.map(g => {
+            const busy = savingGate === g.field
+            return (
+              <li key={g.field} className="flex flex-wrap items-start gap-x-3 gap-y-2 rounded-xl border border-slate-700 bg-slate-900/50 px-3 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-slate-200">
+                    {g.name}
+                    {g.on
+                      ? <span className="ml-2 text-xs font-normal text-emerald-300">On</span>
+                      : <span className="ml-2 text-xs font-normal text-slate-500">Off</span>}
+                  </p>
+                  <p className="text-xs text-slate-500">{g.blurb}</p>
+                </div>
+                <button
+                  onClick={() => patch({ [g.field]: !g.on }, b => setSavingGate(b ? g.field : null), `Failed to update ${g.name}`)}
+                  disabled={busy}
+                  className={`text-xs px-3 h-8 rounded-lg disabled:opacity-50 ${
+                    g.on
+                      ? 'text-rose-300 hover:text-rose-200 border border-rose-500/40'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
+                >
+                  {busy ? '…' : g.on ? 'Switch off' : 'Switch on'}
+                </button>
+              </li>
+            )
+          })}
+        </ul>
       </div>
 
       {/* Account type */}

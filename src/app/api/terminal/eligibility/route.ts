@@ -27,6 +27,7 @@ export async function GET() {
     prisma.trainerProfile.findUnique({
       where: { id: ctx.companyId },
       select: {
+        tapToPayEnabled: true,
         acceptPaymentsEnabled: true,
         connectChargesEnabled: true,
         connectAccountId: true,
@@ -47,13 +48,21 @@ export async function GET() {
   // First failing condition wins, ordered by what the trainer can act on: a
   // South African trainer should not be told to finish a Stripe setup that
   // would still leave the feature unavailable.
-  const reason = !tapToPayCountrySupported(country)
-    ? 'COUNTRY_UNSUPPORTED'
-    : !addon
-      ? 'ADDON_REQUIRED'
-      : !paymentsReady
-        ? 'PAYMENTS_REQUIRED'
-        : null
+  //
+  // NOT_ENABLED comes first and outranks the lot. It is our rollout switch, not
+  // a state of their business, and the honest answer to "why can't I see this?"
+  // when we simply have not switched them on is silence — the settings row
+  // renders nothing at all for it. Naming a feature only to say they can't have
+  // it is a support ticket we would be writing ourselves.
+  const reason = !trainer?.tapToPayEnabled
+    ? 'NOT_ENABLED'
+    : !tapToPayCountrySupported(country)
+      ? 'COUNTRY_UNSUPPORTED'
+      : !addon
+        ? 'ADDON_REQUIRED'
+        : !paymentsReady
+          ? 'PAYMENTS_REQUIRED'
+          : null
 
   return NextResponse.json({
     eligible: reason === null,
