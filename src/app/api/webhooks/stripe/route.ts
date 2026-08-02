@@ -7,6 +7,7 @@ import { escapeHtml } from '@/lib/html-escape'
 import { stripeFor, isStripeConfigured } from '@/lib/stripe'
 import { env } from '@/lib/env'
 import { loadPriceIndex } from '@/lib/billing'
+import { recordAddonChange } from '@/lib/addon-change'
 
 // Receives Stripe events for subscription lifecycle. The signature header
 // gates everything — without env.STRIPE_WEBHOOK_SECRET we 503 instead of
@@ -384,19 +385,47 @@ async function syncTrainerAddons(
   }
 
   const activeIds = activeAddons.map(a => a.itemId)
+  // Never sweep away admin comp grants — they're intentionally NOT Stripe
+  // line items, so they'd always look "missing" from the live subscription.
+  // Free-add-on toggles (also not on Stripe) are likewise left alone.
+  const sweepable = {
+    trainerId,
+    active: true,
+    grantedByAdmin: false,
+    stripeSubscriptionItemId: { not: null },
+    itemId: { notIn: activeIds.length ? activeIds : ['__none__'] },
+  }
+
+  // Read WHICH rows are about to go off before switching them off. This is the
+  // silent path: an add-on disappearing here leaves no trace of who or why, and
+  // it is the most likely explanation for a feature being off that the customer
+  // swears they never turned off — which is exactly the question nobody could
+  // answer for Mersea Mutts today. One extra indexed read per subscription event
+  // is a fair price for being able to answer it.
+  const swept = await prisma.trainerAddon.findMany({
+    where: sweepable,
+    select: { itemId: true },
+  })
+
   await prisma.trainerAddon.updateMany({
-    // Never sweep away admin comp grants — they're intentionally NOT Stripe
-    // line items, so they'd always look "missing" from the live subscription.
-    // Free-add-on toggles (also not on Stripe) are likewise left alone.
-    where: {
-      trainerId,
-      active: true,
-      grantedByAdmin: false,
-      stripeSubscriptionItemId: { not: null },
-      itemId: { notIn: activeIds.length ? activeIds : ['__none__'] },
-    },
+    where: sweepable,
     data: { active: false, stripeSubscriptionItemId: null },
   })
+
+  for (const { itemId } of swept) {
+    console.warn(`[stripe webhook] add-on ${itemId} deactivated for trainer ${trainerId} — no longer a line item on the subscription`)
+    await recordAddonChange({
+      trainerId,
+      itemId,
+      active: false,
+      // No human did this. `system` is what tells a support conversation apart
+      // from "the customer turned it off" months later.
+      actor: { kind: 'system', userId: null },
+      outcome: 'applied',
+      reason: 'webhook_sweep',
+      detail: 'Stripe no longer lists this add-on on the subscription',
+    })
+  }
 }
 
 function mapStripeStatus(status: Stripe.Subscription.Status): 'ACTIVE' | 'TRIALING' | 'PAST_DUE' | 'CANCELLED' | 'INACTIVE' {

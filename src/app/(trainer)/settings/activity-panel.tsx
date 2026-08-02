@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { listAuditLogs } from '@/lib/audit'
 import { formatDate } from '@/lib/utils'
+import { addonById } from '@/lib/pricing'
 import type { AuditAction } from '@/generated/prisma'
 
 // Read-only audit trail for the business, OWNER-gated by the caller (the
@@ -24,6 +25,25 @@ const LABEL: Record<AuditAction, string> = {
   ACCOUNT_DELETION_REQUESTED: 'Account deletion requested',
   ACCOUNT_DELETED: 'Account permanently deleted',
   ADMIN_ACTION: 'Admin action',
+}
+
+// An add-on change is a BILLING_CHANGED row with targetType 'addon'. Left as
+// "Billing change" it tells the owner nothing, and this is the one row on the
+// list that someone else — a PupManager admin — may have written on their
+// behalf. So it names the add-on, which way it went, and whether it worked.
+function describe(log: {
+  action: AuditAction
+  targetType: string | null
+  targetId: string | null
+  meta: unknown
+}): string {
+  if (log.action !== 'BILLING_CHANGED' || log.targetType !== 'addon') return LABEL[log.action] ?? log.action
+  const meta = (log.meta ?? {}) as Record<string, unknown>
+  const name = addonById(log.targetId ?? '')?.name ?? log.targetId ?? 'Add-on'
+  const direction = meta.active === true ? 'on' : 'off'
+  if (meta.outcome === 'failed') return `${name} — could not be turned ${direction}`
+  const by = meta.via === 'admin' ? ' by PupManager' : meta.via === 'system' ? ' by Stripe' : ''
+  return `${name} turned ${direction}${by}`
 }
 
 export async function ActivityPanel({ companyId }: { companyId: string }) {
@@ -58,7 +78,7 @@ export async function ActivityPanel({ companyId }: { companyId: string }) {
               {logs.map(l => (
                 <tr key={l.id} className="border-t border-slate-100">
                   <td className="py-2.5 pr-4 text-slate-500 whitespace-nowrap">{formatDate(l.createdAt)}</td>
-                  <td className="py-2.5 pr-4 text-slate-800">{LABEL[l.action] ?? l.action}</td>
+                  <td className="py-2.5 pr-4 text-slate-800">{describe(l)}</td>
                   <td className="py-2.5 pr-4 text-slate-600">{l.actorUserId ? actorById.get(l.actorUserId) ?? '—' : '—'}</td>
                   <td className="py-2.5 text-slate-400 tabular-nums">{l.ip ?? '—'}</td>
                 </tr>

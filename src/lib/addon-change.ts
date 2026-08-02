@@ -1,5 +1,6 @@
 import type Stripe from 'stripe'
 import { prisma } from './prisma'
+import { recordAudit } from './audit'
 import { resolvePriceId, loadPriceIndex } from './billing'
 import { stripeFor, isStripeConfigured } from './stripe'
 import { ADDONS, addonById, isCurrencyCode, DEFAULT_CURRENCY, type AddonDef, type CurrencyCode } from './pricing'
@@ -87,6 +88,128 @@ async function ensureBillingItem(def: AddonDef): Promise<void> {
   })
 }
 
+// ── The trail: who changed an add-on, when, how, and what happened ──────────
+//
+// Deliberately the EXISTING append-only AuditLog rather than a new table.
+//
+// What it already has is exactly what was missing this morning: the business,
+// the actor, the target, ip/user-agent, a timestamp, and a meta blob — plus a
+// BILLING_CHANGED action, which is what an add-on going on or off IS. It is
+// append-only by construction (recordAudit is the only writer; there is
+// deliberately no update or delete helper), it never throws into its caller, and
+// the trainer's own Settings → Activity log already renders it, so a business
+// can see admin actions taken on their account without us building them a second
+// screen. A dedicated table would have needed its own writer, its own
+// append-only discipline, its own retention story, and would still not be the
+// first place anyone looked.
+//
+// KEPT: targetType 'addon' + targetId itemId — so "every add-on change for this
+// business" is an indexed (companyId, createdAt) read and a string compare, not
+// a JSON scan. In meta: `active` (on or off), `via` (trainer / admin / system —
+// Karl's "including if you do it"), `outcome`, `reason` and a short `detail`. A
+// FAILED attempt is recorded as loudly as a successful one; that is the evidence
+// nobody had today, when a row reading `active=false, updatedAt=30 July` could
+// not be told apart from a customer's own decision.
+//
+// LEFT OUT: an FK to BillingItem (history must survive a catalog change); the
+// previous state (the entry before this one IS the previous state, and a stored
+// copy of it can disagree with the row); and any price or amount (Stripe's
+// invoice is the record of money — copying it here creates a second truth that
+// drifts).
+
+export async function recordAddonChange(input: {
+  /** TrainerProfile.id — the same value AuditLog calls companyId everywhere else. */
+  trainerId: string
+  itemId: string
+  active: boolean
+  actor: AddonActor
+  outcome: 'applied' | 'failed'
+  reason?: AddonChangeFailure | 'webhook_sweep'
+  detail?: string | null
+}): Promise<void> {
+  await recordAudit({
+    action: 'BILLING_CHANGED',
+    companyId: input.trainerId,
+    actorUserId: input.actor.userId,
+    targetType: 'addon',
+    targetId: input.itemId,
+    ip: input.actor.ip ?? null,
+    userAgent: input.actor.userAgent ?? null,
+    meta: {
+      addon: input.itemId,
+      active: input.active,
+      via: input.actor.kind,
+      outcome: input.outcome,
+      ...(input.reason ? { reason: input.reason } : {}),
+      ...(input.detail ? { detail: input.detail.slice(0, 500) } : {}),
+    },
+  })
+}
+
+export interface AddonChangeEntry {
+  id: string
+  at: Date
+  itemId: string
+  /** Catalog name, falling back to the raw id for an add-on since retired. */
+  addonName: string
+  active: boolean
+  via: AddonActorKind | 'unknown'
+  outcome: 'applied' | 'failed'
+  reason: string | null
+  detail: string | null
+  /** Person's name/email, or a plain description for a non-human actor. */
+  actorLabel: string
+}
+
+/**
+ * Read one business's add-on history, newest first.
+ *
+ * CALLER MUST have already confirmed the requester may see this business —
+ * a platform ADMIN, or the business's own OWNER. Same contract as listAuditLogs,
+ * which this is a filtered view of.
+ */
+export async function listAddonChanges(trainerId: string, limit = 25): Promise<AddonChangeEntry[]> {
+  const rows = await prisma.auditLog.findMany({
+    where: { companyId: trainerId, action: 'BILLING_CHANGED', targetType: 'addon' },
+    orderBy: { createdAt: 'desc' },
+    take: Math.min(limit, 200),
+  })
+
+  const actorIds = [...new Set(rows.map(r => r.actorUserId).filter((v): v is string => !!v))]
+  const actors = actorIds.length
+    ? await prisma.user.findMany({
+        where: { id: { in: actorIds } },
+        select: { id: true, name: true, email: true, role: true },
+      })
+    : []
+  const actorById = new Map(actors.map(a => [a.id, a]))
+
+  return rows.map(r => {
+    const meta = (r.meta ?? {}) as Record<string, unknown>
+    const itemId = r.targetId ?? String(meta.addon ?? '')
+    const via = (typeof meta.via === 'string' ? meta.via : 'unknown') as AddonChangeEntry['via']
+    const actor = r.actorUserId ? actorById.get(r.actorUserId) : null
+    const person = actor ? (actor.name?.trim() || actor.email || actor.id) : null
+    return {
+      id: r.id,
+      at: r.createdAt,
+      itemId,
+      addonName: addonById(itemId)?.name ?? itemId,
+      active: meta.active === true,
+      via,
+      outcome: meta.outcome === 'failed' ? 'failed' : 'applied',
+      reason: typeof meta.reason === 'string' ? meta.reason : null,
+      detail: typeof meta.detail === 'string' ? meta.detail : null,
+      actorLabel:
+        via === 'system'
+          ? 'Stripe webhook'
+          : person
+            ? via === 'admin' ? `${person} (PupManager)` : person
+            : 'Unknown',
+    }
+  })
+}
+
 // ── Reading a Stripe failure ────────────────────────────────────────────────
 
 interface StripeFacts {
@@ -165,6 +288,7 @@ export async function applyAddonChange(input: {
     error: string,
     extra?: { body?: Record<string, unknown>; detail?: string },
   ): Promise<AddonChangeResult> => {
+    await recordAddonChange({ trainerId, itemId, active, actor, outcome: 'failed', reason, detail: extra?.detail })
     return { ok: false, status, reason, error, body: extra?.body }
   }
 
@@ -174,6 +298,7 @@ export async function applyAddonChange(input: {
       create: { trainerId, itemId, active },
       update: { active },
     })
+    await recordAddonChange({ trainerId, itemId, active, actor, outcome: 'applied' })
     return { ok: true, status: 200, body: { ok: true, itemId, active, ...extra } }
   }
 

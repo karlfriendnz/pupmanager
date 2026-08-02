@@ -6,6 +6,7 @@ import { getTrainerEmailReport } from '@/lib/onboarding/email-report'
 import { formatDate, formatDateTime } from '@/lib/utils'
 import { ArrowLeft, LogIn, Check } from 'lucide-react'
 import { TrainerDetailActions } from './trainer-detail-actions'
+import { AddonHistoryCard } from './addon-history-card'
 import { AdminTrainerNotes } from './admin-trainer-notes'
 import { TrainerDangerZone } from './trainer-danger-zone'
 import type { ReactNode } from 'react'
@@ -183,6 +184,9 @@ export default async function AdminTrainerDetailPage({
             tapToPayEnabled={p.tapToPayEnabled}
             addonGrants={addonGrants.map(g => ({ itemId: g.itemId, expiresAt: g.expiresAt ? g.expiresAt.toISOString() : null }))}
           />
+
+      {/* Who changed an add-on, when, and what happened — including us. */}
+      <AddonHistoryCard trainerId={p.id} />
 
       {/* Onboarding & trial email history */}
       <div className="rounded-2xl border border-slate-700 bg-slate-800 p-5">

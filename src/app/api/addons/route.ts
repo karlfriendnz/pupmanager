@@ -4,6 +4,7 @@ import { getTrainerContext } from '@/lib/membership'
 import { can } from '@/lib/permissions'
 import { addonById } from '@/lib/pricing'
 import { applyAddonChange, PERMANENT_FAILURES } from '@/lib/addon-change'
+import { auditRequestMeta } from '@/lib/audit'
 
 // POST /api/addons — enable/disable an add-on for the current trainer's
 // business. The business is ALWAYS the caller's own (ctx.companyId); there is
@@ -46,7 +47,10 @@ export async function POST(req: Request) {
     trainerId: ctx.companyId,
     itemId,
     active,
-    actor: { kind: 'trainer', userId: ctx.userId },
+    // Recorded against the SIGNED-IN user, not the business — "who turned this
+    // on" has to name a person, and on a team account the owner is often not who
+    // tapped it.
+    actor: { kind: 'trainer', userId: ctx.userId, ...auditRequestMeta(req) },
   })
 
   if (!result.ok) {
