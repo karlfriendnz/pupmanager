@@ -66,7 +66,12 @@ export default async function MyShopPage() {
         variants: {
           where: { active: true },
           orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
-          select: { id: true, name: true, priceCents: true, salePriceCents: true, stockCount: true },
+          select: {
+            id: true, name: true, priceCents: true, salePriceCents: true, stockCount: true,
+            // The photo and the words for THIS one. Null on either = the
+            // product's, which is what nearly every variant carries.
+            imageUrl: true, description: true,
+          },
         },
       },
     }),
