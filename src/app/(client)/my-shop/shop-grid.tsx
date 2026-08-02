@@ -1,13 +1,16 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
+import Link from 'next/link'
 import { inStock, productInStock, stockLabel } from '@/lib/stock'
 import { RichText } from '@/components/shared/rich-text'
+import { ModalPortal } from '@/components/shared/modal-portal'
 import { useRouter } from 'next/navigation'
 import {
   Star, Package as PackageIcon, FileDown, Download, ShoppingBag, X, Tag,
-  Check, Loader2, CreditCard, EyeOff,
+  Check, Loader2, CreditCard, EyeOff, ChevronRight, ArrowRight,
 } from 'lucide-react'
+import type { ShopTag } from '@/lib/shop-tags'
 import { cn } from '@/lib/utils'
 import { formatMoney } from '@/lib/money'
 import {
@@ -73,22 +76,53 @@ function formatPrice(cents: number | null, currency: string | null) {
   return formatMoney(cents, currency ?? 'nzd')
 }
 
+/**
+ * The shop's own URL, with whichever of its two states are on.
+ *
+ * Both live in the query string and neither may clobber the other: closing a
+ * product must not drop the tag the client is browsing, and arriving on a
+ * ?product= deep link must not invent a tag. One builder, so that stays true.
+ */
+function shopHref(tagId: string | null, productId: string | null) {
+  const q = new URLSearchParams()
+  if (tagId) q.set('tag', tagId)
+  if (productId) q.set('product', productId)
+  const s = q.toString()
+  return s ? `/my-shop?${s}` : '/my-shop'
+}
+
 export function ShopGrid({
   products,
   acceptPayments = false,
   currency = null,
   openProductId = null,
+  tags = [],
+  activeTag = null,
+  offeringsTitle = 'Offerings',
 }: {
   products: Product[]
   acceptPayments?: boolean
   currency?: string | null
   /** ?product= — the sheet this page was linked straight to. */
   openProductId?: string | null
+  /**
+   * The trainer's tags that have something in THIS shop. Already emptied of
+   * the ones that don't by listShopTags, so every row here goes somewhere.
+   */
+  tags?: ShopTag[]
+  /** ?tag= — resolved server-side. `products` is already narrowed to it. */
+  activeTag?: ShopTag | null
+  /** The trainer's word for the screen classes and sessions are booked on. */
+  offeringsTitle?: string
 }) {
   const router = useRouter()
   const native = useIsNative()
   const [, startTransition] = useTransition()
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
+  // The full-screen tag list. A screen rather than a dropdown because a trainer
+  // may have twenty tags and because picking one changes what the whole page is
+  // — see TagChooser.
+  const [tagChooserOpen, setTagChooserOpen] = useState(false)
   // Deep link: the sheet is open on arrival when the URL named a product.
   // Initial state only, so closing it stays closed and an ordinary visit —
   // which is every visit without the param — behaves exactly as before.
@@ -190,17 +224,26 @@ export function ShopGrid({
     return Array.from(new Set(catalog.map(p => p.category).filter(Boolean) as string[])).sort()
   }, [catalog])
 
+  // The shelf actually in force. Derived rather than reset in an effect: moving
+  // into a tag re-renders this component with a smaller catalogue, and a chip
+  // for "Treats" that the tag has none of would otherwise stay lit over an
+  // empty grid. A shelf that isn't on this screen simply isn't selected.
+  const shelf = activeCategory && categories.includes(activeCategory) ? activeCategory : null
+
   const visible = useMemo(() => {
-    if (!activeCategory) return catalog
-    return catalog.filter(p => p.category === activeCategory)
-  }, [catalog, activeCategory])
+    if (!shelf) return catalog
+    return catalog.filter(p => p.category === shelf)
+  }, [catalog, shelf])
 
   // Closing a deep-linked sheet drops the param, so a refresh or a Back doesn't
-  // reopen the thing the trainer just dismissed.
+  // reopen the thing the trainer just dismissed — but keeps the tag, which is
+  // where the client still is.
   function close() {
     setOpen(null)
     setPickedVariantId(null)
-    if (openProductId) startTransition(() => router.replace('/my-shop', { scroll: false }))
+    if (openProductId) {
+      startTransition(() => router.replace(shopHref(activeTag?.id ?? null, null), { scroll: false }))
+    }
   }
 
   // Empty shop, but keep rendering: in preview the sheet may be the only thing
@@ -233,30 +276,65 @@ export function ShopGrid({
 
   return (
     <div className="flex flex-col gap-5">
+      {/* The tag control sits ABOVE the shelves and is a different shape from
+          them on purpose — see TagBar. */}
+      {(tags.length > 0 || activeTag) && (
+        <TagBar
+          activeTag={activeTag}
+          offeringsTitle={offeringsTitle}
+          onOpen={() => setTagChooserOpen(true)}
+        />
+      )}
+
       {shopIsEmpty && (
-        <div className="flex flex-col items-center justify-center text-center py-12">
-          <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-amber-100 to-rose-100 flex items-center justify-center">
-            <ShoppingBag className="h-7 w-7 text-amber-600" />
+        activeTag ? (
+          // Under a tag the honest answer is about the tag, not the shop. "Shop
+          // is opening soon" over a shop that plainly has things in it — the
+          // client was just looking at them — reads as a fault.
+          <div className="flex flex-col items-center justify-center text-center py-10">
+            <p className="text-sm font-medium text-slate-600">
+              Nothing in the shop under {activeTag.name} right now
+            </p>
+            <Link
+              href={shopHref(null, null)}
+              className="mt-3 inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700"
+            >
+              Show the whole shop
+            </Link>
           </div>
-          <p className="mt-4 text-sm font-medium text-slate-600">Shop is opening soon</p>
-          <p className="mt-1 text-xs text-slate-400 max-w-xs">
-            Products for you and your dog are on their way.
-          </p>
-        </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center text-center py-12">
+            <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-amber-100 to-rose-100 flex items-center justify-center">
+              <ShoppingBag className="h-7 w-7 text-amber-600" />
+            </div>
+            <p className="mt-4 text-sm font-medium text-slate-600">Shop is opening soon</p>
+            <p className="mt-1 text-xs text-slate-400 max-w-xs">
+              Products for you and your dog are on their way.
+            </p>
+          </div>
+        )
       )}
 
       {/* Category chips */}
       {categories.length > 0 && (
         <div className="flex gap-2 overflow-x-auto -mx-5 px-5 lg:mx-0 lg:px-0 pb-1 no-scrollbar">
-          <CategoryChip active={!activeCategory} onClick={() => setActiveCategory(null)}>
+          <CategoryChip active={!shelf} onClick={() => setActiveCategory(null)}>
             All
           </CategoryChip>
           {categories.map(c => (
-            <CategoryChip key={c} active={activeCategory === c} onClick={() => setActiveCategory(c)}>
+            <CategoryChip key={c} active={shelf === c} onClick={() => setActiveCategory(c)}>
               {c}
             </CategoryChip>
           ))}
         </div>
+      )}
+
+      {tagChooserOpen && (
+        <TagChooser
+          tags={tags}
+          activeTag={activeTag}
+          onClose={() => setTagChooserOpen(false)}
+        />
       )}
 
       {/* Grid */}
@@ -417,18 +495,225 @@ function VariantPicker({
   )
 }
 
+/**
+ * The tag control. ONE row, above the shelves, in either of two states.
+ *
+ * Categories and tags are both "narrow the shop", and the temptation was a
+ * second row of chips under the first. That would have been two identical
+ * controls saying different things, which is the fastest way to make a client
+ * stop trusting either.
+ *
+ * So they are deliberately unequal, because they are unequal:
+ *
+ *  - A CATEGORY is a shelf in this shop. It is where the trainer put the thing.
+ *    Every product has one (or Uncategorised), it never leads out of the shop,
+ *    and it stays the primary control — the chip row, unchanged.
+ *  - A TAG is a theme that runs ACROSS what the trainer sells: "Puppy" is a
+ *    course, a 1:1 and the clicker, and the shop only holds the last of those.
+ *
+ * A tag is therefore not a peer of the shelves — it is a state the whole shop
+ * is in, and it is drawn as one: a full-width row that says which state that
+ * is, with the shelves narrowing WITHIN it. And because a tag reaches past the
+ * shop, this is the one place the shop points somewhere else.
+ */
+function TagBar({
+  activeTag,
+  offeringsTitle,
+  onOpen,
+}: {
+  activeTag: ShopTag | null
+  offeringsTitle: string
+  onOpen: () => void
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="flex items-center">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left"
+        >
+          <Tag
+            className={cn('h-4 w-4 flex-shrink-0', activeTag ? 'text-accent' : 'text-slate-400')}
+            strokeWidth={1.75}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold text-slate-900">
+              {activeTag ? activeTag.name : 'Browse by tag'}
+            </span>
+            <span className="mt-0.5 block truncate text-xs text-slate-500">
+              {activeTag
+                ? `${activeTag.products} ${activeTag.products === 1 ? 'thing' : 'things'} in the shop`
+                : 'Themes that run across classes and the shop'}
+            </span>
+          </span>
+          <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-300" strokeWidth={1.75} />
+        </button>
+        {/* A way straight back out, without a trip through the chooser. */}
+        {activeTag && (
+          <Link
+            href={shopHref(null, null)}
+            aria-label="Show the whole shop"
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-slate-400 hover:bg-slate-50 hover:text-slate-700 mr-2"
+          >
+            <X className="h-4 w-4" strokeWidth={1.75} />
+          </Link>
+        )}
+      </div>
+
+      {/* The half of the tag that isn't for sale. Shown only when the tag
+          really does hold offerings, so it is never a line pointing at nothing.
+          A hairline inside the same block, not a second card — it is the same
+          tag, still being talked about. */}
+      {activeTag?.alsoBookable && (
+        <Link
+          href="/my-availability"
+          className="flex items-center gap-3 border-t border-slate-200 px-4 py-3 text-left"
+        >
+          <span className="min-w-0 flex-1 truncate text-xs text-slate-600">
+            {activeTag.name} is on classes and sessions too
+          </span>
+          <span className="flex flex-shrink-0 items-center gap-1 text-xs font-medium text-accent">
+            {offeringsTitle} <ArrowRight className="h-3.5 w-3.5" strokeWidth={1.75} />
+          </span>
+        </Link>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Picking a tag: a full screen, not a menu.
+ *
+ * The house rule — anything with more than about three choices takes the whole
+ * screen — and the right one here twice over: a trainer may keep twenty tags,
+ * and each row has a name AND a count to read. Portaled to <body> because the
+ * client shell's header is backdrop-blurred, which would otherwise become the
+ * containing block for this `fixed inset-0`.
+ *
+ * Every row is a real link. The filter is server-side, so choosing one is a
+ * navigation, and making it an <a> means it prefetches, opens in a new tab, and
+ * survives a client with JavaScript still loading.
+ */
+function TagChooser({
+  tags,
+  activeTag,
+  onClose,
+}: {
+  tags: ShopTag[]
+  activeTag: ShopTag | null
+  onClose: () => void
+}) {
+  // Lock the page behind this screen — the standing rule against two scrollbars.
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [])
+
+  return (
+    <ModalPortal>
+      <div className="fixed inset-0 z-50 flex justify-center bg-white p-0 sm:items-center sm:bg-slate-900/40 sm:p-4 sm:backdrop-blur-sm">
+        <div className="flex h-full w-full flex-col bg-white sm:h-auto sm:max-h-[92vh] sm:max-w-md sm:rounded-3xl">
+          <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-4">
+            <h2 className="min-w-0 flex-1 text-base font-bold text-slate-900">Browse by tag</h2>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
+            >
+              <X className="h-4 w-4" strokeWidth={1.75} />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto no-scrollbar px-5 py-4">
+            <p className="mb-3 text-xs text-slate-500">
+              A tag is one idea across everything on offer, so it holds classes and
+              sessions as well as the things in the shop.
+            </p>
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white [&>*+*]:border-t [&>*+*]:border-slate-200">
+              <TagRow
+                href={shopHref(null, null)}
+                name="Everything in the shop"
+                sub={null}
+                active={!activeTag}
+                onClick={onClose}
+              />
+              {tags.map(t => (
+                <TagRow
+                  key={t.id}
+                  href={shopHref(t.id, null)}
+                  name={t.name}
+                  sub={`${t.products} in the shop${t.alsoBookable ? ' · also on classes' : ''}`}
+                  active={activeTag?.id === t.id}
+                  onClick={onClose}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
+  )
+}
+
+function TagRow({
+  href,
+  name,
+  sub,
+  active,
+  onClick,
+}: {
+  href: string
+  name: string
+  sub: string | null
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className={cn('flex items-center gap-3 px-4 py-3.5 text-left', active && 'bg-slate-50')}
+    >
+      <Tag
+        className={cn('h-4 w-4 flex-shrink-0', active ? 'text-accent' : 'text-slate-400')}
+        strokeWidth={1.75}
+      />
+      <span className="min-w-0 flex-1">
+        <span className={cn('block truncate text-sm', active ? 'font-semibold text-slate-900' : 'text-slate-700')}>
+          {name}
+        </span>
+        {sub && <span className="mt-0.5 block truncate text-xs text-slate-500">{sub}</span>}
+      </span>
+      {active
+        ? <Check className="h-4 w-4 flex-shrink-0 text-slate-900" strokeWidth={2.25} />
+        : <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-300" strokeWidth={1.75} />}
+    </Link>
+  )
+}
+
+/**
+ * A shelf in this shop.
+ *
+ * The tag icon that used to sit in here is gone. Once the screen has a real tag
+ * control on it, a chip row wearing the same tag glyph was the confusion this
+ * whole layout is arranged to avoid — and a shelf name reads perfectly well as
+ * a word on its own.
+ */
 function CategoryChip({ children, active, onClick }: { children: React.ReactNode; active: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
       className={cn(
-        'flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
+        'flex-shrink-0 inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
         active
           ? 'bg-slate-900 text-white'
           : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
       )}
     >
-      <Tag className="h-3 w-3" /> {children}
+      {children}
     </button>
   )
 }

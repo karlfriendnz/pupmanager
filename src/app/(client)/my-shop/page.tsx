@@ -4,6 +4,7 @@ import { getActiveClient } from '@/lib/client-context'
 import { clientLabelFor, sanitizeNavLabels } from '@/lib/nav-labels'
 import { getEnabledAddons } from '@/lib/billing'
 import { listShopProducts, loadPreviewOnlyProduct } from '@/lib/shop-catalog'
+import { listShopTags, resolveShopTag } from '@/lib/shop-tags'
 import { ShopGrid } from './shop-grid'
 import type { Metadata } from 'next'
 
@@ -16,15 +17,21 @@ export const metadata: Metadata = { title: 'Shop' }
  * grid with a sheet over it — a route would have to render the grid a second
  * time to put anything behind the sheet. This way the link is shareable, Back
  * closes it, and with the param absent nothing about the page changes.
+ *
+ * ?tag=<id> narrows the whole shop to one of the trainer's tags. Same reason,
+ * plus one more: it is a SERVER filter, so it has to reach the query, and the
+ * URL is the only state a server component can read. The two params compose —
+ * the tag survives opening and closing a product, and the tag-browse screen's
+ * ?product= deep link still lands on an unfiltered shop with the sheet up.
  */
 export default async function MyShopPage({
   searchParams,
 }: {
-  searchParams: Promise<{ product?: string }>
+  searchParams: Promise<{ product?: string; tag?: string }>
 }) {
   const active = await getActiveClient()
   if (!active) redirect('/login')
-  const { product: openProductId = null } = await searchParams
+  const { product: openProductId = null, tag: tagParam = null } = await searchParams
 
   const profile = await prisma.clientProfile.findUnique({
     where: { id: active.clientId },
@@ -53,14 +60,24 @@ export default async function MyShopPage({
   const trainer = await prisma.trainerProfile.findUnique({
     where: { id: profile.trainerId }, select: { navLabels: true },
   })
-  const shopTitle = clientLabelFor('/my-shop', 'Shop', sanitizeNavLabels(trainer?.navLabels))
+  const navLabels = sanitizeNavLabels(trainer?.navLabels)
+  const shopTitle = clientLabelFor('/my-shop', 'Shop', navLabels)
+  // What this trainer calls the screen a tag's classes and sessions live on,
+  // since the shop sends people there and has to name it the way their menu does.
+  const offeringsTitle = clientLabelFor('/my-availability', 'Offerings', navLabels)
 
   // Clients can buy (vs request) only when the trainer has switched payments on
   // and their Connect account can actually take charges.
   const acceptPayments = profile.trainer.acceptPaymentsEnabled && profile.trainer.connectChargesEnabled
 
+  // Read BEFORE the catalogue, because it decides what the catalogue query is.
+  // A ?tag= naming something this shop doesn't offer resolves to null and the
+  // client simply gets the whole shop — never an empty grid under a filter.
+  const shopTags = await listShopTags(profile.trainerId)
+  const activeTag = resolveShopTag(shopTags, tagParam)
+
   const [products, pendingRequests, hiddenPreview] = await Promise.all([
-    listShopProducts(profile.trainerId),
+    listShopProducts(profile.trainerId, { tagId: activeTag?.id ?? null }),
     prisma.productRequest.findMany({
       where: { clientId: profile.id, status: { in: ['PENDING', 'FULFILLED'] } },
       select: { productId: true, status: true },
@@ -92,6 +109,9 @@ export default async function MyShopPage({
           acceptPayments={acceptPayments}
           currency={profile.trainer.payoutCurrency}
           openProductId={openProductId}
+          tags={shopTags}
+          activeTag={activeTag}
+          offeringsTitle={offeringsTitle}
           products={[
             ...products.map(p => ({
               id: p.id,

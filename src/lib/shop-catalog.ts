@@ -21,7 +21,12 @@ import { prisma } from './prisma'
  * from the preview and leave the trainer looking at a product that renders
  * differently from the real thing.
  */
-function findShopProducts(where: { trainerId: string; active: boolean; id?: string }) {
+function findShopProducts(where: {
+  trainerId: string
+  active: boolean
+  id?: string
+  tags?: { some: { tagId: string } }
+}) {
   return prisma.product.findMany({
     where,
     orderBy: [{ featured: 'desc' }, { category: 'asc' }, { order: 'asc' }, { createdAt: 'desc' }],
@@ -58,9 +63,24 @@ function findShopProducts(where: { trainerId: string; active: boolean; id?: stri
 
 export type ShopProduct = Awaited<ReturnType<typeof findShopProducts>>[number]
 
-/** Everything this trainer sells that a client is allowed to see. */
-export function listShopProducts(trainerId: string) {
-  return findShopProducts({ trainerId, active: true })
+/**
+ * Everything this trainer sells that a client is allowed to see.
+ *
+ * `tagId` narrows it to one of the trainer's tags. It is a WHERE, not a filter
+ * applied afterwards: the shop is a catalogue, and shipping all of it so the
+ * browser can hide most of it costs the client the whole download for a
+ * quarter of the page. The caller validates the id against the trainer's own
+ * tags first, so a tag from another business narrows to nothing rather than
+ * reaching across the tenant boundary — but `trainerId` here makes that safe
+ * either way.
+ */
+export function listShopProducts(trainerId: string, opts?: { tagId?: string | null }) {
+  const tagId = opts?.tagId ?? null
+  return findShopProducts({
+    trainerId,
+    active: true,
+    ...(tagId ? { tags: { some: { tagId } } } : {}),
+  })
 }
 
 /**
