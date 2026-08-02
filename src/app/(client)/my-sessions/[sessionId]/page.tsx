@@ -14,6 +14,7 @@ import {
 import { RichText } from '@/components/shared/rich-text'
 import { isRichTextEmpty } from '@/lib/rich-text'
 import { resolveSeriesSteps, stepForIndex, type CurriculumStep } from '@/lib/series'
+import { clientVisibleHomeworkWhere } from '@/lib/homework-visibility'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Session' }
@@ -73,6 +74,11 @@ export default async function ClientSessionPage({
       },
       dog: { select: { name: true } },
       tasks: {
+        // A client can open a session BEFORE it happens — the curriculum step
+        // is deliberately shown early. So the same gate the home screen uses
+        // applies here, or opening next week's session would read out its
+        // practice homework ahead of the lesson it belongs to.
+        where: clientVisibleHomeworkWhere(),
         orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
         select: {
           id: true, title: true, description: true, repetitions: true,

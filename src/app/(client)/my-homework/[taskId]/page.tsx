@@ -9,6 +9,7 @@ import { RichText } from '@/components/shared/rich-text'
 import { isRichTextEmpty } from '@/lib/rich-text'
 import { InstructionalVideoList } from '@/components/shared/instructional-video'
 import { readVideos } from '@/lib/instructional-videos'
+import { clientVisibleHomeworkWhere } from '@/lib/homework-visibility'
 
 export const metadata: Metadata = { title: 'Homework' }
 
@@ -27,7 +28,10 @@ export default async function HomeworkDetailPage({ params }: { params: Promise<{
   if (!active) redirect('/login')
 
   const task = await prisma.trainingTask.findFirst({
-    where: { id: taskId, clientId: active.clientId },
+    // The list screens hide practice homework until its session has run, so
+    // this one has to as well — otherwise a bookmarked (or guessed) id walks
+    // straight past the gate. Same predicate, one place: lib/homework-visibility.
+    where: { id: taskId, clientId: active.clientId, ...clientVisibleHomeworkWhere() },
     select: {
       id: true, title: true, description: true, repetitions: true, wantsLog: true,
       videoUrl: true, videos: true, trainerNote: true, imageUrls: true,

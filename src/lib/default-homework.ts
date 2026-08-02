@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { resolveSeriesSteps, stepForIndex } from '@/lib/series'
+import type { HomeworkTiming } from '@/generated/prisma'
 
 // Default homework — the tasks a trainer sets up ONCE on an offering, so the
 // same five library items don't have to be hunted out after every session.
@@ -21,6 +22,12 @@ export interface SuggestedTask {
   description: string | null
   repetitions: number | null
   videoUrl: string | null
+  /**
+   * Preparation for the session, or practice after it. Never read from the
+   * library item — the SAME item can be preparation on one offering and
+   * practice on another, so the flag belongs to the offering's row.
+   */
+  timing: HomeworkTiming
   order: number
 }
 
@@ -193,6 +200,7 @@ export async function suggestedHomeworkForSession(
         description: r.libraryTask ? r.libraryTask.description : r.description,
         repetitions: r.libraryTask ? r.libraryTask.repetitions : r.repetitions,
         videoUrl: r.libraryTask ? r.libraryTask.videoUrl : r.videoUrl,
+        timing: r.timing,
         order: r.order,
       }
     })
@@ -242,6 +250,7 @@ export async function assignDefaults({
     repetitions: number | null
     videoUrl: string | null
     libraryTaskId: string | null
+    timing: HomeworkTiming
     order: number
   }[] = []
 
@@ -270,6 +279,9 @@ export async function assignDefaults({
         repetitions: t.repetitions,
         videoUrl: t.videoUrl,
         libraryTaskId: t.libraryTaskId,
+        // Snapshot, like the text — re-flagging the offering afterwards must
+        // not change what a client has already been given.
+        timing: t.timing,
         order: order++,
       })
     }

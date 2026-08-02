@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   defFindMany: vi.fn(),
   defFindFirst: vi.fn(),
   defCreate: vi.fn(),
+  defUpdate: vi.fn(),
   defDelete: vi.fn(),
   sessionFindFirst: vi.fn(),
   sessionFindUnique: vi.fn(),
@@ -27,7 +28,7 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     package: { findFirst: h.pkgFindFirst },
     libraryTask: { findFirst: h.libFindFirst },
-    packageDefaultTask: { findMany: h.defFindMany, findFirst: h.defFindFirst, create: h.defCreate, delete: h.defDelete },
+    packageDefaultTask: { findMany: h.defFindMany, findFirst: h.defFindFirst, create: h.defCreate, update: h.defUpdate, delete: h.defDelete },
     trainingSession: { findFirst: h.sessionFindFirst, findUnique: h.sessionFindUnique, findMany: h.sessionFindMany },
     classEnrollment: { findMany: h.enrollFindMany },
     trainingTask: { findMany: h.taskFindMany, createManyAndReturn: h.createManyAndReturn },
@@ -35,7 +36,7 @@ vi.mock('@/lib/prisma', () => ({
 }))
 
 import { GET as listDefaults, POST as addDefault } from '@/app/api/trainer/packages/[packageId]/default-homework/route'
-import { DELETE as removeDefault } from '@/app/api/trainer/packages/[packageId]/default-homework/[rowId]/route'
+import { PATCH as patchDefault, DELETE as removeDefault } from '@/app/api/trainer/packages/[packageId]/default-homework/[rowId]/route'
 import { GET as suggest, POST as confirm } from '@/app/api/sessions/[sessionId]/default-homework/route'
 
 const ok = { companyId: 'co1' }
@@ -85,6 +86,47 @@ describe('offering editor — /api/trainer/packages/[packageId]/default-homework
     const res = await listDefaults(new Request('https://x'), { params: Promise.resolve({ packageId: 'p1' }) })
     expect(res.status).toBe(403)
     expect(h.pkgFindFirst).not.toHaveBeenCalled()
+  })
+
+  it('defaults a new row to practice, not preparation', async () => {
+    // Silently flipping an offering's homework to "before" would put the whole
+    // week's write-up in front of the client early, so the timing has to be
+    // asked for explicitly.
+    h.pkgFindFirst.mockResolvedValue({ id: 'p1', sessionCount: 6 })
+    h.defFindFirst.mockResolvedValue(null)
+    h.defCreate.mockResolvedValue({ id: 'd1' })
+    await addDefault(body({ sessionIndex: 1, title: 'Crate rest' }), { params: Promise.resolve({ packageId: 'p1' }) })
+    expect(h.defCreate.mock.calls[0][0].data).toMatchObject({ timing: 'AFTER_SESSION' })
+  })
+
+  it('refuses a timing that is not one of the two', async () => {
+    h.pkgFindFirst.mockResolvedValue({ id: 'p1', sessionCount: 6 })
+    const res = await addDefault(body({ sessionIndex: 1, title: 'Crate rest', timing: 'WHENEVER' }), { params: Promise.resolve({ packageId: 'p1' }) })
+    expect(res.status).toBe(400)
+    expect(h.defCreate).not.toHaveBeenCalled()
+  })
+
+  it('404s changing the timing of a row on someone else\'s package', async () => {
+    h.defFindFirst.mockResolvedValue(null)
+    const res = await patchDefault(
+      new Request('https://x', { method: 'PATCH', body: JSON.stringify({ timing: 'BEFORE_SESSION' }) }),
+      { params: Promise.resolve({ packageId: 'p1', rowId: 'd-theirs' }) },
+    )
+    expect(res.status).toBe(404)
+    expect(h.defUpdate).not.toHaveBeenCalled()
+  })
+
+  it('lets timing be set on a LIBRARY-backed row, unlike its text', async () => {
+    // The same library item is preparation on one offering and practice on
+    // another, so timing belongs to this row — while the text still belongs to
+    // the library and stays ignored here.
+    h.defFindFirst.mockResolvedValue({ id: 'd1', libraryTaskId: 'L1' })
+    h.defUpdate.mockResolvedValue({ id: 'd1' })
+    await patchDefault(
+      new Request('https://x', { method: 'PATCH', body: JSON.stringify({ timing: 'BEFORE_SESSION', title: 'Hijack the library' }) }),
+      { params: Promise.resolve({ packageId: 'p1', rowId: 'd1' }) },
+    )
+    expect(h.defUpdate.mock.calls[0][0].data).toEqual({ timing: 'BEFORE_SESSION' })
   })
 
   it('404s deleting a row that is not on the caller\'s own package', async () => {

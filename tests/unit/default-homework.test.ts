@@ -100,6 +100,24 @@ describe('suggestedHomeworkForSession', () => {
     expect(h.defaultFindMany).not.toHaveBeenCalled()
   })
 
+  it('takes before/after from the offering\'s row, never from the library item', async () => {
+    h.sessionFindFirst.mockResolvedValue({
+      id: 's1', clientId: null, sessionIndex: 1, clientPackageId: null, classRunId: 'r1',
+      classRun: { id: 'r1', packageId: 'p1', package: { id: 'p1', name: 'Puppy Class' } },
+      clientPackage: null,
+    })
+    // The SAME library item can be preparation on one offering and practice on
+    // another, so the flag belongs to the offering's row — this is the whole
+    // reason it isn't a column on LibraryTask.
+    h.defaultFindMany.mockResolvedValue([
+      { id: 'd1', order: 0, timing: 'BEFORE_SESSION', title: null, description: null, repetitions: null, videoUrl: null, libraryTask: lib('L1', 'Bring a pot of chicken') },
+      { id: 'd2', order: 1, timing: 'AFTER_SESSION', title: null, description: null, repetitions: null, videoUrl: null, libraryTask: lib('L2', 'Practise the recall') },
+    ])
+
+    const out = await suggestedHomeworkForSession('s1', 'co1')
+    expect(out?.tasks.map(t => t.timing)).toEqual(['BEFORE_SESSION', 'AFTER_SESSION'])
+  })
+
   it('drops a default with nothing to name it', async () => {
     h.sessionFindFirst.mockResolvedValue({
       id: 's6', clientId: null, sessionIndex: 1, clientPackageId: null, classRunId: 'r1',
@@ -118,9 +136,26 @@ describe('suggestedHomeworkForSession', () => {
 
 describe('assignDefaults', () => {
   const tasks: SuggestedTask[] = [
-    { id: 'd1', libraryTaskId: 'L1', title: 'Loose lead', description: 'walk nicely', repetitions: 5, videoUrl: null, order: 0 },
-    { id: 'd2', libraryTaskId: null, title: 'Crate rest', description: null, repetitions: null, videoUrl: null, order: 1 },
+    { id: 'd1', libraryTaskId: 'L1', title: 'Loose lead', description: 'walk nicely', repetitions: 5, videoUrl: null, timing: 'AFTER_SESSION', order: 0 },
+    { id: 'd2', libraryTaskId: null, title: 'Crate rest', description: null, repetitions: null, videoUrl: null, timing: 'AFTER_SESSION', order: 1 },
   ]
+
+  it('carries the offering\'s before/after flag onto the handed-out task', async () => {
+    h.taskFindMany.mockResolvedValue([])
+    const created = await assignDefaults({
+      tasks: [
+        { id: 'd0', libraryTaskId: null, title: 'Bring a hungry dog', description: null, repetitions: null, videoUrl: null, timing: 'BEFORE_SESSION', order: 0 },
+        ...tasks,
+      ],
+      clientIds: ['c1'],
+      sessionId: 's1',
+      date: new Date('2026-08-01T00:00:00.000Z'),
+    })
+
+    // A snapshot, like the text — re-flagging the offering afterwards must not
+    // rewrite work already given out.
+    expect(created.map(r => r.timing)).toEqual(['BEFORE_SESSION', 'AFTER_SESSION', 'AFTER_SESSION'])
+  })
 
   it('gives every client every task, on the right dog', async () => {
     h.taskFindMany.mockResolvedValue([])

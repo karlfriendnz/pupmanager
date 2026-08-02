@@ -58,6 +58,22 @@ enum SessionStatus {
   INVOICED
 }
 
+// When a piece of homework is any use to the client.
+//
+// Most homework is PRACTICE and only makes sense once the session has happened
+// — that is the default, and what every row written before this existed is.
+// Some homework is PREPARATION ("bring a hungry dog and a pot of chicken"),
+// which is worthless if it arrives after the class, so it has to be readable
+// the moment the trainer hands it out.
+//
+// The flag is set once on the offering (PackageDefaultTask) and copied onto
+// each TrainingTask at hand-out, like every other field there — homework is a
+// snapshot, so re-flagging the offering never rewrites work already given out.
+enum HomeworkTiming {
+  BEFORE_SESSION
+  AFTER_SESSION
+}
+
 enum AttachmentKind {
   IMAGE
   VIDEO
@@ -1328,6 +1344,16 @@ model TrainingTask {
   /// library item at hand-out time (LibraryTask.wantsLog) — homework is a snapshot,
   /// so changing the item later never changes work already given out.
   wantsLog      Boolean  @default(true)
+  /// Preparation for the session, or practice after it. Copied from the
+  /// offering's default row at hand-out time (PackageDefaultTask.timing), and a
+  /// snapshot like everything else here.
+  ///
+  /// This is what decides whether the CLIENT can see the task yet: an
+  /// AFTER_SESSION task stays hidden until its session has run, a
+  /// BEFORE_SESSION one shows the moment it is handed out. Homework with no
+  /// session behind it has nothing to wait for and is always visible. The one
+  /// predicate lives in lib/homework-visibility.ts — never re-derive it.
+  timing        HomeworkTiming @default(AFTER_SESSION)
   order         Int      @default(0) // display order within a session
   // Which library item this homework was created from, when it came from the
   // Library. The row stays a SNAPSHOT (title/description are copied, so editing
@@ -1349,6 +1375,8 @@ model TrainingTask {
   @@index([date])
   @@index([sessionId])
   @@index([libraryTaskId])
+  // The client-visibility gate reads both on every screen that lists homework.
+  @@index([timing, sessionId])
   @@map("training_tasks")
 }
 
@@ -3352,6 +3380,9 @@ model PackageDefaultTask {
   // 1-based session number within the offering ("session 3 of 6").
   // null = suggest after EVERY session.
   sessionIndex  Int?
+  // Whether this one is preparation for the session or practice after it.
+  // Copied onto the TrainingTask at hand-out time — see HomeworkTiming.
+  timing        HomeworkTiming @default(AFTER_SESSION)
   // When set, the text is read LIVE from the library item at suggest time, so
   // editing the library keeps every offering's defaults current. The snapshot
   // is taken at confirm, exactly like any other library assignment.

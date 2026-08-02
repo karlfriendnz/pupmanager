@@ -9,6 +9,7 @@ import { getEnabledAddons } from '@/lib/billing'
 import { mergeClientDogs } from '@/lib/dogs'
 import { productPriceSummary } from '@/lib/product-price'
 import { todayInTz, weekBoundsUtcDates } from '@/lib/timezone'
+import { clientVisibleHomeworkWhere } from '@/lib/homework-visibility'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Home' }
@@ -114,7 +115,23 @@ export default async function ClientHomePage() {
     prisma.trainingTask.findMany({
       where: {
         clientId: clientProfile.id,
-        date: { gte: weekStart, lt: weekEnd },
+        // Practice homework stays hidden until the session it came out of has
+        // run — see lib/homework-visibility.
+        AND: [
+          clientVisibleHomeworkWhere(now),
+          {
+            OR: [
+              { date: { gte: weekStart, lt: weekEnd } },
+              // Preparation for a session that hasn't happened yet stays on the
+              // list however far ahead it was handed out. It is dated at its
+              // session, so a trainer who sends "bring a hungry dog and a pot
+              // of chicken" two weeks early would otherwise have it appear the
+              // week of the class — which is the one thing preparation must
+              // never do.
+              { timing: 'BEFORE_SESSION', session: { scheduledAt: { gte: now } } },
+            ],
+          },
+        ],
       },
       orderBy: [{ date: 'asc' }, { order: 'asc' }],
       select: {

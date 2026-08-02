@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { clientVisibleHomeworkWhere } from '@/lib/homework-visibility'
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import crypto from 'crypto'
 
@@ -54,7 +55,7 @@ export async function POST(req: Request) {
   }
 
   const task = await prisma.trainingTask.findFirst({
-    where: { id: taskId, client: { userId: session.user.id } },
+    where: { id: taskId, client: { userId: session.user.id }, ...clientVisibleHomeworkWhere() },
     select: { id: true, clientId: true },
   })
   if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
