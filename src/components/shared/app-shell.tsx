@@ -864,7 +864,21 @@ function TrainerTopBar({
     <header className="hidden md:flex fixed top-0 inset-x-0 z-40 min-h-[3.5rem] items-center border-b border-slate-100 bg-white/85 backdrop-blur pt-[var(--app-safe-top)]">
       {/* Logo zone — aligned to the sidebar width so it sits above it. Links to
           the trainer's chosen home page. */}
-      <Link href={homeHref} aria-label="Home" className={cn('flex items-center h-full shrink-0 border-r border-slate-100 transition-all duration-200 overflow-hidden hover:bg-slate-50', collapsed ? 'w-16 justify-center px-2' : 'w-64 gap-3 px-5')}>
+      {/* The logo square doubles as the expand/collapse control: the mark sits
+          there normally, and hovering swaps it for the chevron. The toggle used
+          to be a separate button floating just past the sidebar border, which
+          read as a stray arrow belonging to nothing — it pointed at the rail
+          without being part of it.
+
+          They are SIBLINGS, not nested: a <button> inside an <a> is invalid
+          HTML and breaks both the link and the button. So the wrapper is the
+          hover group, and the toggle is positioned over the mark.
+
+          When expanded the toggle covers only the 2rem mark, so the business
+          name beside it stays a working link to home. Collapsed there is no
+          name, so home is the Dashboard row in the nav below. */}
+      <div className={cn('group relative h-full shrink-0 border-r border-slate-100 transition-all duration-200', collapsed ? 'w-16' : 'w-64')}>
+      <Link href={homeHref} aria-label="Home" className={cn('flex items-center h-full w-full transition-all duration-200 overflow-hidden hover:bg-slate-50', collapsed ? 'justify-center px-2' : 'gap-3 px-5')}>
         {/* Logo fits inside a fixed square box (object-contain, never cropped),
             with the org name beside it when expanded. */}
         {trainerIcon ? (
@@ -883,16 +897,24 @@ function TrainerTopBar({
           <span className="font-semibold text-slate-900 truncate">{businessName ?? 'PupManager'}</span>
         )}
       </Link>
-      {/* Collapse toggle — just past the sidebar border. */}
+      {/* Hidden until the logo zone is hovered — and until it is FOCUSED, or
+          the only way to collapse the menu would be with a mouse. */}
       <button
         type="button"
         onClick={onToggle}
         title={collapsed ? 'Expand menu' : 'Collapse menu'}
         aria-label={collapsed ? 'Expand menu' : 'Collapse menu'}
-        className="ml-2 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+        className={cn(
+          'absolute top-1/2 -translate-y-1/2 grid h-8 w-8 place-items-center rounded-lg',
+          'bg-white text-slate-600 ring-1 ring-slate-200 shadow-sm',
+          'opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-visible:opacity-100',
+          'hover:bg-slate-50',
+          collapsed ? 'left-1/2 -translate-x-1/2' : 'left-5',
+        )}
       >
-        {collapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+        {collapsed ? <ChevronRight className="h-5 w-5" strokeWidth={1.75} /> : <ChevronLeft className="h-5 w-5" strokeWidth={1.75} />}
       </button>
+      </div>
       {/* Back-arrow slot — pages portal a back button here (detail pages). */}
       <div id="pm-topbar-back" className="ml-2 flex items-center empty:hidden" />
       {/* Page title. */}
