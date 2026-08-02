@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   CalendarPlus, GraduationCap, Clock, Users, Video, MapPin, Check, CheckCircle2,
   Loader2, ChevronLeft, ArrowRight, CalendarDays, Repeat, Ticket, PartyPopper,
-  Minus, Plus,
+  Minus, Plus, ShoppingBag, Tag as TagIcon,
 } from 'lucide-react'
 import { openExternal } from '@/lib/external-link'
 import { labelFor } from '@/lib/nav-labels'
@@ -14,6 +14,8 @@ import { MembershipCards } from '@/components/shared/membership-cards'
 import type { ClientMembership } from '@/lib/client-memberships'
 import { enumerateStartTimes, type AvailabilityRow, type BlackoutRow, type BusyInterval } from '@/lib/availability'
 import { zonedToUtc, todayInTz } from '@/lib/timezone'
+import type { BasketClassLine } from '@/lib/basket'
+import { useBasketOptional } from '../basket/basket-context'
 
 export interface WizardPackage {
   id: string
@@ -85,6 +87,32 @@ export interface WizardEvent {
   priceCents: number | null
   tiers: WizardEventTier[]
   allowWaitlist: boolean
+}
+
+/**
+ * One of the trainer's tags, already resolved to ids this screen holds.
+ *
+ * The whole point of a tag is that it reaches ACROSS the types: "Puppy" holds a
+ * course, a 1:1 session and a product at once. So it arrives as four id lists
+ * rather than a type + a filter, and the server has already dropped anything
+ * this client can't act on.
+ */
+export interface WizardTag {
+  id: string
+  name: string
+  packageIds: string[]
+  classIds: string[]
+  eventIds: string[]
+  productIds: string[]
+}
+
+/** A shop product that carries at least one tag. Products are BOUGHT, not
+ *  booked, so these rows leave for the shop rather than entering the wizard. */
+export interface WizardProduct {
+  id: string
+  name: string
+  imageUrl: string | null
+  priceCents: number | null
 }
 
 export interface PreviewDay {
@@ -182,6 +210,11 @@ export function BookingWizard(props: {
   packages: WizardPackage[]
   classes: WizardClass[]
   events: WizardEvent[]
+  /** The trainer's tags, in their order, already emptied of anything this
+   *  client can't act on. */
+  tags: WizardTag[]
+  /** Every tagged, on-sale product — the only products this screen knows about. */
+  products: WizardProduct[]
   /** Server's ticket-quantity ceiling, so the stepper can't offer more than the API takes. */
   maxTicketQuantity: number
   memberships: ClientMembership[]
@@ -191,7 +224,7 @@ export function BookingWizard(props: {
   currency: string | null
   previewDays: PreviewDay[]
 }) {
-  const { businessName, initials, tz, availability, packages, classes, events, maxTicketQuantity, memberships, dogs, defaultDogId, acceptPayments, currency, previewDays } = props
+  const { businessName, initials, tz, availability, packages, classes, events, tags, products, maxTicketQuantity, memberships, dogs, defaultDogId, acceptPayments, currency, previewDays } = props
 
   // The trainer's own words for what they sell. A trainer who renames "1:1
   // Sessions" to "Private lessons" was still showing their clients our words in
@@ -206,9 +239,28 @@ export function BookingWizard(props: {
   }
 
   const [step, setStep] = useState<1 | 2 | 3>(1)
-  // Step 1 is a menu of offering TYPES; picking one drills into that type's list.
-  const [category, setCategory] = useState<'sessions' | 'classes' | 'events' | 'memberships' | null>(null)
+  // Step 1 is a menu of offering TYPES, plus the trainer's tags; picking either
+  // drills into a list. A tag is `tag:<id>` rather than its own state, so there
+  // is still exactly ONE thing that says what step 1 is showing — two would go
+  // out of step the first time someone forgot to clear the other.
+  const [category, setCategory] = useState<'sessions' | 'classes' | 'events' | 'memberships' | `tag:${string}` | null>(null)
   const [selection, setSelection] = useState<Selection | null>(null)
+
+  // ─── Browse by tag ────────────────────────────────────────────────────────
+  //
+  // ONE MIXED SCREEN, not a filter per list. A tag exists precisely because the
+  // course, the 1:1 and the clicker belong together; a filter bolted onto the
+  // classes list and a second one onto the shop could never show them on the
+  // same screen, and would make the trainer keep the same word in two places to
+  // no benefit. The sections stay labelled inside it, because you BOOK a class
+  // and you BUY a clicker and pretending otherwise helps nobody.
+  const activeTag = category?.startsWith('tag:')
+    ? tags.find(t => t.id === category.slice(4)) ?? null
+    : null
+  const shownPackages = activeTag ? packages.filter(p => activeTag.packageIds.includes(p.id)) : packages
+  const shownClasses = activeTag ? classes.filter(c => activeTag.classIds.includes(c.id)) : classes
+  const shownEvents = activeTag ? events.filter(e => activeTag.eventIds.includes(e.id)) : events
+  const shownProducts = activeTag ? products.filter(p => activeTag.productIds.includes(p.id)) : []
 
   // Ticketed-event state: which ticket type, and how many.
   const [ticketTierId, setTicketTierId] = useState<string | null>(null)
@@ -312,6 +364,85 @@ export function BookingWizard(props: {
     setError(null)
     if (step === 3) setStep(2)
     else if (step === 2) { setStep(1); setSelection(null) }
+  }
+
+  // ── The basket ─────────────────────────────────────────────────────────────
+  // A client booking three casual Saturdays AND buying a long line shouldn't
+  // meet the card box three times. The basket lives in the client layout, so
+  // it's read optionally here — this wizard is also rendered in the trainer's
+  // preview harness, where there isn't one, and a hard hook would blank it.
+  const basket = useBasketOptional()
+
+  /**
+   * The current class/event choice as a basket line, or null when it isn't
+   * something a basket can hold (a 1:1 booking picks a TIME, which can't sit in
+   * a basket going stale, and a free class has nothing to charge).
+   *
+   * The estimate multiplies by the number of dogs, which the confirm summary
+   * above doesn't — the server bills per dog, so a two-dog booking that showed
+   * one dog's price in the basket would surprise them at the card box.
+   */
+  function currentBasketLine(): BasketClassLine | null {
+    const dogCount = Math.max(1, dogIds.length)
+    const dogSuffix = dogIds.length > 1 ? ` · ${dogIds.length} dogs` : ''
+    if (selection?.kind === 'class') {
+      const c = selection.cls
+      if (classType === 'DROP_IN') {
+        const chosen = c.sessions.filter(s => dropInSessionIds.includes(s.id))
+        if (chosen.length === 0) return null
+        const each = chosen.reduce((sum, s) => sum + (s.dropInPriceCents ?? c.dropInPerSessionCents ?? 0), 0)
+        if (each <= 0) return null
+        return {
+          kind: 'CLASS', classRunId: c.id, type: 'DROP_IN',
+          sessionIds: chosen.map(s => s.id), dogIds: dogIds.length ? dogIds : [null],
+          ticketTierId: null, ticketQuantity: 1,
+          name: c.name,
+          detail: `Drop-in · ${chosen.length} session${chosen.length === 1 ? '' : 's'}${dogSuffix}`,
+          imageUrl: c.imageUrl,
+          estimateCents: each * dogCount,
+        }
+      }
+      if (!c.fullPriceCents || c.fullPriceCents <= 0) return null
+      return {
+        kind: 'CLASS', classRunId: c.id, type: 'FULL', sessionIds: [],
+        dogIds: dogIds.length ? dogIds : [null], ticketTierId: null, ticketQuantity: 1,
+        name: c.name, detail: `Full course${dogSuffix}`, imageUrl: c.imageUrl,
+        estimateCents: c.fullPriceCents * dogCount,
+      }
+    }
+    if (selection?.kind === 'event') {
+      const e = selection.ev
+      // A ticketed event is priced by its TIER × how many, never by the
+      // package — the same rule the server enforces.
+      const ticketed = e.tiers.length > 0
+      const unit = ticketed ? (tier?.priceCents ?? 0) : (e.priceCents ?? 0)
+      if (unit <= 0) return null
+      if (ticketed && !tier) return null
+      return {
+        kind: 'CLASS', classRunId: e.id, type: 'FULL', sessionIds: [],
+        // A ticket is a place at an event, not a dog's spot — one dog only.
+        dogIds: ticketed ? (dogIds.length ? [dogIds[0]] : [null]) : (dogIds.length ? dogIds : [null]),
+        ticketTierId: ticketed ? tier!.id : null,
+        ticketQuantity: ticketed ? ticketQty : 1,
+        name: e.name,
+        detail: ticketed ? `${ticketQty} × ${tier!.name}` : `Event${dogSuffix}`,
+        imageUrl: e.imageUrl,
+        estimateCents: ticketed ? unit * ticketQty : unit * Math.max(1, dogIds.length),
+      }
+    }
+    return null
+  }
+
+  function addToBasket() {
+    const line = currentBasketLine()
+    if (!basket || !line) return
+    basket.add(line)
+    // Straight back to the list — "continue shopping" is the whole point. The
+    // pill in the corner is the confirmation; a done screen here would be a
+    // dead end they'd have to back out of to add the next thing.
+    setError(null)
+    setSelection(null)
+    setStep(1)
   }
 
   async function joinWaitlist() {
@@ -457,16 +588,46 @@ export function BookingWizard(props: {
                     </button>
                   )}
                 </div>
+
+                {/* The trainer's tags, BELOW the types — a second way in, not a
+                    replacement. Someone who came to book a class still finds
+                    "Group classes" first; someone who came with a problem
+                    ("I've got a new puppy") finds the tag. */}
+                {tags.length > 0 && (
+                  <div className="flex flex-col gap-3">
+                    <SectionLabel icon={<TagIcon className="h-3.5 w-3.5" />} text="Browse by tag" />
+                    {tags.map(t => {
+                      const count = t.packageIds.length + t.classIds.length + t.eventIds.length + t.productIds.length
+                      return (
+                        <button key={t.id} type="button" onClick={() => setCategory(`tag:${t.id}`)} className="group flex items-center gap-3 text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
+                          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><TagIcon className="h-5 w-5" /></span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[15px] font-semibold text-slate-900">{t.name}</span>
+                            <span className="block text-xs text-slate-500">{count} {count === 1 ? 'thing' : 'things'}</span>
+                          </span>
+                          <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </>
             ) : (
               <>
                 <button type="button" onClick={() => setCategory(null)} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 self-start"><ChevronLeft className="h-4 w-4" /> All offerings</button>
 
-            {category === 'sessions' && packages.length > 0 && (
+            {/* A tag says its own name at the top, because the row that opened
+                it is now off screen and "Puppy" is the answer the client came
+                for — not "1-on-1 sessions". */}
+            {activeTag && (
+              <StepIntro title={activeTag.name} sub={`Everything ${businessName} has under this tag.`} />
+            )}
+
+            {(category === 'sessions' || activeTag) && shownPackages.length > 0 && (
               <section>
                 <SectionLabel icon={<CalendarPlus className="h-3.5 w-3.5" />} text={term.oneToOne} />
                 <div className="flex flex-col gap-2.5">
-                  {packages.map(p => (
+                  {shownPackages.map(p => (
                     <button key={p.id} onClick={() => chooseSession(p)} className="group text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
                       <div className="flex items-start gap-3">
                         {p.imageUrl && (
@@ -495,11 +656,11 @@ export function BookingWizard(props: {
               </section>
             )}
 
-            {category === 'classes' && classes.length > 0 && (
+            {(category === 'classes' || activeTag) && shownClasses.length > 0 && (
               <section>
                 <SectionLabel icon={<GraduationCap className="h-3.5 w-3.5" />} text={term.classes} />
                 <div className="flex flex-col gap-2.5">
-                  {classes.map(c => {
+                  {shownClasses.map(c => {
                     const isFull = c.seatsLeft === 0
                     return (
                       <button key={c.id} onClick={() => chooseClass(c)} className="group text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
@@ -530,11 +691,11 @@ export function BookingWizard(props: {
               </section>
             )}
 
-            {category === 'events' && events.length > 0 && (
+            {(category === 'events' || activeTag) && shownEvents.length > 0 && (
               <section>
                 <SectionLabel icon={<PartyPopper className="h-3.5 w-3.5" />} text={term.events} />
                 <div className="flex flex-col gap-2.5">
-                  {events.map(e => {
+                  {shownEvents.map(e => {
                     const isFull = e.seatsLeft === 0
                     // A ticketed event shows the CHEAPEST ticket, marked "from",
                     // and never the package price — that number is meaningless
@@ -583,6 +744,45 @@ export function BookingWizard(props: {
                 {/* Checkout is its own flow (Stripe), so these cards buy directly
                     rather than continuing through the wizard's steps 2–3. */}
                 <MembershipCards memberships={memberships} currency={currency ?? 'nzd'} />
+              </section>
+            )}
+
+            {/* Products, ONLY inside a tag — and the reason the tag screen is
+                one screen. The client sees "Puppy Foundations" and the puppy
+                pack that goes with it in the same glance.
+
+                They leave for the shop rather than being sold here: buying a
+                thing has its own basket, stock, variants and delivery, and a
+                second checkout living in the booking wizard would be a second
+                one to keep right. The shop opens with this product's sheet
+                already up, so it is one tap either way. */}
+            {activeTag && shownProducts.length > 0 && (
+              <section>
+                <SectionLabel icon={<ShoppingBag className="h-3.5 w-3.5" />} text="From the shop" />
+                <div className="flex flex-col gap-2.5">
+                  {shownProducts.map(p => (
+                    <a
+                      key={p.id}
+                      href={`/my-shop?product=${encodeURIComponent(p.id)}`}
+                      className="group text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors"
+                    >
+                      <div className="flex items-start gap-3">
+                        {p.imageUrl && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.imageUrl} alt="" className="h-11 w-11 rounded-xl object-cover shrink-0" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[15px] font-semibold text-slate-900">{p.name}</p>
+                          <p className="mt-1 text-xs text-slate-500">In the shop</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {price(p.priceCents, currency) && <span className="text-sm font-semibold text-slate-900">{price(p.priceCents, currency)}</span>}
+                          <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
+                        </div>
+                      </div>
+                    </a>
+                  ))}
+                </div>
               </section>
             )}
               </>
@@ -659,6 +859,10 @@ export function BookingWizard(props: {
           saving={saving}
           error={error}
           onConfirm={confirm}
+          // Offered only when there IS a basket and this booking is something
+          // it can hold — a priced class/event with payments switched on.
+          onAddToBasket={basket && currentBasketLine() ? addToBasket : null}
+          inBasket={!!basket && !!currentBasketLine() && basket.has(currentBasketLine()!)}
         />
       )}
     </Shell>
@@ -1104,7 +1308,7 @@ function Row({ icon, text }: { icon: React.ReactNode; text: string }) {
 
 /* ============================ step 3 · confirm ============================ */
 
-function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, classType, dropInSessionIds, tier, ticketQty, dogName, saving, error, onConfirm }: {
+function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, classType, dropInSessionIds, tier, ticketQty, dogName, saving, error, onConfirm, onAddToBasket, inBasket }: {
   tz: string
   selection: Selection
   date: string
@@ -1119,6 +1323,9 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
   saving: boolean
   error: string | null
   onConfirm: () => void
+  /** Null when this booking can't go in a basket (free, or a 1:1 time slot). */
+  onAddToBasket: (() => void) | null
+  inBasket: boolean
 }) {
   const isSession = selection.kind === 'session'
   const pkg = selection.kind === 'session' ? selection.pkg : null
@@ -1222,6 +1429,24 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
       {error && <p className="text-sm text-rose-600">{error}</p>}
 
       <StickyCta disabled={saving} onClick={onConfirm} loading={saving}>{ctaText}</StickyCta>
+
+      {/* Only offered where it changes anything: a booking that would otherwise
+          send them to the card box on its own. Underneath the primary action,
+          because paying now is still the common case — this is for the client
+          who is also buying a lead, or booking two more Saturdays. */}
+      {willCharge && onAddToBasket && (
+        <button
+          type="button"
+          onClick={onAddToBasket}
+          className="-mt-1 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-3.5 text-[15px] font-semibold text-slate-700"
+        >
+          {inBasket ? (
+            <><Check className="h-4 w-4" strokeWidth={1.75} /> In your basket — add again</>
+          ) : (
+            <><ShoppingBag className="h-4 w-4" strokeWidth={1.75} /> Add to basket &amp; keep browsing</>
+          )}
+        </button>
+      )}
     </div>
   )
 }
