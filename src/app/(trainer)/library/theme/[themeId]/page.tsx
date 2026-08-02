@@ -2,10 +2,11 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/page-header'
-import { FlatBlock, FlatRow, SectionHeader } from '@/components/shared/flat-list'
+import { FlatBlock, SectionHeader } from '@/components/shared/flat-list'
 import { richTextToPlain } from '@/lib/rich-text'
 import { requireLibraryTrainer, getLibraryTree } from '../../library-data'
 import { LibraryShell } from '../../library-shell'
+import { LibraryRowList } from '../../library-row-list'
 import { CategorySettings } from '../../library-forms'
 import { AddItem } from './add-item'
 
@@ -46,20 +47,20 @@ export default async function LibraryThemePage({ params }: { params: Promise<{ t
             </div>
           </FlatBlock>
         ) : (
-          <FlatBlock>
-            {theme.tasks.map(task => {
+          <LibraryRowList
+            endpoint="/api/library/tasks/reorder"
+            noun="item"
+            rows={theme.tasks.map(task => {
               // The description is rich text; a one-line preview wants plain text.
               const preview = richTextToPlain(task.description).replace(/\s+/g, ' ').trim()
-              return (
-                <FlatRow
-                  key={task.id}
-                  label={task.title}
-                  sub={preview || (task.repetitions ? `${task.repetitions} reps` : undefined)}
-                  href={`/library/item/${task.id}`}
-                />
-              )
+              return {
+                id: task.id,
+                label: task.title,
+                sub: preview || (task.repetitions ? `${task.repetitions} reps` : undefined),
+                href: `/library/item/${task.id}`,
+              }
             })}
-          </FlatBlock>
+          />
         )}
 
         <CategorySettings

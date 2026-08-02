@@ -134,10 +134,17 @@ type RowProps = {
   /** Greyed and inert, with a "Soon" tag. */
   comingSoon?: boolean
   className?: string
+  /**
+   * The grip a reorderable row is dragged by, in a gutter down its LEFT edge.
+   * Rendered as a SIBLING of the row's link — a button inside an anchor is
+   * invalid markup, and the browser hands the drag's pointer events to the
+   * navigation.
+   */
+  dragHandle?: ReactNode
 }
 
 /** One row inside a FlatBlock. */
-export function FlatRow({ icon: Icon, label, sub, href, onClick, trailing, accent, active, comingSoon, className }: RowProps) {
+export function FlatRow({ icon: Icon, label, sub, href, onClick, trailing, accent, active, comingSoon, className, dragHandle }: RowProps) {
   const inner = (
     <>
       {Icon && (
@@ -168,11 +175,26 @@ export function FlatRow({ icon: Icon, label, sub, href, onClick, trailing, accen
   if (comingSoon) {
     return <div className={cn('flex w-full items-center gap-3 px-4 py-3.5', className)}>{inner}</div>
   }
-  const cls = cn('flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50', className)
+  const cls = cn(
+    'flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50',
+    // The grip already supplies the row's left inset.
+    dragHandle && 'pl-1',
+    className,
+  )
 
-  if (href) return <Link href={href} className={cls}>{inner}</Link>
-  if (onClick) return <button type="button" onClick={onClick} className={cls}>{inner}</button>
-  return <div className={cls}>{inner}</div>
+  const row = href
+    ? <Link href={href} className={cls}>{inner}</Link>
+    : onClick
+      ? <button type="button" onClick={onClick} className={cls}>{inner}</button>
+      : <div className={cls}>{inner}</div>
+
+  if (!dragHandle) return row
+  return (
+    <div className="flex items-center">
+      <span className="flex-shrink-0 pl-2">{dragHandle}</span>
+      <span className="min-w-0 flex-1">{row}</span>
+    </div>
+  )
 }
 
 /**

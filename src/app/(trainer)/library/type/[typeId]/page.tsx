@@ -2,9 +2,10 @@ import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/page-header'
-import { FlatBlock, FlatRow, SectionHeader } from '@/components/shared/flat-list'
+import { FlatBlock, SectionHeader } from '@/components/shared/flat-list'
 import { requireLibraryTrainer, getLibraryTree } from '../../library-data'
 import { LibraryShell } from '../../library-shell'
+import { LibraryRowList } from '../../library-row-list'
 import { CategorySettings } from '../../library-forms'
 import { AddTheme } from './add-theme'
 
@@ -50,16 +51,16 @@ export default async function LibraryTypePage({ params }: { params: Promise<{ ty
             </div>
           </FlatBlock>
         ) : (
-          <FlatBlock>
-            {type.themes.map(theme => (
-              <FlatRow
-                key={theme.id}
-                label={theme.name}
-                sub={`${theme._count.tasks} item${theme._count.tasks === 1 ? '' : 's'}`}
-                href={`/library/theme/${theme.id}`}
-              />
-            ))}
-          </FlatBlock>
+          <LibraryRowList
+            endpoint="/api/library/themes/reorder"
+            noun="theme"
+            rows={type.themes.map(theme => ({
+              id: theme.id,
+              label: theme.name,
+              sub: `${theme._count.tasks} item${theme._count.tasks === 1 ? '' : 's'}`,
+              href: `/library/theme/${theme.id}`,
+            }))}
+          />
         )}
 
         <CategorySettings

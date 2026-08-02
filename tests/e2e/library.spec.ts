@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type Locator, type Page } from '@playwright/test'
 import { PrismaClient } from '../../src/generated/prisma/index.js'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { SEED, TEST_DATABASE_URL } from './test-db'
@@ -233,47 +233,27 @@ test('categories are dragged into the order the trainer wants', async ({ page })
     // Dragged by the keyboard rather than the mouse: dnd-kit ships a keyboard
     // sensor for exactly this, and it is the same code path a pointer drag ends
     // in — without the flake of synthesising drag coordinates.
-    //
-    // Each key gets its own beat. dnd-kit settles a lift asynchronously — it
-    // measures every droppable rect first — and three presses fired back to
-    // back arrive before it is listening, which reads as a category that lifts
-    // and then never lets go.
-    const grips = categories.getByRole('button', { name: 'Drag to reorder' })
-    const zebra = grips.nth(await names.count() - 1)
-    await zebra.focus()
-
-    await page.keyboard.press('Space')
-    await expect(zebra).toHaveAttribute('aria-pressed', 'true')
-
-    await page.keyboard.press('ArrowUp')
-    await page.waitForTimeout(250)
-
-    await page.keyboard.press('Space')
-    // Nothing is being held any more — the drop committed rather than the drag
-    // still sitting open, which is the difference the DOM order below depends
-    // on: dnd-kit moves items with transforms mid-drag and only re-renders the
-    // list when onDragEnd lands.
-    await expect(
-      categories.getByRole('button', { name: 'Drag to reorder', pressed: true }),
-    ).toHaveCount(0)
-
-    // The page moved it…
-    await expect(async () => {
-      const after = await names.allInnerTexts()
-      expect(after.findIndex(t => t.includes(TEMP_B))).toBeLessThan(
-        after.findIndex(t => t.includes(TEMP_A)),
-      )
-    }).toPass({ timeout: 10_000 })
-
-    // …and it stuck. This is the assertion that matters: an order that only
-    // exists in React state is a page that rearranges itself on reload.
-    await expect(async () => {
+    const zebraIsAbove = async () => {
       const rows = await prisma.libraryType.findMany({
         where: { id: { in: [yakId, zebraId] } },
         select: { id: true, order: true },
       })
       const order = Object.fromEntries(rows.map(r => [r.id, r.order]))
-      expect(order[zebraId]).toBeLessThan(order[yakId]!)
+      return order[zebraId]! < order[yakId]!
+    }
+    await dragUp(page, categories, await names.count() - 1, zebraIsAbove)
+
+    // It stuck in the DATABASE. This is the assertion that matters: an order
+    // that only exists in React state is a page that rearranges itself on the
+    // next load.
+    expect(await zebraIsAbove()).toBe(true)
+
+    // …and the page shows it.
+    await expect(async () => {
+      const after = await names.allInnerTexts()
+      expect(after.findIndex(t => t.includes(TEMP_B))).toBeLessThan(
+        after.findIndex(t => t.includes(TEMP_A)),
+      )
     }).toPass({ timeout: 10_000 })
 
     // And a fresh load agrees — the rail reads the same `order` the grid does.
@@ -286,6 +266,145 @@ test('categories are dragged into the order the trainer wants', async ({ page })
     }).toPass({ timeout: 10_000 })
   } finally {
     await prisma.libraryType.deleteMany({ where: { id: { in: [yakId, zebraId] } } })
+    await prisma.$disconnect()
+  }
+})
+
+/**
+ * Lift the row at `index`, move it one place up, drop it — and keep trying
+ * until `landed` says it worked.
+ *
+ * By the keyboard rather than the mouse: dnd-kit ships a keyboard sensor for
+ * exactly this and it ends in the same onDragEnd a pointer drag does, without
+ * the flake of synthesised drag coordinates.
+ *
+ * The retry is not superstition. dnd-kit measures every droppable rect after
+ * the lift, and an arrow key that arrives before those measurements exist moves
+ * nothing — the row lifts, the drop commits it exactly where it was, and the
+ * test fails on an order that never changed. Waiting longer only makes that
+ * rarer. A drop that moved nothing is a no-op, so re-running it is safe, and
+ * `landed` stops the loop the moment the move is real.
+ */
+async function dragUp(page: Page, scope: Locator, index: number, landed: () => Promise<boolean>) {
+  const grips = scope.getByRole('button', { name: 'Drag to reorder' })
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const grip = grips.nth(index)
+    await grip.focus()
+    await page.keyboard.press('Space')
+    await expect(grip).toHaveAttribute('aria-pressed', 'true')
+    await page.waitForTimeout(300)
+    await page.keyboard.press('ArrowUp')
+    await page.waitForTimeout(300)
+    await page.keyboard.press('Space')
+    await expect(scope.getByRole('button', { name: 'Drag to reorder', pressed: true })).toHaveCount(0)
+    await page.waitForTimeout(300)
+    if (await landed()) return
+  }
+  throw new Error('the row never moved, after three attempts')
+}
+
+test('the themes inside a category are dragged into order', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await login(page, SEED.owner.email, SEED.owner.password)
+  const prisma = db()
+
+  try {
+    const wasFirst = await prisma.libraryTheme.findMany({
+      where: { typeId: LIB.typeId },
+      orderBy: { order: 'asc' },
+      select: { id: true },
+    })
+
+    await page.goto(`/library/type/${LIB.typeId}`)
+    // Page-wide is safe to scope to: the rail's tree has no grips, so the only
+    // "Drag to reorder" buttons on screen are this list's.
+    await expect(page.locator('a[href^="/library/theme/"]').first()).toBeVisible()
+
+    // The second theme in the list, moved above the first.
+    const second = wasFirst[1]!.id
+    const firstIsSecond = async () => {
+      const now = await prisma.libraryTheme.findMany({
+        where: { typeId: LIB.typeId },
+        orderBy: { order: 'asc' },
+        select: { id: true },
+      })
+      return now[0]!.id === second
+    }
+    await dragUp(page, page.locator('body'), 1, firstIsSecond)
+    expect(await firstIsSecond()).toBe(true)
+  } finally {
+    // Put the seeded order back — the specs share one database.
+    await prisma.libraryTheme.update({ where: { id: LIB.themeId }, data: { order: 0 } })
+    await prisma.libraryTheme.update({ where: { id: LIB.themeTwoId }, data: { order: 1 } })
+    await prisma.$disconnect()
+  }
+})
+
+test('the items inside a theme are dragged into order', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await login(page, SEED.owner.email, SEED.owner.password)
+  const prisma = db()
+
+  // Its own item to drag, so the seeded one keeps the position other specs
+  // expect to find it in.
+  const made = await page.request.post('/api/library/tasks', {
+    data: { themeId: LIB.themeId, title: 'E2E Second Item' },
+  })
+  expect(made.ok()).toBeTruthy()
+  const madeId = (await made.json()).id as string
+
+  try {
+    await page.goto(`/library/theme/${LIB.themeId}`)
+    // .first(): the rail's tree links at the same item, so the page carries two
+    // links to it. Both are meant to be there.
+    const items = page.locator('a[href^="/library/item/"]')
+    await expect(items.filter({ hasText: 'E2E Second Item' }).first()).toBeVisible()
+
+    // The new item lands at the end; drag it above the seeded one.
+    const newOneIsFirst = async () => {
+      const rows = await prisma.libraryTask.findMany({
+        where: { themeId: LIB.themeId },
+        orderBy: { order: 'asc' },
+        select: { id: true },
+      })
+      return rows[0]!.id === madeId
+    }
+    await dragUp(page, page.locator('body'), 1, newOneIsFirst)
+    expect(await newOneIsFirst()).toBe(true)
+  } finally {
+    await prisma.libraryTask.deleteMany({ where: { id: madeId } })
+    await prisma.libraryTask.update({ where: { id: LIB.itemId }, data: { order: 0 } })
+    await prisma.$disconnect()
+  }
+})
+
+test('another business’s themes and items cannot be reordered', async ({ page }) => {
+  await login(page, SEED.owner.email, SEED.owner.password)
+  const prisma = db()
+
+  try {
+    const theirItem = await prisma.libraryTask.findUnique({
+      where: { id: LIB.businessBItemId },
+      select: { order: true },
+    })
+
+    const themes = await page.request.post('/api/library/themes/reorder', {
+      data: { ids: [LIB.businessBThemeId] },
+    })
+    expect(themes.status()).toBe(404)
+
+    // …and smuggled in beside one Business A really does own.
+    const mixed = await page.request.post('/api/library/tasks/reorder', {
+      data: { ids: [LIB.businessBItemId, LIB.itemId] },
+    })
+    expect(mixed.status()).toBe(404)
+
+    const after = await prisma.libraryTask.findUnique({
+      where: { id: LIB.businessBItemId },
+      select: { order: true },
+    })
+    expect(after!.order).toBe(theirItem!.order)
+  } finally {
     await prisma.$disconnect()
   }
 })
