@@ -6,8 +6,6 @@ import { Check, Search, Send, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
 import { FlatBlock, FlatRow, SectionLabel } from '@/components/shared/flat-list'
-import { RichText } from '@/components/shared/rich-text'
-import { isRichTextEmpty } from '@/lib/rich-text'
 import { ErrorNote } from '../../library-forms'
 
 export interface Holder {
@@ -97,12 +95,10 @@ export function ItemHolders({
 
 export function AssignDialog({
   taskId,
-  description,
   clients,
   onClose,
 }: {
   taskId: string
-  description: string | null
   clients: Client[]
   onClose: () => void
 }) {
@@ -218,7 +214,12 @@ export function AssignDialog({
           )}
 
           <div>
-            <label htmlFor="assign-date" className="block text-[13px] font-medium text-slate-700">Date</label>
+            {/* "Date" alone said nothing about what it did. It is the day the
+                homework is FOR — TrainingTask.date, which is what puts it in a
+                week on the client's home screen — so it says that now. */}
+            <label htmlFor="assign-date" className="block text-[13px] font-medium text-slate-700">
+              When it&rsquo;s for
+            </label>
             <input
               id="assign-date"
               type="date"
@@ -226,19 +227,15 @@ export function AssignDialog({
               onChange={e => setDate(e.target.value)}
               className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
             />
+            <p className="mt-1.5 text-[13px] text-slate-500">
+              The day it appears in their homework diary.
+            </p>
           </div>
 
-          {/* Exactly what lands in their diary. Rendered through <RichText/>,
-              which sanitizes — never dangerouslySetInnerHTML a description. */}
-          {!isRichTextEmpty(description) && (
-            <div>
-              <p className="text-[13px] font-medium text-slate-700">What they&rsquo;ll get</p>
-              <div className="mt-2 rounded-xl border border-slate-200 px-3 py-3">
-                <RichText html={description} />
-              </div>
-            </div>
-          )}
-
+          {/* No "What they'll get" preview. It repeated the instructions the
+              trainer had just written on the screen behind this dialog, and on
+              a long item it pushed the button that actually assigns the thing
+              below the fold. */}
           {error && <ErrorNote>{error}</ErrorNote>}
 
           <Button onClick={submit} loading={saving} className="w-full">

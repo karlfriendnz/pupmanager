@@ -225,7 +225,7 @@ test('an item is edited on its own page, in rich text, and shows who has it', as
   await dialog.getByLabel('Client').fill('Unassigned')
   await dialog.getByRole('button', { name: /Unassigned Client/ }).click()
   // Far future, so this row never lands in another spec's "this week" list.
-  await dialog.getByLabel('Date').fill('2031-04-02')
+  await dialog.getByLabel("When it's for").fill('2031-04-02')
   await dialog.getByRole('button', { name: 'Add to their homework' }).click()
 
   await expect(page.getByRole('link', { name: /Unassigned Client/ })).toBeVisible({ timeout: 15_000 })
@@ -497,7 +497,7 @@ test('an item holds several clips, in order, and all of them reach the client', 
     const dialog = page.getByRole('dialog')
     await dialog.getByLabel('Client').fill('Unassigned')
     await dialog.getByRole('button', { name: /Unassigned Client/ }).click()
-    await dialog.getByLabel('Date').fill('2031-04-03')
+    await dialog.getByLabel("When it's for").fill('2031-04-03')
     await dialog.getByRole('button', { name: 'Add to their homework' }).click()
     await expect(page.getByRole('link', { name: /Unassigned Client/ })).toBeVisible({ timeout: 15_000 })
 

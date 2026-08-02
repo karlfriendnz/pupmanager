@@ -111,7 +111,6 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
             fileName: task.fileName,
           }}
           themeHref={`/library/theme/${task.theme.id}`}
-          description={task.description}
           holders={holders}
           clients={clients.map(c => ({
             id: c.id,

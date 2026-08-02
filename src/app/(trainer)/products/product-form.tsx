@@ -81,10 +81,13 @@ export function ProductForm({
   initial,
   isNew,
   existingCategories,
+  heading,
 }: {
   initial: ProductDraft
   isNew: boolean
   existingCategories: ProductCategoryOption[]
+  /** The page's tab strip. Given one, it shares the actions' row and hairline. */
+  heading?: React.ReactNode
 }) {
   const router = useRouter()
   const currency = useCurrency()
@@ -235,11 +238,14 @@ export function ProductForm({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Save leads the form rather than sitting at the foot of it.
-          It STICKS to the top, which is what the pinned bottom bar was really
-          buying — you can always reach it — without a bar that has to dodge the
-          desktop sidebar and the phone's safe area. */}
-      <div className="sticky top-0 z-20 -mx-4 flex items-center justify-end gap-2 border-b border-slate-200 bg-white/90 px-4 py-2.5 backdrop-blur md:mx-0 md:rounded-xl md:border md:px-4">
+      {/* Save leads the form rather than sitting at the foot of it, and shares
+          the tab strip's row and hairline — one band of chrome above the first
+          field, not two stacked ones. It STICKS, which is what the pinned
+          bottom bar was really buying (it is always reachable) without a bar
+          that has to dodge the desktop sidebar and the phone's safe area. */}
+      <div className="sticky top-0 z-20 -mx-4 flex items-end justify-between gap-3 border-b border-slate-200 bg-white/90 px-4 pb-1.5 pt-1 backdrop-blur md:mx-0 md:px-0">
+        {heading ?? <span />}
+        <span className="flex flex-shrink-0 items-center gap-2 pb-1">
         <Button variant="ghost" size="sm" onClick={() => router.push('/products')}>Cancel</Button>
         <Button size="sm" loading={saving} onClick={save} disabled={!draft.name.trim()}>
           {isNew ? 'Create product' : 'Save changes'}
@@ -252,6 +258,7 @@ export function ProductForm({
             onDelete={() => setConfirmDelete(true)}
           />
         )}
+        </span>
       </div>
 
       {confirmDelete && (

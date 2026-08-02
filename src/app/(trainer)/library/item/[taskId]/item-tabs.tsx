@@ -30,13 +30,11 @@ type Tab = 'item' | 'holders'
 export function ItemTabs({
   item,
   themeHref,
-  description,
   holders,
   clients,
 }: {
   item: EditableItem
   themeHref: string
-  description: string | null
   holders: Holder[]
   clients: Client[]
 }) {
@@ -85,7 +83,6 @@ export function ItemTabs({
         <ModalPortal>
           <AssignDialog
             taskId={item.id}
-            description={description}
             clients={clients}
             onClose={() => setAssigning(false)}
           />
