@@ -7,7 +7,7 @@ import { renderTrainerEmail } from './trainer-email-shell'
 import { fillSystemEmail } from './system-emails'
 import { resolveSystemEmail } from './system-email-copy'
 import { materializeBooking } from './booking-page'
-import { findOrJoinClient } from './client-upsert'
+import { enquiryClientBackLink, findOrJoinClient } from './client-upsert'
 // escapeHtml lives in a client-safe module now; imported for internal use and
 // re-exported so existing `from '@/lib/enquiries'` callers keep working.
 import { escapeHtml } from './html-escape'
@@ -174,7 +174,17 @@ export async function acceptEnquiry(enquiryId: string, options: { appUrl: string
 
     await tx.enquiry.update({
       where: { id: enquiry.id },
-      data: { status: 'ACCEPTED', clientProfileId, viewedAt: enquiry.viewedAt ?? new Date() },
+      data: {
+        status: 'ACCEPTED',
+        // The back-link is `@unique`, so a SECOND enquiry from someone who is
+        // already a client — they asked in March, joined, and asked again in
+        // September about a different course — could not be accepted at all:
+        // Accept threw P2002 and gave the trainer a 500. The link is a forward
+        // arrow on the detail screen, not data, so the later enquiry simply
+        // goes without one rather than refusing to be accepted.
+        ...(await enquiryClientBackLink(tx, clientProfileId, enquiry.id)),
+        viewedAt: enquiry.viewedAt ?? new Date(),
+      },
     })
 
     return clientProfileId
