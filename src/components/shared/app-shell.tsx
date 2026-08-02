@@ -914,7 +914,12 @@ function TrainerTopBar({
           // Anywhere on the rail counts, not just the logo square itself.
           navHovered ? 'opacity-100' : 'opacity-0',
           'hover:bg-slate-50',
-          collapsed ? 'left-1/2 -translate-x-1/2' : 'left-5',
+          // Collapsed, the logo square IS the whole zone, so the toggle sits on
+          // it. Expanded there is room, so it moves to the far end by the
+          // divider — pointing back at the edge it will pull the rail to, and
+          // leaving the mark and the business name both visible and both
+          // clickable as the link home.
+          collapsed ? 'left-1/2 -translate-x-1/2' : 'right-3',
         )}
       >
         {collapsed ? <ChevronRight className="h-5 w-5" strokeWidth={1.75} /> : <ChevronLeft className="h-5 w-5" strokeWidth={1.75} />}
