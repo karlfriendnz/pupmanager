@@ -33,7 +33,6 @@ const businessSchema = z.object({
   signupCountry: z.string().optional(),
   timezone: z.string().min(1, 'Timezone is required'),
   landingPage: z.enum(['dashboard', 'schedule']),
-  showPageHelp: z.boolean().optional(),
 })
 
 const designSchema = z.object({
@@ -53,7 +52,7 @@ export function TrainerSettingsForm({
   profile,
   section = 'both',
 }: {
-  user: { name: string | null; email: string | null; timezone: string; landingPage: string; showPageHelp: boolean }
+  user: { name: string | null; email: string | null; timezone: string; landingPage: string }
   profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; addressCountry: string | null; publicEmail: string | null; logoUrl: string | null; iconUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[]; payoutCurrency: string | null }
   /** Which half to render — the two live on separate Settings tabs now.
    *  'both' keeps the original single-page layout for any other caller. */
@@ -80,7 +79,6 @@ export function TrainerSettingsForm({
       signupCountry: profile.signupCountry ?? '',
       timezone: user.timezone,
       landingPage: user.landingPage === 'schedule' ? 'schedule' : 'dashboard',
-      showPageHelp: user.showPageHelp,
     },
   })
 
@@ -170,7 +168,7 @@ export function TrainerSettingsForm({
   async function saveBusiness(data: BusinessData) {
     setBusinessMsg(null)
     const [r1, r2] = await Promise.all([
-      fetch('/api/user', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: data.name, timezone: data.timezone, landingPage: data.landingPage, showPageHelp: data.showPageHelp ?? true }) }),
+      fetch('/api/user', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: data.name, timezone: data.timezone, landingPage: data.landingPage }) }),
       fetch('/api/trainer/profile', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ businessName: data.businessName, phone: data.phone, showPhoneToClients: data.showPhoneToClients ?? false, publicEmail: data.publicEmail ?? '', signupCountry: data.signupCountry ?? '', businessRoles: bizRoles }) }),
     ])
     setBusinessMsg(r1.ok && r2.ok ? 'Saved!' : 'Failed to save.')
@@ -262,20 +260,6 @@ export function TrainerSettingsForm({
               <option value="schedule">Schedule</option>
             </select>
             <p className="text-xs text-slate-500">The page you land on each time you open PupManager.</p>
-          </div>
-
-          <div className="flex flex-col gap-1.5 sm:col-span-2">
-            <label className="flex items-start gap-2.5 cursor-pointer">
-              <input
-                type="checkbox"
-                {...businessForm.register('showPageHelp')}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-              />
-              <span>
-                <span className="text-sm font-medium text-slate-700">Show page descriptions</span>
-                <span className="block text-xs text-slate-500">The one-line explainer under each page title. Handy while you learn the app — turn it off once you know your way around.</span>
-              </span>
-            </label>
           </div>
 
           <div className="flex flex-col gap-1.5 sm:col-span-2">

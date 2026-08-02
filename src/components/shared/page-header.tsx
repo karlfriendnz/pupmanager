@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { pageTitleLabel } from '@/lib/nav-labels'
-import { SetPageTitle, SetPageHasBack, useHasPageTitleShell, usePageHelp, useNavLabelOverrides } from './page-title'
+import { SetPageTitle, SetPageHasBack, useHasPageTitleShell, useNavLabelOverrides } from './page-title'
 import { PageHeaderTopBarPortal } from './page-header-portal'
 
 // Either a Link (href) or a click handler (onClick — e.g. router.back() so
@@ -13,12 +13,11 @@ type BackLink = { href?: string; label?: string; onClick?: () => void }
 
 interface PageHeaderProps {
   title: string
-  subtitle?: React.ReactNode
   back?: BackLink
   actions?: React.ReactNode
-  // Rendered inline on the RIGHT of the in-page description row (trainer shell),
-  // e.g. a page's primary "New …" button. Stays put even when the description
-  // text is hidden via the "Show page descriptions" setting.
+  // Rendered on its own row under the top bar (trainer shell), e.g. a page's
+  // primary "New …" button. This row used to hold a one-line description of
+  // the page as well; that came out on 2026-08-02 (Karl) — see the note below.
   descriptionActions?: React.ReactNode
 }
 
@@ -30,19 +29,24 @@ interface PageHeaderProps {
 // there's never a redundant/empty second row.
 //
 // MOBILE: there is no top bar, so the full in-page sticky header renders here
-// (title + back + subtitle + actions), reserving env(safe-area-inset-top) so
-// iOS chrome sits on the header's white surface.
+// (title + back + actions), reserving env(safe-area-inset-top) so iOS chrome
+// sits on the header's white surface.
+//
+// There is deliberately NO page description. Every page used to carry a
+// one-liner under its title, with a Settings switch to hide them; both are
+// gone. If they ever come back, note what they cost last time: the tabs above
+// a list overlapped the sentence below them, which is a whole class of
+// geometry bug that simply cannot happen when there is no sentence.
 //
 // Layout contract: render as a SIBLING of the page's max-w content wrapper:
 //   <>
 //     <PageHeader … />
 //     <div className="p-4 md:p-8 w-full max-w-… mx-auto">…</div>
 //   </>
-export function PageHeader({ title: rawTitle, subtitle, back, actions, descriptionActions }: PageHeaderProps) {
+export function PageHeader({ title: rawTitle, back, actions, descriptionActions }: PageHeaderProps) {
   // In the trainer shell the phone top bar renders the title + back itself, so
   // the in-page mobile header below would duplicate it — skip it there.
   const shellOwnsMobileHeader = useHasPageTitleShell()
-  const showHelp = usePageHelp()
   // A trainer who renames "Library" to "Resources" in their menu shouldn't then
   // land on a page headed "Library". Only substituted when this page IS that menu
   // destination and its title is exactly our word for it — a page headed with a
@@ -57,19 +61,10 @@ export function PageHeader({ title: rawTitle, subtitle, back, actions, descripti
           portal. */}
       <SetPageHasBack value={!!back} />
       <PageHeaderTopBarPortal back={back} actions={actions} />
-      {/* One-line "what this page is" helper. The trainer top bar shows only the
-          title (no subtitle), so the description renders here in-flow, on every
-          viewport, below the bar. Trainers can hide it in Settings. Client shell
-          keeps its own subtitle in the mobile header above, so skip it there. */}
-      {shellOwnsMobileHeader && ((showHelp && subtitle) || descriptionActions) && (
-        <div className="px-4 md:px-8 pt-3 md:pt-5 flex items-center gap-3">
-          {showHelp && subtitle ? (
-            <p className="text-sm text-slate-500 flex-1 min-w-0">{subtitle}</p>
-          ) : (
-            <div className="flex-1" />
-          )}
-          {descriptionActions && <div className="flex-shrink-0">{descriptionActions}</div>}
-        </div>
+      {/* A page's primary action, under the top bar. The row is right-aligned
+          on its own now that there is no description sharing the line. */}
+      {shellOwnsMobileHeader && descriptionActions && (
+        <div className="flex justify-end px-4 pt-3 md:px-8 md:pt-5">{descriptionActions}</div>
       )}
       {/* Mobile-only in-page header — only when the shell's top bar doesn't
           already show the page title (i.e. the client shell). */}
@@ -106,9 +101,6 @@ export function PageHeader({ title: rawTitle, subtitle, back, actions, descripti
           )}
           <div className="min-w-0 flex-1">
             <h1 className="text-base font-semibold text-slate-900 truncate leading-tight">{title}</h1>
-            {subtitle && (
-              <div className="text-xs text-slate-500 truncate leading-tight mt-0.5">{subtitle}</div>
-            )}
           </div>
           {actions && (
             <div className="flex items-center gap-1.5 flex-shrink-0">{actions}</div>

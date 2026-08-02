@@ -93,7 +93,6 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
     <>
       <PageHeader
         title={task.title}
-        subtitle={`${task.theme.type.name} · ${task.theme.name}`}
         back={{ href: `/library/theme/${task.theme.id}`, label: task.theme.name }}
       />
       <LibraryShell tree={tree}>

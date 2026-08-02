@@ -32,7 +32,6 @@ export default async function LibraryThemePage({ params }: { params: Promise<{ t
     <>
       <PageHeader
         title={theme.name}
-        subtitle={`${theme.type.name} · ${theme.tasks.length} item${theme.tasks.length === 1 ? '' : 's'}`}
         back={{ href: `/library/type/${theme.type.id}`, label: theme.type.name }}
       />
       <LibraryShell tree={tree}>

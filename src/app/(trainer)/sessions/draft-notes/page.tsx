@@ -102,11 +102,6 @@ export default async function DraftNotesPage() {
         // a phone it reads as a third button that does nothing.
       />
       <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
-        <p className="text-sm text-slate-500 mb-6">
-          Notes you&apos;ve saved but not sent yet. The client can&apos;t see a recap until you send it.
-          Send them one at a time, or select several and send together.
-        </p>
-
         {rows.length === 0 ? (
           <div className="rounded-2xl bg-white border border-dashed border-slate-200 p-10 text-center">
             <FilePen className="h-8 w-8 mx-auto text-slate-300" />

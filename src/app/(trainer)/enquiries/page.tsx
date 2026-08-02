@@ -76,11 +76,6 @@ export default async function EnquiriesPage({
         className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
       >
-      <p className="text-sm text-slate-500 mb-6">
-        Form submissions and join requests awaiting your decision. Accept turns them
-        into a client; decline closes them out.
-      </p>
-
       <div className="mb-5 flex gap-1 border-b border-slate-200">
         {TABS.map(t => (
           <Link

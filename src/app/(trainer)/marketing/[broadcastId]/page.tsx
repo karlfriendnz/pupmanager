@@ -57,7 +57,6 @@ export default async function BroadcastDetailPage({ params }: { params: Promise<
     <>
       <PageHeader
         title={broadcast.subject}
-        subtitle={`Sent ${broadcast.createdAt.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' })}`}
         back={{ href: '/marketing', label: 'Back to Marketing' }}
       />
       <div className="p-4 md:p-8 w-full max-w-3xl mx-auto">

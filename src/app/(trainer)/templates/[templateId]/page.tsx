@@ -35,7 +35,6 @@ export default async function TemplateDetailPage({ params }: { params: Promise<{
     <>
       <PageHeader
         title={template.name}
-        subtitle={`${template.tasks.length} tasks`}
         back={{ href: '/templates', label: 'Back to templates' }}
         actions={
           <>

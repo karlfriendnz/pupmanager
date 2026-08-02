@@ -82,7 +82,7 @@ export default async function MyInvoicesPage() {
 
   return (
     <>
-      <PageHeader title="Invoices" subtitle={subtitle} />
+      <PageHeader title="Invoices" />
 
       {/* The client shell has no desktop top bar, so PageHeader's title only
           lands on mobile — give desktop its own (like /my-shop does). */}

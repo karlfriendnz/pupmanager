@@ -316,7 +316,6 @@ export default async function ClientDetailPage({
           nothing else. */}
       <PageHeader
         title={client.user.name ?? client.user.email ?? 'Client'}
-        subtitle={!isPrimaryTrainer ? 'Co-managed' : undefined}
         back={{ href: '/clients', label: 'Back to clients' }}
       />
       <div className="p-4 md:p-8 w-full max-w-5xl xl:max-w-7xl mx-auto">

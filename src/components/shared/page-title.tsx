@@ -85,19 +85,6 @@ export function useHasPageTitleShell(): boolean {
   return useContext(Ctx) != null
 }
 
-// Whether to show the one-line "what this page is" helper text under each page
-// title. Seeded per-user (User.showPageHelp) by the trainer layout; consumed by
-// PageHeader. Defaults to true if no provider is present.
-const HelpCtx = createContext<boolean>(true)
-
-export function PageHelpProvider({ show, children }: { show: boolean; children: ReactNode }) {
-  return <HelpCtx.Provider value={show}>{children}</HelpCtx.Provider>
-}
-
-export function usePageHelp(): boolean {
-  return useContext(HelpCtx)
-}
-
 /**
  * What this trainer calls their own menu items, so a PAGE can use their word too.
  *

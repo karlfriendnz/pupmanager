@@ -14,7 +14,7 @@ export default async function SwitchTrainerPage() {
 
   return (
     <>
-      <PageHeader title="Switch" subtitle="Choose which training space to view" />
+      <PageHeader title="Switch" />
       <div className="px-4 pt-5 pb-10 max-w-3xl mx-auto w-full space-y-3">
         {options.map(o => {
           const isActive = o.id === active.clientId

@@ -120,6 +120,10 @@ model User {
   // Show the one-line "what this page is" helper text under each page's title.
   // On by default for newcomers; trainers can turn it off in Settings once the
   // app is familiar.
+  // showPageHelp was the "Show page descriptions" switch. The descriptions
+  // and the setting came out on 2026-08-02; the COLUMN stays until this is
+  // deployed, because a rolling deploy briefly runs the old code, and the
+  // old code selects it. Safe to drop in a later release.
   showPageHelp       Boolean @default(true)
 
   // Soft delete. When set, the account is "deactivated" — blocked from signing

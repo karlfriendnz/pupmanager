@@ -54,7 +54,6 @@ export default async function AwardsPage() {
     <>
       <PageHeader
         title="Your awards"
-        subtitle={`${earnedCount} of ${total} badges earned`}
         back={{ href: '/dashboard', label: 'Dashboard' }}
       />
       <div className="p-4 md:p-8 w-full max-w-3xl mx-auto">

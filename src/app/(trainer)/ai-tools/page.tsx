@@ -32,8 +32,6 @@ export default async function AIToolsPage() {
           search on a phone and reads as a third button that does nothing. */}
       <PageHeader title="AI Tools" />
       <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
-      <p className="text-sm text-slate-500 mb-8">AI-powered tools to help you plan and review client training</p>
-
       <div className="flex flex-col gap-8">
         {/* Plan Generator */}
         <Card>

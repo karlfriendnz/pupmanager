@@ -104,15 +104,6 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
     <>
       <PageHeader
         title={enquiry.source === 'SELF_SIGNUP' ? 'Join request' : 'Enquiry'}
-        subtitle={
-          enquiry.source === 'SELF_SIGNUP'
-            ? `Signed up ${enquiry.createdAt.toLocaleString()}`
-            : `Submitted ${enquiry.createdAt.toLocaleString()}${
-                enquiry.form ? ` via "${enquiry.form.title}"`
-                : enquiry.unifiedForm ? ` via "${enquiry.unifiedForm.name}"`
-                : ''
-              }`
-        }
         back={{ href: '/enquiries', label: 'Back to enquiries' }}
         actions={<StatusPill status={enquiry.status} />}
       />

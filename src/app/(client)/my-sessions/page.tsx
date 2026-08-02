@@ -152,7 +152,7 @@ export default async function MySessionsPage() {
 
   return (
     <>
-      <PageHeader title="Sessions" subtitle="Your upcoming & past training" />
+      <PageHeader title="Sessions" />
       <div className="px-4 pt-5 pb-10 max-w-3xl mx-auto w-full space-y-6">
         {!hasAny && (
           <div className="rounded-3xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-8 text-center">
