@@ -18,11 +18,20 @@ describe('assigning a library item copies the whole item', () => {
     ['the title', 'title: task.title'],
     ['the description', 'description: task.description'],
     ['the reps', 'repetitions: task.repetitions'],
-    ['the video', 'videoUrl: task.videoUrl'],
+    // EVERY clip, not just the first. An exercise taught as three short videos
+    // would otherwise reach the client as one, missing the two steps after it.
+    ['the videos', '...videoColumns(readVideos(task))'],
     // The one that was missing.
     ['the picture', 'imageUrls: task.imageUrl ? [task.imageUrl] : []'],
   ])('carries %s', (_label, snippet) => {
     expect(assign()).toContain(snippet)
+  })
+
+  // videoColumns writes `videos` AND mirrors `videos[0]` into the old
+  // `videoUrl` column. Setting one without the other is how the two would drift
+  // apart while older readers still select the single field.
+  it('never writes the video list without the single column beside it', () => {
+    expect(assign()).not.toMatch(/videos:\s*(?!.*videoColumns)/)
   })
 
   // Provenance, so the library item can show who has it — but NOT a live link:
@@ -46,9 +55,20 @@ describe('the client reads the homework as rich text', () => {
   })
 
   // An uploaded clip has no embed URL, so it fell through to a link that
-  // navigated away from the exercise.
+  // navigated away from the exercise. The three-way choice moved into a shared
+  // component when one exercise became a LIST of clips — same guard, new home.
+  const player = () => readFileSync(
+    resolve(__dirname, '../../src/components/shared/instructional-video.tsx'), 'utf8')
+
   it('plays an uploaded video inline instead of linking away', () => {
-    expect(page()).toContain('isDirectVideo')
-    expect(page()).toContain('<VideoPlayer src={task.videoUrl} />')
+    expect(player()).toContain('isDirectVideo')
+    expect(player()).toContain('<VideoPlayer src={video.url} />')
+  })
+
+  // Homework handed out before the list existed has only the single column, and
+  // it still has to show its video.
+  it('reads the clips through readVideos, so older homework keeps its video', () => {
+    expect(page()).toContain('readVideos(task)')
+    expect(page()).toContain('<InstructionalVideoList videos={videos} />')
   })
 })

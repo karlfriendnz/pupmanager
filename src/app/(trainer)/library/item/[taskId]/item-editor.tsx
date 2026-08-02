@@ -12,8 +12,9 @@ import { FlatBlock, SectionHeader } from '@/components/shared/flat-list'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { compressImageFile, isDisplayableImage } from '@/lib/compress-image'
 import { isRichTextEmpty } from '@/lib/rich-text'
+import type { InstructionalVideo } from '@/lib/instructional-videos'
+import { ItemVideos } from './item-videos'
 import { ErrorNote } from '../../library-forms'
-import { VideoUploadButton } from '@/components/video-upload-button'
 import { Switch } from '@/components/ui/switch'
 
 export interface EditableItem {
@@ -22,7 +23,7 @@ export interface EditableItem {
   description: string | null
   repetitions: number | null
   wantsLog?: boolean
-  videoUrl: string | null
+  videos: InstructionalVideo[]
   imageUrl: string | null
   fileUrl: string | null
   fileName: string | null
@@ -48,7 +49,7 @@ export function ItemEditor({ item, themeHref }: { item: EditableItem; themeHref:
   // Default true for an item saved before this existed — it behaved as homework,
   // so it keeps behaving as homework.
   const [wantsLog, setWantsLog] = useState(item.wantsLog ?? true)
-  const [videoUrl, setVideoUrl] = useState(item.videoUrl ?? '')
+  const [videos, setVideos] = useState<InstructionalVideo[]>(item.videos)
   const [imageUrl, setImageUrl] = useState(item.imageUrl)
   const [fileUrl, setFileUrl] = useState(item.fileUrl)
   const [fileName, setFileName] = useState(item.fileName)
@@ -72,14 +73,14 @@ export function ItemEditor({ item, themeHref }: { item: EditableItem; themeHref:
         description: isRichTextEmpty(description) ? null : description,
         repetitions: repetitions.trim() ? Number.parseInt(repetitions, 10) : null,
         wantsLog,
-        videoUrl: videoUrl.trim() || null,
+        videos,
         imageUrl,
         fileUrl,
         fileName,
       }),
     })
     setSaving(false)
-    if (!res.ok) { setError('Could not save this item. Check the video link is a full URL.'); return }
+    if (!res.ok) { setError('Could not save this item. Check every video link is a full http(s) URL.'); return }
     setSaved(true)
     router.refresh()
   }
@@ -237,30 +238,12 @@ export function ItemEditor({ item, themeHref }: { item: EditableItem; themeHref:
               rail, so a wide window is not a wide column. */}
           <div className="px-4 py-4">
             <div className="grid gap-5 @2xl:grid-cols-3">
-              {/* ── Video ── */}
-              <div className="min-w-0">
-                <label htmlFor="item-video" className="block text-[13px] font-medium text-slate-700">Video</label>
-                <input
-                  id="item-video"
-                  type="url"
-                  placeholder="Paste a YouTube link"
-                  value={videoUrl}
-                  onChange={e => { setVideoUrl(e.target.value); touched() }}
-                  className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                />
-                {/* Two ways to get a video on an item, because trainers have both:
-                    a YouTube link they already share, or a clip they filmed and
-                    have nowhere to host. Both are named on screen — the field
-                    used to say "paste a link" and leave you guessing which links
-                    it meant. The upload writes into the same field, so everything
-                    downstream (the client app, the plan) is unchanged. */}
-                <VideoUploadButton
-                  uploadUrl={`/api/library/items/${item.id}/video-upload`}
-                  onUploaded={url => { setVideoUrl(url); touched() }}
-                  label={videoUrl ? 'Replace with an upload' : 'or upload a clip'}
-                  className="mt-2"
-                />
-              </div>
+              {/* ── Videos ── */}
+              <ItemVideos
+                videos={videos}
+                onChange={next => { setVideos(next); touched() }}
+                uploadUrl={`/api/library/items/${item.id}/video-upload`}
+              />
 
               {/* ── Picture ── */}
               <div className="min-w-0">

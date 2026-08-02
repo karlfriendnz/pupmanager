@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { mergeClientDogs } from '@/lib/dogs'
 import { personLabel } from '@/lib/utils'
 import { PageHeader } from '@/components/shared/page-header'
+import { readVideos } from '@/lib/instructional-videos'
 import { requireLibraryTrainer, getLibraryTree } from '../../library-data'
 import { LibraryShell } from '../../library-shell'
 import { ItemEditor } from './item-editor'
@@ -103,7 +104,7 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
             description: task.description,
             repetitions: task.repetitions,
             wantsLog: task.wantsLog,
-            videoUrl: task.videoUrl,
+            videos: readVideos(task),
             imageUrl: task.imageUrl,
             fileUrl: task.fileUrl,
             fileName: task.fileName,

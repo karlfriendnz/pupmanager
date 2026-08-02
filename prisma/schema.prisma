@@ -1310,7 +1310,11 @@ model TrainingTask {
   title         String
   description   String?  @db.Text
   repetitions   Int?
-  videoUrl      String? // trainer-provided instructional link
+  videoUrl      String? // trainer-provided instructional link — FIRST of `videos`
+  /// The instructional videos, copied from the library item at hand-out time:
+  /// `[{ url, title? }]`. A snapshot like the title and description are, so
+  /// re-cutting the library item never changes homework already given out.
+  videos        Json     @default("[]")
   trainerNote   String?  @db.Text // per-task comment from the trainer
   imageUrls     Json     @default("[]") // string[] of public image URLs
   /// Whether the client is asked to log sessions against this. Copied from the
@@ -3057,7 +3061,17 @@ model LibraryTask {
   title       String
   description String?  @db.Text // Tiptap rich text — render with <RichText />
   repetitions Int?
+  /// FIRST video only, kept in step with `videos[0]`.
+  ///
+  /// Every older reader — the client app, templates, default homework, the
+  /// session screen — still selects this column, so it is written on every save
+  /// rather than dropped. Retire it once nothing reads it; see instructional-videos.ts.
   videoUrl    String?
+  /// The item's videos, in the order a client watches them:
+  /// `[{ url, title? }]`. One exercise is often several short clips ("Step 1 —
+  /// approach", "Step 2 — reward"), which teaches better than one long take AND
+  /// keeps each file small enough to handle.
+  videos      Json     @default("[]")
   // One illustrative image and one attached document (PDF) per item. Both live
   // in Vercel Blob; images are compressed client-side before upload.
   imageUrl    String?

@@ -425,6 +425,74 @@ test('the items inside a theme are dragged into order', async ({ page }) => {
   }
 })
 
+test('an item holds several clips, in order, and all of them reach the client', async ({ page }) => {
+  await login(page, SEED.owner.email, SEED.owner.password)
+  const prisma = db()
+
+  try {
+    await page.goto(`/library/item/${LIB.itemId}`)
+
+    // Two clips, added by link. The second is an .mp4 so the client side has
+    // one embed and one inline player to render.
+    await page.getByLabel('Video link').fill('https://www.youtube.com/watch?v=aaa111')
+    await page.getByRole('button', { name: 'Add this video' }).click()
+    await page.getByLabel('Video link').fill('https://example.com/step-two.mp4')
+    await page.getByRole('button', { name: 'Add this video' }).click()
+
+    // Name the steps — this is what a client is shown above each clip.
+    await page.getByLabel('Name for video 1').fill('Step 1 — approach')
+    await page.getByLabel('Name for video 2').fill('Step 2 — reward')
+
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.getByText('Saved.')).toBeVisible()
+
+    await expect(async () => {
+      const row = await prisma.libraryTask.findUnique({ where: { id: LIB.itemId } })
+      expect(row?.videos).toEqual([
+        { url: 'https://www.youtube.com/watch?v=aaa111', title: 'Step 1 — approach' },
+        { url: 'https://example.com/step-two.mp4', title: 'Step 2 — reward' },
+      ])
+      // The old single column still mirrors the first, so every reader that
+      // hasn't moved across keeps showing a video.
+      expect(row?.videoUrl).toBe('https://www.youtube.com/watch?v=aaa111')
+    }).toPass({ timeout: 10_000 })
+
+    // ── Handing it out carries BOTH ──────────────────────────────────────────
+    await page.getByRole('button', { name: 'Give this to a client' }).click()
+    const dialog = page.getByRole('dialog')
+    await dialog.getByLabel('Client').fill('Unassigned')
+    await dialog.getByRole('button', { name: /Unassigned Client/ }).click()
+    await dialog.getByLabel('Date').fill('2031-04-03')
+    await dialog.getByRole('button', { name: 'Add to their homework' }).click()
+    await expect(page.getByRole('link', { name: /Unassigned Client/ })).toBeVisible({ timeout: 15_000 })
+
+    const handed = await prisma.trainingTask.findFirst({
+      where: { libraryTaskId: LIB.itemId, clientId: SEED.unassignedClientId },
+    })
+    // Not just the first clip — the whole lesson.
+    expect(handed?.videos).toHaveLength(2)
+    expect(handed?.videoUrl).toBe('https://www.youtube.com/watch?v=aaa111')
+  } finally {
+    await prisma.trainingTask.deleteMany({ where: { libraryTaskId: LIB.itemId } })
+    await prisma.libraryTask.update({
+      where: { id: LIB.itemId },
+      data: { videos: [], videoUrl: null },
+    })
+    await prisma.$disconnect()
+  }
+})
+
+test('a junk video link is refused before it can be saved', async ({ page }) => {
+  await login(page, SEED.owner.email, SEED.owner.password)
+  await page.goto(`/library/item/${LIB.itemId}`)
+
+  // javascript: passes a naive URL parse and would run inside the client's app.
+  await page.getByLabel('Video link').fill('javascript:alert(1)')
+  await page.getByRole('button', { name: 'Add this video' }).click()
+  await expect(page.getByText('That needs to be a full http(s) link.')).toBeVisible()
+  await expect(page.getByLabel('Name for video 1')).toHaveCount(0)
+})
+
 test('an item is duplicated and deleted from the ⋯ menu', async ({ page }) => {
   await login(page, SEED.owner.email, SEED.owner.password)
   const prisma = db()

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
+import { sanitizeVideos, videoColumns } from '@/lib/instructional-videos'
 import { z } from 'zod'
 
 // z.url() happily accepts `javascript:…`, and these values end up in href/src —
@@ -16,6 +17,12 @@ const schema = z.object({
   // Does a client log sessions against this, or just read it? Plenty of the
   // library is reference material where reps and a rating are noise.
   wantsLog: z.boolean().optional(),
+  // The item's videos, in watch order. Left loose here and cleaned by
+  // sanitizeVideos, which is the one place the http(s) rule and the cap live —
+  // a second copy of that rule in a zod schema is a second copy to get wrong.
+  videos: z.array(z.unknown()).optional(),
+  // Written from `videos[0]` when a list is sent. Still accepted on its own so
+  // an older client (or a rolling deploy mid-flight) keeps working.
   videoUrl: webUrl.optional().nullable().or(z.literal('')),
   // Blob URLs written by /api/library/upload; fileName is the handout's label.
   imageUrl: webUrl.optional().nullable().or(z.literal('')),
@@ -51,7 +58,12 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ taskId
       description: parsed.data.description ?? null,
       repetitions: parsed.data.repetitions ?? null,
       ...(parsed.data.wantsLog !== undefined && { wantsLog: parsed.data.wantsLog }),
-      videoUrl: parsed.data.videoUrl || null,
+      // A sent list wins and sets BOTH columns; with no list, the single field
+      // still works on its own and becomes a one-entry list, so the two can't
+      // drift apart whichever way the save arrived.
+      ...(parsed.data.videos !== undefined
+        ? videoColumns(sanitizeVideos(parsed.data.videos))
+        : videoColumns(parsed.data.videoUrl ? [{ url: parsed.data.videoUrl }] : [])),
       imageUrl: parsed.data.imageUrl || null,
       fileUrl: parsed.data.fileUrl || null,
       fileName: parsed.data.fileName || null,

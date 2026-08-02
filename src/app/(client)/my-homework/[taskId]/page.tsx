@@ -7,7 +7,8 @@ import { TrainingLogPanel, type TrainingLogEntry } from './training-log-panel'
 import type { Metadata } from 'next'
 import { RichText } from '@/components/shared/rich-text'
 import { isRichTextEmpty } from '@/lib/rich-text'
-import { VideoPlayer } from '@/components/video-player'
+import { InstructionalVideoList } from '@/components/shared/instructional-video'
+import { readVideos } from '@/lib/instructional-videos'
 
 export const metadata: Metadata = { title: 'Homework' }
 
@@ -19,28 +20,6 @@ export const metadata: Metadata = { title: 'Homework' }
 // the session + active-trainer cookie (getActiveClient validates the profile
 // against the user's own). A task id that isn't this client's bounces to /home.
 
-// Turn a trainer's YouTube/Vimeo link into an embeddable player URL. Anything we
-// don't recognise falls back to a plain "Watch video" link (returns null here).
-function toEmbedUrl(raw: string): string | null {
-  try {
-    const u = new URL(raw)
-    const host = u.hostname.replace(/^www\./, '')
-    if (host === 'youtu.be') return `https://www.youtube.com/embed/${u.pathname.slice(1)}`
-    if (host === 'youtube.com' || host === 'm.youtube.com') {
-      const v = u.searchParams.get('v')
-      if (v) return `https://www.youtube.com/embed/${v}`
-      if (u.pathname.startsWith('/embed/')) return raw
-    }
-    if (host === 'vimeo.com') {
-      const id = u.pathname.split('/').filter(Boolean)[0]
-      if (id && /^\d+$/.test(id)) return `https://player.vimeo.com/video/${id}`
-    }
-    return null
-  } catch {
-    return null
-  }
-}
-
 export default async function HomeworkDetailPage({ params }: { params: Promise<{ taskId: string }> }) {
   const { taskId } = await params
 
@@ -51,7 +30,7 @@ export default async function HomeworkDetailPage({ params }: { params: Promise<{
     where: { id: taskId, clientId: active.clientId },
     select: {
       id: true, title: true, description: true, repetitions: true, wantsLog: true,
-      videoUrl: true, trainerNote: true, imageUrls: true,
+      videoUrl: true, videos: true, trainerNote: true, imageUrls: true,
       completion: { select: { id: true } },
       logs: {
         orderBy: { loggedAt: 'desc' },
@@ -61,14 +40,10 @@ export default async function HomeworkDetailPage({ params }: { params: Promise<{
   })
   if (!task) redirect('/home')
 
-  const embedUrl = task.videoUrl ? toEmbedUrl(task.videoUrl) : null
-  // A file we host (or any direct video file) plays inline; a YouTube/Vimeo link
-  // needs their iframe. Checked on the URL rather than on how it was created, so a
-  // pasted link to an .mp4 works too.
-  const isDirectVideo = !!task.videoUrl && (
-    /\.(mp4|webm|mov|m4v|ogg)(\?|$)/i.test(task.videoUrl)
-    || /\.public\.blob\.vercel-storage\.com\//i.test(task.videoUrl)
-  )
+  // Every clip the trainer put on this exercise, in their order. readVideos
+  // falls back to the single videoUrl for homework handed out before the list
+  // existed, so older work still shows its video.
+  const videos = readVideos(task)
   const images = Array.isArray(task.imageUrls) ? (task.imageUrls as string[]) : []
   const logs: TrainingLogEntry[] = task.logs.map(l => ({
     id: l.id,
@@ -116,36 +91,8 @@ export default async function HomeworkDetailPage({ params }: { params: Promise<{
           </div>
         )}
 
-        {/* Trainer's instructional video */}
-        {task.videoUrl && (
-          <div className="mt-4">
-            {isDirectVideo ? (
-              /* A clip the trainer uploaded (Blob), not a YouTube link — it has no
-                 embed URL, so it used to fall through to a bare "Watch the video"
-                 link that navigated away from the exercise. Play it in place. */
-              <VideoPlayer src={task.videoUrl} />
-            ) : embedUrl ? (
-              <div className="relative w-full overflow-hidden rounded-2xl bg-black" style={{ aspectRatio: '16 / 9' }}>
-                <iframe
-                  src={embedUrl}
-                  title="Instructional video"
-                  className="absolute inset-0 h-full w-full"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
-              </div>
-            ) : (
-              <a
-                href={task.videoUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200"
-              >
-                Watch the video
-              </a>
-            )}
-          </div>
-        )}
+        {/* Every instructional clip the trainer set, in their order. */}
+        <InstructionalVideoList videos={videos} />
 
         {/* Trainer-attached photos */}
         {images.length > 0 && (

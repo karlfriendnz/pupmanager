@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
+import { readVideos, videoColumns } from '@/lib/instructional-videos'
 import { getClientAccess } from '@/lib/trainer-access'
 import { dogBelongsToClient } from '@/lib/dog-access'
 import { z } from 'zod'
@@ -52,7 +53,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ taskId:
       title: task.title,
       description: task.description,
       repetitions: task.repetitions,
-      videoUrl: task.videoUrl,
+      // ALL of the item's videos, not just the first. An exercise taught as
+      // three short clips would otherwise reach the client as one — and the
+      // client would be missing the two steps that came after it.
+      ...videoColumns(readVideos(task)),
       // The item's picture, which was simply never copied — so a trainer who
       // attached one handed out homework that had lost it. LibraryTask holds ONE
       // image, TrainingTask holds a list, so it goes in as a list of one.
