@@ -10,6 +10,11 @@
  * legitimate reason to set it on app.pupmanager.com.
  */
 export function reviewToolsEnabled(): boolean {
+  // '0' turns it off wherever you are — the case that was missing. The widget
+  // pins a floating button over every screen, which is exactly what you don't
+  // want while taking screenshots. Setting REVIEW_TOOLS=0 in .env.local silences
+  // it without a code change anyone has to remember to revert.
+  if (process.env.REVIEW_TOOLS === '0') return false
   if (process.env.REVIEW_TOOLS === '1') return true
   return process.env.NODE_ENV !== 'production'
 }
