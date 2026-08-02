@@ -21,6 +21,11 @@ function sections(node: any, out: string[] = []): string[] {
     out.push('homework')
   }
   if (node.props?.children === 'What we worked on') out.push('questions')
+  // The sections are handed to SessionReportTabs as a `tabs` array rather than
+  // as children — that array IS the render order, on a phone and on a desktop.
+  if (Array.isArray(node.props?.tabs)) {
+    for (const t of node.props.tabs) sections(t.node, out)
+  }
   sections(node.props?.children ?? null, out)
   return out
 }
@@ -63,5 +68,55 @@ describe('the client report reads questions → media → homework', () => {
   it('a media-only session still renders its gallery', () => {
     expect(sections(SessionReport({ ...props, formResponses: [], tasks: [] })))
       .toEqual(['media'])
+  })
+})
+
+// The phone tabs. Desktop keeps every section stacked, so the only thing worth
+// asserting here is which tabs exist and in what order — the responsive half is
+// two Tailwind classes on one element.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function tabsOf(node: any): { id: string; label: string }[] | null {
+  if (node == null || typeof node !== 'object') return null
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const hit = tabsOf(child)
+      if (hit) return hit
+    }
+    return null
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (Array.isArray(node.props?.tabs)) return node.props.tabs.map((t: any) => ({ id: t.id, label: t.label }))
+  return tabsOf(node.props?.children ?? null)
+}
+
+describe('the phone tabs', () => {
+  it('offers Notes, Photos and Homework, in the reading order', () => {
+    expect(tabsOf(SessionReport(props))).toEqual([
+      { id: 'notes', label: 'Notes' },
+      { id: 'media', label: 'Photos' },
+      { id: 'homework', label: 'Homework' },
+    ])
+  })
+
+  it('never offers a tab that would open on nothing', () => {
+    expect(tabsOf(SessionReport({ ...props, attachments: [] })))
+      .toEqual([{ id: 'notes', label: 'Notes' }, { id: 'homework', label: 'Homework' }])
+    expect(tabsOf(SessionReport({ ...props, tasks: [], attachments: [] })))
+      .toEqual([{ id: 'notes', label: 'Notes' }])
+  })
+
+  it('a write-up of nothing but a sign-off still counts as Notes', () => {
+    const signOffOnly = {
+      ...props.formResponses[0],
+      answers: {},
+      closingMessage: 'See you next Tuesday.',
+    }
+    expect(tabsOf(SessionReport({ ...props, formResponses: [signOffOnly], tasks: [], attachments: [] })))
+      .toEqual([{ id: 'notes', label: 'Notes' }])
+  })
+
+  it('an empty session offers no tabs at all', () => {
+    expect(tabsOf(SessionReport({ ...props, formResponses: [], tasks: [], attachments: [] })))
+      .toEqual([])
   })
 })

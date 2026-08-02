@@ -4,6 +4,7 @@ import { formatSessionTitle } from '@/lib/utils'
 import { ReportAttachmentsGallery, type ReportAttachment } from './report-attachments'
 import { RichText } from './rich-text'
 import { isRichTextEmpty } from '@/lib/rich-text'
+import { SessionReportTabs, type ReportTabSpec } from './session-report-tabs'
 
 export type { ReportAttachment }
 
@@ -85,25 +86,29 @@ export function SessionReport({
 }: SessionReportProps) {
   const d = new Date(scheduledAt)
 
-  return (
+  // Which questions this client is allowed to see, per response. Resolved once
+  // because both the Notes section and the "is there a Notes tab at all"
+  // decision need the same answer, and they must not disagree.
+  const answeredQuestions = formResponses.map(r => {
+    const visibleQuestions = audience === 'client'
+      ? r.form.questions.filter(q => !q.isPrivate)
+      : r.form.questions
+    const answers = r.answers ?? {}
+    return { r, answers, visibleQuestions: visibleQuestions.filter(q => (answers[q.id] ?? '') !== '') }
+  })
+  const hasNotes = answeredQuestions.some(a =>
+    a.visibleQuestions.length > 0 ||
+    (a.r.introMessage || a.r.form.introText) ||
+    (a.r.closingMessage || a.r.form.closingText),
+  )
+
+  // The trainer's words, all of them: the opening message, the answers, and the
+  // sign-off. The sign-off used to sit after the homework; it belongs with the
+  // rest of what the trainer wrote, and on a phone it has to, or the Notes tab
+  // would end mid-sentence and a stray paragraph would wash up under the
+  // practice list.
+  const notesSection = (
     <>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">{formatSessionTitle(sessionTitle)}</h1>
-        <p className="text-sm text-slate-500 mt-1">
-          {clientName && `${clientName} · `}
-          {dogName && `🐕 ${dogName} · `}
-          {d.toLocaleDateString('en-NZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-        </p>
-      </div>
-
-      {formResponses.length === 0 && tasks.length === 0 && attachments.length === 0 && (
-        <Card>
-          <CardBody className="py-8 text-center text-slate-400 text-sm">
-            There&apos;s no report for this session yet.
-          </CardBody>
-        </Card>
-      )}
-
       {/* Opening blocks — per-response message wins, otherwise the form's intro */}
       {formResponses.map(r => {
         const intro = r.introMessage || r.form.introText || ''
@@ -117,16 +122,11 @@ export function SessionReport({
         )
       })}
 
-      {/* Q&A blocks */}
-      {formResponses.map(r => {
-        // Filter private questions out for clients; trainers see all but with
-        // a "Private" badge so they know it's not in the client's view.
-        const visibleQuestions = audience === 'client'
-          ? r.form.questions.filter(q => !q.isPrivate)
-          : r.form.questions
-        const answers = r.answers ?? {}
-        const hasAnyAnswer = visibleQuestions.some(q => (answers[q.id] ?? '') !== '')
-        if (!hasAnyAnswer) return null
+      {/* Q&A blocks. Private questions were already filtered out for clients
+          above; trainers keep them, with a "Private" badge so they know it is
+          not in the client's view. */}
+      {answeredQuestions.map(({ r, answers, visibleQuestions }) => {
+        if (visibleQuestions.length === 0) return null
         return (
           <Card key={r.id} className="mb-6 rounded-none">
             <CardBody className="py-6">
@@ -160,13 +160,29 @@ export function SessionReport({
         )
       })}
 
-      {/* Photos & videos from this session. They sit AFTER the write-up and
-          BEFORE the homework because that is the order Karl asked for —
-          questions, then media, then homework — and it is the order the report
-          reads in: the trainer says what happened, the photos show it, and the
-          practice that follows from it comes last, next to nothing. Above the
-          questions they were a gallery with no caption, arriving before anyone
-          had said what the session was. */}
+      {/* Closing — the trainer's sign-off, at the end of the trainer's words. */}
+      {formResponses.map(r => {
+        const closing = r.closingMessage || r.form.closingText || ''
+        if (!closing) return null
+        return (
+          <Card key={`closing-${r.id}`} className="mb-6 rounded-none">
+            <CardBody className="py-5">
+              <p className="text-sm text-slate-700 whitespace-pre-wrap">{closing}</p>
+            </CardBody>
+          </Card>
+        )
+      })}
+    </>
+  )
+
+  // Photos & videos from this session. They sit AFTER the write-up and BEFORE
+  // the homework because that is the order Karl asked for — questions, then
+  // media, then homework — and it is the order the report reads in: the trainer
+  // says what happened, the photos show it, and the practice that follows from
+  // it comes last. Above the questions they were a gallery with no caption,
+  // arriving before anyone had said what the session was.
+  const mediaSection = (
+    <>
       {attachments.length > 0 && (
         <Card className="mb-6 rounded-none">
           <div className="px-6 py-5">
@@ -174,8 +190,12 @@ export function SessionReport({
           </div>
         </Card>
       )}
+    </>
+  )
 
-      {/* Tasks for the client to practise */}
+  // Tasks for the client to practise.
+  const homeworkSection = (
+    <>
       {tasks.length > 0 && (
         <Card className="overflow-hidden rounded-none">
           <h2 className="font-semibold text-slate-900 px-6 py-5">Tasks for you to practise</h2>
@@ -234,7 +254,6 @@ export function SessionReport({
                     {t.imageUrls && t.imageUrls.length > 0 && (
                       <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {t.imageUrls.map((src, i) => (
-                          // eslint-disable-next-line @next/next/no-img-element
                           <a
                             key={i}
                             href={src}
@@ -242,6 +261,7 @@ export function SessionReport({
                             rel="noopener noreferrer"
                             className="block aspect-square rounded-lg overflow-hidden bg-slate-100"
                           >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={src} alt={`${t.title} reference ${i + 1}`} className="h-full w-full object-cover" />
                           </a>
                         ))}
@@ -254,19 +274,37 @@ export function SessionReport({
           </div>
         </Card>
       )}
+    </>
+  )
 
-      {/* Closing — sign-off after the tasks */}
-      {formResponses.map(r => {
-        const closing = r.closingMessage || r.form.closingText || ''
-        if (!closing) return null
-        return (
-          <Card key={`closing-${r.id}`} className="mt-6 rounded-none">
-            <CardBody className="py-5">
-              <p className="text-sm text-slate-700 whitespace-pre-wrap">{closing}</p>
-            </CardBody>
-          </Card>
-        )
-      })}
+  // Only sections with something in them become tabs. A tab bar offering
+  // "Photos" on a session with no photos is a button that shows an empty page.
+  const tabs: ReportTabSpec[] = [
+    ...(hasNotes ? [{ id: 'notes', label: 'Notes', node: notesSection }] : []),
+    ...(attachments.length > 0 ? [{ id: 'media', label: 'Photos', node: mediaSection }] : []),
+    ...(tasks.length > 0 ? [{ id: 'homework', label: 'Homework', node: homeworkSection }] : []),
+  ]
+
+  return (
+    <>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-900">{formatSessionTitle(sessionTitle)}</h1>
+        <p className="text-sm text-slate-500 mt-1">
+          {clientName && `${clientName} · `}
+          {dogName && `🐕 ${dogName} · `}
+          {d.toLocaleDateString('en-NZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+        </p>
+      </div>
+
+      {tabs.length === 0 && (
+        <Card>
+          <CardBody className="py-8 text-center text-slate-400 text-sm">
+            There&apos;s no report for this session yet.
+          </CardBody>
+        </Card>
+      )}
+
+      <SessionReportTabs tabs={tabs} />
     </>
   )
 }
