@@ -4,11 +4,12 @@ import { type ReactNode, type HTMLAttributes, useCallback, useSyncExternalStore 
 import { richTextToPlain, isRichTextEmpty } from '@/lib/rich-text'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
-import { Plus, GripVertical, LayoutGrid, List as ListIcon } from 'lucide-react'
+import { Plus, GripVertical, LayoutGrid, List as ListIcon, Tag as TagIcon } from 'lucide-react'
 import { closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { DndArea } from './dnd-area'
 import { SortableContext, sortableKeyboardCoordinates, useSortable, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { groupOfferingsByTag, type TagRef } from '@/lib/offering-grouping'
 
 // One card design for everything a trainer sells — 1:1 packages, group classes,
 // drop-in classes and events. They were four hand-rolled layouts that had
@@ -319,6 +320,80 @@ export function useOfferingView(page: string): [OfferingView, (v: OfferingView) 
   return [view, choose]
 }
 
+const GROUP_KEY_PREFIX = 'pupmanager:offering-group'
+
+function readGroup(key: string): boolean {
+  try { return window.localStorage.getItem(key) === '1' } catch { return false }
+}
+const serverGroup = () => false
+
+/**
+ * "Group this page by tag", remembered per page like the view is.
+ *
+ * Shares `viewListeners`, so switching it in one tab moves every list control
+ * in the others too — one store, one subscription, no second `storage`
+ * listener doing the same job.
+ *
+ * Off on the server, for the same reason the view starts as 'list': the markup
+ * has to match until the stored choice is read, or the page hydration-errors.
+ */
+export function useOfferingGrouping(page: string): [boolean, (v: boolean) => void] {
+  const key = `${GROUP_KEY_PREFIX}:${page}`
+  const subscribe = useCallback((cb: () => void) => subscribeView(cb), [])
+  const snapshot = useCallback(() => readGroup(key), [key])
+  const grouped = useSyncExternalStore(subscribe, snapshot, serverGroup)
+  const choose = useCallback((v: boolean) => {
+    try { window.localStorage.setItem(key, v ? '1' : '0') } catch { /* private mode */ }
+    viewListeners.forEach(l => l())
+  }, [key])
+  return [grouped, choose]
+}
+
+/**
+ * Group-by-tag switch, between the "new one of these" button and the view
+ * toggle.
+ *
+ * Visible on phones, unlike the view toggle. The view is meaningless on one
+ * column; grouping is arguably worth MORE there, because a phone shows four
+ * cards at a time and headings are how you find your place in forty.
+ */
+export function OfferingGroupToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  const label = value ? 'Grouped by tag — tap to ungroup' : 'Group by tag'
+  return (
+    <div className="flex items-center rounded-xl bg-slate-100 p-1">
+      <button
+        type="button"
+        onClick={() => onChange(!value)}
+        aria-label={label}
+        aria-pressed={value}
+        title={label}
+        className={`flex h-8 w-9 items-center justify-center rounded-lg transition-colors ${
+          value ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+        }`}
+      >
+        <TagIcon className="h-4 w-4" strokeWidth={1.75} />
+      </button>
+    </div>
+  )
+}
+
+/**
+ * The heading above one tag's run of cards.
+ *
+ * A hairline and a quiet label, not a card or a coloured chip — the cards below
+ * are the content, and a heavy heading would compete with them. The count is
+ * there because a tag's whole job is to answer "how much is in this?".
+ */
+export function OfferingGroupHeading({ label, count }: { label: string; count: number }) {
+  return (
+    <div className="mb-2.5 flex items-baseline gap-2 border-b border-slate-200 pb-1.5">
+      <h2 className="text-sm font-semibold text-slate-900">{label}</h2>
+      <span className="text-xs text-slate-400" aria-hidden="true">{count}</span>
+      <span className="sr-only">{count === 1 ? '1 offering' : `${count} offerings`}</span>
+    </div>
+  )
+}
+
 /** List / grid switch. Hidden on phones — one column either way there. */
 export function OfferingViewToggle({ value, onChange }: { value: OfferingView; onChange: (v: OfferingView) => void }) {
   return (
@@ -359,18 +434,29 @@ export function OfferingViewToggle({ value, onChange }: { value: OfferingView; o
  * Now it's an ordinary row in the flow: tabs left, toggle right, on the shared
  * hairline the underline tabs sit on. Nothing overlaps at any width.
  */
-export function OfferingListBar({ children, view, onView, action }: {
+export function OfferingListBar({ children, view, onView, action, grouped, onGrouped }: {
   children?: ReactNode
   view: OfferingView
   onView: (v: OfferingView) => void
   /** The "new one of these" action, sat beside the view toggle. */
   action?: ReactNode
+  /**
+   * Group-by-tag state. Both must be supplied for the control to appear, and
+   * a page passes them only when there is at least one tag on the list — see
+   * `canGroupByTag`. Memberships never pass them: tags reach packages and
+   * products, and a membership is neither, so the switch could only ever
+   * produce a single heading reading "No tag".
+   */
+  grouped?: boolean
+  onGrouped?: (v: boolean) => void
 }) {
+  const canGroup = grouped !== undefined && onGrouped !== undefined
   return (
     <div className={`mb-3 flex items-end justify-between gap-3 ${children ? 'border-b border-slate-200' : ''}`}>
       <div className="min-w-0">{children}</div>
       <div className={`flex flex-shrink-0 items-center gap-2 ${children ? 'pb-1.5' : ''}`}>
         {action}
+        {canGroup && <OfferingGroupToggle value={grouped} onChange={onGrouped} />}
         <OfferingViewToggle value={view} onChange={onView} />
       </div>
     </div>
@@ -508,6 +594,43 @@ export function OfferingItems({
     ? 'grid grid-cols-1 gap-2.5 @sm:grid-cols-2 @xl:grid-cols-3 @3xl:grid-cols-4'
     : 'grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4'
   return <div className={view === 'grid' ? grid : 'flex flex-col gap-2.5'}>{children}</div>
+}
+
+/**
+ * The list, cut into a run of cards per tag.
+ *
+ * DRAGGING IS OFF IN HERE, and that is the point rather than an omission. The
+ * saved order is ONE arrangement of the whole list, and it is what clients see
+ * in the booking flow. Inside a section, "move this above that" has no single
+ * answer — the two cards may be pages apart in the real order, and a row
+ * carrying two tags appears in two sections at once, so a drag in one of them
+ * would silently reposition it in the other. Rather than write an order the
+ * trainer did not mean, grouping is a way of READING the list and the grips
+ * come back the moment it is switched off.
+ */
+export function OfferingGroups<T>({ rows, tagsOf, tagOrder = [], view, columns, children }: {
+  rows: readonly T[]
+  tagsOf: (row: T) => readonly TagRef[] | undefined
+  /** Tag ids in the trainer's own arrangement, so headings match their tag screen. */
+  tagOrder?: readonly string[]
+  view: OfferingView
+  columns?: 3 | 4
+  /** Renders one card. No drag handle is passed — see the note above. */
+  children: (row: T) => ReactNode
+}) {
+  const groups = groupOfferingsByTag(rows, tagsOf, tagOrder)
+  return (
+    <div className="flex flex-col gap-6">
+      {groups.map(group => (
+        <section key={group.key}>
+          <OfferingGroupHeading label={group.label} count={group.items.length} />
+          <OfferingItems view={view} columns={columns}>
+            {group.items.map(children)}
+          </OfferingItems>
+        </section>
+      ))}
+    </div>
+  )
 }
 
 /**
