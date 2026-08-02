@@ -153,7 +153,29 @@ Source: [Stripe NZ pricing](https://stripe.com/nz/pricing)
 
 ---
 
-## 10. Recommendation
+## 10. What is already built
+
+On branch **`feature/tap-to-pay`**. Server side only. 18 unit tests green, typecheck clean.
+
+| Built | File |
+|---|---|
+| Core Terminal library | `src/lib/terminal.ts` |
+| Shared gate for all four routes | `src/app/api/terminal/_guard.ts` |
+| Connection token | `src/app/api/terminal/connection-token/route.ts` |
+| Apple terms link | `src/app/api/terminal/onboarding-link/route.ts` |
+| PaymentIntent (card_present) | `src/app/api/terminal/payment-intent/route.ts` |
+| Capture | `src/app/api/terminal/capture/route.ts` |
+| Eligibility (drives the UI) | `src/app/api/terminal/eligibility/route.ts` |
+| `terminalLocationId` + migration | `prisma/schema.prisma` |
+| Tests | `tests/unit/security/terminal-tap-to-pay-routes.test.ts` |
+
+**Not built, and deliberately so:** the native Capacitor plugin and the sale-composer UI. Both are blocked on things outside the code — Apple's entitlement, and the Capacitor Android bridge bug. Writing them now would mean writing them blind.
+
+The server half is inert until the native half exists. It charges nobody and changes no existing behaviour.
+
+---
+
+## 11. Recommendation
 
 1. Karl does steps 1 and 2 of section 5 **this week** — free, and it starts the Apple clock.
 2. Ask Stripe support the Express-account question (section 9.1) before any code.
