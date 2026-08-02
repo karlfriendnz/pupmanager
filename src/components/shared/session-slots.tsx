@@ -187,7 +187,10 @@ export function SessionSlotsEditor({
                     className="h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">Default</option>
-                    {accounts.map(a => <option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}
+                    {/* code + name, not the code alone — the shortlist allows the
+                        same Xero account twice under different names, so two
+                        entries on code 270 collided as React keys. */}
+                    {accounts.map(a => <option key={`${a.code}:${a.name}`} value={a.code}>{a.code} · {a.name}</option>)}
                     {s.account && !accounts.some(a => a.code === s.account) && (
                       <option value={s.account}>{s.account}</option>
                     )}

@@ -62,8 +62,13 @@ export function XeroAccountField({
         }`}
       >
         <option value="">{required ? 'Select an account…' : 'Use my default income account'}</option>
+        {/* Keyed on code + name, not the code alone: the shortlist deliberately
+            lets a trainer add the SAME Xero account more than once under
+            different names ("Dog Trainings" and "half day" both posting to 270),
+            so two options shared the key `270` and React warned about duplicate
+            children. The name is what the mapping panel enforces unique. */}
         {accounts.map((a) => (
-          <option key={a.code} value={a.code}>{a.code} · {a.name}</option>
+          <option key={`${a.code}:${a.name}`} value={a.code}>{a.code} · {a.name}</option>
         ))}
       </select>
       <p className="mt-1 text-xs text-slate-400">Where this item’s revenue posts in Xero.</p>
