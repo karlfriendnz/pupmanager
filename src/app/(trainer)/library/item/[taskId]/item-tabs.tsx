@@ -1,9 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import { Send } from 'lucide-react'
+
+import { ModalPortal } from '@/components/shared/modal-portal'
 
 import { ItemActions, ItemEditor, type EditableItem } from './item-editor'
-import { ItemHolders, type Holder } from './item-holders'
+import { AssignDialog, ItemHolders, type Holder } from './item-holders'
 import type { Client } from './item-holders'
 
 /**
@@ -38,10 +41,28 @@ export function ItemTabs({
   clients: Client[]
 }) {
   const [tab, setTab] = useState<Tab>('item')
+  const [assigning, setAssigning] = useState(false)
 
   // The actions belong to the ITEM, not to a tab, so they stay put across both
   // — switching tabs to delete something would be a strange trip.
-  const actions = <ItemActions item={item} themeHref={themeHref} />
+  //
+  // Handing it out is the one thing a trainer comes to this screen to DO, so it
+  // is a labelled button rather than a row buried under the register of who
+  // already has it. It lives here, beside ⋯, which is why the dialog is owned
+  // at this level rather than inside the holders panel.
+  const actions = (
+    <>
+      <button
+        type="button"
+        onClick={() => setAssigning(true)}
+        className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+      >
+        <Send className="h-4 w-4 text-slate-500" strokeWidth={1.75} />
+        Give this to a client
+      </button>
+      <ItemActions item={item} themeHref={themeHref} />
+    </>
+  )
 
   const strip = (
     <div className="flex gap-5">
@@ -57,14 +78,18 @@ export function ItemTabs({
       {tab === 'item' ? (
         <ItemEditor item={item} themeHref={themeHref} heading={strip} actions={actions} />
       ) : (
-        <ItemHolders
-          taskId={item.id}
-          description={description}
-          holders={holders}
-          clients={clients}
-          heading={strip}
-          actions={actions}
-        />
+        <ItemHolders holders={holders} heading={strip} actions={actions} />
+      )}
+
+      {assigning && (
+        <ModalPortal>
+          <AssignDialog
+            taskId={item.id}
+            description={description}
+            clients={clients}
+            onClose={() => setAssigning(false)}
+          />
+        </ModalPortal>
       )}
     </div>
   )

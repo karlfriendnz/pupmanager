@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { Check, Search, Send, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Modal } from '@/components/ui/modal'
-import { ModalPortal } from '@/components/shared/modal-portal'
 import { FlatBlock, FlatRow, SectionLabel } from '@/components/shared/flat-list'
 import { RichText } from '@/components/shared/rich-text'
 import { isRichTextEmpty } from '@/lib/rich-text'
@@ -41,25 +40,16 @@ function shortDate(iso: string) {
  * match for rows assigned before that column existed.
  */
 export function ItemHolders({
-  taskId,
-  description,
   holders,
-  clients,
   heading,
   actions,
 }: {
-  taskId: string
-  /** The item's rich-text instructions — previewed before handing it out. */
-  description: string | null
   holders: Holder[]
-  clients: Client[]
   /** The tab strip, in place of a plain "Who has this" label. */
   heading?: React.ReactNode
   /** Duplicate / Delete — the same control the Item tab shows. */
   actions?: React.ReactNode
 }) {
-  const [assigning, setAssigning] = useState(false)
-
   return (
     <section className={heading ? '' : 'mt-8'}>
       {/* As a tab this row is the tab strip; on its own it stays a label. */}
@@ -98,30 +88,11 @@ export function ItemHolders({
         </FlatBlock>
       )}
 
-      <button
-        type="button"
-        onClick={() => setAssigning(true)}
-        className="mt-3 flex items-center gap-2 px-1 py-2 text-sm text-slate-500 active:text-slate-900"
-      >
-        <Send className="h-4 w-4" strokeWidth={1.75} />
-        Give this to a client
-      </button>
-
-      {assigning && (
-        <ModalPortal>
-          <AssignDialog
-            taskId={taskId}
-            description={description}
-            clients={clients}
-            onClose={() => setAssigning(false)}
-          />
-        </ModalPortal>
-      )}
     </section>
   )
 }
 
-function AssignDialog({
+export function AssignDialog({
   taskId,
   description,
   clients,
