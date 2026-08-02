@@ -252,14 +252,27 @@ export function FormEditorShell({
         </div>
       )}
 
-      <div className={sidebar ? 'grid gap-4 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start' : undefined}>
-        {sidebar && (
+      {/* The grid is here on BOTH tabs, whether or not there is a rail to put
+          in it. Dropping it when `sidebar` was undefined is what made switching
+          to Settings feel broken: the panel fell into column one and stretched
+          to the full page, so the tab you pressed moved everything sideways and
+          left a subject line sitting in a 940px-wide field.
+
+          A tab switch swaps what is IN a panel. It should never move the panel.
+          So the first column is held open even when empty — the rail goes, and
+          nothing else does. */}
+      <div className="grid gap-4 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start">
+        {sidebar ? (
           // Sticky so the palette is still there when you have scrolled to
           // question twelve. `no-scrollbar` because a visible rail here would be
           // the second scrollbar on screen, which Karl has banned outright.
           <aside className="no-scrollbar hidden lg:sticky lg:top-4 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
             {sidebar}
           </aside>
+        ) : (
+          // Holds the column open. Below lg the grid is one column anyway, so
+          // this contributes nothing on a phone — no stray gap, no empty row.
+          <div className="hidden lg:block" aria-hidden="true" />
         )}
 
         <div className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white [&>section+section]:border-t [&>section+section]:border-slate-200">
