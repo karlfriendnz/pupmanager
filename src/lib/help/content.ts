@@ -476,9 +476,9 @@ export const HELP_ARTICLES: HelpArticle[] = [
     summary: 'Create a weekly timesheet you can fill in with time entries.',
     steps: [
       'Click "Timesheets" on the left.',
-      'In "Start a new timesheet", pick any day in the week you want.',
-      'Click "New timesheet".',
-      'It opens ready for you to add time entries.',
+      'Click "New timesheet" at the top right.',
+      'Pick any day in the week you want.',
+      'Click "Create". It opens ready for you to add time entries.',
     ],
   },
   {
