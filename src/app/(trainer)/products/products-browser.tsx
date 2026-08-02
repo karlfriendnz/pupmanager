@@ -561,19 +561,23 @@ function ProductTile({
       {/* ONE price — what a client would actually pay today, which is the sale
           price when there is one. The struck original, the "% off" and the
           "Sale" flash all belong on a card; down a column they are three extra
-          things to read past. A product on special says so by being red. */}
+          things to read past. A product on special says so by being red.
+
+          Red TEXT, not a filled pill. A pill carries its own padding and a
+          smaller type size, so the one row on special had its digits sitting
+          ~8px left of every other price and a baseline of its own — the column
+          stopped being a column. Same box, same size, same weight as its
+          neighbours; only the colour differs. */}
       {price == null ? (
         <span className="text-right text-sm text-slate-400">—</span>
-      ) : onSale ? (
+      ) : (
         <span
-          data-testid="sale-price"
-          title={`Was ${formatMoney(product.priceCents as number, currency)}`}
-          className="justify-self-end rounded-full bg-rose-600 px-2 py-0.5 text-xs font-semibold tabular-nums text-white"
+          data-testid={onSale ? 'sale-price' : undefined}
+          title={onSale ? `Was ${formatMoney(product.priceCents as number, currency)}` : undefined}
+          className={`text-right text-sm font-semibold tabular-nums ${onSale ? 'text-rose-600' : 'text-slate-900'}`}
         >
           {formatMoney(price, currency)}
         </span>
-      ) : (
-        <span className="text-right text-sm font-semibold tabular-nums text-slate-900">{formatMoney(price, currency)}</span>
       )}
 
       {chosen.has('status') && (
