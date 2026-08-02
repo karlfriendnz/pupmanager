@@ -185,7 +185,9 @@ export function NeedsNotesList({ rows, currency }: { rows: TodoRow[]; currency: 
       {/* Sticky bulk action bar */}
       {selected.size > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur px-4 py-3 shadow-[0_-4px_20px_rgba(15,23,42,0.06)]">
-          <div className="max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto flex items-center justify-between gap-3">
+          {/* No width cap of its own — it only had one so its contents lined
+              up with the centred column above it, which is gone. */}
+          <div className="flex items-center justify-between gap-3">
             <span className="text-sm font-medium text-slate-700">{selected.size} selected</span>
             <div className="flex items-center gap-2">
               <button onClick={() => setSelected(new Set())} disabled={bulkBusy} className="text-sm text-slate-500 hover:text-slate-700 px-3 h-10 disabled:opacity-60">Clear</button>

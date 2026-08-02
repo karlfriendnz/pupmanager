@@ -147,25 +147,29 @@ export default async function SessionsTodoPage({
         </>
       ) : (
         <>
-          <div className="mb-6 grid grid-cols-2 gap-3">
-            <div className="rounded-2xl bg-white border border-amber-100 p-4 flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-                <FileText className="h-5 w-5" />
-              </span>
+          {/* Two figures, in ONE bordered block split by a hairline — not two
+              floating cards with a tinted tile each. The tiles were an amber
+              chip and a solid rose square, which is the decorative colour
+              AGENTS.md has no room for, and at full width the two cards grew
+              to half a monitor apiece to hold a two-digit number.
+
+              max-w-md because a count is a count: it does not get wider when
+              the page does, and a 700px box holding "3" is not information. */}
+          <div className="mb-6 flex max-w-md overflow-hidden rounded-xl border border-slate-200 bg-white [&>*+*]:border-l [&>*+*]:border-slate-200">
+            <div className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3">
+              <FileText className="h-5 w-5 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
               <div className="min-w-0">
-                <p className="text-2xl font-bold text-slate-900 leading-none tabular-nums">{needsNotesCount}</p>
-                <p className="text-xs text-slate-500 mt-1">need notes</p>
+                <p className="text-2xl font-bold leading-none tabular-nums text-slate-900">{needsNotesCount}</p>
+                <p className="mt-1 text-xs text-slate-500">need notes</p>
               </div>
             </div>
-            <div className="rounded-2xl bg-white border border-rose-100 p-4 flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-600 text-white">
-                <CurrencyGlyph className="text-lg" />
-              </span>
+            <div className="flex min-w-0 flex-1 items-center gap-3 px-4 py-3">
+              <CurrencyGlyph className="flex-shrink-0 text-lg text-slate-400" />
               <div className="min-w-0">
-                <p className="text-2xl font-bold text-slate-900 leading-none tabular-nums">
+                <p className="text-2xl font-bold leading-none tabular-nums text-slate-900">
                   {totalInvoiceCents > 0 ? formatMoney(totalInvoiceCents, currency) : needsInvoiceCount}
                 </p>
-                <p className="text-xs text-slate-500 mt-1">
+                <p className="mt-1 text-xs text-slate-500">
                   {needsInvoiceCount} session{needsInvoiceCount === 1 ? '' : 's'} to invoice
                 </p>
               </div>
@@ -221,7 +225,11 @@ export default async function SessionsTodoPage({
         // search glass, which are both controls, so it read as a third button
         // that did nothing. The page is already named "To do".
       />
-      <div className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto">
+      {/* Full width, like every other list. The Notes tab is a table of
+          sessions with a client, a dog, a value and two states against each,
+          and it was running down a centred column with the last few hundred
+          pixels of a desktop screen spent on margin. */}
+      <div className="w-full p-4 md:p-8">
         <TodoTabs tabs={tabs} initial={initialTab} />
       </div>
     </>
