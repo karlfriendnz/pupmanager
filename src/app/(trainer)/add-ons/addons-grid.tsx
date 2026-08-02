@@ -16,6 +16,7 @@ const MANAGE_HREF: Record<string, string> = {
 // Payments, which is enabled by connecting Stripe, not flipping a switch.
 const LINK_ONLY = new Set<string>(['payments'])
 import { Button } from '@/components/ui/button'
+import { apiErrorMessage } from '@/lib/api-error-message'
 import { formatDate } from '@/lib/utils'
 import { currencyMeta, type CurrencyCode } from '@/lib/pricing'
 import { AddonPromoModal, addonPromoImage } from '@/components/shared/addon-promos'
@@ -37,6 +38,16 @@ export interface AddonCard {
 function formatPrice(symbol: string, amount: number, label: string) {
   return `${symbol}${amount}/mo · ${label}`
 }
+
+// What to show when a toggle fails. The generic "please try again" is now only
+// reachable for a 4xx that carried no sentence at all — every real refusal from
+// /api/addons names itself, and a 500 says so instead of promising a retry.
+const addonError = (body: unknown, status: number) =>
+  apiErrorMessage(body, status, {
+    fallback: 'Could not change this add-on. Please try again.',
+    unexplained:
+      'Something went wrong changing this add-on and we don’t know what yet. Please contact support — we can see the details.',
+  })
 
 export function AddonsGrid({
   cards,
@@ -81,9 +92,14 @@ export function AddonsGrid({
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
         setActive((prev) => ({ ...prev, [card.id]: !next })) // revert
-        // Paid add-on with no subscription yet → send them to subscribe.
-        if (body.needsSubscription) { window.location.href = '/billing/setup'; return }
-        setError(typeof body.error === 'string' ? body.error : 'Could not change this add-on. Please try again.')
+        // Paid add-on with no subscription yet → send them to subscribe. NOT for
+        // a subscription that Stripe can't find: sending them to /billing/setup
+        // would offer a second subscription as the fix for a broken first one.
+        if (body.needsSubscription && body.reason !== 'subscription_missing') {
+          window.location.href = '/billing/setup'
+          return
+        }
+        setError(addonError(body, res.status))
         return
       }
       setLearnMore(null) // success → close the popup
@@ -95,8 +111,10 @@ export function AddonsGrid({
       // them straight to its setup page.
       if (next && MANAGE_HREF[card.id]) { router.push(MANAGE_HREF[card.id]); return }
     } catch {
+      // The request itself never landed (offline, aborted) — this IS the one
+      // failure where trying again is the right advice.
       setActive((prev) => ({ ...prev, [card.id]: !next }))
-      setError('Could not change this add-on. Please try again.')
+      setError('We couldn’t reach PupManager just then. Check your connection and try again.')
     } finally {
       setBusy(null)
     }

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { apiErrorMessage } from '@/lib/api-error-message'
 
 /**
  * Turns an add-on on via /api/addons, then refreshes. Paid add-ons that need a
@@ -29,11 +30,14 @@ export function EnableAddonButton({ itemId, label, onEnabled, connectHref }: { i
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) {
-        if (body.needsSubscription) {
+        // Bounce to checkout for "you have no subscription yet" — but NOT for a
+        // subscription Stripe can't find, where starting a second one is the
+        // last thing they should be offered.
+        if (body.needsSubscription && body.reason !== 'subscription_missing') {
           window.location.href = '/billing/setup'
           return
         }
-        setError(typeof body.error === 'string' ? body.error : 'Could not turn this on.')
+        setError(apiErrorMessage(body, res.status, { fallback: 'Could not turn this on.' }))
         setLoading(false)
         return
       }

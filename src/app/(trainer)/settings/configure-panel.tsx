@@ -17,6 +17,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Loader2, ExternalLink } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
+import { apiErrorMessage } from '@/lib/api-error-message'
 import {
   FEATURE_GROUP_HINT, FEATURE_GROUP_LABEL,
   type ConfigurableFeature, type FeatureGroup,
@@ -69,9 +70,11 @@ export function ConfigurePanel({
         body: JSON.stringify({ itemId: id, active: next }),
       })
       if (!res.ok) {
-        const body = await res.json().catch(() => null) as { error?: string } | null
+        const body = await res.json().catch(() => null)
         setOn(prev => ({ ...prev, [id]: !next }))
-        setError(body?.error ?? 'That did not save — try again.')
+        // Never render the raw `error` — a Zod 400 sends an object, which used
+        // to reach setState and come out as "[object Object]".
+        setError(apiErrorMessage(body, res.status, { fallback: 'That did not save — try again.' }))
         return
       }
       // The nav, and every gated page, read this server-side.
