@@ -36,6 +36,10 @@ async function ensureBillingItem(def: AddonDef): Promise<void> {
 // (active + stripeSubscriptionItemId); we also write `active` here so the UI
 // updates instantly even before the webhook lands.
 //
+// A trainer still inside their FREE TRIAL has no subscription to add a line item
+// to — they take a local-only path (see below) that switches the feature on now
+// and leaves the charge to /api/billing/checkout when they subscribe.
+//
 // Enabling an add-on is pro-rated to the trainer's next billing date
 // (proration_behavior: 'create_prorations') — the prorated amount for the rest
 // of the current period lands on their upcoming invoice rather than charging
@@ -86,7 +90,7 @@ export async function POST(req: Request) {
 
   const trainer = await prisma.trainerProfile.findUnique({
     where: { id: ctx.companyId },
-    select: { stripeSubscriptionId: true, sandboxBilling: true },
+    select: { stripeSubscriptionId: true, sandboxBilling: true, trialEndsAt: true },
   })
   const sandbox = trainer?.sandboxBilling ?? false
 
@@ -102,6 +106,40 @@ export async function POST(req: Request) {
       update: { active },
     })
     return NextResponse.json({ ok: true, itemId, active, comped: true })
+  }
+
+  // ── Still on the free trial, no subscription yet? Switch it on locally. ──
+  //
+  // A trialist has no Stripe subscription to hang a line item off, and this used
+  // to be a dead end: "Subscribe to your plan to add extras." — i.e. the only way
+  // to try a paid extra was to end your own trial and start paying. Karl's call:
+  // "people can turn this on — not on by default — but they can turn it on, and
+  // then they get invoiced when the trial is up."
+  //
+  // So write the TrainerAddon row active with NO Stripe call. hasAddon() gates on
+  // that row, so the feature works immediately, and /api/billing/checkout carries
+  // whatever is still switched on into the subscription it creates — which keeps
+  // the trainer's remaining trial days, so the first charge lands when the trial
+  // ends, not now.
+  //
+  // stripeSubscriptionItemId stays NULL deliberately. That is what marks the row
+  // as "on, but not a billed line item yet": the Stripe webhook's reconciliation
+  // sweep only deactivates rows that DO have one, so a locally-activated row is
+  // left alone until checkout puts it on a real subscription — at which point the
+  // webhook updates this same row (unique on trainerId+itemId) rather than adding
+  // a second one.
+  //
+  // An EXPIRED trial with no subscription is NOT this case — they get the old
+  // error. Otherwise "turn it on during the trial" would quietly become "paid
+  // extras are free forever if you never subscribe".
+  const inTrial = (trainer?.trialEndsAt?.getTime() ?? 0) > Date.now()
+  if (!trainer?.stripeSubscriptionId && inTrial) {
+    await prisma.trainerAddon.upsert({
+      where: { trainerId_itemId: { trainerId: ctx.companyId, itemId } },
+      create: { trainerId: ctx.companyId, itemId, active },
+      update: { active },
+    })
+    return NextResponse.json({ ok: true, itemId, active, billsAtTrialEnd: true })
   }
 
   if (!isStripeConfigured(sandbox)) {

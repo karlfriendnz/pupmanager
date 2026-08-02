@@ -42,6 +42,12 @@ interface Props {
   // Add-on ids that are active in the DB (subset of pricing.ts ADDONS).
   // Display/price come from pricing.ts; this just gates which show.
   availableAddonIds: string[]
+  // Paid add-ons the trainer already switched on during their free trial. They
+  // start ticked and CAN'T be unticked here: the checkout route unions them in
+  // server-side (they're on and unbilled, so they belong on the subscription),
+  // and a checkbox that clears but still bills would be a lie. Turning one off
+  // is done where it was turned on — Settings → Add-ons.
+  alreadyOnAddonIds: string[]
   // Whether the per-seat "extra trainer" charge is sellable yet.
   seatAvailable: boolean
   // True when the paywall sent them here (expired trial / no subscription).
@@ -66,11 +72,16 @@ interface Props {
 // pupmanager.com/pricing).
 export function SetupForm({
   planId, planName, purchasable, configuredCurrencies,
-  availableAddonIds, seatAvailable, locked, defaults,
+  availableAddonIds, alreadyOnAddonIds, seatAvailable, locked, defaults,
 }: Props) {
   const [currency, setCurrency] = useState<CurrencyCode>(DEFAULT_CURRENCY)
   const [seatCount, setSeatCount] = useState(1)
-  const [selectedAddons, setSelectedAddons] = useState<Set<AddonId>>(new Set())
+  const alreadyOn = useMemo(() => new Set<string>(alreadyOnAddonIds), [alreadyOnAddonIds])
+  // Trial add-ons start in the selection so the total on screen is the total on
+  // the invoice — the server adds them regardless of what this form posts.
+  const [selectedAddons, setSelectedAddons] = useState<Set<AddonId>>(
+    () => new Set(alreadyOnAddonIds as AddonId[]),
+  )
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
 
@@ -89,6 +100,8 @@ export function SetupForm({
   const fallback = !configuredCurrencies.includes(currency)
 
   function toggleAddon(id: AddonId) {
+    // Already-on trial add-ons are fixed here — see alreadyOnAddonIds.
+    if (alreadyOn.has(id)) return
     setSelectedAddons(prev => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
@@ -310,28 +323,43 @@ export function SetupForm({
             </p>
             {addons.map(a => {
               const on = selectedAddons.has(a.id)
+              const fixed = alreadyOn.has(a.id)
               return (
                 <button
                   key={a.id}
                   type="button"
                   onClick={() => toggleAddon(a.id)}
                   aria-pressed={on}
+                  aria-disabled={fixed || undefined}
                   className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-left transition"
                   style={{
                     borderColor: on ? 'var(--pm-brand-600)' : 'var(--pm-ink-100)',
                     background: on ? 'var(--pm-brand-50, #eef6f7)' : '#fff',
+                    cursor: fixed ? 'default' : undefined,
                   }}
                 >
                   <span className="min-w-0">
                     <span className="flex items-center gap-2">
                       <span className="text-sm font-semibold" style={{ color: 'var(--pm-ink-900)' }}>{a.name}</span>
-                      {a.badge && (
+                      {fixed ? (
+                        <span className="rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'var(--pm-brand-600)', color: '#fff' }}>
+                          Already on
+                        </span>
+                      ) : a.badge ? (
                         <span className="rounded-full px-1.5 py-0.5 text-[10px] font-medium" style={{ background: 'var(--pm-ink-100)', color: 'var(--pm-ink-500)' }}>
                           {a.badge}
                         </span>
-                      )}
+                      ) : null}
                     </span>
                     <span className="mt-0.5 block text-[11px]" style={{ color: 'var(--pm-ink-500)' }}>{a.description}</span>
+                    {/* They switched this on during the trial and have been using
+                        it free. Say where to turn it off — the checkbox here
+                        can't, because the server bills what's actually on. */}
+                    {fixed && (
+                      <span className="mt-1 block text-[11px] font-medium" style={{ color: 'var(--pm-brand-700)' }}>
+                        You turned this on during your trial. To stop it, switch it off in Settings → Add-ons before you subscribe.
+                      </span>
+                    )}
                   </span>
                   <span className="flex shrink-0 items-center gap-2">
                     <span className="text-sm font-semibold tabular-nums" style={{ color: on ? 'var(--pm-brand-700)' : 'var(--pm-ink-700)' }}>

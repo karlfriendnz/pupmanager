@@ -16,6 +16,7 @@ const MANAGE_HREF: Record<string, string> = {
 // Payments, which is enabled by connecting Stripe, not flipping a switch.
 const LINK_ONLY = new Set<string>(['payments'])
 import { Button } from '@/components/ui/button'
+import { formatDate } from '@/lib/utils'
 import { currencyMeta, type CurrencyCode } from '@/lib/pricing'
 import { AddonPromoModal, addonPromoImage } from '@/components/shared/addon-promos'
 
@@ -40,11 +41,20 @@ function formatPrice(symbol: string, amount: number, label: string) {
 export function AddonsGrid({
   cards,
   currency,
+  trialEndsAt = null,
 }: {
   cards: AddonCard[]
   currency: CurrencyCode
+  /**
+   * ISO date the trainer's free trial ends, when they're still on it and have no
+   * subscription yet. Non-null means a paid add-on switched on here costs nothing
+   * until then and starts billing when they subscribe — which the card has to say
+   * out loud before they tap it.
+   */
+  trialEndsAt?: string | null
 }) {
   const meta = currencyMeta(currency)
+  const trialEnd = trialEndsAt ? new Date(trialEndsAt) : null
   // Local active state so a toggle reflects instantly without a full reload.
   const [active, setActive] = useState<Record<string, boolean>>(
     () => Object.fromEntries(cards.map((c) => [c.id, c.active])),
@@ -98,6 +108,12 @@ export function AddonsGrid({
     filter === 'all' || (filter === 'free' ? c.price == null : c.price != null)
   const enabled = cards.filter((c) => active[c.id] && matchesFilter(c))
   const availableCards = cards.filter((c) => !active[c.id] && matchesFilter(c))
+  // What the switched-on PAID add-ons will add to the first invoice. Ignores the
+  // free/paid filter deliberately — the number has to be the whole bill, not
+  // whatever the current tab happens to show.
+  const paidEnabledTotal = cards
+    .filter((c) => active[c.id] && !c.comingSoon && c.price != null)
+    .reduce((sum, c) => sum + (c.price ?? 0), 0)
 
   function renderCard(card: AddonCard) {
     const img = addonPromoImage(card.id)
@@ -184,6 +200,16 @@ export function AddonsGrid({
           >
             {active[learnMore.id] ? `Turn off ${learnMore.name}` : `Turn on ${learnMore.name}`}
           </Button>
+          {/* A trainer on their trial can turn a paid add-on on with no card and
+              no subscription. Say what that costs and WHEN, in one sentence, so
+              nobody reads "turn it on now" as "it's free". */}
+          {trialEnd && learnMore.price != null && (
+            <p className="mt-2 text-center text-[13px]" style={{ color: 'var(--pm-ink-600, #475569)' }}>
+              {active[learnMore.id]
+                ? `You're not paying for this yet. It's free until your trial ends on ${formatDate(trialEnd)}, then ${meta.symbol}${learnMore.price} a month once you subscribe.`
+                : `Free for the rest of your trial. Your trial ends on ${formatDate(trialEnd)} — after that it's ${meta.symbol}${learnMore.price} a month.`}
+            </p>
+          )}
           {error && <p className="mt-2 text-sm text-rose-600">{error}</p>}
         </div>
       )
@@ -211,6 +237,16 @@ export function AddonsGrid({
       {enabled.length > 0 && (
         <section className="mb-8">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Your add-ons</h2>
+          {/* One line, not a badge per card: what the paid ones will cost, and
+              when. On trial they're switched on and charging nothing — the
+              trainer should know that changes the day they subscribe. */}
+          {trialEnd && paidEnabledTotal > 0 && (
+            <p className="mb-3 text-sm" style={{ color: 'var(--pm-ink-700)' }}>
+              You&apos;re on your free trial, so these cost nothing yet. When you subscribe, the paid
+              ones add {meta.symbol}{paidEnabledTotal} a month. Turn any of them off here and you
+              won&apos;t be charged for it.
+            </p>
+          )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">{enabled.map(renderCard)}</div>
         </section>
       )}

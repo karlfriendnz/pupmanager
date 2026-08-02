@@ -8,7 +8,7 @@ import { prisma } from '@/lib/prisma'
 import { stripeFor, isStripeConfigured } from '@/lib/stripe'
 import { env } from '@/lib/env'
 import { isCurrencyCode, isAddonId, DEFAULT_CURRENCY, type CurrencyCode } from '@/lib/pricing'
-import { resolvePriceId } from '@/lib/billing'
+import { resolvePriceId, getUnbilledPaidAddons } from '@/lib/billing'
 import { isFounderEligible } from '@/lib/founder'
 import { countryToISO } from '@/lib/country'
 
@@ -89,7 +89,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message }, { status: 400 })
   }
   const {
-    planId, currency, seatCount, addons,
+    planId, currency, seatCount, addons: requestedAddons,
     businessName, phone,
     addressLine1, addressLine2, addressCity, addressRegion, addressPostcode, addressCountry,
   } = parsed.data
@@ -108,6 +108,29 @@ export async function POST(req: Request) {
   if (!corePrice) {
     return NextResponse.json({ error: 'This plan isn\'t available for purchase yet' }, { status: 409 })
   }
+
+  // ── Add-ons already switched on during the trial come with them. ──
+  //
+  // A trainer on a free trial can switch a paid add-on on without a subscription
+  // (see /api/addons) — the row is written active with no Stripe line item. If
+  // checkout only billed what this request happened to tick, the add-on they have
+  // been using all trial would land on the subscription nowhere and quietly stay
+  // free forever. So the real charge set is: what they ticked here, UNION what is
+  // already on and unbilled.
+  //
+  // Anything they switched OFF before converting is already `active: false` and
+  // so isn't in that set — turning it off in Add-ons is how you avoid the charge.
+  //
+  // A Set, not a concat: the same add-on can be both ticked here and already on,
+  // and Stripe will happily put the same price on a subscription twice and bill
+  // for both. Deduping is the whole guard against that. It also swallows a client
+  // that sends the same id twice.
+  const carriedAddons = await getUnbilledPaidAddons(trainerId)
+  const addons = [...new Set([...requestedAddons, ...carriedAddons])]
+  // Ticked in THIS request → a missing price is a hard 409 (below); carried over
+  // from the trial → we'd rather let them subscribe than block checkout on wiring
+  // they never asked about, so it's skipped with a shout in the log.
+  const explicitlyRequested = new Set<string>(requestedAddons)
 
   // Build the rest of the line items: extra seats + selected add-ons. We
   // pull the seat + add-on BillingItems and resolve each to a Stripe price
@@ -134,13 +157,25 @@ export async function POST(req: Request) {
     extraLineItems.push({ price: seatPrice, quantity: extraSeats })
   }
 
+  const billedAddons: string[] = []
   for (const addonId of addons) {
     const item = itemById.get(addonId)
     const addonPrice = item && item.kind === 'ADDON' ? resolvePriceId(item, cur, sandbox) : null
     if (!addonPrice) {
+      if (!explicitlyRequested.has(addonId)) {
+        // Carried over from the trial with no price wired for this currency.
+        // Blocking would stop the trainer subscribing at all over an add-on they
+        // didn't choose on this screen, so it stays on (unbilled) and we log it.
+        console.warn(
+          `[billing/checkout] trainer ${trainerId} has "${addonId}" on from their trial but no ` +
+          `${cur} price is wired — subscribing without it, so it stays free until that's fixed.`,
+        )
+        continue
+      }
       return NextResponse.json({ error: 'One of the selected add-ons isn\'t available for purchase yet' }, { status: 409 })
     }
     extraLineItems.push({ price: addonPrice, quantity: 1 })
+    billedAddons.push(addonId)
   }
 
   // Persist anything the form gave us before talking to Stripe — that
@@ -283,7 +318,7 @@ export async function POST(req: Request) {
     currency,
     founder: founderFlag,
     seatCount: String(seatCount),
-    addons: addons.join(','),
+    addons: billedAddons.join(','),
     sandbox: String(sandbox),
   }
 

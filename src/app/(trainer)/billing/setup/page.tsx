@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { isStripeConfigured } from '@/lib/stripe'
 import { PLAN_NAME, isSellableAddon } from '@/lib/pricing'
-import { loadBillingConfig, configuredCurrencies as currenciesFor } from '@/lib/billing'
+import { loadBillingConfig, configuredCurrencies as currenciesFor, getUnbilledPaidAddons } from '@/lib/billing'
 import { trainerHasAccess } from '@/lib/access'
 import { WebOnly } from './web-only'
 import { SetupForm } from './setup-form'
@@ -84,6 +84,12 @@ export default async function BillingSetupPage() {
   const availableAddonIds = addons.map(a => a.id).filter(isSellableAddon)
   const seatAvailable = !!seat
 
+  // Paid add-ons this trainer switched on during their trial. They've been using
+  // them free, so they go onto the subscription — the checkout route unions them
+  // in server-side whatever this form posts. Showing them here, ticked and fixed,
+  // is what stops the total on screen disagreeing with the first invoice.
+  const alreadyOnAddonIds = (await getUnbilledPaidAddons(trainerId)).filter(isSellableAddon)
+
   return (
     <div className="px-4 py-10 md:py-14 w-full max-w-xl mx-auto" style={{ color: 'var(--pm-ink-900)' }}>
       {/* The heading is subscribe/pricing language — web only. In native the
@@ -114,6 +120,7 @@ export default async function BillingSetupPage() {
         purchasable={purchasable}
         configuredCurrencies={Array.from(configuredCurrencies)}
         availableAddonIds={availableAddonIds}
+        alreadyOnAddonIds={alreadyOnAddonIds}
         seatAvailable={seatAvailable}
         locked={locked}
         defaults={{

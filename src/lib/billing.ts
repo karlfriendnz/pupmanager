@@ -227,6 +227,38 @@ export async function getEnabledAddonsBatch(trainerIds: string[]): Promise<Map<s
   return result
 }
 
+/**
+ * PAID add-ons this trainer has switched on that are not yet a billed line item.
+ *
+ * These come from the trial path in /api/addons: a trainer on a free trial has no
+ * Stripe subscription to hang an add-on off, so the row is written active with
+ * `stripeSubscriptionItemId` NULL and no Stripe call. That null is the marker —
+ * "switched on, never charged for" — and this is the set that must be carried
+ * onto the subscription at checkout so the trainer starts paying for what they've
+ * been using, instead of it silently becoming free forever.
+ *
+ * Excluded on purpose:
+ *  - FREE add-ons (Timesheets, Xero, …). They also have a null item id and would
+ *    otherwise be sent to Stripe, which has no price for them.
+ *  - Admin comp grants (grantedByAdmin). Those are deliberately unbilled.
+ *  - Lapsed grants (expiresAt in the past). Gating already treats them as off, so
+ *    charging for them would bill for something the trainer cannot use.
+ */
+export async function getUnbilledPaidAddons(trainerId: string): Promise<string[]> {
+  const rows = await prisma.trainerAddon.findMany({
+    where: {
+      trainerId,
+      active: true,
+      grantedByAdmin: false,
+      stripeSubscriptionItemId: null,
+    },
+    select: { itemId: true, expiresAt: true },
+  })
+  const now = Date.now()
+  const paidIds = new Set<string>(ADDONS.filter(a => !a.free && !a.comingSoon).map(a => a.id))
+  return rows.filter(r => paidIds.has(r.itemId) && !isExpired(r.expiresAt, now)).map(r => r.itemId)
+}
+
 /** A grant's expiry has passed. Null expiresAt = never lapses. */
 function isExpired(expiresAt: Date | null, now = Date.now()): boolean {
   return expiresAt != null && expiresAt.getTime() <= now

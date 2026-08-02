@@ -39,6 +39,28 @@ const DETAILS: Record<string, string> = {
 // pricing.ts but flagged comingSoon — e.g. AI — are handled below.)
 const COMING_SOON: { id: string; name: string; blurb: string }[] = []
 
+/**
+ * The date a paid add-on switched on RIGHT NOW would start costing money, or
+ * null if it would cost money straight away (or never).
+ *
+ * A trainer still on their free trial can switch a paid add-on on with no card
+ * and no subscription — it costs nothing until the trial converts, then it's on
+ * the first invoice. They have to be told that, plainly, at the moment they
+ * switch it on: "free" that quietly becomes a charge is the kind of surprise
+ * that gets a card cancelled. Sandbox/demo accounts are comped, so no notice.
+ *
+ * Outside the component because reading the clock during render is impure.
+ */
+function billableTrialEnd(trainer: {
+  trialEndsAt: Date | null
+  stripeSubscriptionId: string | null
+  sandboxBilling: boolean
+} | null): Date | null {
+  if (!trainer || trainer.stripeSubscriptionId || trainer.sandboxBilling) return null
+  if (!trainer.trialEndsAt || trainer.trialEndsAt.getTime() <= Date.now()) return null
+  return trainer.trialEndsAt
+}
+
 // Add-ons settings tab — the standalone /add-ons page's data loading, rendered
 // without the page chrome (PageHeader / full-page wrapper live on the settings
 // page now).
@@ -46,7 +68,13 @@ export async function AddonsTab({ companyId }: { companyId: string }) {
   const [trainer, { addons: addonItems }, activeRows] = await Promise.all([
     prisma.trainerProfile.findUnique({
       where: { id: companyId },
-      select: { payoutCurrency: true, connectChargesEnabled: true },
+      select: {
+        payoutCurrency: true,
+        connectChargesEnabled: true,
+        trialEndsAt: true,
+        stripeSubscriptionId: true,
+        sandboxBilling: true,
+      },
     }),
     loadBillingConfig(),
     prisma.trainerAddon.findMany({
@@ -120,9 +148,15 @@ export async function AddonsTab({ companyId }: { companyId: string }) {
     comingSoon: true,
   }))
 
+  const trialEndsAt = billableTrialEnd(trainer)
+
   return (
     <div className="max-w-5xl">
-      <AddonsGrid cards={[...cards, ...soonAddons, ...soon]} currency={currency} />
+      <AddonsGrid
+        cards={[...cards, ...soonAddons, ...soon]}
+        currency={currency}
+        trialEndsAt={trialEndsAt ? trialEndsAt.toISOString() : null}
+      />
     </div>
   )
 }
