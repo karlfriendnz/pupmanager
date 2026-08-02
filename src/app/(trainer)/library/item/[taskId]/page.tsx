@@ -6,7 +6,7 @@ import { personLabel } from '@/lib/utils'
 import { PageHeader } from '@/components/shared/page-header'
 import { requireLibraryTrainer, getLibraryTree } from '../../library-data'
 import { LibraryShell } from '../../library-shell'
-import { ItemEditor, ItemDangerZone } from './item-editor'
+import { ItemEditor } from './item-editor'
 import { ItemHolders, type Holder } from './item-holders'
 
 export const metadata: Metadata = { title: 'Library item' }
@@ -108,6 +108,7 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
             fileUrl: task.fileUrl,
             fileName: task.fileName,
           }}
+          themeHref={`/library/theme/${task.theme.id}`}
         />
         <ItemHolders
           taskId={task.id}
@@ -118,10 +119,6 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
             name: personLabel(c.user),
             dogs: mergeClientDogs(c.dog, c.dogs),
           }))}
-        />
-        <ItemDangerZone
-          item={{ id: task.id, title: task.title }}
-          themeHref={`/library/theme/${task.theme.id}`}
         />
       </LibraryShell>
     </>

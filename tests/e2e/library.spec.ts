@@ -140,7 +140,9 @@ test('an item is edited on its own page, in rich text, and shows who has it', as
   await editor.click()
   await page.keyboard.press('End')
   await page.keyboard.type(' Hold for three seconds.')
-  await page.getByRole('button', { name: 'Save item' }).click()
+  // Save is a labelled button at the TOP right, on the item's heading line —
+  // not a control at the foot of the longest screen in the Library.
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByText('Saved.')).toBeVisible()
 
   const prisma = db()
@@ -374,6 +376,75 @@ test('the items inside a theme are dragged into order', async ({ page }) => {
   } finally {
     await prisma.libraryTask.deleteMany({ where: { id: madeId } })
     await prisma.libraryTask.update({ where: { id: LIB.itemId }, data: { order: 0 } })
+    await prisma.$disconnect()
+  }
+})
+
+test('an item is duplicated and deleted from the ⋯ menu', async ({ page }) => {
+  await login(page, SEED.owner.email, SEED.owner.password)
+  const prisma = db()
+  let copyId: string | null = null
+
+  try {
+    await page.goto(`/library/item/${LIB.itemId}`)
+
+    // Delete is no longer a permanent red row at the foot of the page.
+    await expect(page.getByRole('button', { name: /^Delete this item$/ })).toHaveCount(0)
+
+    // ── Duplicate ────────────────────────────────────────────────────────────
+    await page.getByRole('button', { name: 'More actions for this item' }).click()
+    await expect(page.getByRole('dialog')).toBeVisible()
+    // The sheet locks the page behind it — never two scrollbars.
+    await expect(page.locator('body')).toHaveCSS('overflow', 'hidden')
+    await page.getByRole('button', { name: /Duplicate this item/ }).click()
+
+    // It lands on the copy, which carries everything but the name.
+    await page.waitForURL(/\/library\/item\/(?!e2elibitem)/, { timeout: 15_000 })
+    await expect(page.getByLabel('Name')).toHaveValue(`${LIB.itemTitle} (copy)`)
+
+    copyId = new URL(page.url()).pathname.split('/').pop()!
+    const copy = await prisma.libraryTask.findUnique({ where: { id: copyId } })
+    const original = await prisma.libraryTask.findUnique({ where: { id: LIB.itemId } })
+    expect(copy?.themeId).toBe(original!.themeId)
+    expect(copy?.description).toBe(original!.description)
+    // Directly below the original, not dumped at the end of the theme.
+    expect(copy?.order).toBe(original!.order + 1)
+
+    // ── Delete ───────────────────────────────────────────────────────────────
+    await page.getByRole('button', { name: 'More actions for this item' }).click()
+    await page.getByRole('button', { name: /Delete this item/ }).click()
+
+    // It asks first, in a sentence — not window.confirm, and not on one tap.
+    const confirm = page.getByRole('alertdialog')
+    await expect(confirm).toBeVisible()
+    await expect(confirm).toContainText('Homework already handed out')
+    await confirm.getByRole('button', { name: 'Delete' }).click()
+
+    await page.waitForURL(`**/library/theme/${LIB.themeId}`, { timeout: 15_000 })
+    await expect(async () => {
+      expect(await prisma.libraryTask.findUnique({ where: { id: copyId! } })).toBeNull()
+    }).toPass({ timeout: 10_000 })
+    copyId = null
+
+    // The original is untouched.
+    expect(await prisma.libraryTask.findUnique({ where: { id: LIB.itemId } })).not.toBeNull()
+  } finally {
+    if (copyId) await prisma.libraryTask.deleteMany({ where: { id: copyId } })
+    await prisma.$disconnect()
+  }
+})
+
+test('another business’s item cannot be cloned', async ({ page }) => {
+  await login(page, SEED.owner.email, SEED.owner.password)
+  const prisma = db()
+
+  try {
+    const before = await prisma.libraryTask.count()
+    const res = await page.request.post(`/api/library/tasks/${LIB.businessBItemId}/clone`, { data: {} })
+    expect(res.status()).toBe(404)
+    // Nothing was created — not even into Business A's own library.
+    expect(await prisma.libraryTask.count()).toBe(before)
+  } finally {
     await prisma.$disconnect()
   }
 })

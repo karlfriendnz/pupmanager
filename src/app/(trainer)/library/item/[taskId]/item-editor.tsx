@@ -4,9 +4,11 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { upload } from '@vercel/blob/client'
-import { FileText, ImageIcon, Loader2, Trash2, Upload, X } from 'lucide-react'
+import { Copy, FileText, ImageIcon, Loader2, MoreHorizontal, Trash2, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
+import { ActionSheet, type SheetAction } from '@/components/shared/action-sheet'
+import { ConfirmSheet } from '@/components/shared/confirm-sheet'
+import { FlatBlock, SectionHeader } from '@/components/shared/flat-list'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { compressImageFile, isDisplayableImage } from '@/lib/compress-image'
 import { isRichTextEmpty } from '@/lib/rich-text'
@@ -38,7 +40,7 @@ function humanSize(bytes: number) {
     : `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 
-export function ItemEditor({ item }: { item: EditableItem }) {
+export function ItemEditor({ item, themeHref }: { item: EditableItem; themeHref: string }) {
   const router = useRouter()
   const [title, setTitle] = useState(item.title)
   const [description, setDescription] = useState(item.description ?? '')
@@ -144,7 +146,24 @@ export function ItemEditor({ item }: { item: EditableItem }) {
   return (
     <>
       <section>
-        <SectionLabel>Item</SectionLabel>
+        {/* SectionHeader, not SectionLabel — it is the same 36px row the rail's
+            heading uses, so the two columns start level. A bare label sits a
+            few pixels higher than the tree beside it, which is what made the
+            two headings look out of true. */}
+        <SectionHeader
+          action={
+            <span className="flex items-center gap-1.5">
+              {saved && <span className="text-[13px] text-slate-500">Saved.</span>}
+              <Button onClick={save} loading={saving} disabled={!title.trim() || uploading !== null}>
+                Save
+              </Button>
+              <ItemActions item={item} themeHref={themeHref} />
+            </span>
+          }
+        >
+          Item
+        </SectionHeader>
+        {error && <div className="mb-3"><ErrorNote>{error}</ErrorNote></div>}
         <FlatBlock>
           <div className="px-4 py-4">
             <label htmlFor="item-title" className="block text-[13px] font-medium text-slate-700">Name</label>
@@ -311,68 +330,117 @@ export function ItemEditor({ item }: { item: EditableItem }) {
             <p className="mt-2 text-[13px] text-slate-500">Up to 20 MB.</p>
           </div>
 
-          <div className="px-4 py-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <Button onClick={save} loading={saving} disabled={!title.trim() || uploading !== null}>
-                Save item
-              </Button>
-              {saved && <span className="text-[13px] text-slate-500">Saved.</span>}
-            </div>
-            {error && <ErrorNote>{error}</ErrorNote>}
-          </div>
         </FlatBlock>
       </section>
-
     </>
   )
 }
 
-/** Delete, kept apart so it sits at the very bottom of the item page. */
-export function ItemDangerZone({ item, themeHref }: { item: { id: string; title: string }; themeHref: string }) {
+/**
+ * Duplicate and Delete for one item, behind a ⋯ .
+ *
+ * Save is the thing a trainer presses every visit, so it stays a labelled
+ * button. These two are occasional and one of them is unrecoverable, so they go
+ * in the house sheet — full width off the bottom edge on a phone, a small panel
+ * on desktop — rather than a 56px menu hanging off the corner. Same component
+ * every offering screen uses.
+ *
+ * Delete used to be a permanent red row at the foot of the page. It was the
+ * last thing on the longest screen in the Library, which is a strange amount of
+ * room to give the one action nobody wants to hit.
+ */
+function ItemActions({ item, themeHref }: { item: EditableItem; themeHref: string }) {
   const router = useRouter()
+  const [open, setOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)
-  const [deleting, setDeleting] = useState(false)
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function remove() {
-    setDeleting(true)
-    const res = await fetch(`/api/library/tasks/${item.id}`, { method: 'DELETE' })
-    if (!res.ok) { setDeleting(false); setError('Could not delete this item.'); return }
-    router.replace(themeHref)
-    router.refresh()
+  async function clone() {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/library/tasks/${item.id}/clone`, { method: 'POST' })
+      const body = await res.json().catch(() => null) as { id?: string } | null
+      if (res.ok && body?.id) {
+        // Land on the copy — a duplicate is never finished as it stands.
+        router.push(`/library/item/${body.id}`)
+        router.refresh()
+        return
+      }
+      setError('Could not copy this item.')
+    } finally {
+      setBusy(false)
+      setOpen(false)
+    }
   }
 
+  async function remove() {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    const res = await fetch(`/api/library/tasks/${item.id}`, { method: 'DELETE' })
+    if (!res.ok) {
+      setBusy(false)
+      setConfirming(false)
+      setError('Could not delete this item.')
+      return
+    }
+    // refresh() first so the theme re-renders without it — pushing alone can
+    // serve the cached (stale) render.
+    router.refresh()
+    router.replace(themeHref)
+  }
+
+  const actions: SheetAction[] = [
+    {
+      key: 'clone',
+      label: 'Duplicate this item',
+      hint: 'Opens a copy for you to change',
+      icon: <Copy className="h-5 w-5" strokeWidth={1.75} />,
+      onSelect: clone,
+      disabled: busy,
+    },
+    {
+      key: 'delete',
+      label: 'Delete this item',
+      hint: 'Asks first — homework already handed out is kept',
+      icon: <Trash2 className="h-5 w-5" strokeWidth={1.75} />,
+      onSelect: () => { setOpen(false); setConfirming(true) },
+      disabled: busy,
+      danger: true,
+    },
+  ]
+
   return (
-    <section className="mt-8">
-      <SectionLabel>Item settings</SectionLabel>
-      <FlatBlock>
-        <div className="px-4 py-4">
-          {confirming ? (
-            <>
-              <p className="text-sm font-medium text-slate-900">Delete &ldquo;{item.title}&rdquo;?</p>
-              <p className="mt-1 text-[13px] text-slate-500">
-                Homework already handed out to clients is kept — only the library copy goes.
-              </p>
-              <div className="mt-3 flex items-center gap-2">
-                <Button variant="danger" onClick={remove} loading={deleting}>Delete</Button>
-                <button type="button" onClick={() => setConfirming(false)} className="px-2 py-2 text-sm text-slate-500">
-                  Keep it
-                </button>
-              </div>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirming(true)}
-              className="flex items-center gap-2 text-sm text-red-600"
-            >
-              <Trash2 className="h-4 w-4" strokeWidth={1.75} />
-              Delete this item
-            </button>
-          )}
-          {error && <ErrorNote>{error}</ErrorNote>}
-        </div>
-      </FlatBlock>
-    </section>
+    <>
+      {error && (
+        <span role="alert" className="max-w-[12rem] truncate text-xs text-red-600" title={error}>{error}</span>
+      )}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="More actions for this item"
+        aria-haspopup="dialog"
+        className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+      >
+        <MoreHorizontal className="h-4 w-4" strokeWidth={1.75} />
+      </button>
+
+      {open && <ActionSheet title={item.title} actions={actions} onClose={() => setOpen(false)} />}
+
+      {confirming && (
+        <ConfirmSheet
+          title={`Delete “${item.title}”?`}
+          body="Homework already handed out to clients is kept — only the library copy goes."
+          confirmLabel="Delete"
+          danger
+          busy={busy}
+          onCancel={() => setConfirming(false)}
+          onConfirm={remove}
+        />
+      )}
+    </>
   )
 }
