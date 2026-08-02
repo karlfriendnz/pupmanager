@@ -11,11 +11,17 @@ import { stripeFor, isStripeConfigured } from './stripe'
 // same test/live key pair their subscription uses, so a demo trainer can run
 // the whole payments flow in Stripe test mode.
 //
-// Charges themselves are *destination charges* on the platform account
-// (transfer_data.destination = trainer's connected account, application_fee_amount
-// = our cut). Stripe performs the split + payout; we only record the result.
-// The Checkout builder + webhook fulfilment land in later phases — this is the
-// Phase-0 foundation.
+// Charges themselves are *DIRECT charges* on the trainer's connected account —
+// the request carries `{ stripeAccount: <their account> }` (see
+// connect-checkout.ts), so the charge belongs to them, they are the merchant of
+// record, and Stripe's fees come off their side. Our cut is the Connect
+// platform-pricing markup, not an application fee we set per charge.
+//
+// This comment used to say "destination charges (transfer_data.destination…)",
+// which was never true of the code — `transfer_data` appears nowhere in this
+// repo. Left uncorrected it is the kind of sentence someone plans a change off,
+// and the two models differ in who pays the fees, who appears on the client's
+// statement, and who carries the chargeback.
 
 const APP_URL = env.NEXT_PUBLIC_APP_URL
 
