@@ -16,7 +16,9 @@ import { useCurrency } from '@/components/currency-context'
 import { currencySymbol, formatMoney } from '@/lib/money'
 import { savingPercent, validateSalePrice } from '@/lib/product-price'
 import { cn } from '@/lib/utils'
-import { Eye, EyeOff, ImagePlus, Loader2, Star, Trash2 } from 'lucide-react'
+import { Copy, Eye, EyeOff, ImagePlus, Loader2, MoreHorizontal, Star, Trash2 } from 'lucide-react'
+import { ActionSheet, type SheetAction } from '@/components/shared/action-sheet'
+import { ConfirmSheet } from '@/components/shared/confirm-sheet'
 
 export type Kind = 'PHYSICAL' | 'DIGITAL'
 
@@ -233,6 +235,37 @@ export function ProductForm({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Save leads the form rather than sitting at the foot of it.
+          It STICKS to the top, which is what the pinned bottom bar was really
+          buying — you can always reach it — without a bar that has to dodge the
+          desktop sidebar and the phone's safe area. */}
+      <div className="sticky top-0 z-20 -mx-4 flex items-center justify-end gap-2 border-b border-slate-200 bg-white/90 px-4 py-2.5 backdrop-blur md:mx-0 md:rounded-xl md:border md:px-4">
+        <Button variant="ghost" size="sm" onClick={() => router.push('/products')}>Cancel</Button>
+        <Button size="sm" loading={saving} onClick={save} disabled={!draft.name.trim()}>
+          {isNew ? 'Create product' : 'Save changes'}
+        </Button>
+        {/* Nothing to duplicate or delete until it exists. */}
+        {!isNew && (
+          <ProductActions
+            productId={draft.id}
+            name={draft.name}
+            onDelete={() => setConfirmDelete(true)}
+          />
+        )}
+      </div>
+
+      {confirmDelete && (
+        <ConfirmSheet
+          title={`Delete “${draft.name}”?`}
+          body="It comes off your shop for good. Anything a client has already bought keeps its record."
+          confirmLabel="Delete"
+          danger
+          busy={deleting}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={remove}
+        />
+      )}
+
       {/* ── What it looks like ─────────────────────────────────────────── */}
       <section>
         <SectionLabel>Listing</SectionLabel>
@@ -485,33 +518,88 @@ export function ProductForm({
 
       {error && <Alert variant="error">{error}</Alert>}
 
-      {!isNew && (
-        <div>
-          {confirmDelete ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="danger" size="sm" loading={deleting} onClick={remove}>Confirm delete</Button>
-              <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>Cancel</Button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-red-500"
-            >
-              <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} /> Delete this product
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Pinned action bar — thumb-reachable on a phone, and the only Save.
-          Sticky rather than fixed so it can't collide with the desktop sidebar;
-          it spans the gutter on a phone and becomes a card on a desktop. */}
-      <div className="sticky bottom-0 -mx-4 flex items-center justify-end gap-2 border-t border-slate-200 bg-white/90 px-4 py-3 backdrop-blur md:mx-0 md:rounded-xl md:border md:px-5">
-        <Button variant="ghost" size="sm" onClick={() => router.push('/products')}>Cancel</Button>
-        <Button size="sm" loading={saving} onClick={save} disabled={!draft.name.trim()}>
-          {isNew ? 'Create product' : 'Save changes'}
-        </Button>
-      </div>
     </div>
+  )
+}
+
+
+/**
+ * Duplicate and Delete for one product, behind ⋯ .
+ *
+ * Save is pressed every visit so it stays a labelled button; these two are
+ * occasional and one is unrecoverable, so they go in the house sheet — the same
+ * one every offering and library screen uses.
+ */
+function ProductActions({
+  productId,
+  name,
+  onDelete,
+}: {
+  productId: string
+  name: string
+  onDelete: () => void
+}) {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState<string | null>(null)
+
+  async function clone() {
+    if (busy) return
+    setBusy(true)
+    setFailed(null)
+    try {
+      const res = await fetch(`/api/products/${productId}/clone`, { method: 'POST' })
+      const body = await res.json().catch(() => null) as { id?: string } | null
+      if (res.ok && body?.id) {
+        // Land on the copy — a duplicate is never finished as it stands, and it
+        // is hidden until the trainer says otherwise.
+        router.push(`/products/${body.id}`)
+        router.refresh()
+        return
+      }
+      setFailed('Could not copy this product.')
+    } finally {
+      setBusy(false)
+      setOpen(false)
+    }
+  }
+
+  const actions: SheetAction[] = [
+    {
+      key: 'clone',
+      label: 'Duplicate this product',
+      hint: 'Opens a hidden copy for you to change',
+      icon: <Copy className="h-5 w-5" strokeWidth={1.75} />,
+      onSelect: clone,
+      disabled: busy,
+    },
+    {
+      key: 'delete',
+      label: 'Delete this product',
+      hint: 'Asks first — this can’t be undone',
+      icon: <Trash2 className="h-5 w-5" strokeWidth={1.75} />,
+      onSelect: () => { setOpen(false); onDelete() },
+      disabled: busy,
+      danger: true,
+    },
+  ]
+
+  return (
+    <>
+      {failed && (
+        <span role="alert" className="max-w-[12rem] truncate text-xs text-red-600" title={failed}>{failed}</span>
+      )}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="More actions for this product"
+        aria-haspopup="dialog"
+        className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+      >
+        <MoreHorizontal className="h-4 w-4" strokeWidth={1.75} />
+      </button>
+      {open && <ActionSheet title={name} actions={actions} onClose={() => setOpen(false)} />}
+    </>
   )
 }
