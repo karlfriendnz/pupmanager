@@ -8,7 +8,6 @@ import {
   closestCenter,
   DragOverlay,
   pointerWithin,
-  useDroppable,
   useSensor,
   useSensors,
   KeyboardSensor,
@@ -24,6 +23,7 @@ import { BrowseShell } from '@/components/shared/browse-shell'
 import { DndArea } from '@/components/shared/dnd-area'
 import { SectionHeader } from '@/components/shared/flat-list'
 import { OfferingItems, OfferingViewToggle, SortableOfferingCard, useOfferingView } from '@/components/shared/offering-card'
+import { CategoryRail, NONE } from './category-rail'
 import { ProductPrice, SaleTag } from '@/components/shared/product-price'
 import { effectivePriceCents, isOnSale } from '@/lib/product-price'
 import { formatMoney } from '@/lib/money'
@@ -118,9 +118,6 @@ function rowVars(chosen: Set<ColumnKey>): React.CSSProperties {
 /** Optional cells vanish below @2xl as well as when they are switched off. */
 const OPTIONAL_CELL = 'hidden @2xl:block'
 
-/** The Uncategorised shelf is not a row in the database — it is "everything with no shelf". */
-const NONE = '__none__'
-
 /**
  * Pointer first, and only fall back to centres when the pointer is over
  * nothing. Dropping a product on a shelf is aimed — the trainer holds it over
@@ -136,18 +133,19 @@ const collisionDetection: CollisionDetection = args => {
 export function ProductsBrowser({
   categories: initialCategories,
   products: initialProducts,
+  initialSelected = null,
 }: {
   categories: BrowseCategory[]
   products: BrowseProduct[]
+  /** Which shelf to open with — the phone's Categories page hands one over. */
+  initialSelected?: string | null
 }) {
   const router = useRouter()
   const [view, setView] = useOfferingView('products')
   const [chosen, toggleColumn] = useProductColumns()
   const [categories, setCategories] = useState(initialCategories)
   const [products, setProducts] = useState(initialProducts)
-  const [selected, setSelected] = useState<string | null>(null)   // null = everything
-  const [adding, setAdding] = useState(false)
-  const [newName, setNewName] = useState('')
+  const [selected, setSelected] = useState<string | null>(initialSelected)   // null = everything
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState<'product' | 'category' | null>(null)
   const [active, setActive] = useState<string | null>(null)
@@ -166,22 +164,7 @@ export function ProductsBrowser({
     : products.filter(p => (p.categoryId ?? NONE) === selected)
   const shownIds = shown.map(p => p.id)
 
-  async function createCategory() {
-    const name = newName.trim()
-    if (!name) return
-    setError(null)
-    const res = await fetch('/api/products/categories', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    })
-    const body = await res.json().catch(() => ({}))
-    if (!res.ok) { setError(typeof body.error === 'string' ? body.error : 'Could not add that category.'); return }
-    setCategories(prev => [...prev, { id: body.id, name: body.name, products: 0 }])
-    setNewName('')
-    setAdding(false)
-    router.refresh()
-  }
+
 
   /** Persist a change; put the screen back if the server refuses. */
   async function persist(url: string, method: string, body: unknown, revert: () => void, message: string) {
@@ -294,6 +277,12 @@ export function ProductsBrowser({
   /** A shelf lights up only while something that can land on it is in the air. */
   const droppable = dragging === 'product'
 
+  const here = selected == null
+    ? 'All products'
+    : selected === NONE
+      ? 'Uncategorised'
+      : categories.find(c => c.id === selected)?.name ?? 'Products'
+
   return (
     <DndArea
       sensors={sensors}
@@ -304,85 +293,21 @@ export function ProductsBrowser({
       onDragCancel={() => { setDragging(null); setActive(null); setOver(null) }}
     >
       <BrowseShell
+        navLabel={`Categories · ${here}`}
+        navHref="/products/categories"
         nav={
-          <>
-            <SectionHeader>Categories</SectionHeader>
-
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white [&>*+*]:border-t [&>*+*]:border-slate-200">
-              <ShelfRow
-                label="All products"
-                count={products.length}
-                active={selected == null}
-                onClick={() => setSelected(null)}
-              />
-              <SortableContext items={categoryIds} strategy={rectSortingStrategy}>
-                {categories.map(c => (
-                  <SortableOfferingCard key={c.id} id={c.id}>
-                    {handle => (
-                      <ShelfRow
-                        label={c.name}
-                        count={c.products}
-                        active={selected === c.id}
-                        dropping={droppable && over === c.id}
-                        onClick={() => setSelected(c.id)}
-                        dragHandle={handle}
-                      />
-                    )}
-                  </SortableOfferingCard>
-                ))}
-              </SortableContext>
-              {/* Always a target, even when it is empty — it is how a product
-                  comes back OFF a shelf. */}
-              <UncategorisedRow
-                count={uncategorised}
-                active={selected === NONE}
-                dropping={droppable && over === NONE}
-                onClick={() => setSelected(NONE)}
-              />
-            </div>
-
-            {/* Adding a shelf belongs beside the shelves, not over with the
-                things on them. */}
-            {adding ? (
-              <div className="mt-3 flex flex-col gap-2">
-                <input
-                  autoFocus
-                  value={newName}
-                  onChange={e => setNewName(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') void createCategory()
-                    if (e.key === 'Escape') { setAdding(false); setNewName('') }
-                  }}
-                  placeholder="Category name (e.g. Treats)"
-                  className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pm-brand-600)]"
-                />
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void createCategory()}
-                    className="inline-flex h-9 flex-1 items-center justify-center rounded-xl bg-[var(--pm-brand-600)] px-3 text-sm font-semibold text-white hover:bg-[var(--pm-brand-700)]"
-                  >
-                    Add
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setAdding(false); setNewName('') }}
-                    className="inline-flex h-9 items-center justify-center rounded-xl px-3 text-sm text-slate-600 hover:bg-slate-100"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setAdding(true)}
-                className="mt-3 inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-[var(--pm-brand-600)] px-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--pm-brand-700)]"
-              >
-                <Plus className="h-4 w-4 flex-shrink-0" strokeWidth={2.25} /> New category
-              </button>
-            )}
-          </>
+          <CategoryRail
+            categories={categories}
+            total={products.length}
+            uncategorised={uncategorised}
+            selected={selected}
+            onSelect={setSelected}
+            onReorder={reorderCategories}
+            onCreated={c => { setCategories(prev => [...prev, c]); router.refresh() }}
+            onError={setError}
+            over={over}
+            droppable={droppable}
+          />
         }
       >
         <SectionHeader
@@ -399,11 +324,7 @@ export function ProductsBrowser({
             </span>
           }
         >
-          {selected == null
-            ? 'All products'
-            : selected === NONE
-              ? 'Uncategorised'
-              : categories.find(c => c.id === selected)?.name ?? 'Products'}
+          {here}
         </SectionHeader>
 
         {error && (
@@ -469,74 +390,6 @@ export function ProductsBrowser({
   )
 }
 
-function ShelfRow({
-  label,
-  count,
-  active,
-  dropping,
-  onClick,
-  dragHandle,
-  rowRef,
-}: {
-  label: string
-  count: number
-  active: boolean
-  dropping?: boolean
-  onClick: () => void
-  /** The rendered grip, handed over by SortableOfferingCard. */
-  dragHandle?: React.ReactNode
-  rowRef?: (el: HTMLElement | null) => void
-}) {
-  return (
-    <div
-      ref={rowRef}
-      className={`flex items-center gap-1 transition-colors ${
-        dropping
-          ? 'bg-[color-mix(in_srgb,var(--pm-brand-600)_12%,white)] ring-2 ring-inset ring-[var(--pm-brand-600)]'
-          : active
-            ? 'bg-slate-50'
-            : ''
-      }`}
-    >
-      {dragHandle ? (
-        <span className="pl-1.5">{dragHandle}</span>
-      ) : (
-        <span className="px-1.5 py-3" aria-hidden />
-      )}
-      <button
-        type="button"
-        onClick={onClick}
-        className="flex min-w-0 flex-1 items-center gap-2.5 py-3 pr-3 text-left"
-      >
-        <Tag className={`h-4 w-4 flex-shrink-0 ${active ? 'text-[var(--pm-brand-600)]' : 'text-slate-400'}`} strokeWidth={1.75} />
-        <span className={`min-w-0 flex-1 truncate text-sm ${active ? 'font-semibold text-slate-900' : 'text-slate-700'}`}>{label}</span>
-        <span className="flex-shrink-0 text-xs text-slate-400">{count}</span>
-      </button>
-    </div>
-  )
-}
-
-/**
- * Uncategorised takes drops but is not sortable — there is no row to reorder,
- * it is simply where the products with no category show up — so it registers
- * as a plain droppable rather than going through SortableOfferingCard.
- */
-function UncategorisedRow({
-  count,
-  active,
-  dropping,
-  onClick,
-}: {
-  count: number
-  active: boolean
-  dropping: boolean
-  onClick: () => void
-}) {
-  const { setNodeRef } = useDroppable({ id: NONE })
-  return (
-    <ShelfRow rowRef={setNodeRef} label="Uncategorised" count={count} active={active} dropping={dropping} onClick={onClick} />
-  )
-}
 
 /** The column names, on the same grid the rows use. */
 function ProductTableHead({ chosen }: { chosen: Set<ColumnKey> }) {
@@ -679,12 +532,17 @@ function ProductTile({
       {dragHandle}
       {thumb('h-9 w-9 rounded-lg border border-slate-100 object-cover', 'h-4 w-4')}
 
-      <Link
-        href={`/products/${product.id}`}
-        className="min-w-0 truncate text-sm font-medium text-slate-900 hover:underline"
-      >
-        {product.name}
-      </Link>
+      {/* The link is wrapped rather than being the grid cell itself: as a bare
+          grid item its box is the line box, which sat a few pixels proud of
+          the cells either side of it. A flex cell centres it against the row. */}
+      <span className="flex min-w-0 items-center">
+        <Link
+          href={`/products/${product.id}`}
+          className="truncate text-sm font-medium text-slate-900 hover:underline"
+        >
+          {product.name}
+        </Link>
+      </span>
 
       {chosen.has('category') && (
         <span className={`${OPTIONAL_CELL} truncate text-sm text-slate-500`}>{categoryName ?? '—'}</span>

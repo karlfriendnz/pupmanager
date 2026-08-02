@@ -9,7 +9,13 @@ import { addonSettingsHref } from '@/lib/configurable-features'
 
 export const metadata: Metadata = { title: 'Products' }
 
-export default async function ProductsPage() {
+export default async function ProductsPage({
+  searchParams,
+}: {
+  // Set by the phone's Categories page when you pick a shelf there.
+  searchParams: Promise<{ category?: string }>
+}) {
+  const { category } = await searchParams
   const session = await auth()
   if (!session || session.user.role !== 'TRAINER') redirect('/login')
   const trainerId = session.user.trainerId
@@ -38,6 +44,7 @@ export default async function ProductsPage() {
     <>
       <PageHeader title="Products" />
       <ProductsBrowser
+        initialSelected={category ?? null}
         categories={categories.map(c => ({ id: c.id, name: c.name, products: c._count.products }))}
         products={products.map(p => ({
           id: p.id,

@@ -26,10 +26,13 @@ export function AddNameInline({
   label,
   placeholder,
   onAdd,
+  fullWidth = false,
 }: {
   label: string
   placeholder: string
   onAdd: (name: string) => Promise<string | null>
+  /** Under a list rather than beside its heading — the shape the shop's rail uses. */
+  fullWidth?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [value, setValue] = useState('')
@@ -58,7 +61,11 @@ export function AddNameInline({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 rounded-xl bg-[var(--pm-brand-600)] px-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--pm-brand-700)]"
+        className={
+          fullWidth
+            ? 'mt-3 inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-[var(--pm-brand-600)] px-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--pm-brand-700)]'
+            : 'inline-flex h-9 flex-shrink-0 items-center gap-1.5 rounded-xl bg-[var(--pm-brand-600)] px-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--pm-brand-700)]'
+        }
       >
         <Plus className="h-4 w-4 flex-shrink-0" strokeWidth={2.25} />
         {label}

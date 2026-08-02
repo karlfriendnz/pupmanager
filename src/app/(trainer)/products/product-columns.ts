@@ -9,8 +9,9 @@ import { useCallback, useMemo, useSyncExternalStore } from 'react'
  * are the ones a trainer can turn on and off, and the order they are listed in
  * is the order they appear in the table.
  *
- * Status is off by default: for most trainers every product is simply live, so
- * the column is a wall of "Live" that costs room the product name wants.
+ * Status and Type are off by default. Status is a wall of "Live" for most
+ * trainers, and Type is a wall of "Physical" — both cost room the product name
+ * wants, and both are one tick away when they matter.
  */
 export const OPTIONAL_COLUMNS = [
   { key: 'category', label: 'Category' },
@@ -22,7 +23,7 @@ export const OPTIONAL_COLUMNS = [
 export type ColumnKey = (typeof OPTIONAL_COLUMNS)[number]['key']
 
 const KEY = 'pm.products.columns'
-const DEFAULTS: ColumnKey[] = ['category', 'type', 'stock']
+const DEFAULTS: ColumnKey[] = ['category', 'stock']
 
 const KEYS = new Set<string>(OPTIONAL_COLUMNS.map(c => c.key))
 const listeners = new Set<() => void>()

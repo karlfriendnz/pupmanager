@@ -4,10 +4,11 @@ import { useRouter } from 'next/navigation'
 import { AddNameInline } from './library-forms'
 
 /** "New category" on the Library index — creates a top-level LibraryType. */
-export function AddCategory() {
+export function AddCategory({ fullWidth = false }: { fullWidth?: boolean } = {}) {
   const router = useRouter()
   return (
     <AddNameInline
+      fullWidth={fullWidth}
       label="New category"
       placeholder="Category name (e.g. Obedience)"
       onAdd={async name => {

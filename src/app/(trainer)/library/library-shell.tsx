@@ -1,6 +1,7 @@
 import { SectionHeader } from '@/components/shared/flat-list'
 import { BrowseShell } from '@/components/shared/browse-shell'
 import { LibraryTree } from './library-tree'
+import { AddCategory } from './library-index-actions'
 import type { TreeType } from './library-data'
 
 /**
@@ -28,6 +29,8 @@ export function LibraryShell({
 }) {
   return (
     <BrowseShell
+      navLabel="Library"
+      navHref="/library"
       nav={
         <>
           {/* SectionHeader, not SectionLabel — the right column's heading sits
@@ -35,6 +38,9 @@ export function LibraryShell({
               here would ride higher than it. Both columns start level. */}
           <SectionHeader>Library</SectionHeader>
           <LibraryTree tree={tree} />
+          {/* Same shape as the shop's rail: the list, then the one thing you
+              can add to it, full width underneath. */}
+          <AddCategory fullWidth />
         </>
       }
     >

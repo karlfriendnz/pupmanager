@@ -4,7 +4,6 @@ import { Layers } from 'lucide-react'
 
 import { FlatTile, FlatTileGrid, SectionHeader } from '@/components/shared/flat-list'
 import { OfferingViewToggle, useOfferingView } from '@/components/shared/offering-card'
-import { AddCategory } from './library-index-actions'
 
 // The Library index's categories, with the same list/grid switch every other
 // list in the app has.
@@ -36,19 +35,13 @@ export function LibraryCategories({ categories }: { categories: CategoryTile[] }
 
   return (
     <>
-      {/* Heading, switch and action on ONE line — and the same 36px row the
-          tree's heading uses, so the two columns start level.
+      {/* Heading and view switch on ONE line — the same 36px row the tree's
+          heading uses, so the two columns start level.
 
-          The action comes FIRST, then the view controls: the button is the
-          thing you came to press, and it stays put as views come and go. */}
-      <SectionHeader
-        action={
-          <span className="flex items-center gap-2">
-            <AddCategory />
-            <OfferingViewToggle value={view} onChange={setView} />
-          </span>
-        }
-      >
+          No "New category" here: it lives on the rail, under the list it adds
+          to, exactly as the shop's does. Two of the same button on one screen
+          is a question about which one to press. */}
+      <SectionHeader action={<OfferingViewToggle value={view} onChange={setView} />}>
         Categories
       </SectionHeader>
 

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ChevronRight, FolderTree } from 'lucide-react'
+import { ChevronRight, FileText, FolderTree, Layers } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { FlatBlock } from '@/components/shared/flat-list'
 import type { TreeType } from './library-data'
@@ -88,7 +88,7 @@ export function LibraryTree({ tree, className }: Props) {
         key={type.id}
         depth={0}
         label={type.name}
-        sub={`${type.themes.length} theme${type.themes.length === 1 ? '' : 's'} · ${itemCount} item${itemCount === 1 ? '' : 's'}`}
+        count={itemCount}
         href={`/library/type/${type.id}`}
         active={activeTypeId === type.id}
         expandable
@@ -109,7 +109,7 @@ export function LibraryTree({ tree, className }: Props) {
           key={theme.id}
           depth={1}
           label={theme.name}
-          sub={`${theme.items.length} item${theme.items.length === 1 ? '' : 's'}`}
+          count={theme.items.length}
           href={`/library/theme/${theme.id}`}
           active={activeThemeId === theme.id}
           expandable
@@ -143,29 +143,38 @@ export function LibraryTree({ tree, className }: Props) {
   )
 }
 
-const INDENT = ['pl-2', 'pl-8', 'pl-14'] as const
+const INDENT = ['pl-1.5', 'pl-7', 'pl-[3.25rem]'] as const
+const ICON = [Layers, FolderTree, FileText] as const
 
+/**
+ * One row of the tree, built to the same pattern as the shop's shelves: an
+ * icon, the name, and how many things are inside it as a quiet number on the
+ * right. The count used to be a second line reading "3 themes · 12 items",
+ * which is the phrasing Karl had removed from the page headers — same words,
+ * same problem, so it went here too.
+ */
 function TreeRow({
-  depth, label, sub, href, active, expandable, expanded, onToggle,
+  depth, label, count, href, active, expandable, expanded, onToggle,
 }: {
   depth: 0 | 1 | 2
   label: string
-  sub?: string
+  count?: number
   href: string
   active?: boolean
   expandable?: boolean
   expanded?: boolean
   onToggle?: () => void
 }) {
+  const Icon = ICON[depth]
   return (
-    <div className={cn('flex items-stretch', active && 'bg-slate-50', INDENT[depth])}>
+    <div className={cn('flex items-center gap-1', active && 'bg-slate-50', INDENT[depth])}>
       {expandable ? (
         <button
           type="button"
           onClick={onToggle}
           aria-expanded={expanded}
           aria-label={expanded ? `Collapse ${label}` : `Expand ${label}`}
-          className="grid w-9 flex-shrink-0 place-items-center text-slate-400 active:bg-slate-100"
+          className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 active:bg-slate-100"
         >
           <ChevronRight
             className={cn('h-4 w-4 transition-transform', expanded && 'rotate-90')}
@@ -173,22 +182,20 @@ function TreeRow({
           />
         </button>
       ) : (
-        <span className="w-9 flex-shrink-0" aria-hidden />
+        <span className="w-7 flex-shrink-0" aria-hidden />
       )}
-      <Link
-        href={href}
-        className="min-w-0 flex-1 py-3 pr-4 text-left active:bg-slate-50"
-      >
+      <Link href={href} className="flex min-w-0 flex-1 items-center gap-2.5 py-3 pr-3 text-left">
+        <Icon
+          className={cn('h-4 w-4 flex-shrink-0', active ? 'text-[var(--pm-brand-600)]' : 'text-slate-400')}
+          strokeWidth={1.75}
+        />
         <span className={cn(
-          'block truncate',
-          depth === 0 ? 'text-sm font-semibold text-slate-900'
-            : depth === 1 ? 'text-sm font-medium text-slate-900'
-            : 'text-sm text-slate-700',
-          active && 'text-blue-700',
+          'min-w-0 flex-1 truncate text-sm',
+          active ? 'font-semibold text-slate-900' : depth === 2 ? 'text-slate-600' : 'text-slate-700',
         )}>
           {label}
         </span>
-        {sub && <span className="mt-0.5 block truncate text-[13px] text-slate-500">{sub}</span>}
+        {count != null && <span className="flex-shrink-0 text-xs text-slate-400">{count}</span>}
       </Link>
     </div>
   )
@@ -196,8 +203,8 @@ function TreeRow({
 
 function EmptyRow({ depth, text }: { depth: 1 | 2; text: string }) {
   return (
-    <div className={cn('py-2.5 pr-4 text-[13px] text-slate-400', INDENT[depth])}>
-      <span className="pl-9">{text}</span>
+    <div className={cn('py-2.5 pr-3 text-[13px] text-slate-400', INDENT[depth])}>
+      <span className="pl-[2.125rem]">{text}</span>
     </div>
   )
 }
