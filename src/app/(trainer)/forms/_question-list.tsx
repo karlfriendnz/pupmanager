@@ -1,14 +1,13 @@
 'use client'
 
-import { useEffect } from 'react'
 import {
   SortableContext,
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Trash2, GripVertical, Link2, X, Copy, UserSquare } from 'lucide-react'
-import { ModalPortal } from '@/components/shared/modal-portal'
+import { Trash2, GripVertical, Link2, Copy, UserSquare } from 'lucide-react'
+import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
 import {
   NEW_QUESTION_TYPES,
   SAVED_FIELD_TYPES,
@@ -449,10 +448,14 @@ export function QuestionList({
 /**
  * The built-in details a form can ask for.
  *
- * A full screen for the same reason the field picker is one: nine rows, each
- * needing to say whether it's about the owner or the dog. Already-asked details
- * are shown as taken rather than hidden, so it's obvious the form has them rather
- * than that they don't exist.
+ * Nine rows, each needing to say whether it's about the owner or the dog — too
+ * many for a menu, which is why it was a full screen. It now shares the house
+ * shell, so it is the whole screen on a phone and a centred panel on desktop,
+ * where a builder is a wide, two-pane screen and blanking all of it to pick one
+ * row loses the form you were adding to.
+ *
+ * Already-asked details are shown as taken rather than hidden, so it's obvious
+ * the form has them rather than that they don't exist.
  */
 export function ClientDetailPicker({
   used,
@@ -463,63 +466,45 @@ export function ClientDetailPicker({
   onPick: (fieldKey: string) => void
   onClose: () => void
 }) {
-  useEffect(() => {
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   return (
-    <ModalPortal>
-      <div role="dialog" aria-modal="true" aria-label="Add a client detail" className="fixed inset-0 z-[90] flex flex-col bg-slate-50">
-        <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 pt-[env(safe-area-inset-top)]">
-          <div className="min-w-0 flex-1 py-3.5">
-            <p className="truncate text-[15px] font-semibold text-slate-900">Add a client detail</p>
-            <p className="mt-0.5 truncate text-[13px] text-slate-500">Saved straight onto their record</p>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="-mr-1 flex-shrink-0 p-2 text-slate-400 active:text-slate-700">
-            <X className="h-5 w-5" strokeWidth={1.75} />
-          </button>
-        </div>
-        <div className="no-scrollbar flex-1 overflow-y-auto p-4">
-          <div className="mx-auto w-full max-w-lg rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
-            {CLIENT_FIELDS.map(f => {
-              const taken = used.has(f.key)
-              return (
-                <button
-                  key={f.key}
-                  type="button"
-                  disabled={taken}
-                  onClick={() => onPick(f.key)}
-                  className="flex w-full items-center gap-3 px-4 py-3.5 text-left disabled:opacity-40 active:bg-slate-50"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-slate-900">{f.label}</span>
-                    <span className="mt-0.5 block truncate text-[13px] text-slate-500">
-                      {f.scope === 'DOG' ? 'About their dog' : 'About the owner'}
-                      {f.alwaysRequired ? ' · always required' : ''}
-                    </span>
-                  </span>
-                  {taken && <span className="flex-shrink-0 text-[13px] text-slate-400">Already asked</span>}
-                </button>
-              )
-            })}
-          </div>
-        </div>
+    <FullScreenSheet title="Add a client detail" sub="Saved straight onto their record" onClose={onClose}>
+      <div className="w-full overflow-hidden rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+        {CLIENT_FIELDS.map(f => {
+          const taken = used.has(f.key)
+          return (
+            <button
+              key={f.key}
+              type="button"
+              disabled={taken}
+              onClick={() => onPick(f.key)}
+              className="flex w-full items-center gap-3 px-4 py-3.5 text-left disabled:opacity-40 hover:bg-slate-50 active:bg-slate-50 disabled:hover:bg-white"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-slate-900">{f.label}</span>
+                <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                  {f.scope === 'DOG' ? 'About their dog' : 'About the owner'}
+                  {f.alwaysRequired ? ' · always required' : ''}
+                </span>
+              </span>
+              {taken && <span className="flex-shrink-0 text-[13px] text-slate-400">Already asked</span>}
+            </button>
+          )
+        })}
       </div>
-    </ModalPortal>
+    </FullScreenSheet>
   )
 }
 
 // ─── Link-a-field picker ─────────────────────────────────────────────────────
 
-// A full screen, not a dropdown — there can be dozens of fields, and each row
-// needs room to say what it is. Portaled to <body> (the header's backdrop-blur
-// would otherwise become the containing block for `fixed`), and it locks body
-// scroll so there's never a second scrollbar behind it.
+// Not a dropdown — there can be dozens of fields, and each row needs room to say
+// what it is. The house shell gives it the phone's whole screen and a centred
+// panel from `sm` up: at 1440px this was a white page holding a short column of
+// rows, which reads as somewhere you navigated to rather than a choice you are
+// making, and it hid the form you were adding the field to.
+//
+// The shell also brought the Escape key, which this picker never had — the only
+// way out was the X.
 export function CustomFieldPicker({
   customFields,
   used,
@@ -531,67 +516,47 @@ export function CustomFieldPicker({
   onPick: (f: CustomFieldOption) => void
   onClose: () => void
 }) {
-  useEffect(() => {
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = previous }
-  }, [])
-
   return (
-    <ModalPortal>
-      <div className="fixed inset-0 z-[70] flex flex-col bg-white" role="dialog" aria-modal="true" aria-label="Link a client field">
-        <div className="flex flex-shrink-0 items-start gap-3 border-b border-slate-200 px-4 py-3.5">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-base font-semibold text-slate-900">Link a client field</h2>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Answering the question updates the client&apos;s record too, so you only type it once.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="-mr-1 flex-shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-          >
-            <X className="h-5 w-5" strokeWidth={1.75} />
-          </button>
+    <FullScreenSheet
+      title="Link a client field"
+      // Short enough to survive the sheet's one-line title block at 390px —
+      // the long form of this sentence truncated to "Answering the question
+      // updates the cli…", which says nothing.
+      sub="Also saves onto the client's record"
+      onClose={onClose}
+    >
+      {customFields.length === 0 ? (
+        <p className="text-sm text-slate-400">
+          No client fields yet — add them on the Fields tab and they&apos;ll show up here.
+        </p>
+      ) : (
+        <div className="flex w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white [&>*+*]:border-t [&>*+*]:border-slate-200">
+          {customFields.map(f => {
+            const already = used.has(f.id)
+            return (
+              <button
+                key={f.id}
+                type="button"
+                disabled={already}
+                onClick={() => onPick(f)}
+                className="flex w-full items-center gap-3 px-4 py-3.5 text-left hover:bg-slate-50 active:bg-slate-50 disabled:opacity-50 disabled:hover:bg-white"
+              >
+                <Link2 className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-slate-900">{f.label}</span>
+                  <span className="mt-0.5 block truncate text-xs text-slate-400">
+                    {f.appliesTo === 'DOG' ? 'Dog' : 'Client'} · {f.type.toLowerCase()}
+                    {f.category ? ` · ${f.category}` : ''}
+                  </span>
+                </span>
+                {already && (
+                  <span className="flex-shrink-0 text-xs font-medium text-slate-400">Added</span>
+                )}
+              </button>
+            )
+          })}
         </div>
-
-        <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto p-4">
-          {customFields.length === 0 ? (
-            <p className="text-sm text-slate-400">
-              No client fields yet — add them on the Fields tab and they&apos;ll show up here.
-            </p>
-          ) : (
-            <div className="mx-auto flex w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-slate-200 [&>*+*]:border-t [&>*+*]:border-slate-200">
-              {customFields.map(f => {
-                const already = used.has(f.id)
-                return (
-                  <button
-                    key={f.id}
-                    type="button"
-                    disabled={already}
-                    onClick={() => onPick(f)}
-                    className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50 disabled:opacity-50"
-                  >
-                    <Link2 className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-slate-900">{f.label}</span>
-                      <span className="mt-0.5 block truncate text-xs text-slate-400">
-                        {f.appliesTo === 'DOG' ? 'Dog' : 'Client'} · {f.type.toLowerCase()}
-                        {f.category ? ` · ${f.category}` : ''}
-                      </span>
-                    </span>
-                    {already && (
-                      <span className="flex-shrink-0 text-xs font-medium text-slate-400">Added</span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-    </ModalPortal>
+      )}
+    </FullScreenSheet>
   )
 }

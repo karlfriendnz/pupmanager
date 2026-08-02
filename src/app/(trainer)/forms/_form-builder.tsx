@@ -160,6 +160,11 @@ function PaletteItem({
       aria-label={ariaLabel}
       {...attributes}
       {...listeners}
+      // dnd-kit stamps aria-disabled on anything it can't drag, and the two rows
+      // that OPEN a picker have nothing to drag yet — so they announced
+      // themselves as disabled to a screen reader while clicking fine. Only a
+      // row that is genuinely unavailable (already on the form) is disabled.
+      aria-disabled={disabled || undefined}
       style={transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, zIndex: 50 } : undefined}
       className={`relative flex w-full items-center gap-2.5 px-3 py-2.5 text-left ${
         disabled ? 'cursor-not-allowed opacity-45' : 'cursor-grab active:bg-slate-50 hover:bg-slate-50'
