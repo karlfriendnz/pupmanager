@@ -103,7 +103,10 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
   return (
     <>
       <PageHeader title={product.name} back={{ href: '/products', label: 'Products' }} />
-      <div className="mx-auto w-full max-w-3xl p-4 md:p-8">
+      {/* Full width. Capped at 48rem the form was a narrow ribbon down the
+          middle of a desktop screen, which is what made the page background
+          the loudest thing on it — the fields now use the room instead. */}
+      <div className="w-full min-w-0 p-4 md:p-8">
         <ProductDetail
           product={{
             id: product.id,

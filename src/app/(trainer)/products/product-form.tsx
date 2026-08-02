@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input'
 import { Alert } from '@/components/ui/alert'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { XeroAccountField } from '@/components/shared/xero-account-field'
-import { RequirePaymentField } from '@/components/shared/require-payment-field'
 import { SectionLabel } from '@/components/shared/flat-list'
 import { isRichTextEmpty } from '@/lib/rich-text'
 import { compressImageFile } from '@/lib/compress-image'
@@ -21,6 +20,9 @@ import { ActionSheet, type SheetAction } from '@/components/shared/action-sheet'
 import { ConfirmSheet } from '@/components/shared/confirm-sheet'
 
 export type Kind = 'PHYSICAL' | 'DIGITAL'
+
+/** Sentinel for the select's "+ New category…" row. */
+const NEW_CATEGORY = '__new__'
 
 /** A real category row, which is what the shelves on /products are. */
 export interface ProductCategoryOption { id: string; name: string }
@@ -100,6 +102,9 @@ export function ProductForm({
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // '' is Uncategorised; this sentinel opens the "type a new name" field. A
+  // real category can never be called it — it is not a name a select shows.
+  const [addingCategory, setAddingCategory] = useState(false)
   const [uploadingImg, setUploadingImg] = useState(false)
   const [uploadingDownload, setUploadingDownload] = useState(false)
   const imgInputRef = useRef<HTMLInputElement>(null)
@@ -111,6 +116,19 @@ export function ProductForm({
 
   // Live sale preview — the same rule the server enforces, so the trainer never
   // finds out on save.
+  // The draft stores the category by NAME (that is what the API resolves), so
+  // the select's value is whichever known row matches it. No match and a name
+  // present means it was typed — the new-category field is showing.
+  const matchedCategory = draft.category
+    ? existingCategories.find(c => c.name.toLowerCase() === draft.category!.trim().toLowerCase())
+    : undefined
+  // Show the name field when the trainer asked for a new one — OR when this
+  // product already carries a category that is not one of the rows. Plenty of
+  // products were filed by free text before the shelves existed, and dropping
+  // that name into a select it isn't in would silently read "Uncategorised"
+  // while the value was still there.
+  const typingCategory = addingCategory || (!!draft.category?.trim() && !matchedCategory)
+
   const parsedPrice = toCents(priceInput)
   const parsedSale = toCents(saleInput)
   const salePreview =
@@ -273,43 +291,17 @@ export function ProductForm({
         />
       )}
 
-      {/* ── What it looks like ─────────────────────────────────────────── */}
+      {/* ── What it looks like ─────────────────────────────────────────────
+          The picture sits to the RIGHT of the words, at the size a client will
+          actually see it, rather than as a 24×20 thumbnail above them. It is
+          the first thing anyone judges a product by, so it gets shown at a size
+          you can judge. Below `lg` it stacks back on top — a phone has one
+          column and the photo leads. */}
       <section>
         <SectionLabel>Listing</SectionLabel>
-        <div className="rounded-xl border border-slate-200 bg-white">
-          <div className="flex items-center gap-4 p-4">
-            <div className="h-20 w-24 flex-shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-              {draft.imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={draft.imageUrl} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center">
-                  <ImagePlus className="h-5 w-5 text-slate-400" strokeWidth={1.75} />
-                </div>
-              )}
-            </div>
-            <div className="flex min-w-0 flex-col items-start gap-1">
-              <Button type="button" variant="ghost" size="sm" onClick={() => imgInputRef.current?.click()} disabled={uploadingImg}>
-                {uploadingImg
-                  ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Uploading…</>
-                  : draft.imageUrl ? 'Replace photo' : 'Upload photo'}
-              </Button>
-              {draft.imageUrl && (
-                <button type="button" onClick={() => update('imageUrl', null)} className="px-3 text-xs text-slate-400 hover:text-red-500">
-                  Remove
-                </button>
-              )}
-            </div>
-            <input
-              ref={imgInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={e => { const f = e.target.files?.[0]; if (f) uploadImage(f); e.target.value = '' }}
-            />
-          </div>
-
-          <div className="border-t border-slate-200 p-4">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+          <div className="order-2 rounded-xl border border-slate-200 bg-white lg:order-1">
+          <div className="p-4">
             <Input
               label="Name"
               value={draft.name}
@@ -328,19 +320,78 @@ export function ProductForm({
             />
           </div>
 
+          {/* A real <select>, not a <datalist>.
+              The datalist looked like a dropdown — it even drew a caret — but a
+              datalist only ever offers TYPE-AHEAD: the caret opens nothing on
+              several browsers, the suggestion list renders detached from the
+              field, and it cannot be styled. Categories are real rows now (the
+              shelves on /products), so picking one is a choice from a list, and
+              typing a new one is the exception that asks for a field. */}
           <div className="flex flex-col gap-1.5 border-t border-slate-200 p-4">
-            <label className="text-sm font-medium text-slate-700">Category</label>
-            <input
-              list="product-categories"
-              value={draft.category ?? ''}
-              onChange={e => update('category', e.target.value || null)}
-              placeholder="Treats, Equipment, Guides…"
+            <label htmlFor="product-category" className="text-sm font-medium text-slate-700">Category</label>
+            <select
+              id="product-category"
+              value={typingCategory ? NEW_CATEGORY : (matchedCategory?.name ?? '')}
+              onChange={e => {
+                if (e.target.value === NEW_CATEGORY) { setAddingCategory(true); update('category', null); return }
+                setAddingCategory(false)
+                update('category', e.target.value || null)
+              }}
               className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Uncategorised</option>
+              {existingCategories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+              <option value={NEW_CATEGORY}>+ New category…</option>
+            </select>
+            {typingCategory && (
+              <input
+                autoFocus
+                value={draft.category ?? ''}
+                onChange={e => update('category', e.target.value || null)}
+                placeholder="Name the new category"
+                aria-label="New category name"
+                className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            )}
+            <p className="text-xs text-slate-500">
+              {typingCategory
+                ? 'It is created when you save, and appears as a shelf on your shop.'
+                : 'Which shelf this sits on in your shop.'}
+            </p>
+          </div>
+          </div>
+
+          <div className="order-1 rounded-xl border border-slate-200 bg-white p-4 lg:order-2">
+            <p className="text-sm font-medium text-slate-700">Photo</p>
+            <div className="mt-2 aspect-4/3 w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+              {draft.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={draft.imageUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center">
+                  <ImagePlus className="h-6 w-6 text-slate-400" strokeWidth={1.75} />
+                </div>
+              )}
+            </div>
+            <div className="mt-2 flex items-center gap-1">
+              <Button type="button" variant="ghost" size="sm" onClick={() => imgInputRef.current?.click()} disabled={uploadingImg}>
+                {uploadingImg
+                  ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Uploading…</>
+                  : draft.imageUrl ? 'Replace photo' : 'Upload photo'}
+              </Button>
+              {draft.imageUrl && (
+                <button type="button" onClick={() => update('imageUrl', null)} className="px-2 text-xs text-slate-400 hover:text-red-500">
+                  Remove
+                </button>
+              )}
+            </div>
+            <input
+              ref={imgInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) uploadImage(f); e.target.value = '' }}
             />
-            <datalist id="product-categories">
-              {existingCategories.map(c => <option key={c.id} value={c.name} />)}
-            </datalist>
-            <p className="text-xs text-slate-500">Type a new one or pick an existing.</p>
           </div>
         </div>
       </section>
@@ -404,52 +455,69 @@ export function ProductForm({
       <section>
         <SectionLabel>Price</SectionLabel>
         <div className="rounded-xl border border-slate-200 bg-white">
-          <div className="flex flex-col gap-1.5 p-4">
-            <label htmlFor="product-price" className="text-sm font-medium text-slate-700">Normal price</label>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-400">{symbol}</span>
-              <input
-                id="product-price"
-                type="number"
-                step="0.01"
-                min="0"
-                inputMode="decimal"
-                placeholder="Leave blank for “Contact”"
-                value={priceInput}
-                onChange={e => setPriceInput(e.target.value)}
-                className="h-11 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+          {/* The two prices sit SIDE BY SIDE. A sale price only means anything
+              against the normal one — reading them stacked, with a divider
+              between, made you scroll to compare the two numbers the sentence
+              below is about. */}
+          <div className="p-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="product-price" className="text-sm font-medium text-slate-700">Normal price</label>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-400">{symbol}</span>
+                  <input
+                    id="product-price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    inputMode="decimal"
+                    placeholder="Leave blank for “Contact”"
+                    value={priceInput}
+                    onChange={e => setPriceInput(e.target.value)}
+                    className="h-11 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="product-sale-price" className="text-sm font-medium text-slate-700">Sale price</label>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-slate-400">{symbol}</span>
+                  <input
+                    id="product-sale-price"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    inputMode="decimal"
+                    placeholder="Not on sale"
+                    value={saleInput}
+                    onChange={e => setSaleInput(e.target.value)}
+                    className="h-11 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {saleInput.trim() !== '' && (
+                    <button
+                      type="button"
+                      onClick={() => setSaleInput('')}
+                      className="flex-shrink-0 text-xs text-slate-400 hover:text-red-500"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
+            <p className={cn('mt-2 text-xs', salePreviewIsError ? 'text-red-600' : 'text-slate-500')}>
+              {salePreview ?? 'Set a sale price and clients are charged it instead — the normal price shows struck through.'}
+            </p>
           </div>
 
-          <div className="flex flex-col gap-1.5 border-t border-slate-200 p-4">
-            <label htmlFor="product-sale-price" className="text-sm font-medium text-slate-700">Sale price</label>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-400">{symbol}</span>
-              <input
-                id="product-sale-price"
-                type="number"
-                step="0.01"
-                min="0"
-                inputMode="decimal"
-                placeholder="Leave blank — not on sale"
-                value={saleInput}
-                onChange={e => setSaleInput(e.target.value)}
-                className="h-11 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              {saleInput.trim() !== '' && (
-                <button
-                  type="button"
-                  onClick={() => setSaleInput('')}
-                  className="flex-shrink-0 text-xs text-slate-400 hover:text-red-500"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-            <p className={cn('text-xs', salePreviewIsError ? 'text-red-600' : 'text-slate-500')}>
-              {salePreview ?? 'Set this and clients are charged it instead — the normal price shows struck through.'}
-            </p>
+          {/* Which account the money lands in — a question about this price,
+              so it sits with it rather than three sections further down. */}
+          <div className="border-t border-slate-200 p-4">
+            <XeroAccountField
+              value={draft.xeroAccountCode ?? ''}
+              onChange={v => update('xeroAccountCode', v || null)}
+            />
           </div>
         </div>
       </section>
@@ -482,19 +550,11 @@ export function ProductForm({
       <section>
         <SectionLabel>Selling</SectionLabel>
         <div className="rounded-xl border border-slate-200 bg-white">
-          <div className="p-4">
-            <XeroAccountField
-              value={draft.xeroAccountCode ?? ''}
-              onChange={v => update('xeroAccountCode', v || null)}
-            />
-          </div>
-          <div className="border-t border-slate-200 p-4">
-            <RequirePaymentField
-              value={draft.requirePayment}
-              onChange={v => update('requirePayment', v)}
-            />
-          </div>
-          <label className="flex cursor-pointer items-center justify-between gap-3 border-t border-slate-200 p-4">
+          {/* No "require payment to book". A product is BOUGHT, not booked —
+              there is no session to hold while an invoice is settled, so the
+              question has no answer here. It stays on offerings, where it
+              decides whether a seat is reserved before money arrives. */}
+          <label className="flex cursor-pointer items-center justify-between gap-3 p-4">
             <span className="flex items-center gap-2.5 text-sm font-medium text-slate-900">
               <Star className="h-[18px] w-[18px] text-slate-700" strokeWidth={1.75} />
               Feature on client home
