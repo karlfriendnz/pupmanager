@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Card, CardBody } from '@/components/ui/card'
+import { Bell } from 'lucide-react'
 import { PhoneRowList } from '@/components/shared/flat-list'
 import { iconForNotification } from '@/components/shared/notification-icon'
 import { formatDate } from '@/lib/utils'
@@ -42,12 +43,18 @@ export default async function TrainerNotificationsPage() {
   }
 
   return (
-    <div className="px-5 lg:px-8 py-6 max-w-3xl mx-auto w-full">
-      <h1 className="text-2xl font-bold text-slate-900 mb-6">Notifications</h1>
+    // Full width, like every other list. A notification row is a title, a
+    // sentence of body and a date, and it was running down a 768px column with
+    // the body wrapping to three lines while half the screen sat empty.
+    <div className="w-full px-5 py-6 lg:px-8">
+      <h1 className="mb-6 text-2xl font-bold text-slate-900">Notifications</h1>
 
       {notifications.length === 0 ? (
-        <div className="text-center py-12 text-slate-400">
-          <p className="text-3xl mb-3">🔔</p>
+        <div className="py-12 text-center text-slate-400">
+          {/* A line icon, not an emoji. Every other empty state in the app
+              draws one; an emoji renders in the reader's own font and is the
+              one piece of type here nobody chose. */}
+          <Bell className="mx-auto mb-3 h-8 w-8 text-slate-300" strokeWidth={1.75} />
           <p>No notifications yet</p>
         </div>
       ) : (
@@ -57,9 +64,10 @@ export default async function TrainerNotificationsPage() {
             const inner = (
               <CardBody className="px-4 py-3 md:pt-4 md:pb-4">
                 <div className="flex items-start gap-3">
-                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
-                    <Icon className="h-4 w-4" />
-                  </span>
+                  {/* A plain line icon. It was a tinted rounded chip in the
+                      trainer's accent — the tell AGENTS.md names first, and
+                      fifty of them down a feed is fifty coloured squares. */}
+                  <Icon className="mt-0.5 h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-slate-900 text-sm">{n.title}</p>
                     <p className="text-sm text-slate-600 mt-0.5">{n.body}</p>
