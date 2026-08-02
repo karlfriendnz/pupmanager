@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { TileId } from '@/lib/home-tiles'
+import { HomeHero } from '@/components/shared/home-hero'
 
 /**
  * Phone-only home screen for trainers.
@@ -52,6 +53,8 @@ export function MobileHome({
   tileIds,
   requests,
   accentColor,
+  heroImageUrl,
+  heroShowLogo,
 }: {
   greeting: string
   firstName: string
@@ -78,6 +81,10 @@ export function MobileHome({
   requests?: React.ReactNode
   /** The trainer's own brand colour (Settings → Design). */
   accentColor: string | null
+  /** Company-wide home background photo (Settings → Design), or null. */
+  heroImageUrl: string | null
+  /** Company-wide: show the logo lockup over that photo, or just the greeting. */
+  heroShowLogo: boolean
 }) {
   // Colour on this screen is the trainer's own, not a palette we picked. Their
   // brand colour tints the icons and the "needs you" strip; everything else
@@ -207,28 +214,18 @@ export function MobileHome({
 
   return (
     <section className="md:hidden -mt-1 mb-6" style={accentVars}>
-
-      {/* The trainer's own brand, centred and given room — the business name in
-          text would only repeat what the logo already says. */}
-      <div className="mb-5 flex flex-col items-center pt-1">
-        {logoUrl ? (
-          // Plain <img>: trainer logos live on Vercel Blob, which isn't in
-          // next/image's remotePatterns (same as everywhere else).
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={logoUrl}
-            alt={businessName || 'Business logo'}
-            className="h-20 w-auto max-w-[70%] object-contain"
-          />
-        ) : (
-          <span className="flex h-20 w-20 items-center justify-center rounded-2xl border border-slate-200 bg-white text-2xl font-semibold text-slate-700">
-            {(businessName || firstName || 'P').charAt(0).toUpperCase()}
-          </span>
-        )}
-        <p className="mt-2.5 text-[13px] text-slate-500">
-          Good {greeting}{firstName ? `, ${firstName}` : ''}
-        </p>
-      </div>
+      {/* The lockup, the background photo and the fade across everything below
+          it all live in <HomeHero/>. Its children are what the trainer marked
+          as the "red box": the fade is sized to exactly this run of rows and
+          tiles, ending fully opaque at the last one. */}
+      <HomeHero
+        imageUrl={heroImageUrl}
+        showLogo={heroShowLogo}
+        logoUrl={logoUrl}
+        businessName={businessName}
+        firstName={firstName}
+        greeting={greeting}
+      >
 
       {/* Everything waiting on the trainer, summed into one line. Indigo, the
           same tint the desktop booking-request panel uses — it reads as "needs
@@ -327,6 +324,7 @@ export function MobileHome({
           )
         })}
       </div>
+      </HomeHero>
     </section>
   )
 }

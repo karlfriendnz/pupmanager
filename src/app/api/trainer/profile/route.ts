@@ -4,6 +4,7 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { validateSlug } from '@/lib/slug'
+import { cssImageUrlSchema } from '@/lib/asset-url'
 import { applyFieldPacksForRoles } from '@/lib/onboarding/apply-field-packs'
 import { seedScheduleDefaultsForRoles } from '@/lib/onboarding/schedule-defaults'
 
@@ -46,6 +47,14 @@ const patchSchema = z.object({
   // auto-set from the IP at signup, but settable here when that wasn't captured.
   signupCountry: z.string().regex(/^[A-Za-z]{2}$/).optional().or(z.literal('')),
   logoUrl: z.string().url().optional().or(z.literal('')),
+  // Background photo behind the top of the trainer home, and whether the logo
+  // lockup sits over it. Both are COMPANY-wide by construction — this route
+  // only ever writes TrainerProfile[guard.companyId], and that row is the
+  // business, so every staff member of one business shares one home screen.
+  // The URL is validated harder than the others because it is rendered inside
+  // a CSS url() rather than an <img src> — see cssImageUrlSchema.
+  homeHeroImageUrl: cssImageUrlSchema().optional(),
+  homeHeroShowLogo: z.boolean().optional(),
   iconUrl: z.string().url().optional().or(z.literal('')),
   website: z.string().max(200).optional().or(z.literal('')),
   publicEmail: z.string().max(200).optional().or(z.literal('')),
@@ -133,6 +142,9 @@ export async function PATCH(req: Request) {
   if (data.emailAccentColor === '') data.emailAccentColor = null as unknown as string
   if (data.clientWelcomeNote === '') data.clientWelcomeNote = null as unknown as string
   if (data.website === '') data.website = null as unknown as string
+  // "Remove image" posts an empty string; store null so the home screen falls
+  // back to no photo rather than an empty background-image declaration.
+  if (data.homeHeroImageUrl === '') data.homeHeroImageUrl = null as unknown as string
   if (data.publicEmail === '') data.publicEmail = null as unknown as string
   if (data.signupCountry === '') data.signupCountry = null as unknown as string
   else if (data.signupCountry) data.signupCountry = data.signupCountry.toUpperCase()

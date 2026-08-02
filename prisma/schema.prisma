@@ -471,6 +471,12 @@ model TrainerProfile {
   // Brand colour — drives the client-app accent AND the accent strip on
   // outbound emails. Falls back to PupManager teal (#2a9da9).
   emailAccentColor   String?
+  // Photo behind the top of the TRAINER's home screen, and whether the logo
+  // lockup sits over it. On this row rather than the membership on purpose:
+  // TrainerProfile.id IS the company id, so a business with five staff has one
+  // home screen, which is what was asked for.
+  homeHeroImageUrl   String?  @db.Text
+  homeHeroShowLogo   Boolean  @default(true)
   // Short personal welcome shown to clients on their app home (set in the
   // first-run personalization wizard, editable later in settings).
   clientWelcomeNote  String?  @db.Text

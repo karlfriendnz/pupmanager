@@ -29,3 +29,33 @@ export function assetUrlSchema(max = 2048) {
 export function optionalAssetUrlSchema(max = 2048) {
   return assetUrlSchema(max).nullable().optional()
 }
+
+/**
+ * A stricter reference, for assets that end up inside a CSS `url()` rather than
+ * an `<img src>` — currently the trainer home's background photo.
+ *
+ * `assetUrlSchema` above is deliberately permissive because it has to accept the
+ * app-relative paths the demo seeder writes. That is the wrong trade here: the
+ * value arrives from the browser (only the browser knows the upload succeeded),
+ * so the server has to treat the string as arbitrary, and it ends up pasted into
+ * a stylesheet. Anything that could close the `url()` and open a new declaration
+ * is refused outright rather than escaped downstream — escaping still happens at
+ * the point of use, but a value that NEEDS escaping has no business being stored.
+ *
+ * The test is an allowlist, not a blocklist: RFC 3986's unreserved + reserved
+ * characters, minus the quotes, parentheses, backslashes and angle brackets that
+ * mean something in CSS and HTML. Control characters cannot sneak through a set
+ * that only says what IS allowed.
+ *
+ * https only — every upload route returns a Vercel Blob https URL, and a plain
+ * http image would be blocked as mixed content on the real app anyway.
+ */
+export function cssImageUrlSchema(max = 2048) {
+  return z
+    .string()
+    .max(max)
+    .refine(
+      (v) => v === '' || /^https:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&*+,;=%]+$/.test(v),
+      'Enter a full https:// image address'
+    )
+}

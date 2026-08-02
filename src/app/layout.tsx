@@ -52,7 +52,11 @@ export default function RootLayout({
   // children, so real bugs in our components still surface.
   return (
     <html lang="en-NZ" suppressHydrationWarning className={`${geist.variable} ${baloo.variable} h-full antialiased`}>
-      <body suppressHydrationWarning className="min-h-full bg-slate-50 text-slate-900 flex flex-col">
+      {/* bg is the --pm-page-bg token (slate-50) rather than the utility class:
+          the trainer home's hero gradient fades into this exact colour, and
+          reading both from one token is what stops the fade banding against
+          the page if the background is ever retuned. */}
+      <body suppressHydrationWarning className="min-h-full bg-[var(--pm-page-bg)] text-slate-900 flex flex-col">
         <NativeBootstrap />
         <UpdateGate />
         {children}

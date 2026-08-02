@@ -19,6 +19,7 @@ import { TIMEZONES } from '@/lib/timezones'
 import { PERSONAS } from '@/lib/onboarding-recommendations'
 import { ImagePlus, Loader2 } from 'lucide-react'
 import { BaseCurrencySelect } from './base-currency-select'
+import { HomeImageCard } from './home-image-card'
 
 const businessSchema = z.object({
   name: z.string().min(2, 'Your name is required'),
@@ -53,7 +54,7 @@ export function TrainerSettingsForm({
   section = 'both',
 }: {
   user: { name: string | null; email: string | null; timezone: string; landingPage: string }
-  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; addressCountry: string | null; publicEmail: string | null; logoUrl: string | null; iconUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[]; payoutCurrency: string | null }
+  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; addressCountry: string | null; publicEmail: string | null; logoUrl: string | null; iconUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[]; payoutCurrency: string | null; homeHeroImageUrl: string | null; homeHeroShowLogo: boolean }
   /** Which half to render — the two live on separate Settings tabs now.
    *  'both' keeps the original single-page layout for any other caller. */
   section?: 'details' | 'design' | 'both'
@@ -436,6 +437,18 @@ export function TrainerSettingsForm({
         </div>
         </div>
       </AccordionItem>
+
+      {/* The home screen's background photo — the same card shape, directly
+          below Design, because it is the same decision (what the business looks
+          like) made about a different surface. It saves on change rather than
+          on submit, so it stays outside this form. */}
+      <HomeImageCard
+        companyName={businessForm.watch('businessName')}
+        logoUrl={logoUrl || null}
+        initialImageUrl={profile.homeHeroImageUrl}
+        initialShowLogo={profile.homeHeroShowLogo}
+        firstName={(user.name ?? '').split(' ')[0] ?? ''}
+      />
         </Accordion>
       </div>
       )}

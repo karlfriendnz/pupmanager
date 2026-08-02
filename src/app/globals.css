@@ -53,6 +53,18 @@ html[data-native='true'] body {
    <main>'s own reservation. */
 :root {
   --app-safe-top: min(env(safe-area-inset-top, 0px), 1rem);
+
+  /* The app's page background, as ONE source of truth.
+     Kept as bare channels rather than a hex so the same value can be used both
+     solid and fully transparent — which is what the trainer home's hero
+     gradient needs: it fades from "nothing" to exactly this colour, and a
+     hardcoded #f8fafc in that gradient would band visibly the day the page
+     background changes. <body> paints from the same token below, so the two
+     cannot drift apart. Don't write `transparent` in that gradient either —
+     Safari interpolates it through transparent BLACK and leaves a grey bruise
+     across the middle of the fade. */
+  --pm-page-bg-rgb: 248 250 252; /* slate-50 */
+  --pm-page-bg: rgb(var(--pm-page-bg-rgb));
 }
 
 /* Full-width banners pinned to the very top of the app on mobile (admin
