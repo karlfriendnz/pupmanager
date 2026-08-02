@@ -25,6 +25,7 @@ export function VideoUploadButton({
   uploadUrl,
   onUploaded,
   label = 'Add a video',
+  hint,
   className = '',
 }: {
   /**
@@ -37,6 +38,12 @@ export function VideoUploadButton({
   onUploaded: (url: string) => void
   /** Button text — "Add a video" reads oddly next to a field already called Video. */
   label?: string
+  /**
+   * A quiet note beside the button — what makes a good clip here. Opt-in per
+   * caller: what's worth saying to a trainer filming a demo isn't what's worth
+   * saying to a client logging their practice.
+   */
+  hint?: string
   className?: string
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null)
@@ -71,15 +78,20 @@ export function VideoUploadButton({
 
   return (
     <div className={className}>
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        disabled={uploading}
-        className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 disabled:opacity-60"
-      >
-        {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <VideoIcon className="h-4 w-4" />}
-        {uploading ? `Uploading… ${progress}%` : label}
-      </button>
+      {/* The hint sits BESIDE the button and wraps under it in a narrow column,
+          rather than taking a line of its own on every screen. */}
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={uploading}
+          className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200 disabled:opacity-60"
+        >
+          {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <VideoIcon className="h-4 w-4" />}
+          {uploading ? `Uploading… ${progress}%` : label}
+        </button>
+        {hint && !uploading && <span className="text-[13px] text-slate-500">{hint}</span>}
+      </div>
       {uploading && (
         <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
           <div className="h-full bg-accent transition-all" style={{ width: `${progress}%` }} />

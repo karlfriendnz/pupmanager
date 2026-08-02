@@ -132,6 +132,10 @@ export function ItemVideos({
           uploadUrl={uploadUrl}
           onUploaded={url => add(url)}
           label="or upload a clip"
+          // Long clips are slow to send and slow for a client to load on mobile
+          // data — and an exercise is easier to follow as a few short steps
+          // anyway, which is what the list above is for.
+          hint="Recommended for clips under 5 minutes"
           className="mt-2"
         />
       )}
