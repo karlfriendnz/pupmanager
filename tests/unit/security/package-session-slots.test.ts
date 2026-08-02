@@ -22,6 +22,7 @@ const h = vi.hoisted(() => ({
   tierCreate: vi.fn(),
   tierUpdate: vi.fn(),
   tierDeleteMany: vi.fn(),
+  sessionDeleteMany: vi.fn(),
 }))
 
 vi.mock('@/generated/prisma', () => ({}))
@@ -51,6 +52,9 @@ const tx = {
     update: h.tierUpdate,
     deleteMany: h.tierDeleteMany,
   },
+  // Removing a day-part takes its future, unbooked sessions with it — see the
+  // "removing a day-part" block below for what that must and must not touch.
+  trainingSession: { deleteMany: h.sessionDeleteMany },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 } as any
 
@@ -71,6 +75,7 @@ beforeEach(() => {
   h.tierCreate.mockImplementation(async ({ data }: { data: { packageId: string } }) => ({ id: 'new-tier', ...data }))
   h.tierUpdate.mockResolvedValue({})
   h.tierDeleteMany.mockResolvedValue({ count: 0 })
+  h.sessionDeleteMany.mockResolvedValue({ count: 0 })
   // Only MINE's location exists under this trainer.
   h.locationFindMany.mockImplementation(async ({ where }: { where: { id: { in: string[] }; trainerId: string } }) =>
     where.trainerId === MINE ? where.id.in.filter((id) => id === 'loc-mine').map((id) => ({ id })) : [],
@@ -170,6 +175,43 @@ describe('replacePackageSlots — reconcile', () => {
     await replacePackageSlots(tx, 'pkg1', MINE, [slot()])
     expect(h.locationFindMany).not.toHaveBeenCalled()
     expect(h.membershipFindMany).not.toHaveBeenCalled()
+  })
+})
+
+// Taking a day-part off the timetable. The FK is SetNull, so deleting the slot
+// row alone left up to a year of dates behind it — still on the board, still
+// bookable, and invisible to the top-up (which keys on a non-null slot id), so
+// nothing could ever tidy them. Removing the afternoon left the afternoon
+// selling. They go with the slot now — but only the ones nobody is in.
+describe('replacePackageSlots — removing a day-part', () => {
+  it('takes the removed part’s FUTURE, UNBOOKED sessions with it', async () => {
+    h.slotFindMany.mockResolvedValue([{ id: 'slot-a' }, { id: 'slot-b' }])
+    await replacePackageSlots(tx, 'pkg1', MINE, [slot({ id: 'slot-a' })])
+
+    const where = h.sessionDeleteMany.mock.calls[0][0].where
+    expect(where.packageSessionSlotId).toEqual({ in: ['slot-b'] })
+    // Already happened = a record of what happened, not a plan. Left alone.
+    expect(where.scheduledAt.gt).toBeInstanceOf(Date)
+    // Somebody's arrangement. Deleting it would cascade the register and every
+    // casual booking away from the people who most need telling — the rule
+    // commit 59a02f8 set for cancelling one occurrence, applied to a whole slot.
+    expect(where.dropInEnrollments).toEqual({ none: {} })
+    expect(where.attendance).toEqual({ none: {} })
+  })
+
+  it('deletes the sessions BEFORE the slot row, while they can still be found', async () => {
+    // Once the slot is gone the FK is null and its sessions are unreachable.
+    h.slotFindMany.mockResolvedValue([{ id: 'slot-a' }])
+    await replacePackageSlots(tx, 'pkg1', MINE, [])
+
+    expect(h.sessionDeleteMany.mock.invocationCallOrder[0])
+      .toBeLessThan(h.slotDeleteMany.mock.invocationCallOrder[0])
+  })
+
+  it('touches no session when the payload removes nothing', async () => {
+    h.slotFindMany.mockResolvedValue([{ id: 'slot-a' }])
+    await replacePackageSlots(tx, 'pkg1', MINE, [slot({ id: 'slot-a' })])
+    expect(h.sessionDeleteMany).not.toHaveBeenCalled()
   })
 })
 

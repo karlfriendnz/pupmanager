@@ -129,8 +129,26 @@ export function runStartFromSlots(slots: SlotInput[]): Date | null {
  * Slots sent with an id that already belongs to this package are UPDATED in
  * place — that keeps the id stable, and with it the link from every session
  * already generated off that slot (TrainingSession.packageSessionSlotId), so
- * re-saving a class never orphans the prices of sessions in the diary. Slots the
- * payload omits are deleted (their sessions survive; the FK is SetNull).
+ * re-saving a class never orphans the prices of sessions in the diary.
+ *
+ * ── Slots the payload omits: taking a day-part OFF the timetable ────────────
+ *
+ * The FK is SetNull, so deleting the slot row alone used to leave every session
+ * it had generated behind with a null slot id: up to a year of dates the trainer
+ * had just removed, still on the board, still bookable — and priced off the
+ * package's headline rate now that their own slot was gone. Nothing could ever
+ * tidy them either, because the top-up keys on a non-null slot id, so an orphan
+ * is invisible to it forever. Removing the afternoon left the afternoon selling.
+ *
+ * So a removed day-part takes its FUTURE sessions with it — but only the ones
+ * NOBODY IS IN. This is the rule commit 59a02f8 set for cancelling a single
+ * occurrence, applied to a whole slot: a session with a booking or an attendance
+ * mark is somebody's arrangement, and deleting it would cascade the register and
+ * every casual booking away, silently, from the people who most need telling.
+ * Those stay, as does everything already in the past, which is a record of what
+ * happened rather than a plan. What survives is orphaned and inert — no longer
+ * topped up, no longer part of a series — and the trainer cancels or moves each
+ * one with the per-occurrence tools, having been able to see who is in it.
  *
  * Locations and team members that aren't this company's are silently dropped
  * rather than rejected — same posture as setRunTrainers.
@@ -203,6 +221,16 @@ export async function replacePackageSlots(
 
   const stale = [...existingIds].filter((id) => !keptIds.includes(id))
   if (stale.length) {
+    // Order matters: the sessions have to go while they can still be found by
+    // slot id. Once the slot row is gone the FK is null and they are unfindable.
+    await tx.trainingSession.deleteMany({
+      where: {
+        packageSessionSlotId: { in: stale },
+        scheduledAt: { gt: new Date() },
+        dropInEnrollments: { none: {} },
+        attendance: { none: {} },
+      },
+    })
     await tx.packageSessionSlot.deleteMany({ where: { id: { in: stale }, packageId } })
   }
 }

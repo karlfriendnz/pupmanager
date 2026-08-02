@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { MAX_BUFFER_MINS } from '@/lib/buffer'
 import { syncOfferingRun, ClassError } from '@/lib/class-runs'
 import { syncClassSessions, removeClassEvents } from '@/lib/class-session-sync'
+import { extendSlotRuns } from '@/lib/extend-slot-runs'
 import {
   slotSchema, replacePackageSlots, derivedDropInFields,
   ticketTierSchema, replaceTicketTiers,
@@ -313,6 +314,29 @@ export async function PATCH(
 
   if (createdSessionIds.length) await syncClassSessions(createdSessionIds)
   if (deletedEventIds.length) await removeClassEvents(trainerId, deletedEventIds)
+
+  // A day-part added to a daycare that already exists gets its sessions here.
+  //
+  // This is the SAME generator the nightly cron runs, scoped to this offering —
+  // not a second implementation, and deliberately not one. The bug being fixed
+  // existed precisely because generating a slot's series happened at exactly one
+  // call site (creation); a fix that added a second one would be the same shape
+  // of mistake. The generator decides what a new slot is owed and what it must
+  // never touch; this line only says "now, not tonight", because the trainer is
+  // looking at the board and an empty column with no explanation is the thing
+  // they reported.
+  //
+  // Outside the transaction — extendSlotRuns owns its own reads and writes — and
+  // failure is not the save's problem: the slots are committed, and tonight's
+  // cron finishes the job. Making the trainer re-save a save that worked would
+  // be the worse answer.
+  if (sessionSlots) {
+    try {
+      await extendSlotRuns({ trainerId, packageId })
+    } catch (e) {
+      console.error('[packages] could not fill new day-parts', packageId, e)
+    }
+  }
 
   return NextResponse.json(pkg)
 }
