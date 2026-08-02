@@ -85,12 +85,19 @@ export function ProductForm({
   isNew,
   existingCategories,
   heading,
+  variantCount = 0,
 }: {
   initial: ProductDraft
   isNew: boolean
   existingCategories: ProductCategoryOption[]
   /** The page's tab strip. Given one, it shares the actions' row and hairline. */
   heading?: React.ReactNode
+  /**
+   * How many options this product has. Above zero the counts live on THEM, so
+   * this form must not offer a number that nothing reads — it points at the
+   * Options tab instead.
+   */
+  variantCount?: number
 }) {
   const router = useRouter()
   const currency = useCurrency()
@@ -346,7 +353,18 @@ export function ProductForm({
               product being created has no history to keep and nowhere to put
               it, so /products/new still takes an opening count directly. */}
           <div className="flex flex-col gap-1.5 border-t border-slate-200 p-4">
-            {isNew ? (
+            {variantCount > 0 ? (
+              // The counts live on the options once there are any — a harness
+              // in S/M/L is three shelves. Showing a fourth number here that
+              // nothing reads is worse than showing none.
+              <>
+                <p className="text-sm font-medium text-slate-700">Units on hand</p>
+                <p className="text-sm text-slate-500">
+                  Counted per option now — {variantCount} of them. Open the
+                  Options tab to add stock.
+                </p>
+              </>
+            ) : isNew ? (
               <>
                 <label htmlFor="product-stock" className="text-sm font-medium text-slate-700">Units on hand</label>
                 <input

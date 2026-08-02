@@ -25,10 +25,10 @@ import { SectionHeader } from '@/components/shared/flat-list'
 import { OfferingItems, OfferingViewToggle, SortableOfferingCard, useOfferingView } from '@/components/shared/offering-card'
 import { CategoryRail, NONE } from './category-rail'
 import { ProductPrice, SaleTag } from '@/components/shared/product-price'
-import { effectivePriceCents, isOnSale } from '@/lib/product-price'
+import { effectivePriceCents, isOnSale, productPriceSummary } from '@/lib/product-price'
 import { formatMoney } from '@/lib/money'
 import { useCurrency } from '@/components/currency-context'
-import { inStock, stockLabel } from '@/lib/stock'
+import { inStock, stockLabel, totalStock } from '@/lib/stock'
 import { OPTIONAL_COLUMNS, useProductColumns, type ColumnKey } from './product-columns'
 
 // The shop, browsed the same way the Library is: shelves on the left, what is
@@ -62,6 +62,15 @@ export interface BrowseProduct {
   categoryId: string | null
   featured: boolean
   active: boolean
+  /**
+   * The sizes/colours it comes in. Empty = sold as one thing, and every cell
+   * below reads exactly as it did before variants existed.
+   *
+   * With any, this row must NOT print one price and one count off the product,
+   * because it has neither — the price becomes "from $X · 3 options" and the
+   * count becomes the sum of the shelves.
+   */
+  variants?: { priceCents: number | null; salePriceCents: number | null; stockCount: number | null; active: boolean }[]
 }
 
 export interface BrowseCategory {
@@ -473,9 +482,16 @@ function ProductTile({
 }) {
   const currency = useCurrency()
   const kind = product.kind === 'DIGITAL' ? 'Digital' : 'Physical'
-  const stock = stockLabel(product.stockCount)
-  const price = effectivePriceCents(product)
-  const onSale = isOnSale(product)
+  const variants = product.variants ?? []
+  // With options the numbers come from THEM: the count is the sum of the
+  // shelves and the price is a range. Without any, both fall straight back to
+  // the product's own values.
+  const units = totalStock(product, variants)
+  const stock = stockLabel(units)
+  const summary = productPriceSummary(product, variants)
+  const price = summary.count === 0 ? effectivePriceCents(product) : summary.from
+  const onSale = summary.count === 0 && isOnSale(product)
+  const optionsNote = summary.count > 0 ? `${summary.count} options` : null
 
   const thumb = (cls: string, icon: string) =>
     product.imageUrl ? (
@@ -515,11 +531,18 @@ function ProductTile({
           <span className="flex min-w-0 flex-1 flex-col gap-0.5 border-t border-slate-100 p-3">
             <span className="flex items-start justify-between gap-2">
               <span className="line-clamp-1 text-sm font-medium text-slate-900">{product.name}</span>
-              <ProductPrice product={product} currency={currency} className="flex-shrink-0 justify-end" />
+              {summary.count === 0 ? (
+                <ProductPrice product={product} currency={currency} className="flex-shrink-0 justify-end" />
+              ) : (
+                <span className="flex-shrink-0 whitespace-nowrap text-sm font-semibold tabular-nums text-slate-900">
+                  {price == null ? '—' : `${summary.varies ? 'from ' : ''}${formatMoney(price, currency)}`}
+                </span>
+              )}
             </span>
             <span className="truncate text-xs text-slate-500">
               {kind}
-              {stock && <span className={inStock(product.stockCount) ? '' : 'text-red-500'}> · {stock}</span>}
+              {optionsNote && <span> · {optionsNote}</span>}
+              {stock && <span className={inStock(units) ? '' : 'text-red-500'}> · {stock}</span>}
             </span>
           </span>
         </Link>
@@ -550,9 +573,15 @@ function ProductTile({
           on a flex container, whose text is an anonymous flex item. */}
       <Link
         href={`/products/${product.id}`}
-        className="flex min-w-0 items-center text-sm font-medium text-slate-900 hover:underline"
+        className="flex min-w-0 items-center gap-2 text-sm font-medium text-slate-900 hover:underline"
       >
         <span className="truncate">{product.name}</span>
+        {/* Said on the NAME, not only in the price column, because the price
+            column is one of the ones a trainer can switch off — and "this is
+            three things" has to survive that. */}
+        {optionsNote && (
+          <span className="flex-shrink-0 whitespace-nowrap text-[11px] font-normal text-slate-400">{optionsNote}</span>
+        )}
       </Link>
 
       {chosen.has('category') && (
@@ -563,9 +592,9 @@ function ProductTile({
         // Just the number. "Only 3 left" is a shop-front phrase; a trainer
         // reading down a stock column wants figures they can compare.
         <span className={`${OPTIONAL_CELL} text-right text-sm tabular-nums ${
-          product.stockCount != null && !inStock(product.stockCount) ? 'text-red-500' : 'text-slate-500'
+          units != null && !inStock(units) ? 'text-red-500' : 'text-slate-500'
         }`}>
-          {product.stockCount ?? '—'}
+          {units ?? '—'}
         </span>
       )}
 
@@ -587,7 +616,9 @@ function ProductTile({
           title={onSale ? `Was ${formatMoney(product.priceCents as number, currency)}` : undefined}
           className={`text-right text-sm font-semibold tabular-nums ${onSale ? 'text-rose-600' : 'text-slate-900'}`}
         >
-          {formatMoney(price, currency)}
+          {/* "from" when the options don't agree on a price — one number in
+              this column would be a price that can't actually be paid. */}
+          {summary.varies ? `from ${formatMoney(price, currency)}` : formatMoney(price, currency)}
         </span>
       )}
 

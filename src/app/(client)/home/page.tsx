@@ -7,6 +7,7 @@ import { AppInstallModal } from '../app-install-modal'
 import { computeAchievementProgress } from '@/lib/achievements'
 import { getEnabledAddons } from '@/lib/billing'
 import { mergeClientDogs } from '@/lib/dogs'
+import { productPriceSummary } from '@/lib/product-price'
 import { todayInTz, weekBoundsUtcDates } from '@/lib/timezone'
 import type { Metadata } from 'next'
 
@@ -152,6 +153,12 @@ export default async function ClientHomePage() {
       take: 6,
       select: {
         id: true, name: true, kind: true, priceCents: true, salePriceCents: true, imageUrl: true,
+        // Enough to say "from $X · 3 options" rather than a single price a
+        // varianted product doesn't have.
+        variants: {
+          where: { active: true },
+          select: { priceCents: true, salePriceCents: true },
+        },
       },
     }),
     // "Your library" = the downloads THIS CLIENT actually has. It used to be
@@ -267,14 +274,19 @@ export default async function ClientHomePage() {
       }))}
       latestMessage={latestMessageProp}
       packageProgress={packageProgress}
-      featuredProducts={featuredProducts.map(p => ({
-        id: p.id,
-        name: p.name,
-        kind: p.kind as 'PHYSICAL' | 'DIGITAL',
-        priceCents: p.priceCents,
-        salePriceCents: p.salePriceCents,
-        imageUrl: p.imageUrl,
-      }))}
+      featuredProducts={featuredProducts.map(p => {
+        const summary = productPriceSummary(p, p.variants)
+        return {
+          id: p.id,
+          name: p.name,
+          kind: p.kind as 'PHYSICAL' | 'DIGITAL',
+          priceCents: p.priceCents,
+          salePriceCents: p.salePriceCents,
+          imageUrl: p.imageUrl,
+          optionCount: summary.count,
+          fromCents: summary.from,
+        }
+      })}
       libraryItems={libraryProducts.map(p => ({
         id: p.id,
         name: p.name,

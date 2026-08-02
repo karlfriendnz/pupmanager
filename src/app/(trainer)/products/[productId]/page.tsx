@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
-import { effectivePriceCents } from '@/lib/product-price'
+import { effectivePriceCents, resolveVariantPricing } from '@/lib/product-price'
 import { PageHeader } from '@/components/shared/page-header'
 import { ProductDetail } from './product-detail'
 import type { Purchase } from './product-purchases'
@@ -27,7 +27,7 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
   })
   if (!product) notFound()
 
-  const [requests, paidItems] = await Promise.all([
+  const [requests, paidItems, variants] = await Promise.all([
     // Pay-later orders and standing requests.
     prisma.productRequest.findMany({
       where: { productId: product.id },
@@ -36,6 +36,9 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
         id: true,
         status: true,
         createdAt: true,
+        // Which one they asked for — the difference between "a harness is
+        // owed" and "a Large is owed", which is what the trainer acts on.
+        variant: { select: { name: true, priceCents: true, salePriceCents: true } },
         client: {
           select: { id: true, user: { select: { name: true } }, dog: { select: { name: true } } },
         },
@@ -49,6 +52,7 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
         id: true,
         unitAmount: true,
         quantity: true,
+        variant: { select: { name: true } },
         payment: {
           select: {
             createdAt: true,
@@ -57,6 +61,14 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
             },
           },
         },
+      },
+    }),
+    prisma.productVariant.findMany({
+      where: { productId: product.id },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        id: true, name: true, sku: true, priceCents: true, salePriceCents: true,
+        stockCount: true, active: true,
       },
     }),
   ])
@@ -68,6 +80,7 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
     dogName: item.payment.client?.dog?.name ?? null,
     state: 'PAID',
     amountCents: item.unitAmount * item.quantity,
+    variantName: item.variant?.name ?? null,
     at: item.payment.createdAt.toISOString(),
   }))
 
@@ -83,9 +96,13 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
       clientName: r.client.user?.name ?? 'A client',
       dogName: r.client.dog?.name ?? null,
       state: r.status === 'FULFILLED' ? 'OWING' : 'REQUESTED',
-      // What they'll be billed — the sale price when there is one, same as the
-      // invoice raised for them.
-      amountCents: r.status === 'FULFILLED' ? effectivePriceCents(product) : null,
+      // What they'll be billed — the sale price when there is one, and the
+      // VARIANT's price when they picked one, exactly as the invoice raised
+      // for them computes it.
+      amountCents: r.status === 'FULFILLED'
+        ? effectivePriceCents(resolveVariantPricing(product, r.variant))
+        : null,
+      variantName: r.variant?.name ?? null,
       at: r.createdAt.toISOString(),
     }))
 
@@ -127,6 +144,7 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
           }}
           existingCategories={existingCategories}
           purchases={purchases}
+          variants={variants}
         />
       </div>
     </>

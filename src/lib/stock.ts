@@ -18,6 +18,13 @@ import type { Prisma, PrismaClient, StockMovementReason } from '@/generated/pris
  * it ALSO writes a StockMovement, in the same transaction, so "twelve on the
  * shelf" can be explained. This file is the only place that writes either, so
  * the two cannot drift: change the balance here or not at all.
+ *
+ * VARIANTS. A harness in S/M/L is three shelves, not one, so when a product
+ * has variants the counts live on the VARIANT rows and `Product.stockCount` is
+ * ignored (see productInStock/totalStock below). Every writer here takes an
+ * optional `variantId` naming which shelf moved; without one they target the
+ * product row exactly as they always have, which is why a product with no
+ * variants behaves identically and why existing movements need no backfill.
  */
 
 type Db = PrismaClient | Prisma.TransactionClient
@@ -28,6 +35,13 @@ export interface StockContext {
   clientId?: string | null
   userId?: string | null
   note?: string | null
+  /**
+   * WHICH shelf. NULL/absent = the product's own count, which is both the old
+   * behaviour and the right one for a product with no variants. A variant id
+   * that doesn't belong to this product is refused rather than silently
+   * moving another product's stock.
+   */
+  variantId?: string | null
 }
 
 /**
@@ -52,9 +66,9 @@ async function recordMovement(
   await db.stockMovement.create({
     data: {
       productId: args.productId,
-      // NULL means "the product's only SKU". When variants land, this points at
-      // the one that moved and today's rows stay true without a backfill.
-      variantId: null,
+      // NULL means "the product's only SKU" — every row written before variants
+      // existed says exactly that, which is why none of them needed changing.
+      variantId: args.ctx?.variantId ?? null,
       trainerId: args.trainerId,
       delta: args.delta,
       reason: args.reason,
@@ -66,12 +80,49 @@ async function recordMovement(
   })
 }
 
-/** The two facts every mutation here needs about the product. */
-async function loadProduct(db: Db, productId: string) {
+/**
+ * The shelf a write is about: the variant's row when one is named, the
+ * product's when it isn't.
+ *
+ * The variant read is scoped by productId as well as its own id, so a caller
+ * passing a variant of some OTHER product moves nothing at all rather than
+ * quietly decrementing a stranger's stock.
+ */
+async function loadShelf(db: Db, productId: string, variantId?: string | null) {
+  if (variantId) {
+    const variant = await db.productVariant.findFirst({
+      where: { id: variantId, productId },
+      select: { stockCount: true, trainerId: true },
+    })
+    return variant
+  }
   return db.product.findUnique({
     where: { id: productId },
     select: { stockCount: true, trainerId: true },
   })
+}
+
+/** Write the new balance to whichever row `loadShelf` was reading. */
+async function writeBalance(
+  db: Db,
+  productId: string,
+  variantId: string | null | undefined,
+  stockCount: number | { increment: number } | null,
+): Promise<number | null> {
+  if (variantId) {
+    const v = await db.productVariant.update({
+      where: { id: variantId },
+      data: { stockCount },
+      select: { stockCount: true },
+    })
+    return v.stockCount
+  }
+  const p = await db.product.update({
+    where: { id: productId },
+    data: { stockCount },
+    select: { stockCount: true },
+  })
+  return p.stockCount
 }
 
 /**
@@ -86,23 +137,32 @@ async function loadProduct(db: Db, productId: string) {
  * out is noise that would swamp the products that are genuinely counted.
  */
 export async function takeStock(db: Db, productId: string, ctx?: StockContext): Promise<boolean> {
-  const product = await loadProduct(db, productId)
-  if (!product) return false
-  if (product.stockCount === null) return true // not tracked — always available
+  const variantId = ctx?.variantId ?? null
+  const shelf = await loadShelf(db, productId, variantId)
+  if (!shelf) return false
+  if (shelf.stockCount === null) return true // not tracked — always available
 
-  const { count } = await db.product.updateMany({
-    where: { id: productId, stockCount: { gt: 0 } },
-    data: { stockCount: { decrement: 1 } },
-  })
+  // The conditional update targets the variant row when one was named, so two
+  // people buying the last Large can't both succeed — and buying a Large never
+  // touches the Small's count.
+  const { count } = variantId
+    ? await db.productVariant.updateMany({
+        where: { id: variantId, productId, stockCount: { gt: 0 } },
+        data: { stockCount: { decrement: 1 } },
+      })
+    : await db.product.updateMany({
+        where: { id: productId, stockCount: { gt: 0 } },
+        data: { stockCount: { decrement: 1 } },
+      })
   if (count !== 1) return false
 
   // Re-read rather than assuming `stockCount - 1`: the update raced by design,
   // and balanceAfter is only worth storing if it is the balance that actually
   // resulted.
-  const after = await loadProduct(db, productId)
+  const after = await loadShelf(db, productId, variantId)
   await recordMovement(db, {
     productId,
-    trainerId: product.trainerId,
+    trainerId: shelf.trainerId,
     delta: -1,
     reason: 'SOLD',
     balanceAfter: after?.stockCount ?? null,
@@ -128,6 +188,52 @@ export function stockLabel(stockCount: number | null | undefined): string | null
   return `${stockCount} in stock`
 }
 
+/** The two facts a shelf-level read needs about a variant. */
+export interface VariantStock {
+  stockCount: number | null
+  active?: boolean
+}
+
+/**
+ * Can a client buy this product at all?
+ *
+ * With variants, the answer is about the variants: a harness is only sold out
+ * once EVERY size is. With no variants it is `inStock(product.stockCount)`,
+ * unchanged — which is what keeps every existing product behaving exactly as
+ * it does today.
+ *
+ * Hidden variants don't count. An inactive one is off the shop, so it can't
+ * hold a sold-out product open.
+ */
+export function productInStock(
+  product: { stockCount: number | null },
+  variants: VariantStock[] = [],
+): boolean {
+  const sellable = variants.filter(v => v.active !== false)
+  if (sellable.length === 0) return inStock(product.stockCount)
+  return sellable.some(v => inStock(v.stockCount))
+}
+
+/**
+ * Units on hand for a product as a whole — the number in the trainer's Stock
+ * column. Variants make it a SUM; without them it is the product's own count.
+ *
+ * NULL still means "not counted". A varianted product whose sizes are all
+ * untracked has no count to show, exactly as an untracked plain product
+ * doesn't — and a mix counts only the ones that are actually being counted,
+ * because "3" is a truer answer than a 0 standing in for "who knows".
+ */
+export function totalStock(
+  product: { stockCount: number | null },
+  variants: VariantStock[] = [],
+): number | null {
+  const sellable = variants.filter(v => v.active !== false)
+  if (sellable.length === 0) return product.stockCount
+  const tracked = sellable.filter(v => v.stockCount !== null)
+  if (tracked.length === 0) return null
+  return tracked.reduce((sum, v) => sum + (v.stockCount ?? 0), 0)
+}
+
 /**
  * Put units back on the shelf (a delivery arrived, or a sale fell through).
  * Returns the new balance, or null when the product isn't tracked.
@@ -138,28 +244,25 @@ export async function addStock(
   units: number,
   opts?: StockContext & { reason?: Extract<StockMovementReason, 'RECEIVED' | 'RETURNED'> },
 ): Promise<number | null> {
-  if (units <= 0) return (await loadProduct(db, productId))?.stockCount ?? null
-  const before = await loadProduct(db, productId)
+  const variantId = opts?.variantId ?? null
+  if (units <= 0) return (await loadShelf(db, productId, variantId))?.stockCount ?? null
+  const before = await loadShelf(db, productId, variantId)
   if (!before) return null
   // Untracked: incrementing NULL leaves NULL, and there is no balance to
   // describe, so no ledger line either. Starting to count goes through
   // setStockCount, which records the opening balance.
   if (before.stockCount === null) return null
 
-  const product = await db.product.update({
-    where: { id: productId },
-    data: { stockCount: { increment: units } },
-    select: { stockCount: true },
-  })
+  const balanceAfter = await writeBalance(db, productId, variantId, { increment: units })
   await recordMovement(db, {
     productId,
     trainerId: before.trainerId,
     delta: units,
     reason: opts?.reason ?? 'RECEIVED',
-    balanceAfter: product.stockCount,
+    balanceAfter,
     ctx: opts,
   })
-  return product.stockCount
+  return balanceAfter
 }
 
 /**
@@ -179,12 +282,12 @@ export async function adjustStock(
     reason: Extract<StockMovementReason, 'CORRECTION' | 'DAMAGED' | 'LOST' | 'SOLD' | 'RETURNED' | 'RECEIVED'>
   },
 ): Promise<number | null> {
-  const before = await loadProduct(db, productId)
+  const before = await loadShelf(db, productId, args.variantId)
   if (!before || before.stockCount === null) return null // untracked — nothing to adjust
   if (args.delta === 0) return before.stockCount
 
   const next = Math.max(0, before.stockCount + args.delta)
-  await db.product.update({ where: { id: productId }, data: { stockCount: next } })
+  await writeBalance(db, productId, args.variantId, next)
   await recordMovement(db, {
     productId,
     trainerId: before.trainerId,
@@ -206,7 +309,14 @@ export async function adjustStock(
  */
 export async function recordOpeningBalance(
   db: Db,
-  args: { productId: string; trainerId: string; units: number; userId?: string | null },
+  args: {
+    productId: string
+    trainerId: string
+    units: number
+    userId?: string | null
+    /** Set when the new shelf is a VARIANT — a size added to an existing product. */
+    variantId?: string | null
+  },
 ): Promise<void> {
   await recordMovement(db, {
     productId: args.productId,
@@ -214,7 +324,7 @@ export async function recordOpeningBalance(
     delta: args.units,
     reason: 'CORRECTION',
     balanceAfter: args.units,
-    ctx: { userId: args.userId ?? null, note: 'Opening count' },
+    ctx: { userId: args.userId ?? null, note: 'Opening count', variantId: args.variantId ?? null },
   })
 }
 
@@ -235,11 +345,11 @@ export async function setStockCount(
   next: number | null,
   ctx?: StockContext,
 ): Promise<number | null> {
-  const before = await loadProduct(db, productId)
+  const before = await loadShelf(db, productId, ctx?.variantId)
   if (!before) return null
   if (before.stockCount === next) return next
 
-  await db.product.update({ where: { id: productId }, data: { stockCount: next } })
+  await writeBalance(db, productId, ctx?.variantId, next)
   if (next === null) return null
 
   await recordMovement(db, {

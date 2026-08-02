@@ -120,7 +120,9 @@ export function PendingRequestsPanel({
           {rows.map(row => {
             const busy = busyId === row.id
             const Icon = row.kind === 'product' ? ShoppingBag : Ticket
-            const title = row.kind === 'product' ? row.product.name : row.membership.name
+            const title = row.kind === 'product'
+              ? (row.variantName ? `${row.product.name} — ${row.variantName}` : row.product.name)
+              : row.membership.name
             const sub = row.kind === 'product'
               ? row.note
               : requestReasonLine(row.membership, formatMoney(row.membership.priceCents, currency))

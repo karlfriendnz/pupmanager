@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
-import { inStock, stockLabel } from '@/lib/stock'
+import { inStock, productInStock, stockLabel } from '@/lib/stock'
 import { RichText } from '@/components/shared/rich-text'
 import { useRouter } from 'next/navigation'
 import {
@@ -10,11 +10,21 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatMoney } from '@/lib/money'
-import { effectivePriceCents } from '@/lib/product-price'
+import { effectivePriceCents, productPriceSummary, resolveVariantPricing } from '@/lib/product-price'
 import { ProductPrice, SaleTag } from '@/components/shared/product-price'
 import { useIsNative, nativePlatform } from '@/lib/native'
 import { openExternal } from '@/lib/external-link'
 import { PREVIEW_REASON, useIsPreview } from '../preview-context'
+
+/** One thing a client can pick — "Large", "Red · Large". */
+export interface Variant {
+  id: string
+  name: string
+  /** Null on either = it costs what the product costs. */
+  priceCents: number | null
+  salePriceCents: number | null
+  stockCount: number | null
+}
 
 interface Product {
   id: string
@@ -31,6 +41,13 @@ interface Product {
   featured: boolean
   requested: boolean
   purchased?: boolean
+  /**
+   * The sizes/colours this comes in. Empty = sold as one thing, and every
+   * screen below behaves exactly as it did before variants existed. With any,
+   * one has to be picked before Buy or Request will do anything, because the
+   * trainer would otherwise have no idea what to hand over.
+   */
+  variants?: Variant[]
 }
 
 function formatPrice(cents: number | null, currency: string | null) {
@@ -61,22 +78,28 @@ export function ShopGrid({
   const isPreview = useIsPreview()
   const [buyingId, setBuyingId] = useState<string | null>(null)
   const [buyError, setBuyError] = useState<string | null>(null)
+  // Which option is picked in the open product. Cleared when the sheet closes,
+  // so re-opening a product never buys last time's size by accident.
+  const [pickedVariantId, setPickedVariantId] = useState<string | null>(null)
 
   // A product is buyable when the trainer takes payments and it has a price —
   // the sale price when there is one, since that's what actually gets charged.
+  // With options, the cheapest one having a price is enough to show a Buy
+  // button; the exact charge follows the option the client picks.
   function isPayable(p: Product) {
-    const cents = effectivePriceCents(p)
+    const cents = productPriceSummary(p, p.variants ?? []).from
     return acceptPayments && cents != null && cents > 0
   }
 
-  async function buy(p: Product) {
+  async function buy(p: Product, variantId: string | null) {
     if (buyingId) return
     setBuyingId(p.id)
     setBuyError(null)
     try {
       const res = await fetch(`/api/my/products/${p.id}/buy`, {
         method: 'POST',
-        headers: { 'x-pm-platform': nativePlatform() },
+        headers: { 'x-pm-platform': nativePlatform(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ variantId }),
       })
       const body = await res.json().catch(() => ({}))
       if (res.ok && body.url) {
@@ -95,15 +118,26 @@ export function ShopGrid({
     return optimisticRequested[p.id] ?? p.requested
   }
 
-  async function toggleRequest(p: Product) {
+  async function toggleRequest(p: Product, variantId: string | null) {
     if (busyId) return
     const next = !isRequested(p)
     setBusyId(p.id)
     setOptimisticRequested(prev => ({ ...prev, [p.id]: next }))
     try {
-      const res = await fetch(`/api/my/products/${p.id}/request`, {
-        method: next ? 'POST' : 'DELETE',
-      })
+      // The variant rides in the body on the way in and the query string on
+      // the way out — cancelling the Large must leave a pending Small alone.
+      const res = await fetch(
+        next
+          ? `/api/my/products/${p.id}/request`
+          : `/api/my/products/${p.id}/request${variantId ? `?variantId=${encodeURIComponent(variantId)}` : ''}`,
+        next
+          ? {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ variantId }),
+            }
+          : { method: 'DELETE' },
+      )
       if (!res.ok) {
         setOptimisticRequested(prev => ({ ...prev, [p.id]: !next }))
       } else {
@@ -189,7 +223,7 @@ export function ShopGrid({
             <div className="p-3">
               <p className="text-sm font-semibold text-slate-900 line-clamp-2 leading-tight">{p.name}</p>
               <div className="mt-1">
-                <ProductPrice product={p} currency={currency ?? 'nzd'} unpricedLabel="Contact trainer" />
+                <CardPrice product={p} currency={currency ?? 'nzd'} />
               </div>
             </div>
           </button>
@@ -204,14 +238,108 @@ export function ShopGrid({
           payable={isPayable(open) && !isPreview}
           previewNote={isPreview ? PREVIEW_REASON : null}
           native={native}
-          onClose={() => setOpen(null)}
-          onToggleRequest={() => toggleRequest(open)}
-          onBuy={() => buy(open)}
+          pickedVariantId={pickedVariantId}
+          onPickVariant={setPickedVariantId}
+          onClose={() => { setOpen(null); setPickedVariantId(null) }}
+          onToggleRequest={() => toggleRequest(open, pickedVariantId)}
+          onBuy={() => buy(open, pickedVariantId)}
           busy={busyId === open.id}
           buying={buyingId === open.id}
           buyError={buyError}
         />
       )}
+    </div>
+  )
+}
+
+/**
+ * The price on a shop card.
+ *
+ * A product with options has a RANGE, and printing one number off the product
+ * row would be a price nobody can actually pay — "from $24" is the honest
+ * version. With no options this is the same single price it has always been.
+ */
+function CardPrice({ product, currency }: { product: Product; currency: string }) {
+  const summary = productPriceSummary(product, product.variants ?? [])
+  if (summary.count === 0) {
+    return <ProductPrice product={product} currency={currency} unpricedLabel="Contact trainer" />
+  }
+  if (summary.from == null) {
+    return <span className="text-sm font-semibold text-slate-500">Contact trainer</span>
+  }
+  return (
+    <span className="inline-flex flex-wrap items-baseline gap-x-1.5">
+      {summary.varies && <span className="text-xs text-slate-400">from</span>}
+      <span className="text-sm font-semibold text-slate-900">{formatMoney(summary.from, currency)}</span>
+      <span className="text-[11px] text-slate-400">{summary.count} options</span>
+    </span>
+  )
+}
+
+/**
+ * Pick a size / colour.
+ *
+ * ONE bordered block split by hairlines, not a row of chips or a dropdown —
+ * the house list, and the only shape that has room for a name, a price and a
+ * "only 2 left" on a 390px screen. A dropdown would also hide exactly the
+ * thing being chosen between: which options are actually left.
+ *
+ * A sold-out option stays VISIBLE and disabled. Removing it would leave the
+ * client wondering whether the Large exists at all; saying "Out of stock"
+ * answers the question they came with.
+ */
+function VariantPicker({
+  product,
+  variants,
+  currency,
+  pickedId,
+  onPick,
+}: {
+  product: Product
+  variants: Variant[]
+  currency: string
+  pickedId: string | null
+  onPick: (id: string) => void
+}) {
+  return (
+    <div>
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Choose one</p>
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white divide-y divide-slate-200">
+        {variants.map(v => {
+          const available = inStock(v.stockCount)
+          const cents = effectivePriceCents(resolveVariantPricing(product, v))
+          const chosen = v.id === pickedId
+          return (
+            <button
+              key={v.id}
+              type="button"
+              disabled={!available}
+              onClick={() => onPick(v.id)}
+              aria-pressed={chosen}
+              className={cn(
+                'flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors',
+                chosen ? 'bg-slate-50' : 'active:bg-slate-50',
+                !available && 'opacity-50',
+              )}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-slate-900">{v.name}</span>
+                {(!available || stockLabel(v.stockCount)) && (
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    {available ? stockLabel(v.stockCount) : 'Out of stock'}
+                  </span>
+                )}
+              </span>
+              <span className="flex flex-shrink-0 items-center gap-2">
+                <span className="text-sm font-semibold tabular-nums text-slate-900">
+                  {cents == null ? '—' : formatMoney(cents, currency)}
+                </span>
+                {chosen && <Check className="h-4 w-4 text-slate-900" strokeWidth={2.25} />}
+              </span>
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -238,6 +366,8 @@ function ProductModal({
   payable,
   previewNote,
   native,
+  pickedVariantId,
+  onPickVariant,
   onClose,
   onToggleRequest,
   onBuy,
@@ -251,6 +381,9 @@ function ProductModal({
   /** Set while a trainer previews — says why nothing here is live. */
   previewNote?: string | null
   native: boolean
+  /** Which option is chosen. Null until they pick, and always null with none. */
+  pickedVariantId: string | null
+  onPickVariant: (id: string | null) => void
   onClose: () => void
   onToggleRequest: () => void
   onBuy: () => void
@@ -258,6 +391,22 @@ function ProductModal({
   buying: boolean
   buyError: string | null
 }) {
+  const variants = product.variants ?? []
+  const picked = variants.find(v => v.id === pickedVariantId) ?? null
+  // A product with options can't be acted on until one is chosen. The buttons
+  // stay visible and say so, rather than failing on press — the same reasoning
+  // the preview note below is written for.
+  const mustPick = variants.length > 0 && !picked
+  // What is actually being bought: the picked option's price, inheriting the
+  // product's where it has none. One helper, so this can never disagree with
+  // what the server charges.
+  const pricing = resolveVariantPricing(product, picked)
+  // The count that decides "out of stock" — the picked option's once there are
+  // options at all, otherwise the product's own, unchanged.
+  const available = picked
+    ? inStock(picked.stockCount)
+    : productInStock(product, variants)
+
   // Digital downloads: free ones (no price / payments off) download immediately;
   // a PRICED digital product must be purchased first, then the download unlocks.
   const isPaidDigital = product.kind === 'DIGITAL' && payable
@@ -304,20 +453,40 @@ function ProductModal({
             )}
             <h2 className="text-xl font-bold text-slate-900">{product.name}</h2>
             <ProductPrice
-              product={product}
+              product={pricing}
               currency={currency ?? 'nzd'}
               size="lg"
               unpricedLabel="Contact trainer"
               className="mt-1"
             />
-            {stockLabel(product.stockCount) && (
+            {/* The stock line follows the same rule as the price: the picked
+                option's count once one is picked, the product's when there are
+                no options at all, and nothing while a choice is outstanding —
+                "Only 2 left" of an unnamed something means nothing. */}
+            {picked ? (
+              stockLabel(picked.stockCount) && (
+                <p className={`mt-0.5 text-xs ${inStock(picked.stockCount) ? 'text-slate-500' : 'text-slate-400'}`}>
+                  {stockLabel(picked.stockCount)}
+                </p>
+              )
+            ) : variants.length === 0 && stockLabel(product.stockCount) ? (
               <p className={`mt-0.5 text-xs ${inStock(product.stockCount) ? 'text-slate-500' : 'text-slate-400'}`}>
                 {stockLabel(product.stockCount)}
               </p>
-            )}
+            ) : null}
           </div>
 
           <RichText html={product.description} className="text-sm text-slate-600" />
+
+          {variants.length > 0 && (
+            <VariantPicker
+              product={product}
+              variants={variants}
+              currency={currency ?? 'nzd'}
+              pickedId={pickedVariantId}
+              onPick={onPickVariant}
+            />
+          )}
 
           {canDownload ? (
             <a
@@ -332,19 +501,21 @@ function ProductModal({
             <div className="w-full rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 text-center text-sm text-slate-500">
               This item can be bought on the web at app.pupmanager.com.
             </div>
-          ) : !inStock(product.stockCount) ? (
+          ) : !available ? (
             <div className="w-full rounded-xl bg-slate-50 border border-slate-200 px-4 py-3 text-center text-sm text-slate-500">
               Out of stock — ask when it&apos;s back.
             </div>
           ) : payable ? (
             <button
               onClick={onBuy}
-              disabled={buying}
+              disabled={buying || mustPick}
               className="w-full h-12 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
             >
               {buying
                 ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <><CreditCard className="h-4 w-4" /> Buy · {formatPrice(effectivePriceCents(product), currency)}</>
+                : mustPick
+                  ? 'Choose an option'
+                  : <><CreditCard className="h-4 w-4" /> Buy · {formatPrice(effectivePriceCents(pricing), currency)}</>
               }
             </button>
           ) : product.requested ? (
@@ -361,12 +532,14 @@ function ProductModal({
           ) : (
             <button
               onClick={onToggleRequest}
-              disabled={busy || !!previewNote}
+              disabled={busy || !!previewNote || mustPick}
               className="w-full h-12 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
             >
               {busy
                 ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <><ShoppingBag className="h-4 w-4" /> Add to next session</>
+                : mustPick
+                  ? 'Choose an option'
+                  : <><ShoppingBag className="h-4 w-4" /> Add to next session</>
               }
             </button>
           )}

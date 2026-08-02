@@ -61,6 +61,13 @@ export default async function MyShopPage() {
         downloadUrl: true,
         category: true,
         featured: true,
+        // The sizes/colours a client picks between. Only the ACTIVE ones — a
+        // hidden variant is off the shop, exactly as a hidden product is.
+        variants: {
+          where: { active: true },
+          orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+          select: { id: true, name: true, priceCents: true, salePriceCents: true, stockCount: true },
+        },
       },
     }),
     prisma.productRequest.findMany({
@@ -96,6 +103,7 @@ export default async function MyShopPage() {
             downloadUrl: p.downloadUrl,
             category: p.category,
             featured: p.featured,
+            variants: p.variants,
             requested: requestedIds.has(p.id),
             purchased: purchasedIds.has(p.id),
           }))}

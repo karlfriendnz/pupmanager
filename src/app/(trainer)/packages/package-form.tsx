@@ -313,8 +313,17 @@ export function PackageForm({
     if (!confirm('Delete this offering? This can’t be undone.')) return
     setDeleting(true)
     const res = await fetch(`/api/packages/${existing.id}`, { method: 'DELETE' })
-    if (res.ok) window.location.href = '/packages'
-    else { setError('Could not delete this offering.'); setDeleting(false) }
+    // The route says both where to land (a daycare goes back to /doggy-daycare,
+    // not the 1:1 Sessions list) and, when it refuses, exactly what is in the
+    // way — "3 bookings on this daycare programme". Showing the generic line
+    // instead is what left Karl with "Could not delete this offering." and
+    // nothing to act on.
+    const body = await res.json().catch(() => null) as { redirectTo?: string; error?: string } | null
+    if (res.ok) window.location.href = body?.redirectTo ?? '/packages'
+    else {
+      setError(typeof body?.error === 'string' ? body.error : 'Could not delete this offering.')
+      setDeleting(false)
+    }
   }
   async function handleClone() {
     if (!existing || cloning) return

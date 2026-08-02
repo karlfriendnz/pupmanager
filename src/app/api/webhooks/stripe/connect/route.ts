@@ -340,12 +340,22 @@ async function markPaidAndFulfil(
       if (item.kind === 'PRODUCT' && item.productId) {
         // Already paid, so never refuse it here — just keep the shelf count
         // honest. The buy route checked stock before taking the money.
-        await takeStock(tx, item.productId, { clientId: payment.clientId, note: 'Paid in PupManager' })
+        //
+        // The variant is the one the client picked at checkout, stored on the
+        // line. Without it the trainer would see "paid for a harness" and have
+        // no way to know which size to hand over — and the wrong shelf would
+        // be decremented.
+        await takeStock(tx, item.productId, {
+          clientId: payment.clientId,
+          variantId: item.variantId,
+          note: 'Paid in PupManager',
+        })
         // A paid product becomes a FULFILLED request the trainer hands over.
         await tx.productRequest.create({
           data: {
             clientId: payment.clientId,
             productId: item.productId,
+            variantId: item.variantId,
             status: 'FULFILLED',
             fulfilledAt: new Date(),
             note: 'Paid in PupManager',

@@ -76,7 +76,11 @@ describe('POST /api/products/:productId/clone — permission and scoping', () =>
 
   it('looks the product up scoped to the caller’s own company', async () => {
     await call('p1')
-    expect(h.findFirst).toHaveBeenCalledWith({ where: { id: 'p1', trainerId: 'company-A' } })
+    // The tenant scope is the assertion; the variant include just comes along
+    // so the copy can carry its options across.
+    expect(h.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'p1', trainerId: 'company-A' } }),
+    )
   })
 
   it('404s on another trainer’s product, and creates nothing', async () => {

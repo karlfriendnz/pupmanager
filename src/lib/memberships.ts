@@ -141,15 +141,28 @@ export async function fulfilMembershipInTx(
         }
       }
     } else if (item.kind === 'PRODUCT' && item.productId) {
-      const prod = await tx.product.findFirst({ where: { id: item.productId, trainerId: args.trainerId }, select: { id: true } })
+      const prod = await tx.product.findFirst({
+        where: { id: item.productId, trainerId: args.trainerId },
+        select: { id: true, _count: { select: { variants: true } } },
+      })
       if (!prod) continue
+      // A membership bundles a PRODUCT, not a size: nobody picks "Large" when
+      // they buy the bundle, so the request is recorded with no variant and
+      // the trainer asks when they hand it over. That also means there is no
+      // shelf to take it off — the counts live on the variants — so a
+      // varianted product's stock is left alone rather than decrementing a
+      // Product.stockCount nothing reads and writing a misleading ledger line.
+      // (Per-variant membership items are the upgrade if a trainer ever asks.)
+      const varianted = (prod._count?.variants ?? 0) > 0
       for (let i = 0; i < qty; i++) {
         // Take stock per unit. A membership that's already been paid for is
         // still granted if the shelf is empty — the trainer owes them the item
         // either way — but the count never goes negative.
-        await takeStock(tx, item.productId, { clientId: args.clientId, note: `Package: ${membership.name}` })
+        if (!varianted) {
+          await takeStock(tx, item.productId, { clientId: args.clientId, note: `Package: ${membership.name}` })
+        }
         await tx.productRequest.create({
-          data: { clientId: args.clientId, productId: item.productId, status: 'FULFILLED', fulfilledAt: now, note: `Package: ${membership.name}` },
+          data: { clientId: args.clientId, productId: item.productId, variantId: null, status: 'FULFILLED', fulfilledAt: now, note: `Package: ${membership.name}` },
         })
       }
     } else if (item.kind === 'CLASS' && item.classRunId) {
@@ -195,18 +208,25 @@ export async function regrantRenewalItems(
     if (item.kind !== 'PRODUCT' || !item.productId) continue
     const prod = await tx.product.findFirst({
       where: { id: item.productId, trainerId: args.trainerId },
-      select: { id: true },
+      select: { id: true, _count: { select: { variants: true } } },
     })
     if (!prod) continue
+    // Same reasoning as first fulfilment: the bundle names a product, not a
+    // size, so there is no variant to record and no variant shelf to take it
+    // off.
+    const varianted = (prod._count?.variants ?? 0) > 0
 
     for (let i = 0; i < Math.max(1, item.quantity); i++) {
       // Same rule as first fulfilment: an empty shelf still owes them the item,
       // but the count never goes negative.
-      await takeStock(tx, item.productId, { clientId: args.clientId, note: `Package renewal: ${membership.name}` })
+      if (!varianted) {
+        await takeStock(tx, item.productId, { clientId: args.clientId, note: `Package renewal: ${membership.name}` })
+      }
       await tx.productRequest.create({
         data: {
           clientId: args.clientId,
           productId: item.productId,
+          variantId: null,
           status: 'FULFILLED',
           fulfilledAt: now,
           note: `Package renewal: ${membership.name}`,

@@ -53,13 +53,21 @@ function directionOf(reason: Reason) {
 export function StockSheet({
   productId,
   productName,
+  variantId = null,
   stockCount,
   onClose,
   onChanged,
 }: {
   productId: string
+  /** What the sheet is about — "Long line" or "Long line · Large". */
   productName: string
-  /** null = this product isn't counted yet; the sheet opens on "I counted them". */
+  /**
+   * Which shelf. A varianted product has a count per size, so the sheet has to
+   * say which one it is moving; null is the product's own count, which is what
+   * a product with no variants has always had.
+   */
+  variantId?: string | null
+  /** null = this isn't counted yet; the sheet opens on "I counted them". */
   stockCount: number | null
   onClose: () => void
   onChanged: (next: number | null) => void
@@ -74,12 +82,15 @@ export function StockSheet({
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    const res = await fetch(`/api/products/${productId}/stock`)
+    // The history is per shelf: mixing every size into one list is how "we're
+    // three short" becomes unanswerable.
+    const qs = variantId ? `?variantId=${encodeURIComponent(variantId)}` : ''
+    const res = await fetch(`/api/products/${productId}/stock${qs}`)
     if (!res.ok) return
     const body = await res.json()
     setBalance(body.stockCount ?? null)
     setMovements(body.movements ?? [])
-  }, [productId])
+  }, [productId, variantId])
 
   useEffect(() => { void load() }, [load])
 
@@ -95,7 +106,7 @@ export function StockSheet({
       const res = await fetch(`/api/products/${productId}/stock`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ quantity: parsed, reason, note: note.trim() || null }),
+        body: JSON.stringify({ quantity: parsed, reason, note: note.trim() || null, variantId }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) { setError(readApiError(body, 'Could not record that.')); return }

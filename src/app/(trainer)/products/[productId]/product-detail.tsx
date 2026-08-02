@@ -4,8 +4,9 @@ import { useState } from 'react'
 import type { ProductCategoryOption } from '../product-form'
 import { ProductForm, type ProductDraft } from '../product-form'
 import { ProductPurchases, type Purchase } from './product-purchases'
+import { ProductVariants, type VariantRow } from './product-variants'
 
-type Tab = 'details' | 'purchases'
+type Tab = 'details' | 'options' | 'purchases'
 
 /**
  * A product, as a page: its details on one tab and who has it on the other.
@@ -21,15 +22,22 @@ export function ProductDetail({
   product,
   existingCategories,
   purchases,
+  variants,
 }: {
   product: ProductDraft
   existingCategories: ProductCategoryOption[]
   purchases: Purchase[]
+  /** The sizes/colours this product comes in. Empty = sold as one thing. */
+  variants: VariantRow[]
 }) {
   const [tab, setTab] = useState<Tab>('details')
 
+  // Options is a TAB, not a section of the details form: it is a list with its
+  // own drag order and its own save, and hanging that off the bottom of a form
+  // whose Save means something else is how two saves end up on one screen.
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: 'details', label: 'Details' },
+    { id: 'options', label: 'Options', count: variants.length || undefined },
     { id: 'purchases', label: 'Purchases', count: purchases.length },
   ]
 
@@ -66,7 +74,19 @@ export function ProductDetail({
           isNew={false}
           existingCategories={existingCategories}
           heading={strip}
+          variantCount={variants.length}
         />
+      ) : tab === 'options' ? (
+        <>
+          <div className="flex items-end justify-between gap-3 border-b border-slate-200">{strip}</div>
+          <ProductVariants
+            productId={product.id}
+            productName={product.name}
+            productPriceCents={product.priceCents}
+            productSalePriceCents={product.salePriceCents}
+            initial={variants}
+          />
+        </>
       ) : (
         <>
           <div className="flex items-end justify-between gap-3 border-b border-slate-200">{strip}</div>

@@ -3,10 +3,12 @@ import {
   addStock,
   adjustStock,
   inStock,
+  productInStock,
   recordOpeningBalance,
   setStockCount,
   stockLabel,
   takeStock,
+  totalStock,
 } from '@/lib/stock'
 
 // Stock is deliberately small, so the rules have to be exact: NULL means "I
@@ -20,6 +22,7 @@ import {
 
 const db = {
   product: { findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
+  productVariant: { findFirst: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
   stockMovement: { create: vi.fn() },
 }
 const asDb = () => db as unknown as Parameters<typeof takeStock>[0]
@@ -247,8 +250,131 @@ describe('setStockCount', () => {
     db.product.findUnique.mockResolvedValue({ stockCount: 9, trainerId: 't1' })
 
     expect(await setStockCount(asDb(), 'p1', null)).toBeNull()
-    expect(db.product.update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { stockCount: null } })
+    expect(db.product.update).toHaveBeenCalledWith({
+      where: { id: 'p1' },
+      data: { stockCount: null },
+      // The writer reads the balance back so a variant write and a product
+      // write can return the same thing to the caller.
+      select: { stockCount: true },
+    })
     expect(db.stockMovement.create).not.toHaveBeenCalled()
+  })
+})
+
+// ─── Variants ────────────────────────────────────────────────────────────────
+
+/**
+ * With variants the counts move to the VARIANT rows and Product.stockCount is
+ * ignored. The two things that must stay true: a product with no variants
+ * behaves exactly as it always has (every test above), and a variant sale must
+ * touch its own shelf and nobody else's.
+ */
+describe('a variant is its own shelf', () => {
+  it('takes the unit off the VARIANT, not the product', async () => {
+    db.productVariant.findFirst
+      .mockResolvedValueOnce({ stockCount: 3, trainerId: 't1' })
+      .mockResolvedValueOnce({ stockCount: 2, trainerId: 't1' })
+    db.productVariant.updateMany.mockResolvedValue({ count: 1 })
+
+    expect(await takeStock(asDb(), 'p1', { clientId: 'c1', variantId: 'v_large' })).toBe(true)
+    expect(db.product.updateMany, 'the product’s own count is not the shelf here').not.toHaveBeenCalled()
+    expect(db.productVariant.updateMany).toHaveBeenCalledWith({
+      // Scoped by productId too: a variant id belonging to a different product
+      // must move nothing rather than decrementing a stranger's stock.
+      where: { id: 'v_large', productId: 'p1', stockCount: { gt: 0 } },
+      data: { stockCount: { decrement: 1 } },
+    })
+  })
+
+  it('names the variant on the ledger line, so the history can be read per size', async () => {
+    db.productVariant.findFirst
+      .mockResolvedValueOnce({ stockCount: 3, trainerId: 't1' })
+      .mockResolvedValueOnce({ stockCount: 2, trainerId: 't1' })
+    db.productVariant.updateMany.mockResolvedValue({ count: 1 })
+
+    await takeStock(asDb(), 'p1', { clientId: 'c1', variantId: 'v_large' })
+    expect(movementData()).toMatchObject({
+      productId: 'p1',
+      variantId: 'v_large',
+      delta: -1,
+      reason: 'SOLD',
+      balanceAfter: 2,
+    })
+  })
+
+  it('refuses a variant that does not belong to this product', async () => {
+    db.productVariant.findFirst.mockResolvedValue(null)
+
+    expect(await takeStock(asDb(), 'p1', { variantId: 'v_someone_elses' })).toBe(false)
+    expect(db.productVariant.updateMany).not.toHaveBeenCalled()
+    expect(db.stockMovement.create).not.toHaveBeenCalled()
+  })
+
+  it('books a delivery in against the variant', async () => {
+    db.productVariant.findFirst.mockResolvedValue({ stockCount: 4, trainerId: 't1' })
+    db.productVariant.update.mockResolvedValue({ stockCount: 10 })
+
+    expect(await addStock(asDb(), 'p1', 6, { variantId: 'v_small', userId: 'u1' })).toBe(10)
+    expect(db.product.update).not.toHaveBeenCalled()
+    expect(movementData()).toMatchObject({ variantId: 'v_small', delta: 6, balanceAfter: 10 })
+  })
+
+  it('starts counting a variant that was never counted', async () => {
+    db.productVariant.findFirst.mockResolvedValue({ stockCount: null, trainerId: 't1' })
+    db.productVariant.update.mockResolvedValue({ stockCount: 12 })
+
+    expect(await setStockCount(asDb(), 'p1', 12, { variantId: 'v_small' })).toBe(12)
+    expect(movementData()).toMatchObject({ variantId: 'v_small', delta: 12, balanceAfter: 12 })
+  })
+
+  it('writes off breakages against the variant', async () => {
+    db.productVariant.findFirst.mockResolvedValue({ stockCount: 12, trainerId: 't1' })
+    db.productVariant.update.mockResolvedValue({ stockCount: 9 })
+
+    expect(await adjustStock(asDb(), 'p1', { delta: -3, reason: 'DAMAGED', variantId: 'v_small' })).toBe(9)
+    expect(movementData()).toMatchObject({ variantId: 'v_small', delta: -3, balanceAfter: 9 })
+  })
+
+  it('a new variant born with a count opens its own ledger', async () => {
+    await recordOpeningBalance(asDb(), { productId: 'p1', trainerId: 't1', units: 6, variantId: 'v_new' })
+    expect(movementData()).toMatchObject({ variantId: 'v_new', delta: 6, balanceAfter: 6, reason: 'CORRECTION' })
+  })
+})
+
+describe('productInStock / totalStock', () => {
+  const plain = { stockCount: 4 }
+
+  it('with NO variants, both read the product exactly as before', () => {
+    expect(productInStock(plain)).toBe(true)
+    expect(productInStock({ stockCount: 0 })).toBe(false)
+    expect(productInStock({ stockCount: null })).toBe(true)
+    expect(totalStock(plain)).toBe(4)
+    expect(totalStock({ stockCount: null })).toBeNull()
+  })
+
+  it('a varianted product is only sold out once EVERY size is', () => {
+    expect(productInStock({ stockCount: 0 }, [{ stockCount: 0 }, { stockCount: 2 }])).toBe(true)
+    expect(productInStock({ stockCount: 99 }, [{ stockCount: 0 }, { stockCount: 0 }])).toBe(false)
+  })
+
+  it('ignores the product’s own count once there are variants', () => {
+    // The trap this exists to close: a leftover 99 on the product would keep a
+    // genuinely sold-out set of sizes on sale.
+    expect(totalStock({ stockCount: 99 }, [{ stockCount: 1 }, { stockCount: 2 }])).toBe(3)
+  })
+
+  it('a hidden variant cannot hold a sold-out product open', () => {
+    expect(productInStock({ stockCount: 0 }, [{ stockCount: 0, active: true }, { stockCount: 5, active: false }])).toBe(false)
+  })
+
+  it('an untracked size counts as available, same as an untracked product', () => {
+    expect(productInStock({ stockCount: 0 }, [{ stockCount: null }])).toBe(true)
+    expect(totalStock({ stockCount: 0 }, [{ stockCount: null }]), 'nothing to count').toBeNull()
+  })
+
+  it('counts only the sizes that are actually counted', () => {
+    // "3" is a truer answer than a 0 standing in for "who knows".
+    expect(totalStock({ stockCount: null }, [{ stockCount: 3 }, { stockCount: null }])).toBe(3)
   })
 })
 

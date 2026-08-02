@@ -26,6 +26,12 @@ export interface CheckoutLine {
   unitAmount: number
   quantity?: number
   productId?: string
+  /**
+   * Which variant of that product — the Large, not just "a harness". Null for
+   * a product with no variants and for the lines that aren't catalogue
+   * products at all (the card surcharge below, an invoice settlement).
+   */
+  variantId?: string | null
   /** Link to an existing assignment being settled (invoice on a ClientPackage). */
   clientPackageId?: string
   /** What to create on success, read by the webhook (e.g. { productId, quantity }). */
@@ -103,6 +109,7 @@ export async function createPaymentRecord(input: CreatePaymentRecordInput): Prom
           unitAmount: l.unitAmount,
           quantity: l.quantity ?? 1,
           productId: l.productId ?? null,
+          variantId: l.variantId ?? null,
           clientPackageId: l.clientPackageId ?? null,
           intent: l.intent,
         })),

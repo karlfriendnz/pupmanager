@@ -8,6 +8,9 @@ import { z } from 'zod'
 
 const postSchema = z.object({
   productId: z.string().min(1),
+  // Which size/colour the trainer handed over. Checked against the product's
+  // own variants below.
+  variantId: z.string().nullable().optional(),
   note: z.string().max(500).optional(),
 })
 
@@ -38,15 +41,28 @@ export async function POST(
   // the client's "store" is that primary.
   const product = await prisma.product.findFirst({
     where: { id: parsed.data.productId, trainerId: access.client.trainerId },
-    select: { id: true },
+    select: { id: true, variants: { select: { id: true } } },
   })
   if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 })
   // No `active` gate here: a trainer can add any of their own products to a
   // client, including hidden ones. `active` only controls the client's shop.
+  // Hidden VARIANTS are allowed for the same reason — a trainer handing over
+  // the last of a discontinued size is recording what happened.
 
-  // Idempotent — return any existing PENDING request for this pair.
+  const variants = product.variants ?? []
+  const variantId = parsed.data.variantId ?? null
+  if (variantId && !variants.some(v => v.id === variantId)) {
+    return NextResponse.json({ error: 'Product not found' }, { status: 404 })
+  }
+  if (variants.length > 0 && !variantId) {
+    return NextResponse.json({ error: 'Choose an option first.' }, { status: 400 })
+  }
+
+  // Idempotent — return any existing PENDING request for this exact thing.
+  // Per VARIANT: giving a client a Large when a Small is already pending is a
+  // second item, not a repeat.
   const existing = await prisma.productRequest.findFirst({
-    where: { clientId, productId: parsed.data.productId, status: 'PENDING' },
+    where: { clientId, productId: parsed.data.productId, variantId, status: 'PENDING' },
   })
   if (existing) return NextResponse.json(existing)
 
@@ -57,6 +73,7 @@ export async function POST(
   if (!(await takeStock(prisma, parsed.data.productId, {
     clientId,
     userId: session.user.id,
+    variantId,
     note: 'Added to a client by their trainer',
   }))) {
     return NextResponse.json({ error: 'That item is out of stock.' }, { status: 409 })
@@ -66,6 +83,7 @@ export async function POST(
     data: {
       clientId,
       productId: parsed.data.productId,
+      variantId,
       note: parsed.data.note ?? null,
       status: 'PENDING',
     },
@@ -77,6 +95,7 @@ export async function POST(
     clientId,
     sourceType: 'PRODUCT',
     productId: parsed.data.productId,
+    productVariantId: variantId,
   })
 
   return NextResponse.json(created, { status: 201 })

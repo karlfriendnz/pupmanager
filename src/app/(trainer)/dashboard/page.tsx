@@ -145,6 +145,9 @@ export default async function DashboardPage({
       note: true,
       client: { select: { id: true, user: { select: { name: true, email: true } } } },
       product: { select: { id: true, name: true, kind: true, imageUrl: true } },
+      // Which one was asked for. This panel is a to-do list of things to go
+      // and fetch, and "a harness" cannot be fetched.
+      variant: { select: { name: true } },
     },
   })
   // Packages a client asked for that checkout can't take (a recurring plan, or
@@ -440,6 +443,7 @@ export default async function DashboardPage({
                 note: r.note,
                 client: { id: r.client.id, name: r.client.user.name ?? r.client.user.email },
                 product: { id: r.product.id, name: r.product.name },
+                variantName: r.variant?.name ?? null,
               }))}
               membershipRequests={pendingMembershipRequests}
             />
@@ -696,6 +700,7 @@ export default async function DashboardPage({
             name: r.client.user.name ?? r.client.user.email,
           },
           product: { id: r.product.id, name: r.product.name },
+          variantName: r.variant?.name ?? null,
         }))}
           membershipRequests={pendingMembershipRequests}
         />

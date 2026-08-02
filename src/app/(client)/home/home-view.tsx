@@ -77,6 +77,16 @@ interface FeaturedProduct {
   priceCents: number | null
   salePriceCents: number | null
   imageUrl: string | null
+  /**
+   * How many sizes/colours it comes in, and the cheapest of them. 0 = sold as
+   * one thing and the two prices above are the whole story, unchanged.
+   *
+   * A card that says "$40" for something whose only $40 option is the Small is
+   * a price the client can't necessarily pay, so a varianted product says
+   * "from" and how many there are, and the picking happens in the shop.
+   */
+  optionCount?: number
+  fromCents?: number | null
 }
 
 interface LibraryItem {
@@ -468,8 +478,19 @@ export function ClientHomeView({
                     <div className="p-3">
                       <p className="text-sm font-semibold text-slate-900 line-clamp-1">{p.name}</p>
                       <p className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5">
-                        <span className="text-xs text-accent font-bold">{formatPrice(effectivePriceCents(p))}</span>
-                        {isOnSale(p) && <s className="text-[11px] font-medium text-slate-400">{formatPrice(p.priceCents)}</s>}
+                        {p.optionCount ? (
+                          <>
+                            <span className="text-xs text-accent font-bold">
+                              {p.fromCents != null ? `from ${formatPrice(p.fromCents)}` : formatPrice(null)}
+                            </span>
+                            <span className="text-[11px] text-slate-400">{p.optionCount} options</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-xs text-accent font-bold">{formatPrice(effectivePriceCents(p))}</span>
+                            {isOnSale(p) && <s className="text-[11px] font-medium text-slate-400">{formatPrice(p.priceCents)}</s>}
+                          </>
+                        )}
                       </p>
                     </div>
                   </Link>

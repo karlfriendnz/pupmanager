@@ -13,6 +13,11 @@ export interface PendingProductRequest {
   note: string | null
   client: { id: string; name: string | null }
   product: { id: string; name: string }
+  /**
+   * Which size/colour, when the product has options. The trainer is being
+   * asked to go and fetch this thing, and "a harness" isn't a thing.
+   */
+  variantName?: string | null
 }
 
 /** A package a client asked for because checkout refused to take it. */

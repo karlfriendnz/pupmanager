@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { inStock, takeStock } from '@/lib/stock'
-import { effectivePriceCents, isOnSale } from '@/lib/product-price'
+import { effectivePriceCents, isOnSale, resolveVariantPricing } from '@/lib/product-price'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { createConnectCheckout } from '@/lib/connect-checkout'
@@ -47,24 +47,61 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
 
   const product = await prisma.product.findUnique({
     where: { id: productId },
-    select: { id: true, trainerId: true, active: true, name: true, kind: true, priceCents: true, salePriceCents: true, requirePayment: true, stockCount: true },
+    select: {
+      id: true, trainerId: true, active: true, name: true, kind: true,
+      priceCents: true, salePriceCents: true, requirePayment: true, stockCount: true,
+      // Which sizes/colours exist at all. Read here so a product WITH variants
+      // can never be bought without naming one — the alternative is a paid
+      // order nobody can fulfil.
+      variants: {
+        where: { active: true },
+        select: { id: true, name: true, priceCents: true, salePriceCents: true, stockCount: true },
+      },
+    },
   })
   if (!product || product.trainerId !== profile.trainerId || !product.active) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
-  // The sale price, when there is one, is what the client is charged. Resolved
-  // server-side from the row — never taken from the request.
-  const chargeCents = effectivePriceCents(product)
+
+  // Which one they picked. Read from the body, then resolved against the
+  // product's OWN variants — never trusted as an id on its own.
+  let variantId: string | null = null
+  try {
+    const text = await req.text()
+    if (text) {
+      const body = JSON.parse(text) as { variantId?: unknown }
+      if (typeof body?.variantId === 'string' && body.variantId) variantId = body.variantId
+    }
+  } catch { /* no body — a product with no variants doesn't need one */ }
+
+  const variants = product.variants ?? []
+  const variant = variantId ? variants.find(v => v.id === variantId) ?? null : null
+  if (variantId && !variant) {
+    return NextResponse.json({ error: 'That option isn’t available.' }, { status: 404 })
+  }
+  if (variants.length > 0 && !variant) {
+    return NextResponse.json({ error: 'Choose an option first.' }, { status: 400 })
+  }
+
+  // The sale price, when there is one, is what the client is charged — the
+  // VARIANT's when they picked one, inheriting the product's where it has none.
+  // Resolved server-side from the rows, never taken from the request.
+  const pricing = resolveVariantPricing(product, variant)
+  const chargeCents = effectivePriceCents(pricing)
   if (!chargeCents || chargeCents <= 0) {
     return NextResponse.json({ error: 'This item isn’t for sale online.' }, { status: 400 })
   }
 
   // Nothing is sold that can't be handed over. Checked here, BEFORE any money
   // moves; the actual decrement happens once the payment settles (or, on the
-  // pay-later branch below, when the request is created).
-  if (!inStock(product.stockCount)) {
+  // pay-later branch below, when the request is created). With variants the
+  // count that matters is the picked one's — the product's is ignored.
+  if (!inStock(variant ? variant.stockCount : product.stockCount)) {
     return NextResponse.json({ error: 'That item is out of stock.' }, { status: 409 })
   }
+
+  /** What the client sees on the Stripe page, the invoice and the trainer's alert. */
+  const saleName = variant ? `${product.name} — ${variant.name}` : product.name
 
   // Apple: no in-app purchase of digital goods. We hide the button in the
   // native app; this is the server-side backstop — the app reports itself via
@@ -94,17 +131,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
   // pay later: create a PENDING request (idempotent) and raise a receivable
   // instead of charging a card. Mirrors the /request route.
   if (!resolveRequirePayment(product.requirePayment, trainer.defaultRequirePayment)) {
+    // Per VARIANT, not per product: a Small already on order must not swallow
+    // an order for a Large.
     const existing = await prisma.productRequest.findFirst({
-      where: { clientId: profile.id, productId: product.id, status: 'PENDING' },
+      where: { clientId: profile.id, productId: product.id, variantId, status: 'PENDING' },
       select: { id: true },
     })
     if (!existing) {
-      // One unit off the shelf. Refused rather than oversold.
-      if (!(await takeStock(prisma, product.id, { clientId: profile.id, note: 'Bought in the client app, pay later' }))) {
+      // One unit off the shelf — the picked variant's, when there is one.
+      // Refused rather than oversold.
+      if (!(await takeStock(prisma, product.id, { clientId: profile.id, variantId, note: 'Bought in the client app, pay later' }))) {
         return NextResponse.json({ error: 'That item is out of stock.' }, { status: 409 })
       }
       await prisma.productRequest.create({
-        data: { clientId: profile.id, productId: product.id, status: 'PENDING' },
+        data: { clientId: profile.id, productId: product.id, variantId, status: 'PENDING' },
       })
     }
     await createInvoiceForAssignment({
@@ -112,6 +152,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
       clientId: profile.id,
       sourceType: 'PRODUCT',
       productId: product.id,
+      productVariantId: variantId,
     })
     // Tell the trainer their client bought this item (book-now-pay-later path).
     // The card-checkout path below finishes in the connect webhook, so it isn't
@@ -121,7 +162,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
       await notifyTrainer(
         trainerUserId,
         'CLIENT_SHOP_ORDER',
-        { clientName: profile.user?.name ?? 'A client', dogName: profile.dog?.name ?? '', detail: `bought “${product.name}”` },
+        { clientName: profile.user?.name ?? 'A client', dogName: profile.dog?.name ?? '', detail: `bought “${saleName}”` },
         `/clients/${profile.id}`,
         profile.trainerId,
       )
@@ -143,15 +184,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
     connectAccountId: trainer.connectAccountId,
     clientId: profile.id,
     currency,
-    description: product.name,
+    description: saleName,
     lines: [
       {
         kind: 'PRODUCT',
-        description: isOnSale(product) ? `${product.name} (sale)` : product.name,
+        description: isOnSale(pricing) ? `${saleName} (sale)` : saleName,
         unitAmount: chargeCents,
         quantity: 1,
         productId: product.id,
-        intent: { productId: product.id, quantity: 1 },
+        // Carried on the line AND in the intent: the line is what the trainer
+        // reads back as "who bought which size", the intent is what the
+        // webhook fulfils from.
+        variantId,
+        intent: { productId: product.id, variantId, quantity: 1 },
       },
     ],
     successUrl: `${shop}?purchase=success`,

@@ -16,6 +16,11 @@ import { prisma } from '@/lib/prisma'
 // Stock does NOT come across either. Units on hand describe a thing on a shelf,
 // and the copy is a different thing; inheriting 12 would overstate what the
 // trainer actually has.
+//
+// VARIANTS DO come across — names, prices, SKUs and order, with the counts
+// blanked for the reason above. "Small / Medium / Large" is the most laborious
+// part of setting a product up and the likeliest reason to duplicate one at
+// all; a copy that silently lost them would be worse than no copy.
 export const runtime = 'nodejs'
 
 export async function POST(_req: Request, { params }: { params: Promise<{ productId: string }> }) {
@@ -26,6 +31,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ produc
 
   const original = await prisma.product.findFirst({
     where: { id: productId, trainerId: guard.companyId },
+    include: { variants: { orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] } },
   })
   if (!original) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -55,6 +61,21 @@ export async function POST(_req: Request, { params }: { params: Promise<{ produc
         active: false,
         stockCount: null,
         order: original.order + 1,
+        variants: {
+          create: (original.variants ?? []).map((v, i) => ({
+            trainerId: original.trainerId,
+            name: v.name,
+            sku: v.sku,
+            priceCents: v.priceCents,
+            salePriceCents: v.salePriceCents,
+            imageUrl: v.imageUrl,
+            active: v.active,
+            order: i,
+            // Blank, for the same reason the product's own count is: this is a
+            // different thing, on nobody's shelf yet.
+            stockCount: null,
+          })),
+        },
       },
     })
   })

@@ -96,6 +96,35 @@ export function runHref(runId: string, pkg: RunKindPackage): string {
   return `${RUN_KIND_BASE_PATH[runKind(pkg)]}/${runId}`
 }
 
+/** An OFFERING's kind needs one more flag than a run's: a 1:1 package has no
+ *  run at all, so `isGroup` is what separates it from the four run kinds. */
+export type OfferingKindPackage = RunKindPackage & { isGroup: boolean }
+
+/**
+ * The LIST screen this offering lives on.
+ *
+ * Deleting an offering used to always land on `/packages`, which is the 1:1
+ * Sessions list — not "all offerings". A daycare-only trainer doesn't even have
+ * that entry in their nav (it's add-on gated), so deleting a daycare programme
+ * dropped them on an empty screen for a section they don't use, with no obvious
+ * way back. Every offering already knows which section it belongs to; ask it.
+ */
+export function offeringListHref(pkg: OfferingKindPackage): string {
+  if (!pkg.isGroup) return '/packages'
+  return RUN_KIND_BASE_PATH[runKind(pkg)]
+}
+
+/** What a trainer calls this offering, for messages written back to them. */
+export function offeringKindLabel(pkg: OfferingKindPackage): string {
+  if (!pkg.isGroup) return '1:1 session'
+  switch (runKind(pkg)) {
+    case 'daycare': return 'daycare programme'
+    case 'event': return 'event'
+    case 'casual': return 'casual class'
+    case 'class': return 'class'
+  }
+}
+
 /**
  * The screen for ONE session of a run.
  *

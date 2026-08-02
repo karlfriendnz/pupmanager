@@ -14,6 +14,12 @@ export interface Purchase {
   /** PAID = money taken, OWING = invoiced/pay-later, REQUESTED = asked for it. */
   state: 'PAID' | 'OWING' | 'REQUESTED'
   amountCents: number | null
+  /**
+   * Which option they took — "Large". Null for a product with no options.
+   * Without it this list says three people are owed a harness and nothing
+   * about which sizes to pull off the shelf.
+   */
+  variantName?: string | null
   at: string // ISO
 }
 
@@ -82,6 +88,7 @@ export function ProductPurchases({ purchases }: { purchases: Purchase[] }) {
                     {p.dogName && <span className="text-slate-400"> · {p.dogName}</span>}
                   </span>
                   <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                    {p.variantName ? `${p.variantName} · ` : ''}
                     {STATE_LABEL[p.state]} · {formatWhen(p.at)}
                   </span>
                 </span>

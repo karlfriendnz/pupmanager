@@ -736,6 +736,7 @@ model TrainerProfile {
   locations          Location[]
   productCategories  ProductCategory[]
   stockMovements     StockMovement[]
+  productVariants    ProductVariant[]
 
   @@map("trainer_profiles")
 }
@@ -1614,6 +1615,11 @@ model Product {
   // the trainer never runs out of) — the common case, and why this is nullable
   // rather than defaulting to 0, which would read as "sold out" for every
   // existing product. Counts down as items go out; the trainer tops it up.
+  //
+  // IGNORED once this product has variants: the counts then live on the
+  // variant rows, because a harness in S/M/L is three shelves, not one. See
+  // productInStock()/totalStock() in src/lib/stock.ts, which are the only
+  // places that decide which of the two to read.
   stockCount      Int?
   featured        Boolean     @default(false) // surfaces on the client home dashboard
   active          Boolean     @default(true) // hide from clients without deleting
@@ -1637,10 +1643,65 @@ model Product {
   requests        ProductRequest[]
   paymentItems    PaymentItem[]
   stockMovements  StockMovement[]
+  variants        ProductVariant[]
 
   @@index([trainerId])
   @@index([category])
   @@map("products")
+}
+
+// One buyable version of a product — "Small", "Large", "Red · Large".
+//
+// FLAT NAMED ROWS, not option axes. A Shopify-style ProductOption × value
+// matrix is several times the work (an axis editor, a generated combination
+// grid, partial-combination rules) and this is a dog trainer's shop: a harness
+// in three sizes and a lead in two colours. The name IS the choice the client
+// makes. Axes are the future upgrade if a trainer ever needs them, and this
+// shape does not block it — a generator would write these same rows, with the
+// axis values recorded alongside.
+model ProductVariant {
+  id        String @id @default(cuid())
+  productId String
+  // Tenant scope, denormalised off the product exactly as StockMovement does
+  // it: a variant is read in stock and sales queries that must never be able
+  // to cross businesses.
+  trainerId String
+
+  // What a client picks. Free text, because "1kg" and "Red · Large" are both
+  // the same kind of answer to "which one?".
+  name String
+  // The trainer's own code, for their supplier or their shelf label. Never
+  // shown to clients.
+  sku  String?
+
+  // NULL = inherit the product's. Five sizes at one price is the common case,
+  // so it is entered once on the product and left alone here. Resolved in ONE
+  // place — resolveVariantPricing() in src/lib/product-price.ts.
+  priceCents     Int?
+  salePriceCents Int?
+  // NULL = the product's photo. Only worth setting when the colours differ.
+  imageUrl       String?
+  // Units on hand for THIS variant. NULL = not tracked, the same meaning it
+  // has on Product. When a product has variants these are the counts that
+  // matter and Product.stockCount is ignored.
+  stockCount     Int?
+
+  active Boolean @default(true)
+  order  Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product  Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  trainer  TrainerProfile   @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  requests ProductRequest[]
+  // History and sales outlive a deleted variant (SetNull on both sides), the
+  // same rule the stock ledger already applies to clients and staff.
+  movements    StockMovement[]
+  paymentItems PaymentItem[]
+
+  @@index([productId, order])
+  @@map("product_variants")
 }
 
 // A client's standing request for a product. Stays PENDING and rolls forward
@@ -1650,6 +1711,10 @@ model ProductRequest {
   id        String               @id @default(cuid())
   clientId  String
   productId String
+  // WHICH one they asked for. NULL = the product has no variants (or predates
+  // them) — without this you cannot tell whether the harness to hand over is a
+  // Small or a Large, which is the whole reason variants exist.
+  variantId String?
   status    ProductRequestStatus @default(PENDING)
 
   // Optional notes from the client when they request (e.g. "for Bella, size L")
@@ -1665,6 +1730,9 @@ model ProductRequest {
 
   client           ClientProfile    @relation(fields: [clientId], references: [id], onDelete: Cascade)
   product          Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  // A deleted variant blanks the pointer rather than deleting the order — the
+  // client still asked for something, and the product line survives.
+  variant          ProductVariant?  @relation(fields: [variantId], references: [id], onDelete: SetNull)
   fulfilledSession TrainingSession? @relation(fields: [fulfilledSessionId], references: [id], onDelete: SetNull)
 
   @@index([clientId, status])
@@ -1691,13 +1759,12 @@ enum StockMovementReason {
 // LEDGER beside the balance, written in the SAME transaction as the balance
 // change, exactly as a real inventory system keeps both.
 //
-// VARIANTS ARE COMING (size/colour SKUs under one product), which is why
-// variantId exists before anything writes it: NULL means "the product's only
-// SKU", so every row written today stays true with no backfill, and when
-// variants land a movement points at the one it moved. productId stays
-// REQUIRED so a movement is always attributable to a product even then — and
-// the BALANCE will move to the variant at that point (Product.stockCount
-// becoming the sum of its variants, or dropping away for varianted products).
+// VARIANTS LANDED (size/colour SKUs under one product). variantId was here
+// before anything wrote it, so no backfill was needed: NULL still means "the
+// product's only SKU" and every row written before variants stays true.
+// productId stays REQUIRED so a movement is always attributable to a product,
+// and the BALANCE a movement describes is the variant's `stockCount` when
+// variantId is set, the product's when it isn't.
 model StockMovement {
   id        String  @id @default(cuid())
   productId String
@@ -1726,9 +1793,11 @@ model StockMovement {
   product Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
   trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   // History outlives the people in it: deleting a client or a staff member
-  // blanks the attribution, it does not erase the movement.
-  client  ClientProfile? @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  user    User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // blanks the attribution, it does not erase the movement. Same for a
+  // retired variant — the units still moved.
+  client  ClientProfile?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  user    User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
   @@index([productId, createdAt])
   @@index([trainerId, createdAt])
@@ -2948,6 +3017,11 @@ model PaymentItem {
   clientPackageId   String? @unique
   trainingSessionId String? @unique
   productId         String?
+  // Which variant was paid for. NULL = a product with no variants, or a line
+  // that isn't a catalogue product at all (a card surcharge, an invoice
+  // settlement). "They bought a harness" is not enough to pick one off the
+  // shelf; "they bought the Large" is.
+  variantId         String?
   classEnrollmentId String? @unique
   // What to create on payment success, captured at checkout time, e.g.
   // { packageId, slotIso, dogId, bookingPageId, quantity }.
@@ -2957,6 +3031,7 @@ model PaymentItem {
   clientPackage   ClientPackage?   @relation(fields: [clientPackageId], references: [id], onDelete: SetNull)
   trainingSession TrainingSession? @relation(fields: [trainingSessionId], references: [id], onDelete: SetNull)
   product         Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variant         ProductVariant?  @relation(fields: [variantId], references: [id], onDelete: SetNull)
   classEnrollment ClassEnrollment? @relation(fields: [classEnrollmentId], references: [id], onDelete: SetNull)
 
   @@index([paymentId])

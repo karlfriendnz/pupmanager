@@ -23,6 +23,9 @@ const postSchema = z.object({
   quantity: z.number().int().min(0).max(1_000_000),
   reason: z.enum(['RECEIVED', 'RETURNED', 'SOLD', 'DAMAGED', 'LOST', 'CORRECTION']),
   note: z.string().max(500).nullable().optional(),
+  // Which shelf. Absent = the product's own count, which is what a product
+  // with no variants has and always had.
+  variantId: z.string().nullable().optional(),
 })
 
 /** Reasons that put units ON the shelf. Everything else takes them off, except
@@ -36,9 +39,25 @@ async function ownedProduct(productId: string, companyId: string) {
   })
 }
 
-async function history(productId: string, companyId: string) {
+/**
+ * The shelf this request is about: a variant of the product, or the product
+ * itself. Scoped by productId as well as its own id so a variant id from
+ * another product (or another business) resolves to nothing.
+ */
+async function ownedVariant(productId: string, variantId: string) {
+  return prisma.productVariant.findFirst({
+    where: { id: variantId, productId },
+    select: { id: true, stockCount: true },
+  })
+}
+
+/**
+ * One shelf's history. A variant's movements are its own — mixing every size
+ * into one list is how "we're three short" becomes unanswerable.
+ */
+async function history(productId: string, companyId: string, variantId?: string | null) {
   const rows = await prisma.stockMovement.findMany({
-    where: { productId, trainerId: companyId },
+    where: { productId, trainerId: companyId, ...(variantId ? { variantId } : {}) },
     orderBy: { createdAt: 'desc' },
     take: HISTORY_LIMIT,
     select: {
@@ -64,7 +83,7 @@ async function history(productId: string, companyId: string) {
   }))
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ productId: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ productId: string }> }) {
   const guard = await guardPermission('products.manage')
   if (guard instanceof NextResponse) return guard
 
@@ -72,9 +91,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ product
   const product = await ownedProduct(productId, guard.companyId)
   if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
+  const variantId = new URL(req.url).searchParams.get('variantId')
+  const variant = variantId ? await ownedVariant(productId, variantId) : null
+  if (variantId && !variant) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   return NextResponse.json({
-    stockCount: product.stockCount,
-    movements: await history(productId, guard.companyId),
+    stockCount: variant ? variant.stockCount : product.stockCount,
+    movements: await history(productId, guard.companyId, variantId),
   })
 }
 
@@ -93,12 +116,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
   const { quantity, reason } = parsed.data
   const note = parsed.data.note?.trim() || null
 
-  // An untracked product has no balance to add to or take from. CORRECTION is
+  // Which shelf moved. A variant's count is its own; the product's is what a
+  // product without variants has.
+  const variantId = parsed.data.variantId ?? null
+  const variant = variantId ? await ownedVariant(productId, variantId) : null
+  if (variantId && !variant) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const before = variant ? variant.stockCount : product.stockCount
+
+  // An untracked shelf has no balance to add to or take from. CORRECTION is
   // the exception, and the point of it: it is how a trainer STARTS counting
   // something they never counted before, opening balance and all.
-  if (product.stockCount === null && reason !== 'CORRECTION') {
+  if (before === null && reason !== 'CORRECTION') {
     return NextResponse.json(
-      { error: 'This product isn’t being counted yet. Set a count first.' },
+      { error: 'This isn’t being counted yet. Set a count first.' },
       { status: 409 },
     )
   }
@@ -107,20 +137,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
     if (reason === 'CORRECTION') {
       // The number typed IS the new count, not an amount to add — "I counted,
       // there are nine" is the only reading of a correction that fixes drift.
-      return setStockCount(tx, productId, quantity, { userId, note })
+      return setStockCount(tx, productId, quantity, { userId, note, variantId })
     }
     if (ADDING.has(reason)) {
       return addStock(tx, productId, quantity, {
         userId,
         note,
+        variantId,
         reason: reason as 'RECEIVED' | 'RETURNED',
       })
     }
-    return adjustStock(tx, productId, { delta: -quantity, reason, userId, note })
+    return adjustStock(tx, productId, { delta: -quantity, reason, userId, note, variantId })
   })
 
   return NextResponse.json({
     stockCount,
-    movements: await history(productId, guard.companyId),
+    movements: await history(productId, guard.companyId, variantId),
   })
 }
