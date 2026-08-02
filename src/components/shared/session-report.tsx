@@ -2,6 +2,8 @@ import { Star, Check } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/card'
 import { formatSessionTitle } from '@/lib/utils'
 import { ReportAttachmentsGallery, type ReportAttachment } from './report-attachments'
+import { RichText } from './rich-text'
+import { isRichTextEmpty } from '@/lib/rich-text'
 
 export type { ReportAttachment }
 
@@ -198,7 +200,13 @@ export function SessionReport({
                     >
                       {t.title}
                     </p>
-                    {t.description && <p className="text-sm text-slate-600 mt-1 whitespace-pre-wrap">{t.description}</p>}
+                    {/* Tiptap HTML — it goes through <RichText>, which
+                        sanitizes and applies .tiptap-body. Rendered as text it
+                        printed its own <p> tags to the client (AGENTS.md:
+                        never render a description any other way). */}
+                    {t.description && !isRichTextEmpty(t.description) && (
+                      <div className="mt-1 text-sm text-slate-600"><RichText html={t.description} /></div>
+                    )}
                     {t.repetitions != null && t.repetitions > 0 && (
                       <p className="text-xs text-slate-400 mt-1">{t.repetitions} reps</p>
                     )}

@@ -85,10 +85,15 @@ export default async function ClientHomePage() {
         virtualLink: true,
       },
     }),
+    // "Recap ready" has to MEAN a recap is ready. A completed session is not
+    // the same thing: the write-up stays private until the trainer sends it
+    // (formResponses.sentAt), so this promised a recap and then the detail
+    // screen — correctly — had nothing to show.
     prisma.trainingSession.findMany({
       where: {
         clientId: clientProfile.id,
         status: { in: ['COMPLETED', 'COMMENTED', 'INVOICED'] },
+        formResponses: { some: { sentAt: { not: null } } },
         ...SESSIONS_NOT_SUSPENDED,
       },
       orderBy: { scheduledAt: 'desc' },

@@ -1,5 +1,7 @@
 'use client'
 
+import { RichText } from '@/components/shared/rich-text'
+import { isRichTextEmpty } from '@/lib/rich-text'
 import { useEffect, useMemo, useState } from 'react'
 import {
   Check, Plus, Search, Loader2, ChevronLeft, ChevronRight, X, Minus, Repeat,
@@ -167,7 +169,9 @@ export function HomeworkFlow({
         }
       >
         <h2 className="text-2xl font-bold leading-tight text-slate-900">{task.title}</h2>
-        {task.description && <p className="mt-1.5 text-sm text-slate-500 whitespace-pre-wrap">{task.description}</p>}
+        {task.description && !isRichTextEmpty(task.description) && (
+          <div className="mt-1.5 text-sm text-slate-500"><RichText html={task.description} /></div>
+        )}
 
         <div className="mt-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">Repetitions</p>

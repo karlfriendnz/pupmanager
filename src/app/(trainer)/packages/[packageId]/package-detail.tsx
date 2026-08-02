@@ -132,7 +132,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
     },
     // 1:1 packages can send automated session reminders; group packages run
     // through their class page instead.
-    ...(!pkg.isGroup ? [{ id: 'messages' as const, label: 'Reminders & messages', icon: Bell }] : []),
+    ...(!pkg.isGroup ? [{ id: 'messages' as const, label: 'Reminders', icon: Bell }] : []),
   ]
 
   return (

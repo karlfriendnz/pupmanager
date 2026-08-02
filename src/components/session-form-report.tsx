@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { richTextToPlain } from '@/lib/rich-text'
 import { Button } from '@/components/ui/button'
 import { Plus, Loader2, FileText, Pencil, Trash2, Star, Link2, X, Sparkles, Check, Lock, List, Layers, ChevronLeft, ChevronRight, ChevronDown, Send } from 'lucide-react'
 import { VoiceInput } from '@/components/voice-input'
@@ -658,7 +659,7 @@ function FormPickerBody({
                 className="w-full text-left p-3 rounded-xl hover:bg-slate-50 transition-colors"
               >
                 <p className="text-sm font-medium text-slate-900">{t.name}</p>
-                {t.description && <p className="text-xs text-slate-500 mt-0.5">{t.description}</p>}
+                {t.description && <p className="text-xs text-slate-500 mt-0.5">{richTextToPlain(t.description)}</p>}
                 <p className="text-xs text-slate-400 mt-0.5">
                   {t.questions.length} question{t.questions.length === 1 ? '' : 's'}
                   {linkedCount > 0 && (

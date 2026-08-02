@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { richTextToPlain } from '@/lib/rich-text'
 import { Loader2, Plus, Trash2, Search, Layers, GripVertical, Repeat } from 'lucide-react'
 import { VoiceInput } from '@/components/voice-input'
 import { ImageUploadButton, ImageGallery } from '@/components/image-uploader'
@@ -615,7 +616,7 @@ function AttachedTaskRow({
         </div>
 
         {task.description && (
-          <p className="text-sm text-slate-500 mt-1 leading-snug">{task.description}</p>
+          <p className="text-sm text-slate-500 mt-1 leading-snug">{richTextToPlain(task.description)}</p>
         )}
 
         {/* Composer — always visible. Action chips float in the bottom-right
