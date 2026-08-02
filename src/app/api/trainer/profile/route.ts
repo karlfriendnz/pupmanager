@@ -54,7 +54,7 @@ const patchSchema = z.object({
   // The URL is validated harder than the others because it is rendered inside
   // a CSS url() rather than an <img src> — see cssImageUrlSchema.
   homeHeroImageUrl: cssImageUrlSchema().optional(),
-  homeHeroShowLogo: z.boolean().optional(),
+  homeHeroShowLockup: z.boolean().optional(),
   iconUrl: z.string().url().optional().or(z.literal('')),
   website: z.string().max(200).optional().or(z.literal('')),
   publicEmail: z.string().max(200).optional().or(z.literal('')),

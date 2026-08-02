@@ -88,17 +88,17 @@ describe('PATCH trainer/profile — home hero ownership', () => {
     expect(h.profileUpdate).not.toHaveBeenCalled()
   })
 
-  it('stores the logo choice as a boolean on the same company row', async () => {
-    const res = await PATCH(req({ homeHeroShowLogo: false }))
+  it('stores the lockup choice as a boolean on the same company row', async () => {
+    const res = await PATCH(req({ homeHeroShowLockup: false }))
     expect(res.status).toBe(200)
     expect(h.profileUpdate).toHaveBeenCalledWith({
       where: { id: 'company-1' },
-      data: { homeHeroShowLogo: false },
+      data: { homeHeroShowLockup: false },
     })
   })
 
-  it('rejects a non-boolean logo choice with 400 (no write)', async () => {
-    const res = await PATCH(req({ homeHeroShowLogo: 'yes' }))
+  it('rejects a non-boolean lockup choice with 400 (no write)', async () => {
+    const res = await PATCH(req({ homeHeroShowLockup: 'yes' }))
     expect(res.status).toBe(400)
     expect(h.profileUpdate).not.toHaveBeenCalled()
   })

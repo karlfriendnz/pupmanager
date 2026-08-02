@@ -54,7 +54,7 @@ export function TrainerSettingsForm({
   section = 'both',
 }: {
   user: { name: string | null; email: string | null; timezone: string; landingPage: string }
-  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; addressCountry: string | null; publicEmail: string | null; logoUrl: string | null; iconUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[]; payoutCurrency: string | null; homeHeroImageUrl: string | null; homeHeroShowLogo: boolean }
+  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; addressCountry: string | null; publicEmail: string | null; logoUrl: string | null; iconUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[]; payoutCurrency: string | null; homeHeroImageUrl: string | null; homeHeroShowLockup: boolean }
   /** Which half to render — the two live on separate Settings tabs now.
    *  'both' keeps the original single-page layout for any other caller. */
   section?: 'details' | 'design' | 'both'
@@ -446,7 +446,7 @@ export function TrainerSettingsForm({
         companyName={businessForm.watch('businessName')}
         logoUrl={logoUrl || null}
         initialImageUrl={profile.homeHeroImageUrl}
-        initialShowLogo={profile.homeHeroShowLogo}
+        initialShowLockup={profile.homeHeroShowLockup}
         firstName={(user.name ?? '').split(' ')[0] ?? ''}
       />
         </Accordion>

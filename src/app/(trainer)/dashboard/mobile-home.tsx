@@ -54,7 +54,7 @@ export function MobileHome({
   requests,
   accentColor,
   heroImageUrl,
-  heroShowLogo,
+  heroShowLockup,
 }: {
   greeting: string
   firstName: string
@@ -83,8 +83,8 @@ export function MobileHome({
   accentColor: string | null
   /** Company-wide home background photo (Settings → Design), or null. */
   heroImageUrl: string | null
-  /** Company-wide: show the logo lockup over that photo, or just the greeting. */
-  heroShowLogo: boolean
+  /** Company-wide: show the lockup — logo AND greeting — over that photo. */
+  heroShowLockup: boolean
 }) {
   // Colour on this screen is the trainer's own, not a palette we picked. Their
   // brand colour tints the icons and the "needs you" strip; everything else
@@ -220,7 +220,7 @@ export function MobileHome({
           tiles, ending fully opaque at the last one. */}
       <HomeHero
         imageUrl={heroImageUrl}
-        showLogo={heroShowLogo}
+        showLockup={heroShowLockup}
         logoUrl={logoUrl}
         businessName={businessName}
         firstName={firstName}

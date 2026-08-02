@@ -2,7 +2,10 @@
 
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Calendar, ChevronRight, ClipboardCheck, ImagePlus, Loader2, Users } from 'lucide-react'
+import {
+  Calendar, ChevronRight, ClipboardCheck, FileText, ImagePlus, Layers, Loader2,
+  Menu, Plus, Receipt, Search, Users, Wallet,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { AccordionItem } from '@/components/ui/accordion'
@@ -32,34 +35,47 @@ import { HomeHero } from '@/components/shared/home-hero'
 /**
  * A true phone width, scaled to fit the settings column.
  *
- * PHONE_H is deliberately taller than the preview content needs. The fade only
- * makes sense if you can see it FINISH — a frame cropped mid-tile-grid shows
- * the photo still going and answers nothing. The spare height below the tiles
- * is not padding, it's the page background the fade lands on, which is the
- * thing being judged.
+ * SCREEN_W is the frame's INNER width and the scale must be computed against
+ * it, not against the frame's outer width. Tailwind's preflight sets
+ * `box-sizing: border-box`, so a w-[228px] element with a border-[9px] bezel
+ * has a 210px content box. Scaling 390px down by 228/390 produced 228px of
+ * content inside a 210px screen — every row and tile overhung the right bezel
+ * by 18px and got clipped, while the left edge looked perfect because the
+ * transform origin is top-left. It read as the hero's -inset-x-4 bleed
+ * misbehaving; it was arithmetic.
+ *
+ * PHONE_H shows the whole home screen plus a short tail of page background.
+ * The tail is not padding — it is what the fade lands on, and the fade can only
+ * be judged if you can see it finish. Beyond that, extra height is dead space
+ * that makes the photo look wrong even when it isn't.
  */
 const PHONE_W = 390
-const PHONE_H = 700
-const FRAME_W = 228
-const SCALE = FRAME_W / PHONE_W
+const PHONE_H = 690
+const FRAME_OUTER_W = 228
+const BEZEL = 9
+const SCREEN_W = FRAME_OUTER_W - BEZEL * 2
+const SCALE = SCREEN_W / PHONE_W
+
+/** The real mobile header is h-14; the preview reserves the same. */
+const TOPBAR_H = 56
 
 export function HomeImageCard({
   companyName,
   logoUrl,
   initialImageUrl,
-  initialShowLogo,
+  initialShowLockup,
   firstName,
 }: {
   companyName: string
   logoUrl: string | null
   initialImageUrl: string | null
-  initialShowLogo: boolean
+  initialShowLockup: boolean
   firstName: string
 }) {
   const router = useRouter()
   const fileRef = useRef<HTMLInputElement>(null)
   const [imageUrl, setImageUrl] = useState<string | null>(initialImageUrl)
-  const [showLogo, setShowLogo] = useState(initialShowLogo)
+  const [showLockup, setShowLockup] = useState(initialShowLockup)
   const [uploading, setUploading] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -68,7 +84,7 @@ export function HomeImageCard({
   // there is nothing to review — the preview beside it already shows the result,
   // and a trainer who has just watched the change happen shouldn't then have to
   // confirm it.
-  async function persist(patch: { homeHeroImageUrl?: string; homeHeroShowLogo?: boolean }) {
+  async function persist(patch: { homeHeroImageUrl?: string; homeHeroShowLockup?: boolean }) {
     setMsg(null)
     try {
       const res = await fetch('/api/trainer/profile', {
@@ -128,10 +144,10 @@ export function HomeImageCard({
     await persist({ homeHeroImageUrl: '' })
   }
 
-  async function toggleLogo(next: boolean) {
+  async function toggleLockup(next: boolean) {
     setError(null)
-    setShowLogo(next)
-    await persist({ homeHeroShowLogo: next })
+    setShowLockup(next)
+    await persist({ homeHeroShowLockup: next })
   }
 
   return (
@@ -199,20 +215,22 @@ export function HomeImageCard({
               </div>
             </div>
 
-            {/* The logo choice */}
+            {/* The lockup choice — logo AND greeting, together. The label says
+                both out loud: "Show my logo" would be a lie about a control
+                that also removes the "Good evening" line. */}
             <div className="flex flex-col gap-2">
               <label className="flex items-start gap-2.5 text-sm text-slate-600">
                 <input
                   type="checkbox"
-                  checked={showLogo}
-                  onChange={e => toggleLogo(e.target.checked)}
+                  checked={showLockup}
+                  onChange={e => toggleLockup(e.target.checked)}
                   className="mt-0.5 h-4 w-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
                 />
-                <span>Show my logo on the home screen</span>
+                <span>Show my logo and greeting</span>
               </label>
               <p className="text-xs text-slate-400">
-                Off leaves just the greeting over the photo. This is your business&apos;s home screen —
-                everyone on your team sees whichever you choose.
+                Off leaves just the photo. This is your business&apos;s home screen — everyone on
+                your team sees whichever you choose.
               </p>
             </div>
 
@@ -227,27 +245,28 @@ export function HomeImageCard({
               className="relative overflow-hidden rounded-[2rem] border-[9px] border-slate-900 bg-slate-900 shadow-2xl ring-1 ring-black/20"
               aria-label="Preview of your home screen"
             >
-              <div
-                aria-hidden
-                className="absolute left-1/2 top-0 z-20 h-4 w-20 -translate-x-1/2 rounded-b-xl bg-slate-900"
-              />
+              {/* No notch. The frame borrowed one from BrandPreview, which can
+                  afford it because its first row is a status bar — here the
+                  first row is the app's own top bar, and the notch sat straight
+                  across the business name. The bezel and the corner radius are
+                  enough to read as a phone. */}
               {/* Height is the scaled height of the 390px render below it. */}
               <div
                 className="overflow-hidden rounded-[1.5rem] bg-[var(--pm-page-bg)]"
-                style={{ height: PHONE_H * SCALE }}
+                style={{ height: PHONE_H * SCALE, width: SCREEN_W }}
               >
                 <div
-                  className="origin-top-left"
+                  className="relative origin-top-left"
                   style={{ width: PHONE_W, height: PHONE_H, transform: `scale(${SCALE})` }}
                 >
-                  {/* p-4 + a header strip, exactly like the dashboard shell —
-                      the hero bleeds past that padding, so previewing it
-                      without the padding would show the wrong bleed. */}
-                  <div className="h-9 border-b border-slate-100 bg-white" />
-                  <div className="p-4">
+                  {/* The shell's p-4 and the top bar's height, exactly as the
+                      dashboard lays them out — the hero bleeds past that
+                      padding and tucks under that bar, so previewing it without
+                      either would show the wrong bleed and the wrong top edge. */}
+                  <div className="p-4" style={{ paddingTop: TOPBAR_H + 16 }}>
                     <HomeHero
                       imageUrl={imageUrl}
-                      showLogo={showLogo}
+                      showLockup={showLockup}
                       logoUrl={logoUrl}
                       businessName={companyName}
                       firstName={firstName}
@@ -256,6 +275,9 @@ export function HomeImageCard({
                       <PreviewRows />
                     </HomeHero>
                   </div>
+                  {/* Last, and absolutely positioned, so it paints OVER the
+                      photo the way the real sticky header does. */}
+                  <PreviewTopBar businessName={companyName} />
                 </div>
               </div>
             </div>
@@ -270,10 +292,83 @@ export function HomeImageCard({
 }
 
 /**
+ * ⚠ STAND-IN for the shell's real mobile header (TrainerMobileHeader in
+ * components/shared/app-shell.tsx). Keep the two in step by hand.
+ *
+ * The real one could not be reused here, and the reason is worth writing down
+ * so nobody spends the afternoon rediscovering it. Three blockers, any one of
+ * which is fatal:
+ *
+ *   1. It is module-private — not exported from app-shell.tsx.
+ *   2. It renders the portal TARGETS `#pm-topbar-back-mobile` and
+ *      `#pm-topbar-actions-mobile` as fixed DOM ids. Settings already has the
+ *      real header mounted, so a second copy would duplicate those ids and
+ *      getElementById would resolve to whichever came first — silently
+ *      redirecting the LIVE header's action slot into a 0.54-scale preview.
+ *      That is a working screen broken by a picture of a screen.
+ *   3. Its contents are live and interactive: FloatingCreateButton opens the
+ *      create sheet, TopBarControls owns the real search overlay, and the title
+ *      comes from usePageTitle()/usePathname() context that reads the SETTINGS
+ *      route, not /dashboard.
+ *
+ * So this is a deliberately dumb copy of the same markup. What it must keep
+ * faithful, because it is the whole reason Karl asked for the bar:
+ * `bg-white/95 backdrop-blur`. The photo tucks under this bar, and a photo
+ * behind a blurred translucent bar looks nothing like one behind a plain white
+ * strip. A preview showing a solid bar would mislead in exactly the way that
+ * matters when you're choosing an image.
+ *
+ * Non-interactive on purpose — divs, not buttons, and a span rather than the
+ * real <h1>. The settings page already has its own h1, and the shell's comment
+ * is explicit that exactly one ever renders.
+ */
+function PreviewTopBar({ businessName }: { businessName: string }) {
+  return (
+    <div
+      aria-hidden
+      className="absolute inset-x-0 top-0 z-10 border-b border-slate-100 bg-white/95 backdrop-blur"
+      style={{ height: TOPBAR_H }}
+    >
+      <div className="flex h-14 items-center gap-2 px-3">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-500">
+          <Menu className="h-5 w-5" />
+        </span>
+        {/* On /dashboard the real header shows the BUSINESS, not a page title —
+            the home screen is the one route where it isn't naming a page. */}
+        <span className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900">
+          {businessName.trim() || 'PupManager'}
+        </span>
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-500">
+          <Plus className="h-5 w-5" />
+        </span>
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-500">
+          <Search className="h-5 w-5" />
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/**
  * Stand-in rows and tiles. Their job is to give the fade something to land
  * across at the right proportions — the fade ends fully opaque at the bottom of
  * this block, so the preview has to include enough of it to judge that.
+ *
+ * Six tiles, not two, because the real home has six and the fade is spread over
+ * their whole height. Two tiles left the frame half empty AND compressed the
+ * fade into a shorter run than the trainer will actually see, so the preview
+ * was wrong twice over. Counts are illustrative — live ones would tell a
+ * trainer choosing a photo nothing the shape doesn't.
  */
+const PREVIEW_TILES = [
+  { label: 'Schedule', sub: '5 sessions today', Icon: Calendar },
+  { label: 'Clients', sub: '46 active', Icon: Users },
+  { label: 'Offerings', sub: '1:1 Sessions & classes', Icon: Layers },
+  { label: 'To do', sub: '16 to write', Icon: FileText },
+  { label: 'Instant sale', sub: 'Charge a client now', Icon: Receipt },
+  { label: 'Money', sub: '$4,805 to invoice', Icon: Wallet },
+]
+
 function PreviewRows() {
   return (
     <>
@@ -287,11 +382,8 @@ function PreviewRows() {
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">5 sessions today</span>
         <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />
       </div>
-      <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-white [&>*]:border-r [&>*]:border-slate-200 [&>*:nth-child(2n)]:border-r-0">
-        {[
-          { label: 'Schedule', sub: '5 sessions today', Icon: Calendar },
-          { label: 'Clients', sub: '24 active', Icon: Users },
-        ].map(({ label, sub, Icon }) => (
+      <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-white [&>*]:border-b [&>*]:border-r [&>*]:border-slate-200 [&>*:nth-child(2n)]:border-r-0 [&>*:nth-last-child(-n+2)]:border-b-0">
+        {PREVIEW_TILES.map(({ label, sub, Icon }) => (
           <div key={label} className="flex min-h-[104px] flex-col items-start justify-center px-4 py-4">
             <Icon className="h-[22px] w-[22px] text-slate-700" strokeWidth={1.75} />
             <span className="mt-2.5 block text-[15px] font-semibold leading-tight text-slate-900">{label}</span>

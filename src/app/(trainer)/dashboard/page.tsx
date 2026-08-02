@@ -80,7 +80,7 @@ export default async function DashboardPage({
       businessName: true, logoUrl: true, emailAccentColor: true, businessRoles: true,
       // Home background photo + whether the logo shows over it. Read off the
       // company profile, not the member — one home screen for the whole team.
-      homeHeroImageUrl: true, homeHeroShowLogo: true,
+      homeHeroImageUrl: true, homeHeroShowLockup: true,
       clientWelcomeNote: true, website: true, phone: true, publicEmail: true, signupCountry: true,
       payoutCurrency: true, pendingTeamInvites: true, connectChargesEnabled: true,
       subscriptionStatus: true, trialEndsAt: true, stripeSubscriptionId: true,
@@ -453,7 +453,7 @@ export default async function DashboardPage({
           }
           accentColor={branding.emailAccentColor}
           heroImageUrl={brandingProfile?.homeHeroImageUrl ?? null}
-          heroShowLogo={brandingProfile?.homeHeroShowLogo ?? true}
+          heroShowLockup={brandingProfile?.homeHeroShowLockup ?? true}
         />
         <WaitlistNudge trainerId={trainerId} />
         {sampleClientCount === 0 && <OnboardingPanel state={onboardingState} branding={branding} impersonating={!!session.user.impersonatorId} />}

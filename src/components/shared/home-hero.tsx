@@ -28,38 +28,72 @@ import { cn } from '@/lib/utils'
  * layers bleed `-inset-x-4` to cancel the dashboard container's p-4, because a
  * background image with 16px of page showing down each side reads as a picture
  * in a box rather than a background.
- *
- * ── Legibility ────────────────────────────────────────────────────────────
- * The rows and tiles are opaque white blocks, so they are unaffected. The only
- * content sitting DIRECTLY on the photo is the logo and the greeting, and a
- * trainer can upload anything — a bright sky, a busy park. Rather than dim the
- * photo (which is the one thing the trainer asked to see at full strength), the
- * two elements carry their own contrast: a white halo behind the greeting text
- * so dark type survives a dark photo, and a soft drop shadow under the logo so
- * a pale wordmark doesn't dissolve into a pale background. Both only apply when
- * there IS an image.
  */
-
-/** Fade FROM nothing TO the page background, over the rows' full height. */
-const FADE = 'linear-gradient(to bottom, rgb(var(--pm-page-bg-rgb) / 0) 0%, rgb(var(--pm-page-bg-rgb) / 0.72) 62%, rgb(var(--pm-page-bg-rgb) / 1) 100%)'
 
 /**
- * Dark type on an unknown photo: a white halo is what keeps it readable.
+ * Fade FROM nothing TO the page background, over the rows' full height.
  *
- * Stacked rather than single, and the innermost ring fully opaque, because a
- * single soft glow was NOT enough — the first real photo tried here put the
- * greeting over a head of dark brown hair and slate type on it was legible but
- * uncomfortably tight. The tight opaque ring gives the glyphs an edge whatever
- * they land on; the wider soft ones lift them off the busy detail behind.
+ * Full opacity is reached at 88%, not at 100%, and that is the fix for a real
+ * defect rather than a rounding preference. The image layer stops dead at the
+ * bottom of the rows; if the gradient is still a few percent short of opaque
+ * when it gets there, the photo is faintly visible right up to its final pixel
+ * and then simply ends — which paints a hard horizontal seam across the screen,
+ * level with the bottom of the tiles. Reaching 1.0 early and holding it means
+ * the image's bottom edge is already buried under solid colour by the time it
+ * arrives. It is still fully opaque AT the bottom, which is what was asked for.
  */
-const HALO = [
-  '0 0 3px rgb(255 255 255)',
-  '0 0 6px rgb(255 255 255)',
-  '0 1px 12px rgb(255 255 255 / 0.9)',
-].join(', ')
+const FADE = [
+  'rgb(var(--pm-page-bg-rgb) / 0) 0%',
+  'rgb(var(--pm-page-bg-rgb) / 0.62) 55%',
+  'rgb(var(--pm-page-bg-rgb) / 1) 88%',
+  'rgb(var(--pm-page-bg-rgb) / 1) 100%',
+]
+const FADE_CSS = `linear-gradient(to bottom, ${FADE.join(', ')})`
+
+/**
+ * The greeting, over a photograph nobody has seen yet.
+ *
+ * The rows and tiles are opaque white blocks, so they are unaffected by the
+ * photo. The only content sitting DIRECTLY on it is the logo and this line, and
+ * a trainer can upload anything. Dimming the photo was rejected — full strength
+ * up there is the thing that was actually asked for — so the text carries its
+ * own contrast instead.
+ *
+ * Two earlier attempts are worth recording, because both looked right in one
+ * case and wrong in the other:
+ *
+ *   1. Dark slate text with a soft white glow. Legible over a bright sky, but
+ *      uncomfortably tight over a head of dark brown hair.
+ *   2. Dark slate text with THREE stacked opaque white glows. That fixed the
+ *      dark case and broke the light one: stacked wide-radius shadows
+ *      accumulate into a solid plate roughly the size of the text, which over a
+ *      pale sky reads as a grey rectangle behind the words — like selected
+ *      text, or something failing to render. Karl saw it and said so.
+ *
+ * The robust direction is the opposite one. WHITE text with a soft dark halo
+ * works both ways round for the same reason a photo caption does: on a dark
+ * photo the white fill carries it, on a light photo the dark halo does. Neither
+ * radius is wide enough to build a plate, so there is nothing to read as a box.
+ */
+const GREETING_SHADOW = '0 1px 3px rgb(15 23 42 / 0.75), 0 0 14px rgb(15 23 42 / 0.45)'
 
 /** A pale logo on a pale photo needs an edge; a dark one is unharmed by it. */
 const LOGO_SHADOW = 'drop-shadow(0 1px 3px rgb(15 23 42 / 0.35))'
+
+/**
+ * The photo's own band, above the rows.
+ *
+ * Fixed rather than natural so that turning the lockup off does NOT move
+ * everything below it. The toggle is a decision about what sits over the
+ * photograph, not about how much photograph there is — if the rows jumped up
+ * 120px when the lockup went away, a trainer would reasonably read that as the
+ * setting having done something else as well. It also stops the empty state
+ * reading as a gap where something failed to load: with the lockup off this is
+ * a clean band of their own photo, at exactly the height it always was.
+ *
+ * 124px is what the lockup naturally occupies (12 top + 80 logo + 10 + ~18).
+ */
+const BAND = 'min-h-[124px]'
 
 /**
  * Quote a URL for use inside CSS `url()`. The stored value is validated as an
@@ -72,7 +106,7 @@ function cssUrl(url: string): string {
 
 export function HomeHero({
   imageUrl,
-  showLogo,
+  showLockup,
   logoUrl,
   businessName,
   firstName,
@@ -81,8 +115,13 @@ export function HomeHero({
 }: {
   /** The trainer's uploaded background photo, or null for none. */
   imageUrl: string | null
-  /** Company-wide choice: is the logo lockup shown over the image at all? */
-  showLogo: boolean
+  /**
+   * Company-wide choice: does the business lockup — the logo AND the greeting
+   * line under it — sit over the image at all? Karl asked for "whether they
+   * want their logo and words there or not", and the words are the greeting, so
+   * the two travel together rather than the greeting outliving the logo.
+   */
+  showLockup: boolean
   logoUrl: string | null
   businessName: string
   firstName: string
@@ -107,39 +146,46 @@ export function HomeHero({
         />
       )}
 
-      {/* The logo + greeting. Centred and given room — the business name in
-          text would only repeat what the logo already says. The trainer can
-          turn the logo off for the whole company and keep just the greeting,
-          in which case a min-height keeps the photo something to be seen. */}
-      <div
-        className={cn(
-          'relative mb-5 flex flex-col items-center pt-1',
-          image && !showLogo && 'min-h-[104px] justify-end pb-1',
-          image && showLogo && 'pt-3',
-        )}
-      >
-        {showLogo && (logoUrl ? (
-          // Plain <img>: trainer logos live on Vercel Blob, which isn't in
-          // next/image's remotePatterns (same as everywhere else).
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={logoUrl}
-            alt={businessName || 'Business logo'}
-            className="h-20 w-auto max-w-[70%] object-contain"
-            style={image ? { filter: LOGO_SHADOW } : undefined}
-          />
-        ) : (
-          <span className="flex h-20 w-20 items-center justify-center rounded-2xl border border-slate-200 bg-white text-2xl font-semibold text-slate-700">
-            {(businessName || firstName || 'P').charAt(0).toUpperCase()}
-          </span>
-        ))}
-        <p
-          className={cn('text-[13px]', showLogo && 'mt-2.5', image ? 'font-medium text-slate-700' : 'text-slate-500')}
-          style={image ? { textShadow: HALO } : undefined}
+      {/* The lockup — logo and greeting together, or neither. Skipped entirely
+          when there is nothing to show AND no photo to reserve a band for, so a
+          trainer with neither doesn't get an orphaned 20px margin. */}
+      {(showLockup || image) && (
+        <div
+          className={cn(
+            'relative mb-5 flex flex-col items-center justify-center pt-3',
+            image && BAND,
+          )}
         >
-          Good {greeting}{firstName ? `, ${firstName}` : ''}
-        </p>
-      </div>
+          {showLockup && (
+            <>
+              {logoUrl ? (
+                // Plain <img>: trainer logos live on Vercel Blob, which isn't in
+                // next/image's remotePatterns (same as everywhere else).
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={logoUrl}
+                  alt={businessName || 'Business logo'}
+                  className="h-20 w-auto max-w-[70%] object-contain"
+                  style={image ? { filter: LOGO_SHADOW } : undefined}
+                />
+              ) : (
+                <span className="flex h-20 w-20 items-center justify-center rounded-2xl border border-slate-200 bg-white text-2xl font-semibold text-slate-700">
+                  {(businessName || firstName || 'P').charAt(0).toUpperCase()}
+                </span>
+              )}
+              <p
+                className={cn(
+                  'mt-2.5 text-[13px]',
+                  image ? 'font-medium text-white' : 'text-slate-500',
+                )}
+                style={image ? { textShadow: GREETING_SHADOW } : undefined}
+              >
+                Good {greeting}{firstName ? `, ${firstName}` : ''}
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* The rows and tiles. This wrapper's height IS the fade's height — see
           the note at the top of the file. */}
@@ -149,7 +195,7 @@ export function HomeHero({
             aria-hidden
             data-testid="home-hero-fade"
             className="pointer-events-none absolute -inset-x-4 inset-y-0"
-            style={{ background: FADE }}
+            style={{ background: FADE_CSS }}
           />
         )}
         <div className="relative">{children}</div>
