@@ -82,8 +82,11 @@ const FADE_CSS = `linear-gradient(to bottom, ${FADE.join(', ')})`
 // probably to dim the photograph slightly rather than to dress the type.
 // const GREETING_SHADOW = '0 1px 3px rgb(15 23 42 / 0.75), 0 0 14px rgb(15 23 42 / 0.45)'
 
-/** A pale logo on a pale photo needs an edge; a dark one is unharmed by it. */
-const LOGO_SHADOW = 'drop-shadow(0 1px 3px rgb(15 23 42 / 0.35))'
+// REMOVED with the greeting's, same request. It was there because a pale logo
+// on a pale photo has no edge of its own — that remains true, and a white
+// wordmark on a bright sky will disappear. Same answer if it does: dim the
+// photograph, don't outline the mark.
+// const LOGO_SHADOW = 'drop-shadow(0 1px 3px rgb(15 23 42 / 0.35))'
 
 /**
  * The photo's own band, above the rows.
@@ -171,7 +174,6 @@ export function HomeHero({
                   src={logoUrl}
                   alt={businessName || 'Business logo'}
                   className="h-20 w-auto max-w-[70%] object-contain"
-                  style={image ? { filter: LOGO_SHADOW } : undefined}
                 />
               ) : (
                 <span className="flex h-20 w-20 items-center justify-center rounded-2xl border border-slate-200 bg-white text-2xl font-semibold text-slate-700">
