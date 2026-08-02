@@ -13,5 +13,18 @@
 		<string>applinks:app.pupmanager.com</string>
 		<string>webcredentials:app.pupmanager.com</string>
 	</array>
+	<!--
+		Tap to Pay on iPhone. This one is NOT self-service: Apple grants it per
+		app, and the DEVELOPMENT and DISTRIBUTION entitlements are two separate
+		requests. Development was granted 2026-08-02. Distribution needs a video
+		of the real payment flow, so it can only be requested once this works on
+		a device — expect one to six weeks.
+
+		The provisioning profile has to CARRY this key or the build fails to
+		sign, which matters for Xcode Cloud as much as for a local build: the
+		profile it uses must be regenerated after Apple grants the entitlement.
+	-->
+	<key>com.apple.developer.proximity-reader.payment.acceptance</key>
+	<true/>
 </dict>
 </plist>

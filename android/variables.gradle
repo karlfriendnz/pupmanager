@@ -1,5 +1,10 @@
 ext {
-    minSdkVersion = 23
+    // 26 is Stripe Terminal's floor for the Android SDK to build at all.
+    // Tap to Pay itself needs Android 13 (API 33) plus an NFC radio, which is a
+    // RUNTIME check (src/lib/tap-to-pay-device.ts + the plugin's isSupported),
+    // not a build one — raising minSdk to 33 would drop working phones from the
+    // whole app to gate one feature most trainers will never use.
+    minSdkVersion = 26
     compileSdkVersion = 35
     targetSdkVersion = 35
     androidxActivityVersion = '1.9.2'
@@ -13,4 +18,5 @@ ext {
     androidxJunitVersion = '1.2.1'
     androidxEspressoCoreVersion = '3.6.1'
     cordovaAndroidVersion = '10.1.1'
+    stripeTerminalVersion = '4.7.0'
 }

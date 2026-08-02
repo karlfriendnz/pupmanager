@@ -5,6 +5,7 @@ import { stripeFor } from '@/lib/stripe'
 import { ConnectButton, AcceptPaymentsToggle, PassFeeToggle, AutoSendInvoicesToggle, DefaultRequirePaymentToggle } from './payments-actions'
 import { CancellationFeeCard } from './cancellation-fee-card'
 import { StripeDashboardLink } from './stripe-dashboard-link'
+import { TapToPayRow } from './tap-to-pay-row'
 
 // Trainer-facing setup for taking payments from their clients (Stripe Connect
 // Express). Owner-only; rendered as a tab on Settings. Three states: not
@@ -124,6 +125,10 @@ export async function PaymentsPanel({ companyId }: { companyId: string }) {
               </div>
               <DefaultRequirePaymentToggle initial={profile?.defaultRequirePayment ?? true} />
             </div>
+            {/* Apple's Tap to Pay terms, which every merchant accepts for
+                themselves. Here rather than buried in the till, so it happens at
+                a desk instead of over a paying customer's shoulder. */}
+            <TapToPayRow />
             <div className="mt-1 flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 pt-4">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-600">
                 {profile?.payoutCurrency && (

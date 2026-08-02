@@ -45,6 +45,15 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<!--
+		Stripe Terminal requires location on iOS for every in-person payment —
+		it is used to establish where the tap physically happened, which is what
+		card networks and dispute rules key off. Without this key the SDK
+		refuses to take a payment at all. Written in the trainer's terms, not
+		Stripe's: the person reading this prompt is a dog trainer in a park.
+	-->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Card networks require your location when you take a card payment in person, so PupManager can record where the sale happened.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>PupManager uses the camera so you can record session videos and snap photos straight into your session notes.</string>
 	<key>NSMicrophoneUsageDescription</key>

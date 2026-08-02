@@ -1,6 +1,11 @@
 require_relative '../../node_modules/@capacitor/ios/scripts/pods_helpers'
 
-platform :ios, '15.0'
+# 16.4 is Stripe Terminal's floor for Tap to Pay on iPhone (Apple's
+# ProximityReader arrived in 16.0, but it is Stripe's SDK we call). Raising this
+# drops iOS 15 users from the NATIVE shell only — the web app is unaffected —
+# and it must be raised in project.pbxproj's IPHONEOS_DEPLOYMENT_TARGET too, in
+# all four places, or the build fails on the pod.
+platform :ios, '16.4'
 use_frameworks!
 
 # workaround to avoid Xcode caching of Pods that requires
@@ -20,6 +25,11 @@ end
 
 target 'App' do
   capacitor_pods
+  # Tap to Pay on iPhone. Stripe's own SDK, called from
+  # ios/App/App/TapToPayPlugin.swift — there is no Capacitor SDK from Stripe,
+  # so we wrap theirs rather than depend on a community package sitting between
+  # us and a trainer's money.
+  pod 'StripeTerminal', '~> 4.7'
   # Add your Pods here
 end
 

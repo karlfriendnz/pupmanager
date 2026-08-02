@@ -56,6 +56,16 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // The bridge fix in RemoteOriginBridge needs WebViewCompat's
+    // document-start-script API; capacitor-android already pulls androidx.webkit
+    // in transitively, but this file depends on it directly so it says so.
+    implementation "androidx.webkit:webkit:$androidxWebkitVersion"
+    // Tap to Pay on Android. Stripe's own SDK, called from
+    // TapToPayPlugin.java. `taptopay` is a separate artifact from the core
+    // one — without it the SDK builds but reports Tap to Pay unsupported on
+    // every handset, which looks exactly like a hardware problem.
+    implementation "com.stripe:stripeterminal-core:$stripeTerminalVersion"
+    implementation "com.stripe:stripeterminal-taptopay:$stripeTerminalVersion"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
