@@ -3,14 +3,12 @@
 import type { ClientView } from '@/lib/client-activity'
 import { ClientViewTabs } from './client-view-tabs'
 
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { Fragment, useMemo, useState, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { UserPlus, Search, Dog, Calendar, Columns3, X, Check, Layers, CheckSquare, Mail, MessageSquare, CheckCircle2 } from 'lucide-react'
+import { UserPlus, Search, Dog, Columns3, X, Check, Layers, CheckSquare, Mail, MessageSquare, CheckCircle2 } from 'lucide-react'
 import { dateParts, displayEmail, personLabel } from '@/lib/utils'
-import { PhoneRowList } from '@/components/shared/flat-list'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { BulkEmailModal } from './bulk-email-modal'
 import { GroupComposer } from '../messages/group-composer'
@@ -397,7 +395,9 @@ export function ClientsList({ clients, view, tabs, blurb, columns, customFields,
               unlabelled stack icon is the clutter this row was hidden for. */}
           <span>{selectMode ? 'Done' : 'Select'}</span>
         </button>
-        {/* Columns choose what the TABLE shows, and there is no table below md. */}
+        {/* Columns choose what the TABLE shows, and a phone has no table — the
+            list drops to one summary line per client once the column it sits
+            in is too narrow for columns to line up. */}
         <div className="relative hidden md:block">
           <button
             type="button"
@@ -632,6 +632,38 @@ interface DataColumn {
   render: (c: ClientRow) => React.ReactNode
 }
 
+/**
+ * Every data column is a `minmax`, and every one of them is TIGHT — only the
+ * client's own column is a `1fr`.
+ *
+ * Two reasons, both learned the hard way on this list:
+ *
+ *  • The name is what a trainer scans down, so it gets the slack. When the data
+ *    columns were `1fr` too, an email address and a breed took as much room as
+ *    the person's name and the names truncated first.
+ *  • The MAX keeps a two-column list from spreading an address across half the
+ *    screen. The MIN is deliberately SMALLER than the text it holds, because
+ *    the columns are the trainer's choice and there can be seven of them: mins
+ *    that added up to more than the table is wide would overflow the box, and
+ *    the box's `overflow-hidden` would then clip the last column off the right
+ *    edge with nothing on screen to say it was ever there. Truncated is bad;
+ *    invisible is worse. Seven of these still fit inside the @2xl the table
+ *    needs before it appears at all.
+ */
+const COL = {
+  email:       'minmax(4.5rem, 13rem)',
+  dog:         'minmax(3.5rem, 9rem)',
+  breed:       'minmax(3.5rem, 9rem)',
+  extraDogs:   'minmax(4rem, 11rem)',
+  nextSession: 'minmax(4.5rem, 12rem)',
+  custom:      'minmax(3.5rem, 10rem)',
+} as const
+
+/** The avatar's own column — h-9 on ClientAvatar size="md". */
+const AVATAR_COL = '2.25rem'
+/** The tick's own column — h-5 w-5 on the checkbox. */
+const CHECK_COL = '1.25rem'
+
 function buildDataColumns(
   visible: Set<string>,
   customFields: CustomFieldMeta[],
@@ -644,7 +676,7 @@ function buildDataColumns(
     cols.push({
       key: 'email',
       label: 'Email',
-      width: 'minmax(140px, 1.4fr)',
+      width: COL.email,
       render: c => {
         const email = displayEmail(c.email)
         return email
@@ -657,7 +689,7 @@ function buildDataColumns(
     cols.push({
       key: 'dog',
       label: 'Primary dog',
-      width: 'minmax(100px, 1fr)',
+      width: COL.dog,
       render: c => (
         <span className="truncate text-slate-700">
           {c.dogName ? c.dogName : <span className="text-slate-400 italic">No dog</span>}
@@ -669,7 +701,7 @@ function buildDataColumns(
     cols.push({
       key: 'breed',
       label: 'Breed',
-      width: 'minmax(100px, 1fr)',
+      width: COL.breed,
       render: c => c.dogBreed ? <span className="truncate text-slate-600">{c.dogBreed}</span> : <span className="text-slate-300">—</span>,
     })
   }
@@ -677,7 +709,7 @@ function buildDataColumns(
     cols.push({
       key: 'extraDogs',
       label: 'Additional dogs',
-      width: 'minmax(120px, 1fr)',
+      width: COL.extraDogs,
       render: c => c.extraDogNames.length > 0
         ? <span className="truncate text-slate-600">{c.extraDogNames.join(', ')}</span>
         : <span className="text-slate-300">—</span>,
@@ -687,15 +719,20 @@ function buildDataColumns(
     cols.push({
       key: 'nextSession',
       label: 'Next session',
-      width: 'minmax(140px, 1fr)',
+      width: COL.nextSession,
+      // Plain text, no calendar icon and no blue. The heading above the column
+      // already says these are dates, so the icon was the heading drawn a
+      // second time in every row — and a column of blue down a white table is
+      // decorative colour, which the house style rations to the trainer's own
+      // accent. Nothing here is a link, so blue was also a lie about what it
+      // would do if you clicked it.
       render: c => {
         const d = c.nextSessionAt ? new Date(c.nextSessionAt) : null
         if (!d) return <span className="text-slate-300">—</span>
         return (
-          <span className="inline-flex items-center gap-1 text-blue-600 truncate">
-            <Calendar className="h-3 w-3 flex-shrink-0" />
+          <span className="truncate text-slate-600">
             {d.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', timeZone: tz })}
-            <span className="text-slate-400">·</span>
+            {' · '}
             {d.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz })}
           </span>
         )
@@ -707,7 +744,7 @@ function buildDataColumns(
     cols.push({
       key: `custom:${f.id}`,
       label: f.label,
-      width: 'minmax(120px, 1fr)',
+      width: COL.custom,
       render: c => {
         const v = customValues[`${c.id}:${f.id}`]
         return v ? <span className="truncate text-slate-700">{v}</span> : <span className="text-slate-300">—</span>
@@ -754,8 +791,17 @@ function ClientTable({ clients, view, visible, customFields, customValues, group
   onToggleSelect: (client: ClientRow) => void
 }) {
   const dataColumns = buildDataColumns(visible, customFields, customValues, tz)
-  // Identity column (avatar+name) is always present and gets generous space.
-  const gridTemplate = `minmax(220px, 1.6fr) ${dataColumns.map(c => c.width).join(' ')}`.trim()
+  // The tick and the avatar get columns of their OWN rather than riding inside
+  // the name cell, so every client's name starts at the same x — which is the
+  // whole point of a table. The tick's column only exists in selection mode,
+  // and because that mode is the same for every row at once, the names still
+  // line up with each other (and with the heading) either way.
+  const gridTemplate = [
+    selectMode ? CHECK_COL : null,
+    AVATAR_COL,
+    'minmax(0,1fr)',            // the client — takes whatever the columns leave
+    ...dataColumns.map(c => c.width),
+  ].filter(Boolean).join(' ')
 
   const groups = (() => {
     if (!groupBy) return [{ key: '', label: '', sort: 0, rows: clients }]
@@ -773,52 +819,80 @@ function ClientTable({ clients, view, visible, customFields, customValues, group
   })()
 
   return (
-    <>
-      {/* Header row — only on md+ where columns actually align. */}
-      {dataColumns.length > 0 && (
-        <div
-          className="hidden md:grid items-center gap-4 px-4 mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400"
-          style={{ gridTemplateColumns: gridTemplate }}
-        >
-          <span>Client</span>
-          {dataColumns.map(c => (
-            <span key={c.key} className={`truncate ${c.align === 'right' ? 'text-right' : ''}`}>{c.label}</span>
+    // A query container, so the switch between the table and the phone's rows
+    // is decided by how much room THIS list has rather than by how wide the
+    // window is. The list sits in a centred, max-width column with padding
+    // either side, so a 1000px window is nowhere near 1000px of table.
+    <div className="@container">
+      {/* ONE bordered white surface with hairlines through it — the columns
+          have to run the whole way down or it doesn't read as a table. The
+          rows used to be a stack of individual cards, each with its own border
+          and shadow, which is the "floating chips" the house style forbids. */}
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <ClientTableHead columns={dataColumns} gridTemplate={gridTemplate} selectMode={selectMode} />
+        <div className="[&>*+*]:border-t [&>*+*]:border-slate-100">
+          {groups.map(group => (
+            // A Fragment, not a wrapper div: the hairline rule above targets
+            // DIRECT children, so a per-group wrapper would draw one line
+            // between groups and none between the rows inside them.
+            <Fragment key={group.key || 'all'}>
+              {groupBy && (
+                // The group name is a band INSIDE the table rather than a
+                // caption floating above a separate box per group — one
+                // surface, split by its own dividers.
+                <div className="flex items-baseline gap-2 bg-slate-50/60 px-4 py-1.5">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{group.label}</h3>
+                  <span className="text-[11px] text-slate-400">{group.rows.length}</span>
+                </div>
+              )}
+              {group.rows.map(c => (
+                <ClientRowCard
+                  key={c.id}
+                  client={c}
+                  view={view}
+                  visible={visible}
+                  dataColumns={dataColumns}
+                  gridTemplate={gridTemplate}
+                  tz={tz}
+                  selectMode={selectMode}
+                  isSelected={selected.has(c.id)}
+                  onToggleSelect={onToggleSelect}
+                />
+              ))}
+            </Fragment>
           ))}
         </div>
-      )}
-
-      <div className="flex flex-col gap-2">
-        {groups.map(group => (
-          <div key={group.key || 'all'} className="flex flex-col md:gap-2">
-            {groupBy && (
-              <div className="flex items-baseline gap-2 mt-2 first:mt-0">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{group.label}</h3>
-                <span className="text-[11px] text-slate-400">{group.rows.length}</span>
-              </div>
-            )}
-            {/* Phone: one block of hairline-divided rows. Desktop: the cards
-                keep their own borders and spacing (md:contents dissolves this
-                wrapper so the gap-2 above still applies to them). */}
-            <PhoneRowList>
-            {group.rows.map(c => (
-              <ClientRowCard
-                key={c.id}
-                client={c}
-                view={view}
-                visible={visible}
-                dataColumns={dataColumns}
-                gridTemplate={gridTemplate}
-                tz={tz}
-                selectMode={selectMode}
-                isSelected={selected.has(c.id)}
-                onToggleSelect={onToggleSelect}
-              />
-            ))}
-            </PhoneRowList>
-          </div>
-        ))}
       </div>
-    </>
+    </div>
+  )
+}
+
+/**
+ * The column names, on the same grid the rows use.
+ *
+ * Hidden below @2xl for the same reason the rows drop to a summary line there:
+ * headings for columns that aren't being rendered are just a stripe of words.
+ */
+function ClientTableHead({ columns, gridTemplate, selectMode }: {
+  columns: DataColumn[]
+  gridTemplate: string
+  selectMode: boolean
+}) {
+  const cell = 'text-[11px] font-semibold uppercase tracking-wide text-slate-400'
+  return (
+    <div
+      className="hidden @2xl:grid h-9 items-center gap-x-3 border-b border-slate-200 bg-slate-50/70 px-3"
+      style={{ gridTemplateColumns: gridTemplate }}
+    >
+      {/* Empty cells for the tick and the avatar, so "Client" sits over the
+          NAMES rather than over the pictures. */}
+      {selectMode && <span aria-hidden />}
+      <span aria-hidden />
+      <span className={cell}>Client</span>
+      {columns.map(c => (
+        <span key={c.key} className={`${cell} truncate ${c.align === 'right' ? 'text-right' : ''}`}>{c.label}</span>
+      ))}
+    </div>
   )
 }
 
@@ -846,23 +920,6 @@ function ClientRowCard({ client, view, visible, dataColumns, gridTemplate, tz, s
       {isSelected && <Check className="h-3.5 w-3.5" />}
     </span>
   ) : null
-  const identity = (
-    <div className="flex items-center gap-3 min-w-0">
-      {checkbox}
-      <ClientAvatar size="md" name={client.name ?? client.email} dogPhotoUrl={client.dogPhotoUrl} />
-      <div className="min-w-0 flex items-center gap-1.5">
-        <p className="font-semibold text-slate-900 truncate text-sm">
-          {client.name ?? client.email}
-        </p>
-        {showShared && (
-          <span className="flex-shrink-0 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700">
-            Shared
-          </span>
-        )}
-      </div>
-    </div>
-  )
-
   // The phone's one-line summary: the dog, and when they're next in. Nothing
   // is printed for a fact the client doesn't have — an empty row is worse than
   // no row.
@@ -875,49 +932,60 @@ function ClientRowCard({ client, view, visible, dataColumns, gridTemplate, tz, s
     nextSessionLabel && `Next ${nextSessionLabel}`,
   ].filter(Boolean).join(' · ')
 
+  const sharedBadge = showShared ? (
+    <span className="flex-shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
+      Shared
+    </span>
+  ) : null
+
   const inner = (
-    // Phone: a row in one shared block (see the wrapper below) — no rounding,
-    // no shadow, no gaps between clients. Desktop keeps the card.
-    // Phone: a bare row — the divider is drawn by the wrapper below, because
-    // `border-0` and `border-b` on one element fight and the bottom border
-    // loses. Desktop keeps the card.
-    <Card className={`rounded-none border-0 shadow-none md:rounded-2xl md:border md:border-slate-100 md:shadow-sm px-4 py-2.5 md:py-3 transition-all ${
-      selectMode
-        ? `cursor-pointer ${isSelected ? 'border-[var(--pm-brand-500)] bg-[var(--pm-brand-50)]/40 ring-1 ring-[var(--pm-brand-500)]' : 'hover:border-slate-300'}`
-        : 'hover:border-blue-200 hover:shadow-md cursor-pointer'
-    } ${view === 'archived' ? 'opacity-70' : ''} ${view === 'never' && !isSelected ? 'border-amber-200 bg-amber-50/30' : ''}`}>
-      {/* md+: single-row grid that lines up with the header. */}
+    <>
+      {/* @2xl+: one line of the table, on the same grid as the heading.
+          h-14 fixes the row height so the columns are a grid of equal boxes
+          rather than a set of rows that each size to their own longest value.
+
+          Nothing in here is a link or a button — the whole row is the link (see
+          the wrapper below), so globals.css's 44px minimum touch target lands
+          on THAT and never on a single cell. That mattered: a link inside a
+          fixed-height row becomes a 44px box beside 20px line boxes, and its
+          text then sits about a dozen pixels above everything on its line. If a
+          per-cell link is ever added here it has to be `flex items-center` with
+          the truncating text in an inner <span>, the way the products table
+          does it. */}
       <div
-        className="hidden md:grid items-center gap-4"
+        className="hidden @2xl:grid h-14 items-center gap-x-3 px-3"
         style={{ gridTemplateColumns: gridTemplate }}
       >
-        {identity}
+        {selectMode && checkbox}
+        <ClientAvatar size="md" name={client.name ?? client.email} dogPhotoUrl={client.dogPhotoUrl} />
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-sm font-semibold text-slate-900">{client.name ?? client.email}</span>
+          {sharedBadge}
+        </span>
         {dataColumns.map(c => (
-          <div
+          <span
             key={c.key}
-            className={`min-w-0 text-sm flex items-center ${c.align === 'right' ? 'justify-end' : ''}`}
+            className={`flex min-w-0 items-center text-sm ${c.align === 'right' ? 'justify-end' : ''}`}
           >
             {c.render(client)}
-          </div>
+          </span>
         ))}
       </div>
 
-      {/* <md: avatar, name, and one summary line — tight, with the two lines
-          stacked beside the avatar rather than the summary hanging under an
-          indent. The configured columns are a desktop feature; as label/value
-          rows they made a 150px card per client (four rows, three of them
-          saying "No email" / "—" / "no tasks"). Only facts that exist print. */}
-      <div className="md:hidden flex items-center gap-3">
+      {/* Below @2xl: avatar, name, and one summary line — tight, with the two
+          lines stacked beside the avatar rather than the summary hanging under
+          an indent. The configured columns are a desktop feature; as
+          label/value rows they made a 150px card per client (four rows, three
+          of them saying "No email" / "—" / "no tasks"). Only facts that exist
+          print. A table is NOT forced onto 390px — seven columns in a 358px
+          container is columns landing on top of one another. */}
+      <div className="@2xl:hidden flex items-center gap-3 px-4 py-2.5">
         {selectMode && checkbox}
         <ClientAvatar size="md" name={client.name ?? client.email} dogPhotoUrl={client.dogPhotoUrl} />
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1.5 truncate text-sm font-semibold leading-tight text-slate-900">
             {client.name ?? client.email}
-            {showShared && (
-              <span className="flex-shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700">
-                Shared
-              </span>
-            )}
+            {sharedBadge}
           </p>
           {mobileSummary && (
             <p className="mt-0.5 truncate text-[13px] leading-tight text-slate-500">{mobileSummary}</p>
@@ -930,10 +998,20 @@ function ClientRowCard({ client, view, visible, dataColumns, gridTemplate, tz, s
             an anchor is invalid HTML and swallows the row's own tap. Messaging
             lives on the client's own page, one tap away. */}
       </div>
-    </Card>
+    </>
   )
 
-  // In selection mode, tapping the card toggles selection instead of
+  // The row's own state. It tints the row rather than outlining it: a ring or a
+  // border on one row of a bordered table draws a box inside a box, and the
+  // hairline between rows then has two competing lines to sit between.
+  const state = [
+    'block w-full transition-colors',
+    isSelected ? 'bg-[var(--pm-brand-50)]' : 'hover:bg-slate-50',
+    view === 'archived' ? 'opacity-70' : '',
+    view === 'never' && !isSelected ? 'bg-amber-50/30' : '',
+  ].filter(Boolean).join(' ')
+
+  // In selection mode, tapping the row toggles selection instead of
   // navigating; otherwise it's a normal link to the client profile.
   if (selectMode) {
     return (
@@ -943,7 +1021,7 @@ function ClientRowCard({ client, view, visible, dataColumns, gridTemplate, tz, s
         aria-pressed={isSelected}
         aria-label={`${isSelected ? 'Deselect' : 'Select'} ${client.name ?? client.email}`}
         data-testid="client-select-row"
-        className="block w-full text-left"
+        className={`${state} cursor-pointer text-left`}
       >
         {inner}
       </button>
@@ -954,7 +1032,7 @@ function ClientRowCard({ client, view, visible, dataColumns, gridTemplate, tz, s
   // so on a phone the tap area hugged the text runs rather than filling the
   // row's height — the padding either side of the name was dead space.
   return (
-    <Link href={`/clients/${client.id}`} className="block w-full">
+    <Link href={`/clients/${client.id}`} className={state}>
       {inner}
     </Link>
   )
