@@ -6,6 +6,8 @@ import { notifyEnquiryTrainer } from '@/lib/notify-enquiry-trainer'
 import { sendFormAutoReply } from '@/lib/form-auto-reply'
 import { enforceRateLimit, getClientIp } from '@/lib/rate-limit'
 import { isQuestionVisible, type Question } from '@/lib/session-form-builder'
+import { continuationPath, mintContinuationToken } from '@/lib/form-continuation'
+import { sendContinuationEmail } from '@/lib/form-continuation-email'
 
 // Length caps matter here because this is an UNAUTHENTICATED public endpoint —
 // without them a submitter can post megabyte strings and bloat the DB.
@@ -118,7 +120,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ formId:
 async function submitUnified(req: Request, id: string) {
   const form = await prisma.form.findFirst({
     where: { id, isActive: true, usableAsEnquiry: true },
-    select: { id: true, trainerId: true, questions: true },
+    select: { id: true, trainerId: true, questions: true, continueToAccount: true },
   })
   if (!form) return NextResponse.json({ error: 'Form not found' }, { status: 404 })
 
@@ -179,6 +181,15 @@ async function submitUnified(req: Request, id: string) {
       ? (answers[firstLong.id] as string).trim() || null
       : null
 
+  // ── The handover, when this form is a continuous run ──────────────────────
+  //
+  // The ENQUIRY IS STILL WRITTEN, exactly as before, and it is written FIRST.
+  // Someone who abandons the password step therefore leaves their trainer a
+  // name, an email and a phone number to reply to by hand — an enquiry with no
+  // way to reply is worse than no enquiry, and that is the failure mode a
+  // "sign up first" ordering would have created.
+  const handover = form.continueToAccount ? mintContinuationToken() : null
+
   const enquiry = await prisma.enquiry.create({
     data: {
       trainerId: form.trainerId,
@@ -189,11 +200,28 @@ async function submitUnified(req: Request, id: string) {
       message,
       customFieldValues: customFieldSnapshot,
       formAnswers: answers as unknown as object,
+      ...(handover && {
+        continuationTokenHash: handover.hash,
+        continuationExpiresAt: handover.expires,
+      }),
     },
     select: { id: true },
   })
 
   await notifyEnquiryTrainer({ enquiryId: enquiry.id })
+
+  if (handover) {
+    // The same link by email, so a closed tab isn't the end of the run. Fire
+    // and forget: a flaky Resend round-trip must never fail a submission, and
+    // the person is normally already on the next screen before it lands.
+    sendContinuationEmail({ enquiryId: enquiry.id, plainToken: handover.plain }).catch(err => {
+      console.error('[form-submit] continuation email failed:', err)
+    })
+    return NextResponse.json(
+      { ok: true, continueUrl: continuationPath(form.id, handover.plain) },
+      { status: 201 },
+    )
+  }
 
   return NextResponse.json({ ok: true }, { status: 201 })
 }

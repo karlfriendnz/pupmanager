@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
-import { formPatchSchema, persistLinkedFields, uniqueFormSlug } from '@/lib/form-api'
+import { formPatchSchema, persistLinkedFields, resolveContinuationIntakeForm, uniqueFormSlug } from '@/lib/form-api'
 
 async function ownedForm(formId: string, trainerId: string) {
   const form = await prisma.form.findUnique({
@@ -60,6 +60,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ formId
     slug = null
   }
 
+  // The handover target is re-read as one of THIS trainer's intake forms, never
+  // taken on trust — an id from another business would render their questions
+  // to a stranger who enquired here.
+  const continueIntakeFormId = await resolveContinuationIntakeForm(
+    d.continueIntakeFormId,
+    trainerId,
+    formId,
+  )
+
   const form = await prisma.form.update({
     where: { id: formId },
     data: {
@@ -79,6 +88,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ formId
       ...(d.inviteShowDiaryButton !== undefined && { inviteShowDiaryButton: d.inviteShowDiaryButton }),
       ...(d.inviteButtonLabel !== undefined && { inviteButtonLabel: d.inviteButtonLabel }),
       ...(d.isActive !== undefined && { isActive: d.isActive }),
+      ...(d.continueToAccount !== undefined && { continueToAccount: d.continueToAccount }),
+      ...(continueIntakeFormId !== undefined && { continueIntakeFormId }),
     },
   })
   return NextResponse.json(form)

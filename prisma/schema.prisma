@@ -1325,20 +1325,20 @@ model ClientShare {
 // ─── Training Diary & Tasks ───────────────────────────────────────────────────
 
 model TrainingTask {
-  id            String   @id @default(cuid())
+  id            String         @id @default(cuid())
   clientId      String
   dogId         String? // optional: which dog this task is for
   sessionId     String? // optional: linked training session
-  date          DateTime @db.Date
+  date          DateTime       @db.Date
   title         String
-  description   String?  @db.Text
+  description   String?        @db.Text
   repetitions   Int?
   videoUrl      String? // trainer-provided instructional link — FIRST of `videos`
   /// The instructional videos, copied from the library item at hand-out time:
   /// `[{ url, title? }]`. A snapshot like the title and description are, so
   /// re-cutting the library item never changes homework already given out.
-  videos        Json     @default("[]")
-  trainerNote   String?  @db.Text // per-task comment from the trainer
+  videos        Json           @default("[]")
+  trainerNote   String?        @db.Text // per-task comment from the trainer
   /// Everything the trainer attached, in their order — the same shape as
   /// LibraryTask.media, copied at hand-out time. Its arrival is what finally
   /// gets a HANDOUT to a client: the assign path copied the picture and the
@@ -1348,12 +1348,12 @@ model TrainingTask {
   /// `videos`/`videoUrl`/`imageUrls` are derived from it by
   /// lib/library-media.ts (`homeworkMediaColumns`) so the older readers — the
   /// client's own log panel, the session screen — keep working unchanged.
-  media         Json     @default("[]")
-  imageUrls     Json     @default("[]") // string[] of public image URLs — the image rows of `media`
+  media         Json           @default("[]")
+  imageUrls     Json           @default("[]") // string[] of public image URLs — the image rows of `media`
   /// Whether the client is asked to log sessions against this. Copied from the
   /// library item at hand-out time (LibraryTask.wantsLog) — homework is a snapshot,
   /// so changing the item later never changes work already given out.
-  wantsLog      Boolean  @default(true)
+  wantsLog      Boolean        @default(true)
   /// Preparation for the session, or practice after it. Copied from the
   /// offering's default row at hand-out time (PackageDefaultTask.timing), and a
   /// snapshot like everything else here.
@@ -1364,7 +1364,7 @@ model TrainingTask {
   /// session behind it has nothing to wait for and is always visible. The one
   /// predicate lives in lib/homework-visibility.ts — never re-derive it.
   timing        HomeworkTiming @default(AFTER_SESSION)
-  order         Int      @default(0) // display order within a session
+  order         Int            @default(0) // display order within a session
   // Which library item this homework was created from, when it came from the
   // Library. The row stays a SNAPSHOT (title/description are copied, so editing
   // the library item never rewrites work already handed out) — this is purely a
@@ -1839,7 +1839,7 @@ model ProductVariant {
   // against the Medium and the product blurb keeps covering the rest. Resolved
   // in ONE place beside the prices — resolveVariantPresentation() in
   // src/lib/product-price.ts.
-  description    String?  @db.Text
+  description    String? @db.Text
   // Units on hand for THIS variant. NULL = not tracked, the same meaning it
   // has on Product. When a product has variants these are the counts that
   // matter and Product.stockCount is ignored.
@@ -1851,9 +1851,9 @@ model ProductVariant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  product  Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
-  trainer  TrainerProfile   @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  requests ProductRequest[]
+  product      Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  trainer      TrainerProfile   @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  requests     ProductRequest[]
   // History and sales outlive a deleted variant (SetNull on both sides), the
   // same rule the stock ledger already applies to clients and staff.
   movements    StockMovement[]
@@ -1949,8 +1949,8 @@ model StockMovement {
 
   createdAt DateTime @default(now())
 
-  product Product        @relation(fields: [productId], references: [id], onDelete: Cascade)
-  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  trainer TrainerProfile  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   // History outlives the people in it: deleting a client or a staff member
   // blanks the attribution, it does not erase the movement. Same for a
   // retired variant — the units still moved.
@@ -3457,7 +3457,7 @@ model LibraryTask {
 // Lives on Package because Package is the template for BOTH a 1:1 consult
 // (isGroup=false) and a group class (isGroup=true), so one editor covers both.
 model PackageDefaultTask {
-  id            String  @id @default(cuid())
+  id            String         @id @default(cuid())
   packageId     String
   // 1-based session number within the offering ("session 3 of 6").
   // null = suggest after EVERY session.
@@ -3472,10 +3472,10 @@ model PackageDefaultTask {
   // Inline one-off default, for something that isn't worth a library item.
   // Ignored when libraryTaskId is set.
   title         String?
-  description   String? @db.Text
+  description   String?        @db.Text
   repetitions   Int?
   videoUrl      String?
-  order         Int     @default(0)
+  order         Int            @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -4514,15 +4514,39 @@ model Form {
   inviteShowDiaryButton Boolean @default(true)
   inviteButtonLabel     String? @db.Text
 
-  // Draft flag — a draft is hidden from the invite picker and 404s publicly.
-  isActive Boolean @default(true)
+  // ── One continuous run (enquiry → account → intake → their diary) ─────────
+  //
+  // Off, a public enquiry ends at a thank-you card and the person waits for the
+  // trainer to accept them: "check your email, then start again". On, the
+  // submission hands straight over to a password step and then to the intake
+  // form, and they end up looking at their own diary without ever leaving the
+  // run. Karl, 2026-08-02: "I want the enquiry form and the booking step to
+  // feel like one continuous thing for the client."
+  //
+  // Turning it on IS the trainer's consent to admit whoever finishes: it is
+  // their own form, on their own website, and only they can flip this. That is
+  // why the run may create a ClientProfile where the /c/<slug>/join path
+  // deliberately may not — there, nobody had said yes to anything.
+  continueToAccount    Boolean @default(false)
+  // The intake form asked once the account exists. Must be one of THIS
+  // trainer's forms with usableAsIntake (checked server-side on save). Null =
+  // no intake step; they land straight on their diary.
+  continueIntakeFormId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  trainer         TrainerProfile  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  assignedClients ClientProfile[] @relation("ClientIntakeForm")
-  enquiries       Enquiry[]       @relation("EnquiryUnifiedForm")
+  // Draft flag — a draft is hidden from the invite picker and 404s publicly.
+  isActive Boolean @default(true)
+
+  trainer            TrainerProfile  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  assignedClients    ClientProfile[] @relation("ClientIntakeForm")
+  enquiries          Enquiry[]       @relation("EnquiryUnifiedForm")
+  // Self-relation: the intake form this enquiry form hands over to. SetNull so
+  // deleting the intake form turns the handover off rather than deleting the
+  // enquiry form with it.
+  continueIntakeForm Form?           @relation("FormContinuationIntake", fields: [continueIntakeFormId], references: [id], onDelete: SetNull)
+  continuationOf     Form[]          @relation("FormContinuationIntake")
 
   @@unique([trainerId, slug])
   @@index([trainerId])
@@ -4666,6 +4690,26 @@ model Enquiry {
   followupReminderLevel Int           @default(0)
   // Populated after Accept; gives a forward link to the resulting client.
   clientProfileId       String?       @unique
+
+  // ── The continuous run's handover (Form.continueToAccount) ────────────────
+  //
+  // The enquiry row is written FIRST and the account second, on purpose: if the
+  // person walks away at the password step the trainer still has a name, an
+  // email and a phone number and can reply by hand. A run that stranded the
+  // trainer would be worse than no run at all.
+  //
+  // What carries them from step to step is this token — sha256(plain +
+  // AUTH_SECRET), the same shape as the accept-magic-link, so the plaintext
+  // only ever exists in the person's URL bar and their inbox. It is what makes
+  // the step SAFE: the account step takes its email address from THIS ROW, not
+  // from anything posted to it, so there is no field an attacker can point at
+  // somebody else's address.
+  continuationTokenHash String?   @unique
+  continuationExpiresAt DateTime?
+  // Single use. Stamped when the account is created (or the already-registered
+  // person signs in and is joined), so a link left in browser history or a
+  // forwarded email cannot re-run the handover.
+  continuationUsedAt    DateTime?
 
   // Set when the enquiry came from the public Calendly-style booking page:
   // the prospect's chosen slot (UTC instant) and the package they picked

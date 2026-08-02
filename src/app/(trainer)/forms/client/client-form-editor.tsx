@@ -37,6 +37,15 @@ export interface ClientFormInitial {
   inviteShowDiaryButton: boolean
   inviteButtonLabel: string | null
   isActive: boolean
+  continueToAccount: boolean
+  continueIntakeFormId: string | null
+}
+
+/** One of this trainer's other forms that could be asked after signing up. */
+export interface IntakeFormOption {
+  id: string
+  name: string
+  isActive: boolean
 }
 
 function newStepId() { return Math.random().toString(36).slice(2, 10) }
@@ -54,10 +63,13 @@ function newStepId() { return Math.random().toString(36).slice(2, 10) }
 export function ClientFormEditor({
   initial,
   customFields,
+  intakeForms = [],
   newFormUse,
 }: {
   initial: ClientFormInitial | null
   customFields: CustomFieldOption[]
+  /** This trainer's intake forms, for the "and then ask them" picker. */
+  intakeForms?: IntakeFormOption[]
   /**
    * Which job a BRAND-NEW form is being created for, from the door the trainer
    * came through on /forms/new. Only sets the starting position — both switches
@@ -87,6 +99,8 @@ export function ClientFormEditor({
   const [inviteShowDiaryButton, setInviteShowDiaryButton] = useState(initial?.inviteShowDiaryButton ?? true)
   const [inviteButtonLabel, setInviteButtonLabel] = useState(initial?.inviteButtonLabel ?? '')
   const [isActive, setIsActive] = useState(initial?.isActive ?? true)
+  const [continueToAccount, setContinueToAccount] = useState(initial?.continueToAccount ?? false)
+  const [continueIntakeFormId, setContinueIntakeFormId] = useState(initial?.continueIntakeFormId ?? '')
   const [togglingActive, setTogglingActive] = useState(false)
   const [saving, setSaving] = useState(false)
   const [duplicating, setDuplicating] = useState(false)
@@ -160,6 +174,11 @@ export function ClientFormEditor({
       inviteButtonLabel: inviteButtonLabel.trim() || null,
       // Live state, so toggling Published then hitting Save keeps the toggle.
       isActive,
+      // Only ever an enquiry form's business. Sent as false on an intake-only
+      // form so switching "where it's used" off also switches the run off,
+      // rather than leaving a setting live on a form that has no public link.
+      continueToAccount: asEnquiry && continueToAccount,
+      continueIntakeFormId: asEnquiry && continueToAccount ? continueIntakeFormId || null : null,
     }
     try {
       const res = await fetch(isNew ? '/api/forms' : `/api/forms/${initial!.id}`, {
@@ -360,6 +379,50 @@ export function ClientFormEditor({
       settingsLabel="Settings"
       settings={<>
       {asEnquiry && (
+        <FormEditorSection
+          title="After they submit"
+          hint="Where the person ends up once they've filled this in."
+        >
+          <FormRowGroup>
+            <FormToggleRow
+              label="Take them straight on to setting up their account"
+              hint={continueToAccount
+                ? 'They pick a password, answer your intake form, and land on their own diary — all in one go. They are your client from that moment; there is nothing for you to accept.'
+                : 'They see a thank-you message and wait for you. The enquiry lands in your list to accept or decline as usual.'}
+              checked={continueToAccount}
+              onChange={setContinueToAccount}
+            />
+          </FormRowGroup>
+
+          {continueToAccount && (
+            <FormField
+              label="And then ask them"
+              hint={
+                intakeForms.length === 0
+                  ? 'You have no intake forms yet. They will go straight to their diary until you make one.'
+                  : 'Asked once, right after they pick a password. Leave it as “Nothing” to send them straight to their diary.'
+              }
+            >
+              <select
+                value={continueIntakeFormId}
+                onChange={e => setContinueIntakeFormId(e.target.value)}
+                aria-label="Intake form to ask after sign-up"
+                className={FORM_INPUT}
+                disabled={intakeForms.length === 0}
+              >
+                <option value="">Nothing — straight to their diary</option>
+                {intakeForms.map(f => (
+                  <option key={f.id} value={f.id}>
+                    {f.name}{f.isActive ? '' : ' (draft)'}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+          )}
+        </FormEditorSection>
+      )}
+
+      {asEnquiry && !continueToAccount && (
         <FormEditorSection title="Success page" hint="What they see once they've hit submit.">
           <FormField label="Heading">
             <input

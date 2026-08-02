@@ -103,7 +103,11 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
   return (
     <>
       <PageHeader
-        title={enquiry.source === 'SELF_SIGNUP' ? 'Join request' : 'Enquiry'}
+        title={
+          enquiry.source === 'SELF_SIGNUP' ? 'Join request'
+          : enquiry.source === 'FORM_SIGNUP' ? 'Signed up'
+          : 'Enquiry'
+        }
         back={{ href: '/enquiries', label: 'Back to enquiries' }}
         actions={<StatusPill status={enquiry.status} />}
       />
@@ -125,6 +129,24 @@ export default async function EnquiryDetailPage({ params }: { params: Promise<{ 
               : enquiry.status === 'ACCEPTED'
                 ? 'They’re on your client list and can sign in with the password they set.'
                 : 'They were not added to your client list.'}
+          </p>
+        </Card>
+      )}
+
+      {/* They came through a form you set to carry straight on into an account,
+          so there was never an Accept for anyone to tap. Saying so is the point
+          of the card: a client appearing on the list with nobody remembering
+          approving them is exactly the thing that reads as a bug. */}
+      {enquiry.source === 'FORM_SIGNUP' && (
+        <Card className="p-5 mb-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">How they found you</h2>
+          <p className="text-sm text-slate-700">
+            {enquiry.name} filled in your form and set up their own account in one go.
+          </p>
+          <p className="text-xs text-slate-500 mt-1">
+            Your form is set to take people straight on to setting up an account, so they were added
+            to your client list without waiting. Turn that off on the form if you would rather approve
+            each one.
           </p>
         </Card>
       )}

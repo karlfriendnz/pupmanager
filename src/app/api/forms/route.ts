@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
-import { formSchema, persistLinkedFields, uniqueFormSlug, slugify } from '@/lib/form-api'
+import { formSchema, persistLinkedFields, resolveContinuationIntakeForm, uniqueFormSlug, slugify } from '@/lib/form-api'
 
 // GET /api/forms — the trainer's unified forms. Read-only, so any team member
 // may list them (the invite screen's intake-form picker needs this); creating
@@ -67,6 +67,10 @@ export async function POST(req: Request) {
       inviteShowDiaryButton: data.inviteShowDiaryButton ?? true,
       inviteButtonLabel: data.inviteButtonLabel ?? null,
       isActive: data.isActive ?? true,
+      continueToAccount: data.continueToAccount ?? false,
+      // Checked against this trainer's own intake forms, never taken on trust.
+      continueIntakeFormId:
+        (await resolveContinuationIntakeForm(data.continueIntakeFormId, trainerId)) ?? null,
     },
   })
   return NextResponse.json(form, { status: 201 })

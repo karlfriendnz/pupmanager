@@ -15,7 +15,7 @@ export default async function EditClientFormPage({ params }: { params: Promise<{
   if (!trainerId) redirect('/login')
 
   const { formId } = await params
-  const [form, customFields] = await Promise.all([
+  const [form, customFields, intakeForms] = await Promise.all([
     // findFirst with trainerId (not findUnique on id) so another trainer's form
     // 404s rather than rendering.
     prisma.form.findFirst({ where: { id: formId, trainerId } }),
@@ -25,6 +25,14 @@ export default async function EditClientFormPage({ params }: { params: Promise<{
       // options too: the builder now EDITS a linked field, so a dropdown's
       // choices have to arrive with it, not just its name.
       select: { id: true, label: true, type: true, appliesTo: true, category: true, options: true },
+    }),
+    // The picker for "and then ask them". Scoped to this trainer, and it
+    // excludes THIS form — a form that handed over to itself would put someone
+    // straight back into the questions they had just answered.
+    prisma.form.findMany({
+      where: { trainerId, usableAsIntake: true, id: { not: formId } },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, isActive: true },
     }),
   ])
   if (!form) notFound()
@@ -47,7 +55,10 @@ export default async function EditClientFormPage({ params }: { params: Promise<{
           inviteShowDiaryButton: form.inviteShowDiaryButton,
           inviteButtonLabel: form.inviteButtonLabel,
           isActive: form.isActive,
+          continueToAccount: form.continueToAccount,
+          continueIntakeFormId: form.continueIntakeFormId,
         }}
+        intakeForms={intakeForms}
         customFields={customFields.map((f): CustomFieldOption => ({
           id: f.id,
           label: f.label,

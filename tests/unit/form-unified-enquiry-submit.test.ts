@@ -151,6 +151,56 @@ describe('public unified-form submit — what gets stored', () => {
   })
 })
 
+// The continuous run's FIRST step. The enquiry is written whether or not the
+// person ever gets as far as a password, which is the whole ordering decision:
+// an enquiry the trainer can't reply to would be worse than no enquiry.
+describe('public unified-form submit — the handover to an account', () => {
+  it('ends at a thank-you card when the setting is off', async () => {
+    h.formFindFirst.mockResolvedValue({ id: FORM, trainerId: TRAINER, questions: QUESTIONS, continueToAccount: false })
+
+    const res = await post({ contact: CONTACT, answers: { q1: 'No' } })
+    const body = await res.json()
+
+    expect(body.continueUrl).toBeUndefined()
+    const data = h.enquiryCreate.mock.calls[0][0].data
+    expect(data.continuationTokenHash).toBeUndefined()
+  })
+
+  it('hands over to the password step when the setting is on', async () => {
+    h.formFindFirst.mockResolvedValue({ id: FORM, trainerId: TRAINER, questions: QUESTIONS, continueToAccount: true })
+
+    const res = await post({ contact: CONTACT, answers: { q1: 'No' } })
+    const body = await res.json()
+
+    expect(res.status).toBe(201)
+    expect(body.continueUrl).toMatch(new RegExp(`^/form/${FORM}/account\\?t=[0-9a-f]{64}$`))
+  })
+
+  it('writes the ENQUIRY first, so an abandoned run still reaches the trainer', async () => {
+    h.formFindFirst.mockResolvedValue({ id: FORM, trainerId: TRAINER, questions: QUESTIONS, continueToAccount: true })
+
+    await post({ contact: CONTACT, answers: { q1: 'No' } })
+
+    const data = h.enquiryCreate.mock.calls[0][0].data
+    expect(data.name).toBe('Sarah')
+    expect(data.email).toBe('sarah@example.com')
+    expect(data.phone).toBe('021 555 0000')
+    expect(h.notifyEnquiryTrainer).toHaveBeenCalledWith({ enquiryId: 'enq-1' })
+  })
+
+  it('stores only the token DIGEST, never the link that was handed out', async () => {
+    h.formFindFirst.mockResolvedValue({ id: FORM, trainerId: TRAINER, questions: QUESTIONS, continueToAccount: true })
+
+    const body = await (await post({ contact: CONTACT, answers: { q1: 'No' } })).json()
+    const plain = new URL(body.continueUrl, 'https://x.test').searchParams.get('t')!
+    const data = h.enquiryCreate.mock.calls[0][0].data
+
+    expect(data.continuationTokenHash).toHaveLength(64)
+    expect(data.continuationTokenHash).not.toBe(plain)
+    expect(data.continuationExpiresAt.getTime()).toBeGreaterThan(Date.now())
+  })
+})
+
 describe('legacy EmbedForm submissions are untouched', () => {
   it('still takes the EmbedForm path when one exists under that id', async () => {
     h.embedFindFirst.mockResolvedValue({ id: 'embed-1', trainerId: TRAINER, customFieldIds: [] })

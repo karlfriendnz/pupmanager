@@ -45,6 +45,12 @@ export async function POST(_req: Request, { params }: { params: Promise<{ formId
       inviteBody: src.inviteBody,
       inviteShowDiaryButton: src.inviteShowDiaryButton,
       inviteButtonLabel: src.inviteButtonLabel,
+      // The handover comes with the copy — a duplicate of a sign-up form that
+      // silently reverted to "ends at a thank-you card" is the kind of surprise
+      // a trainer only finds out about from a client who never arrived. Safe to
+      // carry the id straight over: it is already one of this trainer's forms.
+      continueToAccount: src.continueToAccount,
+      continueIntakeFormId: src.continueIntakeFormId,
       isActive: false, // duplicates start as drafts
     },
   })
