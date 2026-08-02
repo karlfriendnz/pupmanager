@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
 import { PackagesView } from './packages-view'
 import { isPackagePast, type PackageAssignment } from './past-packages'
+import { notYetShowingBadge, visibleFromDateStr } from '@/lib/offering-visibility'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: '1:1 Sessions' }
@@ -45,9 +46,15 @@ export default async function PackagesPage({
         sessions: { select: { scheduledAt: true }, orderBy: { scheduledAt: 'desc' }, take: 1 },
       },
     }),
-    prisma.trainerProfile.findUnique({ where: { id: trainerId }, select: { payoutCurrency: true } }),
+    prisma.trainerProfile.findUnique({
+      where: { id: trainerId },
+      // The timezone is what turns the stored instant back into the day the
+      // trainer typed, for the "hold this back until" picker.
+      select: { payoutCurrency: true, user: { select: { timezone: true } } },
+    }),
   ])
   const currency = (trainer?.payoutCurrency ?? 'NZD').toUpperCase()
+  const tz = trainer?.user?.timezone || 'Pacific/Auckland'
 
   const byPackage = new Map<string, PackageAssignment[]>()
   for (const a of assignments) {
@@ -87,6 +94,9 @@ export default async function PackagesPage({
         clientSelfBook: p.clientSelfBook,
         selfBookRequiresApproval: p.selfBookRequiresApproval,
         requirePayment: p.requirePayment,
+        visibleFromDate: visibleFromDateStr(p.visibleFrom, tz),
+        // Computed here, where the instant is — see notYetShowingBadge.
+        notYetShowing: notYetShowingBadge(p.visibleFrom) !== null,
         assignments: p._count.assignments,
         // A consult that runs a curriculum says so on the list — otherwise the
         // only way to tell a series from a plain six-session consult is to open

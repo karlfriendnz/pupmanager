@@ -147,6 +147,10 @@ export function PackagesView({
 // reorder when there's one).
 function packageBadges(p: PkgRow, currency: string): OfferingBadge[] {
   const badges: OfferingBadge[] = []
+  // Nothing is ever hidden from the trainer — an offering that vanished from
+  // its own list reads as data loss and gets rebuilt. It is labelled, first,
+  // so the answer to "why can't my client see this" is on the card.
+  if (p.notYetShowing) badges.push({ label: 'Not showing yet', tone: 'warn' })
   // A special price shows beside the old one, struck, so it reads as "was".
   if (p.specialPriceCents != null && p.priceCents != null) {
     badges.push({ label: formatMoney(p.specialPriceCents, currency), tone: 'good' })

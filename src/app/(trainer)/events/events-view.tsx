@@ -27,6 +27,8 @@ export type EventRow = {
   priceCents: number | null
   durationMins: number
   tiers: EventTier[]
+  /** Built, but held back from clients until its date — see offering-visibility. */
+  notYetShowing?: boolean
   isPast: boolean
 }
 
@@ -114,6 +116,9 @@ export function EventsView({ events: initialEvents, currency }: { events: EventR
                           dimmed={e.isPast}
                           dragHandle={handle}
                           badges={[
+                            // First, and never hidden — a trainer must never
+                            // wonder why a client can't see their event.
+                            ...(e.notYetShowing ? [{ label: 'Not showing yet', tone: 'warn' as const }] : []),
                             ...(e.status === 'CANCELLED' ? [{ label: 'Cancelled', tone: 'bad' as const }] : []),
                             ...(ticketLabel(e, currency) ? [{ label: ticketLabel(e, currency)!, tone: 'accent' as const }] : []),
                           ]}

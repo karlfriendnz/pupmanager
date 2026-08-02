@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { nextPriority } from '@/lib/waitlist'
+import { offeringVisibleWhere } from '@/lib/offering-visibility'
 
 // POST /api/my/waitlist — client self-adds to the trainer's general
 // scheduling waitlist (the "no slots fit" fallback from self-book).
@@ -29,7 +30,9 @@ export async function POST(req: Request) {
 
   if (parsed.data.packageId) {
     const pkg = await prisma.package.findFirst({
-      where: { id: parsed.data.packageId, trainerId: profile.trainerId },
+      // Gated, so a not-yet-showing offering is neither joinable nor even
+      // confirmable as existing (the 404 is the same either way).
+      where: { id: parsed.data.packageId, trainerId: profile.trainerId, ...offeringVisibleWhere() },
       select: { id: true, allowWaitlist: true },
     })
     if (!pkg) return NextResponse.json({ error: '1:1 session not found' }, { status: 404 })

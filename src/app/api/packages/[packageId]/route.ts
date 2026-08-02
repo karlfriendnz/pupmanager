@@ -13,6 +13,7 @@ import {
 import { isValidSpecialPrice, SPECIAL_PRICE_TOO_HIGH } from '@/lib/special-price'
 import { resolvePackagePricing } from '@/lib/session-pricing'
 import { offeringListHref, offeringKindLabel } from '@/lib/run-kind'
+import { visibleFromInstant } from '@/lib/offering-visibility'
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -45,6 +46,11 @@ const updateSchema = z.object({
   publicEnrollment: z.boolean().optional(),
   clientSelfBook: z.boolean().optional(),
   selfBookRequiresApproval: z.boolean().optional(),
+  // The calendar DAY clients start seeing this, in the trainer's own zone.
+  // null clears the schedule (visible immediately); OMITTING it changes
+  // nothing, which is what lets a list screen save an offering it never loaded
+  // the field for. See lib/offering-visibility.
+  visibleFromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   xeroAccountCode: z.string().max(50).nullable().optional(),
   // Tri-state "require payment to book": null = inherit trainer default.
   requirePayment: z.boolean().nullable().optional(),
@@ -177,9 +183,23 @@ export async function PATCH(
   const {
     sessionSlots, ticketTiers,
     scheduleNote, location, imageUrl, assignedMembershipIds, startAt, status, removeSessionIds,
+    visibleFromDate,
     ...columns
   } = parsed.data
   const dropIn = sessionSlots ? derivedDropInFields(sessionSlots) : null
+
+  // A DAY in the trainer's zone becomes the instant that day begins for them.
+  // Pulled out of `columns` rather than spread with them because the column is
+  // an instant and the payload is a date string — and because omitting the key
+  // has to mean "leave it alone", not "publish now".
+  if (visibleFromDate !== undefined) {
+    const tz =
+      (await prisma.trainerProfile.findUnique({
+        where: { id: trainerId },
+        select: { user: { select: { timezone: true } } },
+      }))?.user?.timezone || 'Pacific/Auckland'
+    ;(columns as Record<string, unknown>).visibleFrom = visibleFromInstant(visibleFromDate, tz)
+  }
 
   // Write the settled price only when the patch actually said something about
   // pricing (or about the session count the total is derived from). Every other

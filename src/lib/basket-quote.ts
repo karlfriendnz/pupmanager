@@ -3,6 +3,7 @@ import {
   effectiveCapacity, enrolledCount, normalizeTicketQuantity,
   sessionAttendeeCount, sessionCapacity, sessionDropInPriceCents, wholeRunPriceCents,
 } from '@/lib/class-runs'
+import { offeringVisibleRelationWhere } from '@/lib/offering-visibility'
 
 /**
  * Quote ONE class line of a basket: is it still bookable, and what does it cost?
@@ -71,7 +72,10 @@ export async function quoteClassLine(args: {
   const now = args.now ?? new Date()
 
   const run = await prisma.classRun.findFirst({
-    where: { id: line.classRunId, trainerId },
+    // A basket line is a second, independent way into an offering — gate it
+    // exactly as the enrol route does, or a scheduled offering is buyable
+    // through checkout while invisible everywhere else.
+    where: { id: line.classRunId, trainerId, ...offeringVisibleRelationWhere(now) },
     // The tiers come along because on a ticketed event THEY are the price — the
     // package's own priceCents is whatever was typed before tiers existed.
     include: { package: { include: { ticketTiers: { orderBy: { order: 'asc' } } } } },

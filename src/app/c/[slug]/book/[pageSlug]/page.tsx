@@ -6,6 +6,7 @@ import { fetchBookingSlots } from '@/lib/booking-slots'
 import { bookingConfig } from '@/lib/booking-page'
 import { BookingFlow } from '../booking-flow'
 import { RichText } from '@/components/shared/rich-text'
+import { offeringVisibleWhere } from '@/lib/offering-visibility'
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
@@ -60,7 +61,10 @@ export default async function PublicBookingPage({
 
   const pkg = page.packageId
     ? await prisma.package.findFirst({
-        where: { id: page.packageId, trainerId: trainer.id },
+        // Anonymous surface — "the client" here is whoever has the URL, so
+        // a not-yet-showing offering must not name itself. Booking then falls
+        // back to the page's own defaults, exactly as an unlinked page does.
+        where: { id: page.packageId, trainerId: trainer.id, ...offeringVisibleWhere() },
         select: { name: true, sessionCount: true, weeksBetween: true, durationMins: true, bufferMins: true },
       })
     : null

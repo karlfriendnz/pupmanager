@@ -14,6 +14,7 @@ import { isTimeWithinAvailability, overlapsBusy } from '@/lib/availability'
 import { utcToZonedDateAndMinutes } from '@/lib/timezone'
 import { notifyTrainer } from '@/lib/trainer-notify'
 import { env } from '@/lib/env'
+import { offeringVisibleWhere } from '@/lib/offering-visibility'
 
 // GET  /api/my/self-book  — packages this client may self-book
 // POST /api/my/self-book  — book one (instant or pending request)
@@ -58,7 +59,8 @@ export async function GET() {
   // the classes list, by picking real sessions, not by choosing an hour out of
   // the trainer's diary.
   const packages = await prisma.package.findMany({
-    where: { trainerId: ctx.trainerId, clientSelfBook: true, isGroup: false },
+    // ...and not scheduled to appear later — see lib/offering-visibility.
+    where: { trainerId: ctx.trainerId, clientSelfBook: true, isGroup: false, ...offeringVisibleWhere() },
     orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
     select: {
       id: true, name: true, description: true, sessionCount: true,
@@ -96,7 +98,10 @@ export async function POST(req: Request) {
   // would hold sessions nobody else in the class has, at an hour the class
   // doesn't run, and never appear on its roster.
   const pkg = await prisma.package.findFirst({
-    where: { id: parsed.data.packageId, trainerId: ctx.trainerId, clientSelfBook: true, isGroup: false },
+    // The visibility gate belongs on the WRITE side too, not just the list:
+    // an id is guessable, and a client who books a not-yet-showing offering
+    // has booked something the trainer had not opened yet.
+    where: { id: parsed.data.packageId, trainerId: ctx.trainerId, clientSelfBook: true, isGroup: false, ...offeringVisibleWhere() },
   })
   if (!pkg) return NextResponse.json({ error: 'This 1:1 session is not available' }, { status: 404 })
 

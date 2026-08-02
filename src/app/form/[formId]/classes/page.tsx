@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { effectiveCapacity, seatsRemaining, PUBLIC_CLASS_ENROLLMENT_ENABLED } from '@/lib/class-runs'
 import { PublicClasses } from './public-classes'
+import { offeringVisibleWhere } from '@/lib/offering-visibility'
 
 // Public, unauthenticated class listing reached from a trainer's embed
 // form. Requesting a spot creates an Enquiry tagged with the run — the
@@ -33,7 +34,7 @@ export default async function PublicClassesPage({
     where: {
       trainerId: form.trainerId,
       status: 'SCHEDULED',
-      package: { isGroup: true, publicEnrollment: true },
+      package: { isGroup: true, publicEnrollment: true, ...offeringVisibleWhere() },
     },
     orderBy: { startDate: 'asc' },
     include: {

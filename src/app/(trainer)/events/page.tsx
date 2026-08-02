@@ -7,6 +7,7 @@ import { EVENT_PACKAGE } from '@/lib/class-runs'
 import { formatDate } from '@/lib/utils'
 import { EventsView } from './events-view'
 import { addonSettingsHref } from '@/lib/configurable-features'
+import { notYetShowingBadge } from '@/lib/offering-visibility'
 
 export const metadata: Metadata = { title: 'Events' }
 
@@ -36,6 +37,8 @@ export default async function EventsPage() {
         select: {
           id: true, name: true, description: true, capacity: true, durationMins: true,
           priceCents: true, specialPriceCents: true,
+          // Whether clients can see this yet — the run inherits it.
+          visibleFrom: true,
           ticketTiers: { orderBy: { order: 'asc' }, select: { id: true, name: true, priceCents: true, capacity: true } },
         },
       },
@@ -69,6 +72,7 @@ export default async function EventsPage() {
             id: t.id, name: t.name, priceCents: t.priceCents, capacity: t.capacity,
           })),
           // An event is done once its date has been, or it was closed off.
+          notYetShowing: notYetShowingBadge(r.package.visibleFrom, now) !== null,
           isPast: r.status === 'COMPLETED' || r.status === 'CANCELLED' || at.getTime() < now.getTime(),
         }
       })}

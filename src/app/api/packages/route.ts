@@ -12,6 +12,7 @@ import { createClassRunIn } from '@/lib/class-runs'
 import { syncClassSessions } from '@/lib/class-session-sync'
 import { isValidSpecialPrice, SPECIAL_PRICE_TOO_HIGH } from '@/lib/special-price'
 import { resolvePackagePricing } from '@/lib/session-pricing'
+import { visibleFromInstant } from '@/lib/offering-visibility'
 
 const schema = z.object({
   name: z.string().min(1),
@@ -57,6 +58,11 @@ const schema = z.object({
   publicEnrollment: z.boolean().optional(),
   clientSelfBook: z.boolean().optional(),
   selfBookRequiresApproval: z.boolean().optional(),
+  // The calendar DAY the trainer wants clients to start seeing this, in their
+  // own zone. null / omitted = visible immediately, which is the default and
+  // what every offering built before this meant. Resolved to the instant that
+  // day begins for them before it is stored — see lib/offering-visibility.
+  visibleFromDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   xeroAccountCode: z.string().max(50).nullable().optional(),
   // Tri-state "require payment to book": null = inherit the trainer default,
   // true = pay up front, false = book now / pay later.
@@ -106,6 +112,15 @@ export async function POST(req: Request) {
 
   const parsed = schema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+
+  // "Show from 1 December" is a day in the TRAINER's life, not in UTC's. The
+  // zone is resolved here so what gets stored is the instant that day begins
+  // for them — a UTC midnight would publish a Los Angeles term a day early.
+  const trainerTz =
+    (await prisma.trainerProfile.findUnique({
+      where: { id: trainerId },
+      select: { user: { select: { timezone: true } } },
+    }))?.user?.timezone || 'Pacific/Auckland'
 
   // Settle the price BEFORE anything reads it. When the trainer priced by the
   // session the total is derived here, so every rule below — and the row that
@@ -195,6 +210,7 @@ export async function POST(req: Request) {
         publicEnrollment: parsed.data.publicEnrollment ?? false,
         clientSelfBook: parsed.data.clientSelfBook ?? false,
         selfBookRequiresApproval: parsed.data.selfBookRequiresApproval ?? true,
+        visibleFrom: visibleFromInstant(parsed.data.visibleFromDate, trainerTz),
         xeroAccountCode: parsed.data.xeroAccountCode || null,
         requirePayment: parsed.data.requirePayment ?? null,
         order: nextOrder,

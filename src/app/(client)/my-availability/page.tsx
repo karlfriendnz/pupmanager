@@ -10,6 +10,7 @@ import { loadPublishedMemberships } from '@/lib/client-memberships'
 import { PACKAGES_HIDDEN_FROM_CLIENTS } from '@/lib/feature-flags'
 import { mergeClientDogs } from '@/lib/dogs'
 import { getEnabledAddons } from '@/lib/billing'
+import { offeringVisibleWhere, offeringVisibleRelationWhere } from '@/lib/offering-visibility'
 import { BookingWizard, type WizardPackage, type WizardClass, type WizardEvent, type WizardTag, type WizardProduct, type PreviewDay } from './booking-wizard'
 import type { Metadata } from 'next'
 
@@ -118,7 +119,10 @@ export default async function MyAvailabilityPage() {
   // fixed timetable. Group offerings are booked from the classes list below,
   // by their real sessions.
   const rawPackages = await prisma.package.findMany({
-    where: { trainerId: profile.trainerId, clientSelfBook: true, isGroup: false },
+    // ...and not one the trainer has scheduled to appear later — see
+    // lib/offering-visibility. The tag section further down intersects THIS
+    // list, so gating here empties the tags of hidden offerings too.
+    where: { trainerId: profile.trainerId, clientSelfBook: true, isGroup: false, ...offeringVisibleWhere() },
     orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
     select: {
       id: true, name: true, imageUrl: true, description: true, sessionCount: true, weeksBetween: true,
@@ -165,6 +169,10 @@ export default async function MyAvailabilityPage() {
       status: { in: ['SCHEDULED', 'RUNNING'] },
       id: { notIn: enrolledRunIds.length ? enrolledRunIds : ['__none__'] },
       sessions: { some: { scheduledAt: { gte: now } } },
+      // A run inherits its offering's visibility. Next term's classes can be
+      // built and scheduled in November without appearing here until the
+      // trainer says so — and the ticket tiers selected below go with them.
+      ...offeringVisibleRelationWhere(now),
     },
     // The trainer's own arranged order (from dragging their Classes list) is
     // what a client sees; start date breaks ties.

@@ -17,6 +17,7 @@ import { notifyClient } from '@/lib/client-notify'
 import { quoteOfferingDiscount, scaleLinesToNet } from '@/lib/discounts/quote'
 import { quoteEnrollmentDiscounts } from '@/lib/discounts/booking-discount'
 import { env } from '@/lib/env'
+import { offeringVisibleRelationWhere } from '@/lib/offering-visibility'
 
 // Client self-enrolment into a group class run. Free classes (or trainers not
 // taking payments) enrol straight away; a priced class with payments on is
@@ -77,7 +78,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   const { runId } = await params
 
   const run = await prisma.classRun.findFirst({
-    where: { id: runId, trainerId: profile.trainerId },
+    // The visibility gate is on the ENROL, not just the list a client browses:
+    // a run id is guessable, and this response hands back the whole offering
+    // plus every ticket tier. See lib/offering-visibility.
+    where: { id: runId, trainerId: profile.trainerId, ...offeringVisibleRelationWhere() },
     // The offering's ticket tiers come along because they, not the package's
     // price, are what a ticketed event costs.
     include: { package: { include: { ticketTiers: { orderBy: { order: 'asc' } } } } },

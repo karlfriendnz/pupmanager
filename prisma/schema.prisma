@@ -2032,6 +2032,26 @@ model Package {
   // (false). Only meaningful when clientSelfBook is true.
   clientSelfBook           Boolean     @default(false)
   selfBookRequiresApproval Boolean     @default(true)
+  /// The instant this offering starts being visible to CLIENTS. null — the
+  /// default and what every existing row means — is "visible immediately".
+  ///
+  /// A trainer sets next term's classes up in November and does not want them
+  /// on the booking screen until enrolments open. The alternative was building
+  /// them the night before, or building them hidden and remembering to unhide,
+  /// and both are how a term ends up half-listed.
+  ///
+  /// An INSTANT, not a @db.Date. The trainer picks a calendar day, but a
+  /// calendar day means nothing without a zone: this repo has already shipped a
+  /// bug where a DATE column compared against instants moved an NZ trainer's
+  /// whole week. The day is resolved to midnight in the TRAINER's timezone at
+  /// save time (startOfDayInTz), so every read is a plain instant comparison
+  /// that cannot be got wrong.
+  ///
+  /// TRAINER-side this changes nothing — they see the offering exactly as
+  /// before, marked "not yet showing". The gate is applied server-side in every
+  /// client and public read; see lib/offering-visibility.ts, and never filter
+  /// this in the browser.
+  visibleFrom              DateTime?
   // Xero revenue account code this package's invoice lines post to. Null = fall
   // back to the connection's default sales account (XeroConnection.salesAccountCode).
   xeroAccountCode          String?
@@ -2060,6 +2080,8 @@ model Package {
 
   @@index([trainerId])
   @@index([defaultSessionFormId])
+  // Every client-facing offering query carries the visibleFrom gate.
+  @@index([trainerId, visibleFrom])
   @@map("packages")
 }
 
