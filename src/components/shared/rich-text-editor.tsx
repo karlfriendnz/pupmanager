@@ -156,6 +156,37 @@ function Toolbar({ editor, theme }: { editor: Editor; theme: Theme }) {
                 className={`h-6 w-6 rounded-full border hover:scale-110 transition-transform ${c === brand ? 'border-2 border-slate-400' : 'border-black/10'}`}
                 style={{ backgroundColor: c }} />
             ))}
+            {/* Any colour at all, not just the nine.
+                A native <input type="color"> IS the operating system's own
+                picker — spectrum, eyedropper, hex box — so "full colour picker"
+                costs no dependency and behaves the way the trainer's machine
+                already behaves. The swatches stay because they are the fast
+                path, and one of them is the trainer's own brand colour.
+
+                onChange, not onMouseDown: the value arrives as the user drags
+                around the wheel, so the text recolours live. Tiptap keeps the
+                selection while the editor is blurred and `.focus()` restores
+                it, so the colour lands on the words that were highlighted. */}
+            <label
+              className={`flex h-6 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-xs ${theme === 'dark' ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-500 hover:bg-slate-100'}`}
+              title="Pick any colour"
+            >
+              <span
+                aria-hidden
+                className="h-4 w-4 flex-shrink-0 rounded-full border border-black/10"
+                style={{
+                  background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)',
+                }}
+              />
+              Custom
+              <input
+                type="color"
+                aria-label="Pick any text colour"
+                value={currentColor ?? '#000000'}
+                onChange={e => editor.chain().focus().setColor(e.target.value).run()}
+                className="sr-only"
+              />
+            </label>
             <button type="button"
               onMouseDown={e => { e.preventDefault(); editor.chain().focus().unsetColor().run(); setShowColors(false) }}
               className={`h-6 px-2 rounded-md text-xs ${theme === 'dark' ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-500 hover:bg-slate-100'}`}>

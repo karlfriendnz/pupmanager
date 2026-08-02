@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Megaphone, UsersRound } from 'lucide-react'
 import { FlatBlock, FlatRow, SectionLabel } from '@/components/shared/flat-list'
-import { ModalPortal } from '@/components/shared/modal-portal'
+import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
 import { cn } from '@/lib/utils'
 
 // "Create a group for this class", on the class's own Reminders & messages
@@ -118,19 +118,24 @@ function CreateSheet({
   }
 
   return (
-    <ModalPortal>
-      <div className="fixed inset-0 z-50 flex flex-col bg-white" data-testid="class-group-sheet">
-        <div
-          className="flex items-center gap-2 border-b border-slate-200 px-4"
-          style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.625rem)', paddingBottom: '0.625rem' }}
+    // The whole screen on a phone, a centred panel on a desktop — the shared
+    // shell, so this reads like every other picker in the app.
+    <FullScreenSheet
+      title="New group"
+      onClose={onClose}
+      footer={
+        <button
+          type="button"
+          onClick={create}
+          disabled={busy || !name.trim()}
+          data-testid="class-group-create"
+          className="h-12 w-full rounded-xl bg-slate-900 text-sm font-semibold text-white hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400"
         >
-          <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-900">New group</h2>
-          <button type="button" onClick={onClose} className="text-sm font-medium text-slate-500 hover:text-slate-700">
-            Cancel
-          </button>
-        </div>
-
-        <div className="no-scrollbar flex-1 overflow-y-auto px-4 py-4">
+          {busy ? 'Creating…' : 'Create group'}
+        </button>
+      }
+    >
+        <div data-testid="class-group-sheet">
           <input
             value={name}
             onChange={e => setName(e.target.value.slice(0, 80))}
@@ -185,23 +190,7 @@ function CreateSheet({
 
           {error && <p className="mt-3 text-sm text-rose-600" role="alert">{error}</p>}
         </div>
-
-        <div
-          className="border-t border-slate-200 bg-white px-4 pt-3"
-          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
-        >
-          <button
-            type="button"
-            onClick={create}
-            disabled={busy || !name.trim()}
-            data-testid="class-group-create"
-            className="h-12 w-full rounded-xl bg-slate-900 text-sm font-semibold text-white hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400"
-          >
-            {busy ? 'Creating…' : 'Create group'}
-          </button>
-        </div>
-      </div>
-    </ModalPortal>
+    </FullScreenSheet>
   )
 }
 

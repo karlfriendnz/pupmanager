@@ -28,6 +28,7 @@ export function FullScreenSheet({
   sub,
   onClose,
   headerExtra,
+  footer,
   children,
 }: {
   title: string
@@ -35,6 +36,8 @@ export function FullScreenSheet({
   onClose: () => void
   /** Pinned under the title bar, OUTSIDE the scroll region — e.g. a search field. */
   headerExtra?: ReactNode
+  /** Pinned to the bottom, outside the scroll region — e.g. the confirm button. */
+  footer?: ReactNode
   children: ReactNode
 }) {
   useEffect(() => {
@@ -84,6 +87,16 @@ export function FullScreenSheet({
           {headerExtra}
 
           <div className="no-scrollbar flex-1 overflow-y-auto p-4">{children}</div>
+
+          {footer && (
+            // The phone's safe area is the panel's problem only when the panel
+            // IS the screen; inside a centred modal there is nothing below it.
+            <div
+              className="flex-shrink-0 border-t border-slate-200 bg-white px-4 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] sm:pb-3"
+            >
+              {footer}
+            </div>
+          )}
         </div>
       </div>
     </ModalPortal>
