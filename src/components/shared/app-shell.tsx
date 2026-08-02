@@ -1137,6 +1137,31 @@ function TrainerShell({
   })
   const mobileSecondary = trainerNav.filter(i => !i.group && !TRAINER_MOBILE_PRIMARY_HREFS.has(i.href))
 
+  // Karl, 2026-08-02: "in the more menu can you please add schedule, todo,
+  // messages, and alert as well just as a double access."
+  //
+  // The four tabs that aren't Home now open the menu's Overview run too. The
+  // sheet covers the tab bar the moment it opens, so a trainer who reached for
+  // the menu had to close it again to get to Alerts — the one place the menu
+  // was a dead end. Home stays out: the logo and the Home tab are already two
+  // ways to it, and a third is the "nothing says the same thing twice" rule.
+  //
+  // Built from the TAB list, not from TRAINER_NAV, for two reasons. Two of the
+  // four (/sessions/needs-notes, /notifications) have no nav row to un-hide —
+  // they exist only as tabs — and reading one source is what stops the menu and
+  // the bar disagreeing about the word, the icon or whether the row is there at
+  // all. It maps `mobilePrimary` rather than the raw list, so a tab already
+  // gated away by a permission or an add-on is absent from the menu with it.
+  const mobileMenuTabs: NavItem[] = mobilePrimary
+    .filter(t => t.href !== '/dashboard')
+    .map(t => ({ href: t.href, label: t.label, icon: t.icon, section: 'overview' as NavSection }))
+  // Tabs first, so Overview reads in the order the bar does; anything the tabs
+  // already cover is dropped from the rest rather than drawn twice.
+  const mobileMenu: NavItem[] = [
+    ...mobileMenuTabs,
+    ...mobileSecondary.filter(i => !mobileMenuTabs.some(t => t.href === i.href)),
+  ]
+
   // Top-bar title fallback for pages that don't set one (e.g. /schedule): the
   // longest-matching nav label for the current route.
   const navFallbackTitle = trainerNav
@@ -1543,7 +1568,7 @@ function TrainerShell({
             style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1rem)' }}
           >
             {MENU_SECTION_ORDER.map(section => {
-              const inSection = mobileSecondary.filter(i => i.section === section)
+              const inSection = mobileMenu.filter(i => i.section === section)
               if (inSection.length === 0) return null
               return (
                 <div key={section} className="mb-5">
@@ -1553,17 +1578,37 @@ function TrainerShell({
                   {/* Two across at row height — the sections stay visible
                       without a tile's worth of vertical space per entry. */}
                   <FlatRowGrid count={inSection.length}>
-                    {inSection.map(item => (
-                      <FlatRow
-                        key={item.href}
-                        href={item.comingSoon ? undefined : item.href}
-                        icon={item.icon}
-                        label={item.label}
-                        active={pathname === item.href || pathname.startsWith(item.href + '/')}
-                        comingSoon={item.comingSoon}
-                        trailing={<span />}
-                      />
-                    ))}
+                    {inSection.map(item => {
+                      // Same `unreadCounts` the tab bar reads, so the menu row
+                      // and the tab can never quote different numbers — the
+                      // sheet hides the bar, and a Messages row that looked
+                      // quiet while the tab underneath said 3 would be worse
+                      // than no count at all.
+                      const unread = unreadCounts[item.href] ?? 0
+                      return (
+                        <FlatRow
+                          key={item.href}
+                          href={item.comingSoon ? undefined : item.href}
+                          icon={item.icon}
+                          label={item.label}
+                          active={pathname === item.href || pathname.startsWith(item.href + '/')}
+                          comingSoon={item.comingSoon}
+                          trailing={unread > 0 ? (
+                            <span
+                              aria-label={`${unread} unread`}
+                              // flex-shrink-0 like every other trailing element
+                              // in a FlatRow: the label beside it is flex-1, so
+                              // without this a long word ("Messages") squeezes
+                              // the badge to zero width and the count silently
+                              // vanishes — while the shorter "Alerts" keeps its.
+                              className="inline-flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded-full bg-rose-500 px-1 text-[9px] font-semibold text-white tabular-nums"
+                            >
+                              {unread > 9 ? '9+' : unread}
+                            </span>
+                          ) : <span />}
+                        />
+                      )
+                    })}
                   </FlatRowGrid>
                 </div>
               )
