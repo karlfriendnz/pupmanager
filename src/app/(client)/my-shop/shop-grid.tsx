@@ -20,6 +20,8 @@ import { ProductPrice, SaleTag } from '@/components/shared/product-price'
 import { useIsNative, nativePlatform } from '@/lib/native'
 import { openExternal } from '@/lib/external-link'
 import { PREVIEW_REASON, useIsPreview } from '../preview-context'
+import { useBasketOptional } from '../basket/basket-context'
+import type { BasketProductLine } from '@/lib/basket'
 
 /** One thing a client can pick — "Large", "Red · Large". */
 export interface Variant {
@@ -100,6 +102,10 @@ export function ShopGrid({
   // API refuses it, because both are real commitments on somebody else's
   // account. Read here so the buttons say so instead of failing on press.
   const isPreview = useIsPreview()
+  // Optional: the provider is mounted on the client layout, but this grid also
+  // renders inside the trainer's PREVIEW of the shop, where there is no basket
+  // to add to. Optional rather than required keeps that path from throwing.
+  const basket = useBasketOptional()
   const [buyingId, setBuyingId] = useState<string | null>(null)
   const [buyError, setBuyError] = useState<string | null>(null)
   // Which option is picked in the open product. Cleared when the sheet closes,
@@ -202,6 +208,29 @@ export function ShopGrid({
   // soon" page with nothing on it instead of the product they clicked Preview on.
   const shopIsEmpty = catalog.length === 0
 
+  // Add rather than buy. Someone getting a harness is very often getting the
+  // class too, and sending them to Stripe on the first tap is what made that
+  // two payments and two trips.
+  function addToBasket(p: Product, variantId: string | null) {
+    const variant = (p.variants ?? []).find(v => v.id === variantId) ?? null
+    const cents = effectivePriceCents(resolveVariantPricing(p, variant))
+    if (!basket || !cents || cents <= 0) return
+    const shown = resolveVariantPresentation(p, variant)
+    basket.add({
+      kind: 'PRODUCT',
+      productId: p.id,
+      variantId,
+      quantity: 1,
+      name: p.name,
+      variantName: variant?.name ?? null,
+      imageUrl: shown.imageUrl,
+      unitAmount: cents,
+    } satisfies BasketProductLine)
+    // Straight back to the shop — "continue shopping" is the whole point.
+    setOpen(null)
+    setPickedVariantId(null)
+  }
+
   return (
     <div className="flex flex-col gap-5">
       {shopIsEmpty && (
@@ -286,6 +315,7 @@ export function ShopGrid({
           onClose={close}
           onToggleRequest={() => toggleRequest(open, pickedVariantId)}
           onBuy={() => buy(open, pickedVariantId)}
+          onAddToBasket={basket && isPayable(open) && !isPreview ? () => addToBasket(open, pickedVariantId) : null}
           busy={busyId === open.id}
           buying={buyingId === open.id}
           buyError={buyError}
@@ -414,6 +444,7 @@ function ProductModal({
   onClose,
   onToggleRequest,
   onBuy,
+  onAddToBasket,
   busy,
   buying,
   buyError,
@@ -430,6 +461,10 @@ function ProductModal({
   onClose: () => void
   onToggleRequest: () => void
   onBuy: () => void
+  /** Null when there is no basket to add to — a trainer previewing, or an
+   *  unpriced item. Secondary to Buy: buying one thing now is still the
+   *  common case, and the basket is the "…and the class too" case. */
+  onAddToBasket: (() => void) | null
   busy: boolean
   buying: boolean
   buyError: string | null
@@ -572,6 +607,7 @@ function ProductModal({
               Out of stock — ask when it&apos;s back.
             </div>
           ) : payable ? (
+            <>
             <button
               onClick={onBuy}
               disabled={buying || mustPick}
@@ -584,6 +620,19 @@ function ProductModal({
                   : <><CreditCard className="h-4 w-4" /> Buy · {formatPrice(effectivePriceCents(pricing), currency)}</>
               }
             </button>
+            {/* Under Buy, not instead of it. Buying the one thing you came for
+                stays the one-tap path; the basket is the "and the class too"
+                case. */}
+            {onAddToBasket && (
+              <button
+                onClick={onAddToBasket}
+                disabled={mustPick}
+                className="mt-2 w-full h-12 rounded-xl border border-slate-200 bg-white text-slate-700 font-semibold flex items-center justify-center gap-2 transition-colors hover:bg-slate-50 disabled:opacity-60"
+              >
+                <ShoppingBag className="h-4 w-4" strokeWidth={1.75} /> Add to basket
+              </button>
+            )}
+            </>
           ) : product.requested ? (
             <button
               onClick={onToggleRequest}
