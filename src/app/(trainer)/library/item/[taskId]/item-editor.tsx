@@ -41,7 +41,19 @@ function humanSize(bytes: number) {
     : `${Math.max(1, Math.round(bytes / 1024))} KB`
 }
 
-export function ItemEditor({ item, themeHref }: { item: EditableItem; themeHref: string }) {
+export function ItemEditor({
+  item,
+  themeHref,
+  heading,
+  actions,
+}: {
+  item: EditableItem
+  themeHref: string
+  /** The tab strip, in place of a plain "Item" label. */
+  heading?: React.ReactNode
+  /** Duplicate / Delete — owned by the screen, so both tabs show the same one. */
+  actions?: React.ReactNode
+}) {
   const router = useRouter()
   const [title, setTitle] = useState(item.title)
   const [description, setDescription] = useState(item.description ?? '')
@@ -144,26 +156,36 @@ export function ItemEditor({ item, themeHref }: { item: EditableItem; themeHref:
     }
   }
 
+  const headerActions = (
+    <>
+      {saved && <span className="text-[13px] text-slate-500">Saved.</span>}
+      <Button onClick={save} loading={saving} disabled={!title.trim() || uploading !== null}>
+        Save
+      </Button>
+      {actions ?? <ItemActions item={item} themeHref={themeHref} />}
+    </>
+  )
+
   return (
     <>
       <section>
-        {/* SectionHeader, not SectionLabel — it is the same 36px row the rail's
-            heading uses, so the two columns start level. A bare label sits a
-            few pixels higher than the tree beside it, which is what made the
-            two headings look out of true. */}
-        <SectionHeader
-          action={
-            <span className="flex items-center gap-1.5">
-              {saved && <span className="text-[13px] text-slate-500">Saved.</span>}
-              <Button onClick={save} loading={saving} disabled={!title.trim() || uploading !== null}>
-                Save
-              </Button>
-              <ItemActions item={item} themeHref={themeHref} />
-            </span>
-          }
-        >
-          Item
-        </SectionHeader>
+        {/* With tabs the heading row is the tab strip; without them it falls
+            back to a SectionHeader, which is the same 36px row the Library
+            rail's heading uses so the two columns start level.
+
+            The tabs can't go THROUGH SectionHeader: it wraps its children in a
+            <p>, which can't legally hold the strip's <div> and would style the
+            tabs as a tiny uppercase caption. */}
+        {heading ? (
+          <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-200">
+            {heading}
+            <span className="flex items-center gap-1.5 pb-1.5">{headerActions}</span>
+          </div>
+        ) : (
+          <SectionHeader action={<span className="flex items-center gap-1.5">{headerActions}</span>}>
+            Item
+          </SectionHeader>
+        )}
         {error && <div className="mb-3"><ErrorNote>{error}</ErrorNote></div>}
         <FlatBlock>
           <div className="px-4 py-4">
@@ -349,7 +371,7 @@ export function ItemEditor({ item, themeHref }: { item: EditableItem; themeHref:
  * last thing on the longest screen in the Library, which is a strange amount of
  * room to give the one action nobody wants to hit.
  */
-function ItemActions({ item, themeHref }: { item: EditableItem; themeHref: string }) {
+export function ItemActions({ item, themeHref }: { item: EditableItem; themeHref: string }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [confirming, setConfirming] = useState(false)

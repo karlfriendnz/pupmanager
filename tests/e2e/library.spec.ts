@@ -89,9 +89,15 @@ test('the desktop tree opens the library from the rail, expanded to where you ar
   await rail.getByRole('link', { name: new RegExp(LIB.itemTitle) }).click()
   await page.waitForURL(`**/library/item/${LIB.itemId}`)
 
-  // Landing on an item, the rail is already open at that item — the active path
-  // comes from the URL, not from anything the page threads down.
-  await expect(rail.getByRole('link', { name: new RegExp(LIB.itemTitle) })).toBeVisible()
+  // …and the item screen drops the rail. Every other Library screen carries the
+  // tree because you are browsing it; the item IS the thing you opened, and it
+  // wants the width for the editor and its three columns of media. Back to the
+  // theme is on the page header instead.
+  //
+  // Asserted on the TREE's own control, not on role=complementary — the app's
+  // left nav is a complementary landmark too, so that matches whatever happens.
+  await expect(page.getByRole('button', { name: `Expand ${LIB.typeName}` })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: `Collapse ${LIB.typeName}` })).toHaveCount(0)
 })
 
 test('a category is renamed from inside it, not from a pencil on its row', async ({ page }) => {
@@ -201,6 +207,10 @@ test('an item is edited on its own page, in rich text, and shows who has it', as
   }
 
   // ── Who has this ──────────────────────────────────────────────────────────
+  // Its own tab now. It used to sit under the instructions, the videos, the
+  // picture and the handout, which is further than anyone scrolled.
+  await expect(page.getByText('Nobody has this yet')).toHaveCount(0)
+  await page.getByRole('button', { name: /Who has this/ }).click()
   await expect(page.getByText('Nobody has this yet')).toBeVisible()
 
   await page.getByRole('button', { name: 'Give this to a client' }).click()
@@ -425,6 +435,30 @@ test('the items inside a theme are dragged into order', async ({ page }) => {
   }
 })
 
+test('the item screen is two tabs, and keeps its actions across both', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await login(page, SEED.owner.email, SEED.owner.password)
+  await page.goto(`/library/item/${LIB.itemId}`)
+
+  // Item is the tab you land on.
+  await expect(page.getByLabel('Name')).toHaveValue(LIB.itemTitle)
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: /Who has this/ }).click()
+
+  // The editor is GONE, not hidden — a second copy of a mounted editor is a
+  // second copy of its drag contexts and its uploads.
+  await expect(page.getByLabel('Name')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Give this to a client' })).toBeVisible()
+
+  // Duplicate/Delete belong to the item, not to a tab, so they stay put —
+  // switching tabs to delete something would be a strange trip.
+  await expect(page.getByRole('button', { name: 'More actions for this item' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Item', exact: true }).click()
+  await expect(page.getByLabel('Name')).toHaveValue(LIB.itemTitle)
+})
+
 test('an item holds several clips, in order, and all of them reach the client', async ({ page }) => {
   await login(page, SEED.owner.email, SEED.owner.password)
   const prisma = db()
@@ -458,6 +492,7 @@ test('an item holds several clips, in order, and all of them reach the client', 
     }).toPass({ timeout: 10_000 })
 
     // ── Handing it out carries BOTH ──────────────────────────────────────────
+    await page.getByRole('button', { name: /Who has this/ }).click()
     await page.getByRole('button', { name: 'Give this to a client' }).click()
     const dialog = page.getByRole('dialog')
     await dialog.getByLabel('Client').fill('Unassigned')

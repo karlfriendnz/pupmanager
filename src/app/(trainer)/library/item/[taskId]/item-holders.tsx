@@ -22,7 +22,7 @@ export interface Holder {
   linked: boolean
 }
 
-interface Client {
+export interface Client {
   id: string
   name: string
   dogs: { id: string; name: string }[]
@@ -45,18 +45,32 @@ export function ItemHolders({
   description,
   holders,
   clients,
+  heading,
+  actions,
 }: {
   taskId: string
   /** The item's rich-text instructions — previewed before handing it out. */
   description: string | null
   holders: Holder[]
   clients: Client[]
+  /** The tab strip, in place of a plain "Who has this" label. */
+  heading?: React.ReactNode
+  /** Duplicate / Delete — the same control the Item tab shows. */
+  actions?: React.ReactNode
 }) {
   const [assigning, setAssigning] = useState(false)
 
   return (
-    <section className="mt-8">
-      <SectionLabel>Who has this</SectionLabel>
+    <section className={heading ? '' : 'mt-8'}>
+      {/* As a tab this row is the tab strip; on its own it stays a label. */}
+      {heading ? (
+        <div className="mb-4 flex items-center justify-between gap-3 border-b border-slate-200">
+          {heading}
+          <span className="flex items-center gap-1.5 pb-1.5">{actions}</span>
+        </div>
+      ) : (
+        <SectionLabel>Who has this</SectionLabel>
+      )}
       {holders.length === 0 ? (
         <FlatBlock>
           <div className="px-4 py-8 text-center">

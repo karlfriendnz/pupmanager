@@ -5,10 +5,9 @@ import { mergeClientDogs } from '@/lib/dogs'
 import { personLabel } from '@/lib/utils'
 import { PageHeader } from '@/components/shared/page-header'
 import { readVideos } from '@/lib/instructional-videos'
-import { requireLibraryTrainer, getLibraryTree } from '../../library-data'
-import { LibraryShell } from '../../library-shell'
-import { ItemEditor } from './item-editor'
-import { ItemHolders, type Holder } from './item-holders'
+import { requireLibraryTrainer } from '../../library-data'
+import { ItemTabs } from './item-tabs'
+import type { Holder } from './item-holders'
 
 export const metadata: Metadata = { title: 'Library item' }
 
@@ -88,16 +87,18 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
     orderBy: { user: { name: { sort: 'asc', nulls: 'last' } } },
   })
 
-  const tree = await getLibraryTree(trainerId)
-
   return (
     <>
       <PageHeader
         title={task.title}
         back={{ href: `/library/theme/${task.theme.id}`, label: task.theme.name }}
       />
-      <LibraryShell tree={tree}>
-        <ItemEditor
+      {/* No LibraryShell here, so no rail. Every other Library screen carries
+          the tree because you are browsing it; this one IS the thing you
+          opened, and it wants the full width for a rich-text editor and three
+          columns of media. Back to the theme is on the header. */}
+      <div className="mx-auto w-full max-w-5xl p-4 md:p-8">
+        <ItemTabs
           item={{
             id: task.id,
             title: task.title,
@@ -110,9 +111,6 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
             fileName: task.fileName,
           }}
           themeHref={`/library/theme/${task.theme.id}`}
-        />
-        <ItemHolders
-          taskId={task.id}
           description={task.description}
           holders={holders}
           clients={clients.map(c => ({
@@ -121,7 +119,7 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
             dogs: mergeClientDogs(c.dog, c.dogs),
           }))}
         />
-      </LibraryShell>
+      </div>
     </>
   )
 }
