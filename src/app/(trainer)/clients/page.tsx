@@ -211,7 +211,10 @@ export default async function ClientsPage({
           header button, the top bar's + menu, or the mobile FAB). Mounted once
           here so it never double-renders like a header action would. */}
       <QuickAddModal />
-      <div className="p-4 md:p-8 w-full max-w-4xl xl:max-w-7xl mx-auto">
+      {/* Full width, like every list. This one is a table whose columns the
+          trainer chooses, and the cap was spending the widest screens on
+          margin while the columns it was asked to show fought for room. */}
+      <div className="w-full p-4 md:p-8">
 
 
       <ClientsList

@@ -525,7 +525,9 @@ export function ClientsList({ clients, view, tabs, blurb, columns, customFields,
           indicator; on md+ the tab bar is gone so only the padding remains. */}
       {selectMode && selectedCount > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 px-4 pt-3 backdrop-blur pb-[calc(5rem+env(safe-area-inset-bottom,0px)+0.75rem)] md:pb-4">
-          <div className="mx-auto flex w-full max-w-4xl xl:max-w-7xl items-center gap-2">
+          {/* No max-width any more: it was there to line the bar's contents up
+              with the list's centred column, and the list is full width now. */}
+          <div className="flex w-full items-center gap-2">
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-slate-900">
                 {selectedCount} selected
@@ -821,8 +823,9 @@ function ClientTable({ clients, view, visible, customFields, customValues, group
   return (
     // A query container, so the switch between the table and the phone's rows
     // is decided by how much room THIS list has rather than by how wide the
-    // window is. The list sits in a centred, max-width column with padding
-    // either side, so a 1000px window is nowhere near 1000px of table.
+    // window is. The list runs full width now, but it still sits inside the
+    // shell's nav rail and the page's own padding, so a 1000px window is
+    // nowhere near 1000px of table.
     <div className="@container">
       {/* ONE bordered white surface with hairlines through it — the columns
           have to run the whole way down or it doesn't read as a table. The
