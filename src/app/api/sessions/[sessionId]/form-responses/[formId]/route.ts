@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTrainerContext, type TrainerContext } from '@/lib/membership'
 import { accessibleSessionWhere } from '@/lib/session-access'
+import { releaseRecaps } from '@/lib/recap-notify'
+import { isSessionDone, isReportVisibleToClient } from '@/lib/report-visibility'
 import { z } from 'zod'
 
 const upsertSchema = z.object({
@@ -32,7 +34,7 @@ type Question = CustomFieldQuestion | BasicQuestion
 async function ownership(sessionId: string, formId: string, ctx: TrainerContext) {
   const session = await prisma.trainingSession.findFirst({
     where: { id: sessionId, trainerId: ctx.companyId, ...accessibleSessionWhere(ctx) },
-    select: { id: true, clientId: true, dogId: true, client: { select: { dogId: true } } },
+    select: { id: true, status: true, clientId: true, dogId: true, client: { select: { dogId: true } } },
   })
   const form = await prisma.sessionForm.findFirst({
     where: { id: formId, trainerId: ctx.companyId },
@@ -90,10 +92,15 @@ export async function PUT(
   const introMessage = parsed.data.introMessage ?? null
   const closingMessage = parsed.data.closingMessage ?? null
 
-  // Saving only ever writes a DRAFT — it never notifies the client and never
-  // stamps sentAt. The client sees nothing until the trainer explicitly sends
-  // the recap (single or bulk) from the Draft notes screen. An edit to an
-  // already-sent note leaves sentAt untouched (still sent, no re-notify).
+  // Saving a note on a session that is NOT yet complete writes a draft: the
+  // client sees nothing, and the trainer can keep working on it. Saving one on a
+  // session that IS complete publishes it (see the release below).
+  //
+  // That second case is the whole reason completion alone isn't enough. A
+  // trainer who sits down on Sunday to write up Thursday's session has already
+  // marked it complete — if only the status transition published, they would
+  // have to un-complete and re-complete to let the client read what they just
+  // wrote, which is a worse ritual than the Send button we removed.
   await prisma.$transaction(async (tx) => {
     await tx.sessionFormResponse.upsert({
       where: { sessionId_formId: { sessionId, formId } },
@@ -144,12 +151,31 @@ export async function PUT(
     }
   })
 
+  // The session is already ticked off, so this write-up is published the moment
+  // it is saved — and the client is told, once. releaseRecaps skips anything
+  // already announced, so editing a typo in a note that has gone out does not
+  // ping the client again.
+  if (isSessionDone(owned.session.status)) {
+    try {
+      await releaseRecaps({ trainerId, sessionIds: [sessionId] })
+    } catch {
+      // A notification failure must not lose the trainer's write-up.
+    }
+  }
+
   // Re-read so the client gets the fresh response (including auto-updated timestamps).
   const response = await prisma.sessionFormResponse.findUnique({
     where: { sessionId_formId: { sessionId, formId } },
   })
 
-  return NextResponse.json(response)
+  return NextResponse.json(
+    response && {
+      ...response,
+      // What the trainer's screen needs to tell the truth about who can read
+      // this. Computed here because only the server knows the session's status.
+      visibleToClient: isReportVisibleToClient(response, owned.session.status),
+    },
+  )
 }
 
 export async function DELETE(

@@ -10,6 +10,7 @@ import { mergeClientDogs } from '@/lib/dogs'
 import { productPriceSummary } from '@/lib/product-price'
 import { todayInTz, weekBoundsUtcDates } from '@/lib/timezone'
 import { clientVisibleHomeworkWhere } from '@/lib/homework-visibility'
+import { SESSION_DONE_STATUSES, reportHasContent } from '@/lib/report-visibility'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Home' }
@@ -87,23 +88,32 @@ export default async function ClientHomePage() {
         virtualLink: true,
       },
     }),
-    // "Recap ready" has to MEAN a recap is ready. A completed session is not
-    // the same thing: the write-up stays private until the trainer sends it
-    // (formResponses.sentAt), so this promised a recap and then the detail
-    // screen — correctly — had nothing to show.
+    // "Recap ready" has to MEAN a recap is ready, and the two halves of that
+    // are now asked separately.
+    //
+    // Readable is the status: a completed session's write-up is published, so
+    // the old `sentAt: { not: null }` filter would hide recaps the detail screen
+    // will happily show. Written is a question the database can't answer —
+    // attaching a form to a session creates an EMPTY response row, so "has a
+    // response" has never meant "has a recap", and JSON emptiness is not
+    // something to go filtering on in SQL. So: over-fetch a little and check
+    // the content in memory (lib/report-visibility).
     prisma.trainingSession.findMany({
       where: {
         clientId: clientProfile.id,
-        status: { in: ['COMPLETED', 'COMMENTED', 'INVOICED'] },
-        formResponses: { some: { sentAt: { not: null } } },
+        status: { in: [...SESSION_DONE_STATUSES] },
+        formResponses: { some: {} },
         ...SESSIONS_NOT_SUSPENDED,
       },
       orderBy: { scheduledAt: 'desc' },
-      take: 5,
+      take: 15,
       select: {
         id: true,
         title: true,
         scheduledAt: true,
+        formResponses: {
+          select: { answers: true, introMessage: true, closingMessage: true },
+        },
         attachments: {
           where: { kind: { in: ['IMAGE', 'VIDEO'] } },
           orderBy: { createdAt: 'asc' },
@@ -273,16 +283,21 @@ export default async function ClientHomePage() {
         location: upcomingSession.location,
         sessionType: upcomingSession.sessionType,
       } : null}
-      recentSessions={recentSessions.map(s => {
-        const m = s.attachments[0]
-        return {
-          id: s.id,
-          title: s.title,
-          scheduledAt: s.scheduledAt.toISOString(),
-          mediaUrl: m ? (m.thumbnailUrl ?? m.url) : null,
-          mediaKind: m?.kind ?? null,
-        }
-      })}
+      recentSessions={recentSessions
+        // Drop the completed sessions whose only write-up is an empty form the
+        // trainer attached and never filled in — see the query above.
+        .filter(s => s.formResponses.some(reportHasContent))
+        .slice(0, 5)
+        .map(s => {
+          const m = s.attachments[0]
+          return {
+            id: s.id,
+            title: s.title,
+            scheduledAt: s.scheduledAt.toISOString(),
+            mediaUrl: m ? (m.thumbnailUrl ?? m.url) : null,
+            mediaKind: m?.kind ?? null,
+          }
+        })}
       homework={weekTasks.map(t => ({
         id: t.id,
         title: t.title,

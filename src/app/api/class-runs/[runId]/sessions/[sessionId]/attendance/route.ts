@@ -4,6 +4,8 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { resolveSessionForm } from '@/lib/session-form'
+import { releaseRecaps } from '@/lib/recap-notify'
+import { isSessionDone } from '@/lib/report-visibility'
 
 // GET  — the roster for one shared class session (every live enrolment
 //        plus its attendance row if marked yet).
@@ -11,7 +13,7 @@ import { resolveSessionForm } from '@/lib/session-form'
 async function ownSession(runId: string, sessionId: string, trainerId: string) {
   return prisma.trainingSession.findFirst({
     where: { id: sessionId, classRunId: runId, classRun: { trainerId } },
-    select: { id: true },
+    select: { id: true, status: true, scheduledAt: true },
   })
 }
 
@@ -149,7 +151,8 @@ export async function PUT(
   if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const { runId, sessionId } = await params
-  if (!(await ownSession(runId, sessionId, trainerId))) {
+  const owned = await ownSession(runId, sessionId, trainerId)
+  if (!owned) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
@@ -191,9 +194,12 @@ export async function PUT(
     )
   }
 
-  // Saving a report only ever writes a DRAFT — it never notifies the client and
-  // never stamps reportSentAt. The client sees nothing until the trainer sends
-  // the recap from the Draft notes screen.
+  // A per-attendee report follows exactly the same rule as a 1:1 write-up — it
+  // is the same promise to the same person, so it would be indefensible for one
+  // of them to need a Send button and the other not to. What differs is where
+  // the switch is: a class session has no Mark complete control anywhere in the
+  // app, so taking the register IS the trainer saying this session ran, and the
+  // save below marks it done (once it is actually in the past).
   await prisma.$transaction(
     rows.map(r => {
       const report = r.report
@@ -223,6 +229,27 @@ export async function PUT(
       })
     }),
   )
+
+  // Taking the register on a session that has already happened marks it done.
+  // Deliberately gated on the clock: a trainer pre-filling next week's roster
+  // has not run anything, and marking a future session complete would publish
+  // its write-up early and drag its practice homework forward with it.
+  if (owned.status === 'UPCOMING' && owned.scheduledAt.getTime() <= Date.now()) {
+    await prisma.trainingSession.update({
+      where: { id: sessionId },
+      data: { status: 'COMPLETED' },
+    })
+  }
+
+  // …and publishing it tells the people it is about. One notification each,
+  // however many attendees were written up in this one save.
+  if (isSessionDone(owned.status) || owned.scheduledAt.getTime() <= Date.now()) {
+    try {
+      await releaseRecaps({ trainerId, sessionIds: [sessionId] })
+    } catch {
+      // Never lose a saved register to a failed push.
+    }
+  }
 
   return NextResponse.json({ ok: true, saved: rows.length })
 }

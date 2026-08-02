@@ -15,6 +15,7 @@ import { RichText } from '@/components/shared/rich-text'
 import { isRichTextEmpty } from '@/lib/rich-text'
 import { resolveSeriesSteps, stepForIndex, type CurriculumStep } from '@/lib/series'
 import { clientVisibleHomeworkWhere } from '@/lib/homework-visibility'
+import { isReportVisibleToClient, isAttendanceReportVisibleToClient } from '@/lib/report-visibility'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Session' }
@@ -91,9 +92,11 @@ export default async function ClientSessionPage({
         select: { id: true, kind: true, url: true, thumbnailUrl: true, caption: true, durationMs: true },
       },
       formResponses: {
-        // Only sent recaps are visible to the client — drafts (sentAt null)
-        // stay private to the trainer until they send.
-        where: { sentAt: { not: null } },
+        // Filtered below, not here. The rule is "the session is done, or the
+        // trainer released it early" (lib/report-visibility), and the status it
+        // turns on belongs to the very row this include hangs off — asking the
+        // database to join the session back onto its own responses to answer
+        // that would be a self-join to look up something already in hand.
         include: {
           form: { select: { id: true, name: true, introText: true, closingText: true, backgroundColor: true, backgroundUrl: true, questions: true } },
         },
@@ -105,13 +108,15 @@ export default async function ClientSessionPage({
     sessionTitle = oneToOne.title
     scheduledAt = oneToOne.scheduledAt
     dogName = oneToOne.dog?.name ?? null
-    responses = oneToOne.formResponses.map(r => ({
-      id: r.id,
-      introMessage: r.introMessage,
-      closingMessage: r.closingMessage,
-      answers: (r.answers ?? {}) as Record<string, string>,
-      form: { ...r.form, questions: Array.isArray(r.form.questions) ? r.form.questions as unknown as ReportQuestion[] : [] },
-    }))
+    responses = oneToOne.formResponses
+      .filter(r => isReportVisibleToClient(r, oneToOne.status))
+      .map(r => ({
+        id: r.id,
+        introMessage: r.introMessage,
+        closingMessage: r.closingMessage,
+        answers: (r.answers ?? {}) as Record<string, string>,
+        form: { ...r.form, questions: Array.isArray(r.form.questions) ? r.form.questions as unknown as ReportQuestion[] : [] },
+      }))
     tasks = oneToOne.tasks.map(t => ({
       id: t.id, title: t.title, description: t.description, repetitions: t.repetitions,
       videoUrl: t.videoUrl,
@@ -143,7 +148,7 @@ export default async function ClientSessionPage({
       // every class recap.
       where: { id: sessionId, classRun: { enrollments: { some: { clientId: profile.id, ...NOT_SUSPENDED } } } },
       select: {
-        title: true, scheduledAt: true, sessionFormId: true, sessionIndex: true,
+        title: true, scheduledAt: true, sessionFormId: true, sessionIndex: true, status: true,
         classRun: {
           select: {
             name: true,
@@ -164,10 +169,12 @@ export default async function ClientSessionPage({
     if (cls.classRun?.package?.isSeries) {
       step = stepForIndex(cls.classRun.package.sessionPlans, cls.sessionIndex)
     }
-    // Only a SENT report is visible — a saved draft (reportSentAt null) stays
-    // private until the trainer sends it.
-    const report = (cls.attendance[0]?.reportSentAt
-      ? cls.attendance[0]?.report ?? null
+    // Same rule as a 1:1 write-up: the session being done is what publishes it.
+    // For a class that means the register has been taken (see the attendance
+    // route), which is the nearest thing a class has to Mark complete.
+    const attendance = cls.attendance[0] ?? null
+    const report = (attendance && isAttendanceReportVisibleToClient(attendance, cls.status)
+      ? attendance.report ?? null
       : null) as { answers?: Record<string, string>; intro?: string | null; closing?: string | null } | null
     const formId = cls.sessionFormId ?? cls.classRun?.package?.defaultSessionFormId ?? null
     const form = formId

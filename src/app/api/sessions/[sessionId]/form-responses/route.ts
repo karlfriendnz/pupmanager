@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTrainerContext } from '@/lib/membership'
 import { accessibleSessionWhere } from '@/lib/session-access'
+import { isReportVisibleToClient } from '@/lib/report-visibility'
 
 export async function GET(
   _req: Request,
@@ -19,6 +20,10 @@ export async function GET(
     where: { id: sessionId, trainerId, ...accessibleSessionWhere(ctx) },
     select: {
       id: true,
+      // The write-up is published by the session being complete, not by a Send
+      // button — so the status is what decides whether the client can read this,
+      // and the trainer's screen has to be told (see lib/report-visibility).
+      status: true,
       clientPackage: { select: { package: { select: { defaultSessionFormId: true } } } },
     },
   })
@@ -53,5 +58,7 @@ export async function GET(
     }
   }
 
-  return NextResponse.json(responses)
+  return NextResponse.json(
+    responses.map(r => ({ ...r, visibleToClient: isReportVisibleToClient(r, owns.status) })),
+  )
 }

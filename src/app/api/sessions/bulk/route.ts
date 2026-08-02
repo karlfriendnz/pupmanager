@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { safeEvaluate } from '@/lib/achievements'
+import { releaseRecaps } from '@/lib/recap-notify'
+import { isSessionDone } from '@/lib/report-visibility'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -42,6 +44,19 @@ export async function POST(req: Request) {
       ...(invoiced !== undefined ? { invoicedAt: invoiced ? new Date() : null } : {}),
     },
   })
+
+  // Completing publishes the write-up, here as much as on the single-session
+  // PATCH. This is the screen a trainer clears twelve sessions from at once, so
+  // it is also the one that most needs releaseRecaps' per-CLIENT deduplication:
+  // twelve sessions belonging to twelve people is twelve notifications, but
+  // three sessions belonging to one person is one.
+  if (status !== undefined && isSessionDone(status)) {
+    try {
+      await releaseRecaps({ trainerId, sessionIds: ownedIds })
+    } catch {
+      // A notification failure must not fail the bulk update.
+    }
+  }
 
   if (status !== undefined) {
     const clientIds = new Set<string>()

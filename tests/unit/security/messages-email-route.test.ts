@@ -205,7 +205,17 @@ describe('POST /api/sessions/bulk-send-notes — auth & tenant scoping', () => {
     h.auth.mockResolvedValue(TRAINER)
     h.trainerFindUnique.mockResolvedValue({ businessName: 'E2E', user: { name: 'Olivia' } })
     h.responseFindMany.mockResolvedValue([
-      { id: 'r1', sessionId: 's1', session: { title: 'Recall', dog: { name: 'Rusty' }, client: { userId: 'cu1' } } },
+      {
+        id: 'r1', sessionId: 's1',
+        // A write-up with nothing written in it is not released — attaching a
+        // form creates a blank row, and you cannot announce a blank row.
+        answers: { q1: 'Rusty nailed the recall' },
+        introMessage: null, closingMessage: null,
+        session: {
+          title: 'Recall', scheduledAt: new Date('2026-07-01T02:00:00Z'),
+          dog: { name: 'Rusty' }, client: { userId: 'cu1' },
+        },
+      },
     ])
     h.responseUpdateMany.mockResolvedValue({ count: 1 })
     const res = await bulkPOST(jsonReq({ responseIds: ['r1'] }))

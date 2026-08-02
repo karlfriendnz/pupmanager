@@ -138,7 +138,7 @@ export function DraftNotesList({ rows }: { rows: DraftRow[] }) {
                         type="button"
                         onClick={() => sendOne(r)}
                         disabled={isSending}
-                        title="Send this recap to the client"
+                        title="Show this recap to the client now, without marking the session complete"
                         className="inline-flex items-center gap-1 text-[11px] font-semibold pl-2 pr-2.5 py-1 rounded-full bg-teal-50 text-teal-700 border border-teal-200 hover:bg-teal-100 hover:border-teal-300 transition-colors disabled:opacity-60"
                       >
                         {isSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}

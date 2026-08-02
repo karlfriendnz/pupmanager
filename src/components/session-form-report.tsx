@@ -94,8 +94,15 @@ interface FormResponse {
   imagesByQuestion?: Record<string, string[]>
   introMessage?: string | null
   closingMessage?: string | null
-  /** Null while it is still a DRAFT. The client sees nothing until this is set. */
+  /** When the client was TOLD about this recap. Null means they never were. */
   sentAt?: string | null
+  /**
+   * Whether the client can read this write-up right now. Computed on the server
+   * (lib/report-visibility) because it turns on the SESSION's status, which this
+   * component never loads — completing a session publishes its notes, so a
+   * `sentAt` of null no longer means "private".
+   */
+  visibleToClient?: boolean
   form: { id: string; name: string; questions: Question[]; introText?: string | null; closingText?: string | null }
 }
 
@@ -248,7 +255,7 @@ export function SessionFormReport({
             linkedFieldMap={linkedFieldMap}
             onEdit={() => setEditing({ template, existing: r })}
             onSent={() => setResponses(prev =>
-              (prev ?? []).map(x => (x.id === r.id ? { ...x, sentAt: new Date().toISOString() } : x)),
+              (prev ?? []).map(x => (x.id === r.id ? { ...x, sentAt: new Date().toISOString(), visibleToClient: true } : x)),
             )}
           />
         )
@@ -436,15 +443,18 @@ function InlineNotesPreview({
   onSent: () => void
 }) {
   const filled = template.questions.filter(q => response.answers[q.id])
-  const sent = !!response.sentAt
+  // Can the client read this? Marking the session complete is what publishes it,
+  // so the server works this out and tells us. Falling back to `sentAt` keeps an
+  // older cached response honest rather than optimistic.
+  const visible = response.visibleToClient ?? !!response.sentAt
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
 
-  // A saved write-up is a DRAFT until it is sent, and nothing on this screen
-  // said so — you wrote the notes, the card showed them back, and the client
-  // saw nothing. Same endpoint the Draft notes screen uses, for one response.
+  // The early release: show it to the client NOW, on a session that hasn't been
+  // marked complete. Once the session is complete this button is gone, because
+  // there is nothing left for it to do.
   async function send() {
-    if (sending || sent) return
+    if (sending || visible) return
     setSending(true)
     setSendError(null)
     try {
@@ -474,17 +484,18 @@ function InlineNotesPreview({
             <p className="text-[11px] leading-tight">
               {filled.length === 0
                 ? <span className="text-slate-400">Session notes</span>
-                : sent
-                  ? <span className="text-emerald-600">Sent — your client can read this</span>
-                  : <span className="font-medium text-amber-600">Draft — your client can&rsquo;t see this yet</span>}
+                : visible
+                  ? <span className="text-emerald-600">Your client can read this</span>
+                  : <span className="font-medium text-amber-600">Draft — mark the session complete to show your client</span>}
             </p>
           </div>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
-          {filled.length > 0 && !sent && (
+          {filled.length > 0 && !visible && (
             <button
               onClick={send}
               disabled={sending}
+              title="Show it to your client now, without marking the session complete"
               className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 h-9 rounded-xl bg-accent text-white hover:bg-accent-strong active:scale-95 transition disabled:opacity-60"
             >
               {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Send
@@ -856,11 +867,17 @@ function FormFillerBody({
       id: saved.id,
       formId: saved.formId,
       answers: saved.answers as Record<string, string>,
+      sentAt: saved.sentAt ?? null,
+      // Saving onto a session that is already complete publishes the write-up,
+      // so the answer to "can my client read this" can change on a save with
+      // nothing else about the session having moved. The server says.
+      visibleToClient: saved.visibleToClient ?? false,
       form: { id: template.id, name: template.name, questions: template.questions },
     }
 
-    // Finalise & send straight away: stamp it sent + notify the client now. The
-    // note is already saved, so on failure we keep it as a draft and say so.
+    // Finalise & release straight away: show it to the client now, without
+    // waiting on the session being marked complete. The note is already saved,
+    // so on failure we keep it as a draft and say so.
     if (sendNow) {
       const sres = await fetch('/api/sessions/bulk-send-notes', {
         method: 'POST',
@@ -873,6 +890,8 @@ function FormFillerBody({
         setSendingNow(false)
         return
       }
+      response.sentAt = new Date().toISOString()
+      response.visibleToClient = true
     }
 
     // In the focused step flow, follow the save with an "Add homework" phase

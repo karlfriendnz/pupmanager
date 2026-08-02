@@ -47,7 +47,10 @@ beforeEach(() => {
   // Default: permission held, session owned, transaction passes through.
   h.guardPermission.mockResolvedValue({ companyId: 't1' })
   h.auth.mockResolvedValue({ user: { role: 'TRAINER', id: 'u1', trainerId: 't1' } })
-  h.sessionFindFirst.mockResolvedValue({ id: 's1' })
+  // Taking the register on a session that has already run marks it complete,
+  // which is what publishes the write-ups — so ownSession now reads the status
+  // and the clock as well as the id.
+  h.sessionFindFirst.mockResolvedValue({ id: 's1', status: 'UPCOMING', scheduledAt: new Date('2020-01-01T00:00:00Z') })
   h.enrollmentFindMany.mockResolvedValue([{ id: 'enr1' }])
   h.attendanceUpsert.mockReturnValue({})
   h.sessionUpdate.mockResolvedValue({})

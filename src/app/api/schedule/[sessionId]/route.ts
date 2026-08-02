@@ -4,6 +4,8 @@ import { getTrainerContext } from '@/lib/membership'
 import { accessibleSessionWhere } from '@/lib/session-access'
 import { safeEvaluate } from '@/lib/achievements'
 import { notifyClient } from '@/lib/client-notify'
+import { releaseRecaps } from '@/lib/recap-notify'
+import { isSessionDone } from '@/lib/report-visibility'
 import { z } from 'zod'
 
 // Notify a client their session moved/was cancelled. Fire-and-forget.
@@ -221,6 +223,19 @@ export async function PATCH(
         },
       })
     ))
+  }
+
+  // Marking a session complete IS publishing its write-up. Whatever notes are
+  // saved on it become readable the moment the status lands (that rule lives in
+  // lib/report-visibility and is enforced on the client's own screens), and this
+  // is where the client gets TOLD. Idempotent — only recaps that have never been
+  // announced are touched, so toggling complete twice sends one push.
+  if (parsed.data.status !== undefined && isSessionDone(parsed.data.status)) {
+    try {
+      await releaseRecaps({ trainerId, sessionIds: [sessionId, ...followerIds] })
+    } catch {
+      // Never let a notification failure fail the status change.
+    }
   }
 
   // Re-evaluate achievements when the status changes — completion is a counter
