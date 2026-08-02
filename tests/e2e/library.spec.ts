@@ -102,14 +102,23 @@ test('a category is renamed from inside it, not from a pencil on its row', async
   await expect(page.getByRole('button', { name: /^Edit / })).toHaveCount(0)
   await expect(page.getByRole('button', { name: /rename/i })).toHaveCount(0)
 
-  // You open it, and the name field is in there.
+  // You open it, and its settings are behind the gear beside "New theme" —
+  // not in a block at the foot of the page, below every theme inside it.
   await page.goto(`/library/type/${LIB.typeId}`)
-  const name = page.getByLabel('Name')
+  await expect(page.getByLabel('Name')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Category settings' }).click()
+
+  const panel = page.getByRole('dialog', { name: 'Category settings' })
+  await expect(panel).toBeVisible()
+  // The panel locks the page behind it — never two scrollbars.
+  await expect(page.locator('body')).toHaveCSS('overflow', 'hidden')
+
+  const name = panel.getByLabel('Name')
   await expect(name).toHaveValue(LIB.typeName)
 
   const renamed = `${LIB.typeName} Renamed`
   await name.fill(renamed)
-  await page.getByRole('button', { name: 'Save' }).click()
+  await panel.getByRole('button', { name: 'Save' }).click()
   await expect(page.getByText('Name saved.')).toBeVisible()
 
   const prisma = db()
@@ -119,6 +128,42 @@ test('a category is renamed from inside it, not from a pencil on its row', async
     // Put it back so the grid/tree tests above read the same either way round.
     await prisma.libraryType.update({ where: { id: LIB.typeId }, data: { name: LIB.typeName } })
   } finally {
+    await prisma.$disconnect()
+  }
+})
+
+test('a theme is deleted from its own gear, and asks first', async ({ page }) => {
+  await login(page, SEED.owner.email, SEED.owner.password)
+  const prisma = db()
+
+  // Its own theme to delete, so the seeded two stay where other specs expect.
+  const made = await page.request.post('/api/library/themes', {
+    data: { typeId: LIB.typeId, name: 'E2E Throwaway Theme' },
+  })
+  expect(made.ok()).toBeTruthy()
+  const themeId = (await made.json()).id as string
+
+  try {
+    await page.goto(`/library/theme/${themeId}`)
+    await page.getByRole('button', { name: 'Theme settings' }).click()
+
+    const panel = page.getByRole('dialog', { name: 'Theme settings' })
+    await expect(panel).toBeVisible()
+    await panel.getByRole('button', { name: /Delete this theme/ }).click()
+
+    // It asks first, in a sentence — and says what goes with it.
+    const confirm = page.getByRole('alertdialog')
+    await expect(confirm).toBeVisible()
+    await expect(confirm).toContainText('This theme is empty.')
+    await confirm.getByRole('button', { name: 'Delete' }).click()
+
+    // Back to the category it lived in.
+    await page.waitForURL(`**/library/type/${LIB.typeId}`, { timeout: 15_000 })
+    await expect(async () => {
+      expect(await prisma.libraryTheme.findUnique({ where: { id: themeId } })).toBeNull()
+    }).toPass({ timeout: 10_000 })
+  } finally {
+    await prisma.libraryTheme.deleteMany({ where: { id: themeId } })
     await prisma.$disconnect()
   }
 })

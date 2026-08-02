@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, X, Trash2, AlertTriangle } from 'lucide-react'
+import { Plus, Settings, X, Trash2, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
+import { ConfirmSheet } from '@/components/shared/confirm-sheet'
+import { ModalPortal } from '@/components/shared/modal-portal'
 
 // Small, shared pieces of the Library screens. Kept flat and neutral per
 // AGENTS.md — one bordered block, hairline dividers, no tinted chips.
@@ -101,13 +102,19 @@ export function AddNameInline({
 }
 
 /**
- * Rename + delete for a category, rendered INSIDE the category's own page.
+ * Rename + delete for a category or a theme, behind a gear beside the "New …"
+ * button on that thing's own page.
  *
- * This replaces the pencil that used to sit on each row of the list/grid: you
+ * It used to be a permanent block at the FOOT of the page, under the list. That
+ * put the two controls for THIS category below everything inside it — on a
+ * category with thirty themes, changing its name meant scrolling past all
+ * thirty. The gear sits next to the only other action on the screen.
+ *
+ * (What it replaced before that was a pencil on every row of the index: you
  * open a category to change it, the same way you open an item to change it, so
- * a row's only job is to take you somewhere.
+ * a row's only job is to take you somewhere.)
  */
-export function CategorySettings({
+export function CategorySettingsButton({
   kind,
   id,
   name,
@@ -122,6 +129,55 @@ export function CategorySettings({
   /** e.g. "3 themes and 12 items will be deleted too." */
   childCountNote?: string
 }) {
+  const [open, setOpen] = useState(false)
+  const noun = kind === 'type' ? 'category' : 'theme'
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={`${noun === 'category' ? 'Category' : 'Theme'} settings`}
+        aria-haspopup="dialog"
+        title={`Rename or delete this ${noun}`}
+        className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-50"
+      >
+        <Settings className="h-4 w-4" strokeWidth={1.75} />
+      </button>
+
+      {open && (
+        <CategorySettingsSheet
+          kind={kind}
+          id={id}
+          name={name}
+          afterDeleteHref={afterDeleteHref}
+          childCountNote={childCountNote}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  )
+}
+
+/**
+ * The panel itself. A real panel rather than a menu: renaming needs a text
+ * field, which a row in a dropdown has nowhere to put.
+ *
+ * Body scroll stays locked while it is up (AGENTS.md — never two scrollbars),
+ * and it portals to <body> because the header actions it opens from can live
+ * inside a `backdrop-blur` bar, which would otherwise become the containing
+ * block for its fixed overlay.
+ */
+function CategorySettingsSheet({
+  kind, id, name, afterDeleteHref, childCountNote, onClose,
+}: {
+  kind: 'type' | 'theme'
+  id: string
+  name: string
+  afterDeleteHref: string
+  childCountNote?: string
+  onClose: () => void
+}) {
   const router = useRouter()
   const [draft, setDraft] = useState(name)
   const [saving, setSaving] = useState(false)
@@ -132,6 +188,17 @@ export function CategorySettings({
 
   const endpoint = kind === 'type' ? `/api/library/types/${id}` : `/api/library/themes/${id}`
   const noun = kind === 'type' ? 'category' : 'theme'
+
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = prev
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [onClose])
 
   async function save() {
     const next = draft.trim()
@@ -153,22 +220,45 @@ export function CategorySettings({
     setDeleting(true)
     setError(null)
     const res = await fetch(endpoint, { method: 'DELETE' })
-    if (!res.ok) { setDeleting(false); setError(`Could not delete this ${noun}.`); return }
+    if (!res.ok) { setDeleting(false); setConfirming(false); setError(`Could not delete this ${noun}.`); return }
     router.replace(afterDeleteHref)
     router.refresh()
   }
 
   return (
-    <section className="mt-8">
-      <SectionLabel>{noun === 'category' ? 'Category' : 'Theme'} settings</SectionLabel>
-      <FlatBlock>
-        <div className="px-4 py-4">
-          <label htmlFor={`name-${id}`} className="block text-[13px] font-medium text-slate-700">
+    <ModalPortal>
+      {/* Below ConfirmSheet's z-[95] on purpose — the confirmation opens ON TOP
+          of this panel, not behind it. */}
+      <div className="fixed inset-0 z-[90] flex items-end justify-center sm:items-center sm:p-4">
+        <div className="absolute inset-0 bg-slate-900/40" onClick={onClose} aria-hidden />
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${noun === 'category' ? 'Category' : 'Theme'} settings`}
+          className="relative w-full rounded-t-2xl border border-slate-200 bg-white p-5 shadow-xl sm:max-w-md sm:rounded-2xl"
+          style={{ paddingBottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' }}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm font-semibold text-slate-900">
+              {noun === 'category' ? 'Category' : 'Theme'} settings
+            </p>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="-mr-1 -mt-1 grid h-8 w-8 flex-shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100"
+            >
+              <X className="h-4 w-4" strokeWidth={1.75} />
+            </button>
+          </div>
+
+          <label htmlFor={`name-${id}`} className="mt-4 block text-[13px] font-medium text-slate-700">
             Name
           </label>
           <div className="mt-2 flex items-center gap-2">
             <input
               id={`name-${id}`}
+              autoFocus
               value={draft}
               onChange={e => { setDraft(e.target.value); setSaved(false) }}
               onKeyDown={e => { if (e.key === 'Enter') void save() }}
@@ -180,25 +270,8 @@ export function CategorySettings({
           </div>
           {saved && <p className="mt-2 text-[13px] text-slate-500">Name saved.</p>}
           {error && <ErrorNote>{error}</ErrorNote>}
-        </div>
 
-        <div className="px-4 py-4">
-          {confirming ? (
-            <>
-              <p className="text-sm font-medium text-slate-900">Delete &ldquo;{name}&rdquo;?</p>
-              {childCountNote && <p className="mt-1 text-[13px] text-slate-500">{childCountNote}</p>}
-              <div className="mt-3 flex items-center gap-2">
-                <Button variant="danger" onClick={remove} loading={deleting}>Delete</Button>
-                <button
-                  type="button"
-                  onClick={() => setConfirming(false)}
-                  className="px-2 py-2 text-sm text-slate-500"
-                >
-                  Keep it
-                </button>
-              </div>
-            </>
-          ) : (
+          <div className="mt-5 border-t border-slate-200 pt-4">
             <button
               type="button"
               onClick={() => setConfirming(true)}
@@ -207,9 +280,21 @@ export function CategorySettings({
               <Trash2 className="h-4 w-4" strokeWidth={1.75} />
               Delete this {noun}
             </button>
-          )}
+          </div>
         </div>
-      </FlatBlock>
-    </section>
+      </div>
+
+      {confirming && (
+        <ConfirmSheet
+          title={`Delete “${name}”?`}
+          body={childCountNote ?? `This ${noun} goes for good.`}
+          confirmLabel="Delete"
+          danger
+          busy={deleting}
+          onCancel={() => setConfirming(false)}
+          onConfirm={remove}
+        />
+      )}
+    </ModalPortal>
   )
 }

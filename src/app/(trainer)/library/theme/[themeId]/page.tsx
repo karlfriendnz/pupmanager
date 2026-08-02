@@ -7,7 +7,7 @@ import { richTextToPlain } from '@/lib/rich-text'
 import { requireLibraryTrainer, getLibraryTree } from '../../library-data'
 import { LibraryShell } from '../../library-shell'
 import { LibraryRowList } from '../../library-row-list'
-import { CategorySettings } from '../../library-forms'
+import { CategorySettingsButton } from '../../library-forms'
 import { AddItem } from './add-item'
 
 export const metadata: Metadata = { title: 'Library theme' }
@@ -36,7 +36,28 @@ export default async function LibraryThemePage({ params }: { params: Promise<{ t
         back={{ href: `/library/type/${theme.type.id}`, label: theme.type.name }}
       />
       <LibraryShell tree={tree}>
-        <SectionHeader action={<AddItem themeId={theme.id} />}>Items</SectionHeader>
+        <SectionHeader
+          action={
+            <span className="flex items-center gap-1.5">
+              <AddItem themeId={theme.id} />
+              {/* Same shape as the category above it — the theme's own settings
+                  beside the only other action, not in a block below its items. */}
+              <CategorySettingsButton
+                kind="theme"
+                id={theme.id}
+                name={theme.name}
+                afterDeleteHref={`/library/type/${theme.type.id}`}
+                childCountNote={
+                  theme.tasks.length === 0
+                    ? 'This theme is empty.'
+                    : `Its ${theme.tasks.length} item${theme.tasks.length === 1 ? '' : 's'} go with it. Homework already handed out to clients is kept.`
+                }
+              />
+            </span>
+          }
+        >
+          Items
+        </SectionHeader>
         {theme.tasks.length === 0 ? (
           <FlatBlock>
             <div className="px-4 py-8 text-center">
@@ -63,17 +84,6 @@ export default async function LibraryThemePage({ params }: { params: Promise<{ t
           />
         )}
 
-        <CategorySettings
-          kind="theme"
-          id={theme.id}
-          name={theme.name}
-          afterDeleteHref={`/library/type/${theme.type.id}`}
-          childCountNote={
-            theme.tasks.length === 0
-              ? 'This theme is empty.'
-              : `Its ${theme.tasks.length} item${theme.tasks.length === 1 ? '' : 's'} go with it. Homework already handed out to clients is kept.`
-          }
-        />
       </LibraryShell>
     </>
   )

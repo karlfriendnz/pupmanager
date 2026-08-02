@@ -6,7 +6,7 @@ import { FlatBlock, SectionHeader } from '@/components/shared/flat-list'
 import { requireLibraryTrainer, getLibraryTree } from '../../library-data'
 import { LibraryShell } from '../../library-shell'
 import { LibraryRowList } from '../../library-row-list'
-import { CategorySettings } from '../../library-forms'
+import { CategorySettingsButton } from '../../library-forms'
 import { AddTheme } from './add-theme'
 
 export const metadata: Metadata = { title: 'Library category' }
@@ -40,7 +40,28 @@ export default async function LibraryTypePage({ params }: { params: Promise<{ ty
         back={{ href: '/library', label: 'Library' }}
       />
       <LibraryShell tree={tree}>
-        <SectionHeader action={<AddTheme typeId={type.id} />}>Themes</SectionHeader>
+        <SectionHeader
+          action={
+            <span className="flex items-center gap-1.5">
+              <AddTheme typeId={type.id} />
+              {/* The category's own settings, beside the only other action on
+                  the screen — not in a block below everything inside it. */}
+              <CategorySettingsButton
+                kind="type"
+                id={type.id}
+                name={type.name}
+                afterDeleteHref="/library"
+                childCountNote={
+                  type.themes.length === 0
+                    ? 'This category is empty.'
+                    : `Its ${type.themes.length} theme${type.themes.length === 1 ? '' : 's'} and ${itemTotal} item${itemTotal === 1 ? '' : 's'} go with it. Homework already handed out to clients is kept.`
+                }
+              />
+            </span>
+          }
+        >
+          Themes
+        </SectionHeader>
         {type.themes.length === 0 ? (
           <FlatBlock>
             <div className="px-4 py-8 text-center">
@@ -63,17 +84,6 @@ export default async function LibraryTypePage({ params }: { params: Promise<{ ty
           />
         )}
 
-        <CategorySettings
-          kind="type"
-          id={type.id}
-          name={type.name}
-          afterDeleteHref="/library"
-          childCountNote={
-            type.themes.length === 0
-              ? 'This category is empty.'
-              : `Its ${type.themes.length} theme${type.themes.length === 1 ? '' : 's'} and ${itemTotal} item${itemTotal === 1 ? '' : 's'} go with it. Homework already handed out to clients is kept.`
-          }
-        />
       </LibraryShell>
     </>
   )
