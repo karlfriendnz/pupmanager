@@ -75,7 +75,12 @@ const FADE_CSS = `linear-gradient(to bottom, ${FADE.join(', ')})`
  * photo the white fill carries it, on a light photo the dark halo does. Neither
  * radius is wide enough to build a plate, so there is nothing to read as a box.
  */
-const GREETING_SHADOW = '0 1px 3px rgb(15 23 42 / 0.75), 0 0 14px rgb(15 23 42 / 0.45)'
+// REMOVED at Karl's request — he looked at it on his own photo and wanted the
+// text clean. Kept as a record of what was tried, and of the risk that comes
+// with none of it: the greeting is plain white over whatever gets uploaded, so
+// a pale photo behind it will be hard to read. If that turns up, the answer is
+// probably to dim the photograph slightly rather than to dress the type.
+// const GREETING_SHADOW = '0 1px 3px rgb(15 23 42 / 0.75), 0 0 14px rgb(15 23 42 / 0.45)'
 
 /** A pale logo on a pale photo needs an edge; a dark one is unharmed by it. */
 const LOGO_SHADOW = 'drop-shadow(0 1px 3px rgb(15 23 42 / 0.35))'
@@ -178,7 +183,6 @@ export function HomeHero({
                   'mt-2.5 text-[13px]',
                   image ? 'font-medium text-white' : 'text-slate-500',
                 )}
-                style={image ? { textShadow: GREETING_SHADOW } : undefined}
               >
                 Good {greeting}{firstName ? `, ${firstName}` : ''}
               </p>
