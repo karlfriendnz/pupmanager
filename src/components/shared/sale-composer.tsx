@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import {
-  Check, ChevronLeft, ChevronRight, Loader2, Minus, Plus, QrCode, Receipt, Search,
+  Check, ChevronLeft, ChevronRight, Loader2, Minus, Nfc, Plus, QrCode, Receipt, Search,
   ShoppingBag, Trash2, UserPlus, UserRound, X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ModalPortal } from '@/components/shared/modal-portal'
 import { FlatBlock, FlatRow, FlatTileGrid, SectionLabel } from '@/components/shared/flat-list'
+import { TapToPaySheet, type TapToPayIntent } from '@/components/shared/tap-to-pay-sheet'
+import { useTapToPay } from '@/lib/use-tap-to-pay'
 import { currencySymbol, formatMoney } from '@/lib/money'
 import { effectivePriceCents, isOnSale, resolveVariantPricing } from '@/lib/product-price'
 import { stockLabel } from '@/lib/stock'
@@ -49,7 +51,11 @@ type Line = SaleLine
 type Created = { id: string; payToken: string | null; amountCents: number }
 
 type Step = 'client' | 'items' | 'payment' | 'done'
-type PayMode = 'record' | 'charge'
+// 'tap' is a THIRD way of asking for the money, not a third kind of sale. It
+// rings the sale up down exactly the same path as the other two — same invoice,
+// same stock movement — and only then charges a card that is physically
+// present. See submitTap.
+type PayMode = 'record' | 'charge' | 'tap'
 
 /** The half-typed one-off line. Parent-owned so stepping away doesn't bin it. */
 type CustomDraft = { open: boolean; description: string; amount: string }
@@ -100,6 +106,8 @@ export function SaleComposer({
   const [created, setCreated] = useState<Created | null>(null)
   const [guestUrl, setGuestUrl] = useState<string | null>(null)
   const [showQr, setShowQr] = useState(false)
+  /** The card-present intent a tap is being collected against, once one exists. */
+  const [tapIntent, setTapIntent] = useState<TapToPayIntent | null>(null)
   const [saving, setSaving] = useState(false)
   /** Which payment choice is in flight — so only that row spins. */
   const [pending, setPending] = useState<PayMode | null>(null)
@@ -120,6 +128,13 @@ export function SaleComposer({
   // dropdown, per the house rule, and parent-owned like everything else here so
   // stepping back and forth doesn't lose it.
   const [optionsProductId, setOptionsProductId] = useState<string | null>(null)
+
+  // Can this trainer, on this phone, take a card by tapping it? Four
+  // authorities have to agree (country, Stripe setup, the handset, Apple's
+  // terms) and the hook combines them into one answer with one sentence.
+  // Only asked while the composer is open — it is mounted on screens a trainer
+  // opens dozens of times a day.
+  const tapToPay = useTapToPay(open)
 
   // One key per composer session. Regenerated only on a fresh open, so a
   // double-tap (or a retry on a flaky connection) resolves to the same sale
@@ -158,6 +173,7 @@ export function SaleComposer({
     setCreated(null)
     setGuestUrl(null)
     setShowQr(false)
+    setTapIntent(null)
     setSaving(false)
     setPending(null)
     setError(null)
@@ -290,8 +306,11 @@ export function SaleComposer({
   // replaces the invoice's ENTIRE line set, so we always send the full merged
   // list — the seeded lines plus whatever was upsold. Sending only the new
   // lines would silently delete what they already owed.
-  async function submitSettle(settle: NonNullable<SalePrefill['settle']>, thenShowQr: boolean) {
-    if (created) { setShowQr(thenShowQr); setStep('done'); return }
+  async function submitSettle(
+    settle: NonNullable<SalePrefill['settle']>,
+    thenShowQr: boolean,
+  ): Promise<Created | null> {
+    if (created) { setShowQr(thenShowQr); setStep('done'); return created }
 
     const res = await fetch(`/api/trainer/finances/receivables/${settle.invoiceId}`, {
       method: 'PATCH',
@@ -313,24 +332,26 @@ export function SaleComposer({
       setError(typeof body?.error === 'string' && body.error
         ? body.error
         : 'That didn’t go through. Nothing was charged — try again.')
-      return
+      return null
     }
-    setCreated({
+    const made: Created = {
       id: settle.invoiceId,
       payToken: settle.payToken,
       amountCents: cartTotalCents(lines),
-    })
+    }
+    setCreated(made)
     // Only when actually asking for the money — "Save" is just filing the
     // upsell, and pinging them then would be a nag out of nowhere.
     if (thenShowQr) pingClientToPay(settle.invoiceId)
     setShowQr(thenShowQr)
     setStep('done')
+    return made
   }
 
-  async function submitNewSale(clientId: string, thenShowQr: boolean) {
+  async function submitNewSale(clientId: string, thenShowQr: boolean): Promise<Created | null> {
     // Already rung up (e.g. "Record" then "Take payment") — reuse it rather
     // than posting again.
-    if (created) { setShowQr(thenShowQr); setStep('done'); return }
+    if (created) { setShowQr(thenShowQr); setStep('done'); return created }
 
     const res = await fetch('/api/trainer/finances/receivables', {
       method: 'POST',
@@ -361,7 +382,7 @@ export function SaleComposer({
         : res.status === 409 && typeof body?.error === 'string' && body.error
           ? body.error
           : 'That didn’t go through. Nothing was charged — try again.')
-      return
+      return null
     }
     const made: Created = await res.json()
     setCreated(made)
@@ -369,6 +390,81 @@ export function SaleComposer({
     if (thenShowQr) pingClientToPay(made.id)
     setShowQr(thenShowQr)
     setStep('done')
+    return made
+  }
+
+  /**
+   * Take the money by holding the client's card against this phone.
+   *
+   * IT RINGS THE SALE UP FIRST, down the ordinary path — the same POST that
+   * "Record as unpaid" makes, which means the same invoice, the same stock
+   * coming off the shelf through the ledger, and the same Xero codes. Only then
+   * does it raise a card-present PaymentIntent against THAT sale. There is
+   * deliberately no second way to record a sale or move stock here; this repo
+   * has charged a real customer wrong twice by having two paths compute one
+   * thing, and a till is the last place to do it a third time.
+   *
+   * That ordering is also the recovery. If the tap fails, is cancelled, or the
+   * phone simply won't read the card, the sale still exists as an unpaid
+   * invoice and the trainer is left on the "Sale recorded" screen with its
+   * "Take payment now instead" QR — the customer is still standing there, and
+   * the worst outcome is a second way to pay, not a lost sale.
+   *
+   * A GUEST has no client and therefore no invoice, so it charges the lines
+   * directly — exactly as the existing guest QR sale does, and with the same
+   * consequence that a walk-up sale doesn't move stock.
+   */
+  async function submitTap() {
+    const isGuestSale = client ? isGuest(client) : false
+    let paid: Created | null = created
+
+    if (!isGuestSale && !paid) {
+      if (!client) return
+      paid = prefill?.settle
+        ? await submitSettle(prefill.settle, false)
+        : await submitNewSale(client.id, false)
+      // The sale itself failed — the shelf was empty, or the invoice moved on.
+      // Its own error is already on screen and no card has been touched.
+      if (!paid) return
+    }
+
+    const res = await fetch('/api/terminal/payment-intent', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(
+        isGuestSale
+          ? {
+            lines: lines.map((l) => ({
+              description: l.description,
+              quantity: l.quantity,
+              unitAmountCents: l.unitAmountCents,
+            })),
+          }
+          : { invoiceId: paid!.id },
+      ),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      setError(typeof body?.error === 'string' && body.error.length > 20
+        ? body.error
+        : 'Couldn’t start the card reader. Nothing was charged — the sale is saved, so you can still show them the QR.')
+      // A non-guest sale has already been filed, so land them on the screen
+      // that lets them finish it another way rather than stranding them here.
+      if (paid) { setShowQr(false); setStep('done') }
+      return
+    }
+    const intent = await res.json()
+    if (isGuestSale) {
+      setCreated({ id: 'guest', payToken: null, amountCents: intent.amount })
+      setShowQr(false)
+      setStep('done')
+    }
+    setTapIntent({
+      paymentId: intent.paymentId,
+      clientSecret: intent.clientSecret,
+      amount: intent.amount,
+      currency: intent.currency,
+    })
   }
 
   /**
@@ -385,7 +481,8 @@ export function SaleComposer({
     setPending(mode)
     setError(null)
     try {
-      if (isGuest(client)) await submitGuest()
+      if (mode === 'tap') await submitTap()
+      else if (isGuest(client)) await submitGuest()
       else if (prefill?.settle) await submitSettle(prefill.settle, thenShowQr)
       else await submitNewSale(client.id, thenShowQr)
     } catch {
@@ -517,8 +614,12 @@ export function SaleComposer({
               saving={saving}
               pending={pending}
               error={error}
+              tapOffer={tapToPay.offer}
+              tapReady={tapToPay.ready}
+              tapMessage={tapToPay.message}
               onRecord={() => submit('record')}
               onCharge={() => submit('charge')}
+              onTap={() => submit('tap')}
             />
           )}
 
@@ -541,6 +642,21 @@ export function SaleComposer({
           )}
         </div>
       </div>
+
+      {/* Over the top of everything, because during a tap the phone belongs to
+          the CLIENT — they are reading the amount and the trainer's business
+          name off it while they hold a card against it. The sheet is z-[90] to
+          this overlay's z-[60], and locks body scroll itself. */}
+      {tapIntent && (
+        <TapToPaySheet
+          intent={tapIntent}
+          merchantName={tapToPay.merchantName}
+          onClose={() => setTapIntent(null)}
+          // The webhook is what actually settles the sale; this only takes the
+          // trainer back to a screen that says so.
+          onPaid={() => { setShowQr(false); setStep('done') }}
+        />
+      )}
     </ModalPortal>
   )
 }
@@ -1234,12 +1350,13 @@ function CustomLineForm({
   )
 }
 
-// Step 3 — how it gets paid. Two choices, each with room to say what it does,
-// rather than two buttons in a footer racing for the same thumb. The sale
-// itself is identical either way; this only decides whether we ask for the
-// money now.
+// Step 3 — how it gets paid. Up to three choices, each with room to say what it
+// does, rather than buttons in a footer racing for the same thumb. The sale
+// itself is identical whichever is picked; this only decides how we ask for the
+// money.
 function PaymentStep({
-  who, lines, total, currency, guest, recordLabel, recordHint, saving, pending, error, onRecord, onCharge,
+  who, lines, total, currency, guest, recordLabel, recordHint, saving, pending, error,
+  tapOffer, tapReady, tapMessage, onRecord, onCharge, onTap,
 }: {
   who: string | null
   lines: Line[]
@@ -1252,8 +1369,15 @@ function PaymentStep({
   saving: boolean
   pending: PayMode | null
   error: string | null
+  /** Show the tap row at all — native, capable phone, supported country, add-on on. */
+  tapOffer: boolean
+  /** Nothing left to do; tapping it starts the reader. False = Apple's terms outstanding. */
+  tapReady: boolean
+  /** One sentence about whatever is standing in the way. */
+  tapMessage: string | null
   onRecord: () => void
   onCharge: () => void
+  onTap: () => void
 }) {
   const itemCount = lines.reduce((n, l) => n + l.quantity, 0)
   const spinner = <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
@@ -1281,6 +1405,20 @@ function PaymentStep({
 
       <SectionLabel>How are they paying?</SectionLabel>
       <FlatBlock className={saving ? 'pointer-events-none opacity-60' : undefined}>
+        {/* FIRST, because it is the fastest thing on this screen: no second
+            phone, no scanning, no app on the client's side. Only rendered when
+            it will actually work — a row that fails at the tap, with a customer
+            holding a card out, is the exact failure this feature must not have.
+            The step that's missing is explained under the block instead. */}
+        {tapOffer && tapReady && (
+          <FlatRow
+            icon={Nfc}
+            label="Tap their card on this phone"
+            sub="Card, phone or watch — contactless"
+            onClick={onTap}
+            trailing={pending === 'tap' ? spinner : undefined}
+          />
+        )}
         <FlatRow
           icon={QrCode}
           label="Take payment now"
@@ -1300,6 +1438,13 @@ function PaymentStep({
           />
         )}
       </FlatBlock>
+
+      {/* The one thing standing between this trainer and tapping a card, said
+          plainly rather than by a missing row. Only when the feature is
+          otherwise theirs — nobody is told about a step they can't take. */}
+      {tapOffer && !tapReady && tapMessage && (
+        <p className="mt-3 px-1 text-xs text-slate-500">{tapMessage}</p>
+      )}
 
       {guest && (
         <p className="mt-3 px-1 text-xs text-slate-500">

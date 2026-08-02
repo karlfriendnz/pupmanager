@@ -48,7 +48,6 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: 'Invalid payload' }, { status: 400 })
 
   let paymentId: string
-  let amount: number
   let currency: string
   let description: string
   let metadata: Record<string, string> = {}
@@ -129,7 +128,7 @@ export async function POST(req: Request) {
     where: { id: paymentId },
     select: { amountTotal: true, currency: true, applicationFeeAmount: true },
   })
-  amount = payment.amountTotal
+  const amount = payment.amountTotal
   currency = payment.currency
 
   const intent = await createCardPresentPaymentIntent({

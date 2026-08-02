@@ -46,11 +46,15 @@ export interface TapToPayNativePlugin {
   isSupported(): Promise<{ supported: boolean; reason?: string }>
 
   /**
-   * Connect the phone itself as a reader, at the trainer's Terminal Location.
-   * Idempotent: a second call with the same location resolves against the live
-   * connection rather than tearing it down mid-sale.
+   * Connect the phone itself as a reader.
+   *
+   * Takes no location: the native side reads it off the same connection-token
+   * response Stripe already made it ask for, so there is one round trip and no
+   * way for JS to connect a reader to a location the server didn't authorise.
+   * Idempotent — a second call resolves against the live connection rather than
+   * tearing one down mid-sale.
    */
-  connect(options: { locationId: string }): Promise<{ connected: boolean }>
+  connect(): Promise<{ connected: boolean }>
 
   /**
    * Hold the field open, take the tap, and confirm the PaymentIntent. Resolves
@@ -62,8 +66,8 @@ export interface TapToPayNativePlugin {
   /** Stop waiting for a card. Safe to call when nothing is in progress. */
   cancel(): Promise<void>
 
-  /** Hand back a connection token the native SDK asked for. */
-  provideConnectionToken(options: { secret?: string; error?: string }): Promise<void>
+  /** Hand back a connection token — and the location it is scoped to — that the native SDK asked for. */
+  provideConnectionToken(options: { secret?: string; locationId?: string; error?: string }): Promise<void>
 
   addListener(
     eventName: 'connectionTokenRequested',
@@ -112,9 +116,14 @@ export async function serveConnectionTokens(): Promise<PluginListenerHandle> {
           headers: { 'Content-Type': 'application/json' },
           body: '{}',
         })
-        const data = (await res.json().catch(() => null)) as { secret?: string; error?: string } | null
-        if (res.ok && data?.secret) await TapToPayNative.provideConnectionToken({ secret: data.secret })
-        else await TapToPayNative.provideConnectionToken({ error: data?.error ?? 'Could not reach PupManager' })
+        const data = (await res.json().catch(() => null)) as
+          | { secret?: string; locationId?: string; error?: string }
+          | null
+        if (res.ok && data?.secret) {
+          await TapToPayNative.provideConnectionToken({ secret: data.secret, locationId: data.locationId })
+        } else {
+          await TapToPayNative.provideConnectionToken({ error: data?.error ?? 'Could not reach PupManager' })
+        }
       } catch {
         await TapToPayNative.provideConnectionToken({ error: 'No connection' }).catch(() => {})
       }
