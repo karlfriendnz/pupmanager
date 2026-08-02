@@ -21,7 +21,7 @@
     "db:seed-demo:dev": "dotenv -e .env.development.local -o -- tsx prisma/seed-demo.ts",
     "db:seed-full-client:dev": "dotenv -e .env.development.local -o -- tsx scripts/seed-full-client.ts",
     "db:studio:dev": "dotenv -e .env.development.local -o -- prisma studio",
-    "db:reset:dev": "dotenv -e .env.development.local -o -- prisma db push --force-reset --skip-generate && npm run db:seed:dev",
+    "db:reset:dev": "dotenv -e .env.development.local -o -- prisma db push --force-reset && npm run db:seed:dev",
     "set-admin-password": "tsx scripts/set-admin-password.ts",
     "test": "vitest",
     "test:e2e": "playwright test",
