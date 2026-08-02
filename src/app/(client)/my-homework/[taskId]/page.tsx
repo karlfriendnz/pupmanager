@@ -7,8 +7,8 @@ import { TrainingLogPanel, type TrainingLogEntry } from './training-log-panel'
 import type { Metadata } from 'next'
 import { RichText } from '@/components/shared/rich-text'
 import { isRichTextEmpty } from '@/lib/rich-text'
-import { InstructionalVideoList } from '@/components/shared/instructional-video'
-import { readVideos } from '@/lib/instructional-videos'
+import { MediaList } from '@/components/shared/media-list'
+import { readMedia } from '@/lib/library-media'
 import { clientVisibleHomeworkWhere } from '@/lib/homework-visibility'
 
 export const metadata: Metadata = { title: 'Homework' }
@@ -34,7 +34,7 @@ export default async function HomeworkDetailPage({ params }: { params: Promise<{
     where: { id: taskId, clientId: active.clientId, ...clientVisibleHomeworkWhere() },
     select: {
       id: true, title: true, description: true, repetitions: true, wantsLog: true,
-      videoUrl: true, videos: true, trainerNote: true, imageUrls: true,
+      videoUrl: true, videos: true, trainerNote: true, imageUrls: true, media: true,
       completion: { select: { id: true } },
       logs: {
         orderBy: { loggedAt: 'desc' },
@@ -44,11 +44,11 @@ export default async function HomeworkDetailPage({ params }: { params: Promise<{
   })
   if (!task) redirect('/home')
 
-  // Every clip the trainer put on this exercise, in their order. readVideos
-  // falls back to the single videoUrl for homework handed out before the list
-  // existed, so older work still shows its video.
-  const videos = readVideos(task)
-  const images = Array.isArray(task.imageUrls) ? (task.imageUrls as string[]) : []
+  // Everything the trainer attached, in THEIR order — clips, photos, handouts
+  // and links in one sequence rather than all the videos then all the photos.
+  // readMedia falls back to the old columns for homework handed out before the
+  // list existed, so older work still shows its video and its photos.
+  const media = readMedia(task)
   const logs: TrainingLogEntry[] = task.logs.map(l => ({
     id: l.id,
     loggedAt: l.loggedAt.toISOString(),
@@ -95,18 +95,8 @@ export default async function HomeworkDetailPage({ params }: { params: Promise<{
           </div>
         )}
 
-        {/* Every instructional clip the trainer set, in their order. */}
-        <InstructionalVideoList videos={videos} />
-
-        {/* Trainer-attached photos */}
-        {images.length > 0 && (
-          <div className="mt-4 grid grid-cols-3 gap-2">
-            {images.map((src, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={i} src={src} alt="" className="aspect-square w-full rounded-xl object-cover" />
-            ))}
-          </div>
-        )}
+        {/* Everything the trainer attached, in their order. */}
+        <MediaList media={media} className="mt-4" />
       </div>
 
       {/* Log the training — unless this is reading material.

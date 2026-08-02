@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
+import { legacyRows, mediaColumns, sanitizeMedia } from '@/lib/library-media'
 import { z } from 'zod'
 
 // z.url() happily accepts `javascript:…`, and these values end up in href/src —
@@ -14,8 +15,12 @@ const schema = z.object({
   // Rich text (Tiptap HTML). Sanitized on the way out by <RichText />.
   description: z.string().optional().nullable(),
   repetitions: z.number().int().positive().optional().nullable(),
+  // Everything attached, in order — cleaned by sanitizeMedia, which is the one
+  // place the http(s) rule and the cap live.
+  media: z.array(z.unknown()).optional(),
+  // The pre-list fields, still accepted and folded into the list. New items are
+  // created from a title alone today, so these only matter to an older caller.
   videoUrl: webUrl.optional().nullable().or(z.literal('')),
-  // Blob URLs written by /api/library/upload; fileName is the handout's label.
   imageUrl: webUrl.optional().nullable().or(z.literal('')),
   fileUrl: webUrl.optional().nullable().or(z.literal('')),
   fileName: z.string().max(255).optional().nullable(),
@@ -47,10 +52,17 @@ export async function POST(req: Request) {
       title: parsed.data.title,
       description: parsed.data.description ?? null,
       repetitions: parsed.data.repetitions ?? null,
-      videoUrl: parsed.data.videoUrl || null,
-      imageUrl: parsed.data.imageUrl || null,
-      fileUrl: parsed.data.fileUrl || null,
-      fileName: parsed.data.fileName || null,
+      // One write for everything attached; the derived columns come with it.
+      ...mediaColumns(
+        parsed.data.media !== undefined
+          ? sanitizeMedia(parsed.data.media)
+          : legacyRows({
+              videoUrl: parsed.data.videoUrl || null,
+              imageUrl: parsed.data.imageUrl || null,
+              fileUrl: parsed.data.fileUrl || null,
+              fileName: parsed.data.fileName || null,
+            }),
+      ),
       order: (maxOrder._max.order ?? -1) + 1,
     },
   })

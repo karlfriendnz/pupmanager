@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
-import { readVideos, videoColumns } from '@/lib/instructional-videos'
+import { homeworkMediaColumns, readMedia } from '@/lib/library-media'
 import { getClientAccess } from '@/lib/trainer-access'
 import { dogBelongsToClient } from '@/lib/dog-access'
 import { z } from 'zod'
@@ -53,14 +53,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ taskId:
       title: task.title,
       description: task.description,
       repetitions: task.repetitions,
-      // ALL of the item's videos, not just the first. An exercise taught as
-      // three short clips would otherwise reach the client as one — and the
-      // client would be missing the two steps that came after it.
-      ...videoColumns(readVideos(task)),
-      // The item's picture, which was simply never copied — so a trainer who
-      // attached one handed out homework that had lost it. LibraryTask holds ONE
-      // image, TrainingTask holds a list, so it goes in as a list of one.
-      imageUrls: task.imageUrl ? [task.imageUrl] : [],
+      // EVERYTHING the trainer attached, in their order — clips, pictures,
+      // handouts and links alike. The handout is the one that was never copied
+      // at all: there was nowhere on a TrainingTask to put a PDF, so a trainer
+      // who attached one handed out homework that had silently lost it.
+      // homeworkMediaColumns keeps `videos`/`videoUrl`/`imageUrls` in step for
+      // every reader that still selects them.
+      ...homeworkMediaColumns(readMedia(task)),
       // Copied, not looked up: changing the item later must not start asking for
       // logs on homework already handed out.
       wantsLog: task.wantsLog,

@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { mergeClientDogs } from '@/lib/dogs'
 import { personLabel } from '@/lib/utils'
 import { PageHeader } from '@/components/shared/page-header'
-import { readVideos } from '@/lib/instructional-videos'
+import { readMedia } from '@/lib/library-media'
 import { requireLibraryTrainer } from '../../library-data'
 import { ItemTabs } from './item-tabs'
 import type { Holder } from './item-holders'
@@ -105,10 +105,10 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
             description: task.description,
             repetitions: task.repetitions,
             wantsLog: task.wantsLog,
-            videos: readVideos(task),
-            imageUrl: task.imageUrl,
-            fileUrl: task.fileUrl,
-            fileName: task.fileName,
+            // readMedia, not task.media — an item saved before the list
+            // existed has its picture, handout and clips only in the old
+            // columns, and it has to open showing all of them.
+            media: readMedia(task),
           }}
           themeHref={`/library/theme/${task.theme.id}`}
           holders={holders}

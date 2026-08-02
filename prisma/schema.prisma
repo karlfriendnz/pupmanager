@@ -1339,7 +1339,17 @@ model TrainingTask {
   /// re-cutting the library item never changes homework already given out.
   videos        Json     @default("[]")
   trainerNote   String?  @db.Text // per-task comment from the trainer
-  imageUrls     Json     @default("[]") // string[] of public image URLs
+  /// Everything the trainer attached, in their order — the same shape as
+  /// LibraryTask.media, copied at hand-out time. Its arrival is what finally
+  /// gets a HANDOUT to a client: the assign path copied the picture and the
+  /// clips but had nowhere to put a PDF, so a trainer who attached one handed
+  /// out homework that had silently lost it.
+  ///
+  /// `videos`/`videoUrl`/`imageUrls` are derived from it by
+  /// lib/library-media.ts (`homeworkMediaColumns`) so the older readers — the
+  /// client's own log panel, the session screen — keep working unchanged.
+  media         Json     @default("[]")
+  imageUrls     Json     @default("[]") // string[] of public image URLs — the image rows of `media`
   /// Whether the client is asked to log sessions against this. Copied from the
   /// library item at hand-out time (LibraryTask.wantsLog) — homework is a snapshot,
   /// so changing the item later never changes work already given out.
@@ -3383,13 +3393,30 @@ model LibraryTask {
   /// session screen — still selects this column, so it is written on every save
   /// rather than dropped. Retire it once nothing reads it; see instructional-videos.ts.
   videoUrl    String?
-  /// The item's videos, in the order a client watches them:
-  /// `[{ url, title? }]`. One exercise is often several short clips ("Step 1 —
-  /// approach", "Step 2 — reward"), which teaches better than one long take AND
-  /// keeps each file small enough to handle.
+  /// Just the video rows of `media`, kept in step with it. See below.
   videos      Json     @default("[]")
-  // One illustrative image and one attached document (PDF) per item. Both live
-  // in Vercel Blob; images are compressed client-side before upload.
+  /// EVERYTHING attached to this item, in the order a client meets it:
+  /// `[{ kind, url, title?, fileName? }]` where kind is image | video |
+  /// document | link.
+  ///
+  /// One list, because a picture, a handout and a clip are the same job — the
+  /// stuff a client looks at while they do the exercise — and three separate
+  /// columns made a second handout impossible to attach and gave the trainer no
+  /// say in what a client meets first.
+  ///
+  /// Json rather than a child table because nothing ever asks a question OF a
+  /// row: every read fetches the item and renders the lot, every write replaces
+  /// the lot. And homework is a SNAPSHOT of this item, so the list has to copy
+  /// across at hand-out time — one assignment here, N inserts if it were rows.
+  ///
+  /// The columns below are DERIVED from it by lib/library-media.ts
+  /// (`mediaColumns`) and written on every save: `videos`/`videoUrl` are the
+  /// video rows, `imageUrl` is the FIRST image, `fileUrl`/`fileName` the FIRST
+  /// document. They stay because the default-homework builder, the offering
+  /// suggestion list and the demo seed all still select them — a column dropped
+  /// from under a reader is a blank on a client's screen. Nothing writes them
+  /// directly any more.
+  media       Json     @default("[]")
   imageUrl    String?
   fileUrl     String?
   fileName    String? // original filename, for the download link's label
