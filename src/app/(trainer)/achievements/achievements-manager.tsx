@@ -1,7 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { AddOfferingButton } from '@/components/shared/offering-card'
+import {
+  AddOfferingButton, OfferingItems, OfferingListBar, useOfferingView,
+} from '@/components/shared/offering-card'
 import { Trophy, Plus, ChevronRight } from 'lucide-react'
 import { AchievementBadge } from '@/components/shared/achievement-badge'
 import { richTextToPlain } from '@/lib/rich-text'
@@ -17,6 +19,8 @@ import {
  * scrollbars" rule and the "full screens, not dropdowns" rule at once.
  */
 export function AchievementsManager({ initial }: { initial: AchievementRecord[] }) {
+  const [view, setView] = useOfferingView('achievements')
+
   if (initial.length === 0) {
     return (
       <div className="rounded-xl border border-slate-200 bg-white px-4 py-12 text-center">
@@ -37,15 +41,32 @@ export function AchievementsManager({ initial }: { initial: AchievementRecord[] 
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
-        <AddOfferingButton href="/achievements/new" label="Add achievement" />
-      </div>
+    <div className="flex flex-col gap-2.5">
+      {/* Add beside the view toggle, the same bar every other list carries —
+          it was on a row of its own, which said the same thing but said it in
+          a place a trainer had to learn separately. */}
+      <OfferingListBar
+        view={view}
+        onView={setView}
+        action={<AddOfferingButton href="/achievements/new" label="Add achievement" />}
+      />
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white [&>*+*]:border-t [&>*+*]:border-slate-200">
-        {initial.map(a => <AchievementRow key={a.id} achievement={a} />)}
-      </div>
-
+      {view === 'grid' ? (
+        // A badge is a picture, so a wall of them is genuinely a better way to
+        // judge the set than a column of rows — which is the whole test for
+        // whether a grid view earns its toggle.
+        <OfferingItems view="grid">
+          {initial.map(a => (
+            <div key={a.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <AchievementRow achievement={a} />
+            </div>
+          ))}
+        </OfferingItems>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white [&>*+*]:border-t [&>*+*]:border-slate-200">
+          {initial.map(a => <AchievementRow key={a.id} achievement={a} />)}
+        </div>
+      )}
     </div>
   )
 }

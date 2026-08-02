@@ -29,7 +29,10 @@ export default async function AchievementsPage() {
   return (
     <>
       <PageHeader title="Achievements" />
-      <div className="p-4 md:p-8 w-full max-w-3xl mx-auto">
+      {/* Full width, like every other list. Badges are pictures, and a column
+          of them down the middle of a desktop screen wastes the room the grid
+          view needs. */}
+      <div className="w-full p-4 md:p-8">
       <AchievementsManager
         initial={achievements.map(a => ({
           id: a.id,
