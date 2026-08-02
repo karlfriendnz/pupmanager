@@ -111,7 +111,10 @@ describe('a per-session class ignores the stale course price', () => {
 
   it('still lets a ticket price win outright', () => {
     expect(route).toContain('ticketed && tier ? tier.priceCents')
-    expect(invoicing).toContain('enr.ticketTier\n          ? enr.ticketTier.priceCents')
+    // Matched loosely on purpose: this ladder moved into priceClassEnrollment
+    // (shared with the discount quoter), so its indentation is not the point —
+    // the tier winning over everything else is.
+    expect(invoicing).toMatch(/enr\.ticketTier\s*\?\s*enr\.ticketTier\.priceCents/)
   })
 
   // A DROP_IN pays for the sessions it booked. That distinction is the whole

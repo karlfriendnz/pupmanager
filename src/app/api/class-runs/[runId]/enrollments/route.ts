@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { enrollInRun, enrollInRunTickets, ClassError, MAX_TICKET_QUANTITY } from '@/lib/class-runs'
 import { notifyClient } from '@/lib/client-notify'
 import { createInvoiceForAssignment } from '@/lib/invoicing'
+import { quoteEnrollmentDiscounts } from '@/lib/discounts/booking-discount'
 import { resolveRequirePayment } from '@/lib/require-payment'
 import { dogBelongsToClient } from '@/lib/dog-access'
 import { clientFacingTrainerName } from '@/lib/trainer-name'
@@ -167,14 +168,44 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
     // basket of ticket types is ONE invoice with a line per type, so the second
     // and later rows find the invoice the first one raised (the idempotency
     // check covers every row of the group) rather than billing again.
+    //
+    // The offering's discounts come off that receivable, quoted ONCE for the
+    // whole basket. Booking a client in used to skip the discount engine
+    // entirely, so the same five days cost less when the client booked them
+    // themselves (the self-enrol checkout has always called
+    // quoteOfferingDiscount) than when their trainer booked them in. Same
+    // client, same days, two prices — and the trainer's own invoice was the
+    // wrong one. Quoting the whole basket in one call is not a nicety either:
+    // "book 5 days, get one free" only fires when it can see all five.
+    // Best-effort like the invoicing below it: the client is already on the
+    // roster by now, so a discount lookup that falls over must cost them their
+    // saving on one invoice, not their place in the class.
+    const discount = await quoteEnrollmentDiscounts({
+      trainerId,
+      clientId: parsed.data.clientId,
+      enrollmentIds: booked.filter(b => b.status !== 'WAITLISTED').map(b => b.enrollmentId!),
+    }).catch((err) => {
+      console.error('[class enrol] discount quote failed', runId, err)
+      return { discountTotal: 0, perEnrollment: {} as Record<string, number> }
+    })
+
     let invoiceId: string | null = null
+    // A basket of ticket types is ONE invoice covering every row of the group,
+    // so the whole basket's discount has to ride on the call that actually
+    // raises it — the later rows just find the invoice already there.
+    let basketDiscountSpent = false
     for (const b of booked) {
       if (b.status === 'WAITLISTED') continue
+      const discountCents = basket
+        ? (basketDiscountSpent ? 0 : discount.discountTotal)
+        : (discount.perEnrollment[b.enrollmentId!] ?? 0)
+      basketDiscountSpent = true
       const id = await createInvoiceForAssignment({
         trainerId,
         clientId: parsed.data.clientId,
         sourceType: 'CLASS_ENROLLMENT',
         classEnrollmentId: b.enrollmentId!,
+        discountCents,
         // The enrolment email below carries the same Pay now link.
         notifyClient: false,
       })
