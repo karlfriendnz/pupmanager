@@ -68,6 +68,39 @@ export function utcToZonedDateAndMinutes(d: Date, tz: string): { dateStr: string
   }
 }
 
+/**
+ * A bound for a `@db.Date` COLUMN (TrainingTask.date and friends), NOT an
+ * instant. Postgres DATE holds a calendar day with no time, and Prisma renders
+ * a JS Date into it from that Date's *UTC* components — so a bound has to be
+ * built at UTC midnight of the day you mean.
+ *
+ * `startOfDayInTz` is the wrong tool here and was the bug: it returns the real
+ * instant of local midnight (NZ Monday 00:00 → Sunday 12:00Z), whose UTC
+ * calendar day is the day BEFORE. That silently shifted the client home's
+ * "This week" homework window one day west for every zone ahead of UTC, so on
+ * a Sunday the work a trainer had set for today was excluded from the query
+ * and the client's home simply showed no homework at all.
+ */
+export function dateOnlyUtc(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d))
+}
+
+/**
+ * Monday-anchored `[weekStart, weekEnd)` bounds for the week containing the
+ * calendar day `dateStr`, as `@db.Date` bounds (see `dateOnlyUtc`). Pair it
+ * with `todayInTz(trainerTz)` so the week rolls over at the trainer's midnight
+ * rather than the server's — Vercel's Node runtime is UTC.
+ */
+export function weekBoundsUtcDates(dateStr: string): { weekStart: Date; weekEnd: Date } {
+  const weekStart = dateOnlyUtc(dateStr)
+  const day = weekStart.getUTCDay() // 0=Sun..6=Sat — of the calendar day itself
+  weekStart.setUTCDate(weekStart.getUTCDate() + (day === 0 ? -6 : 1 - day))
+  const weekEnd = new Date(weekStart)
+  weekEnd.setUTCDate(weekEnd.getUTCDate() + 7)
+  return { weekStart, weekEnd }
+}
+
 /** Returns YYYY-MM-DD for "today" in the given timezone. */
 export function todayInTz(tz: string): string {
   const parts = new Intl.DateTimeFormat('en-CA', {

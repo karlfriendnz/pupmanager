@@ -7,26 +7,10 @@ import { AppInstallModal } from '../app-install-modal'
 import { computeAchievementProgress } from '@/lib/achievements'
 import { getEnabledAddons } from '@/lib/billing'
 import { mergeClientDogs } from '@/lib/dogs'
+import { todayInTz, weekBoundsUtcDates } from '@/lib/timezone'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Home' }
-
-// Monday-anchored start of the current week in the user's local time. Good
-// enough for a homework window — exact tz handling can come later.
-function startOfWeek(now: Date) {
-  const d = new Date(now)
-  d.setHours(0, 0, 0, 0)
-  const day = d.getDay() // 0=Sun..6=Sat
-  const diff = (day === 0 ? -6 : 1 - day) // shift back to Monday
-  d.setDate(d.getDate() + diff)
-  return d
-}
-function endOfWeek(now: Date) {
-  const start = startOfWeek(now)
-  const end = new Date(start)
-  end.setDate(end.getDate() + 7)
-  return end
-}
 
 export default async function ClientHomePage() {
   const active = await getActiveClient()
@@ -56,8 +40,18 @@ export default async function ClientHomePage() {
     : []
 
   const now = new Date()
-  const weekStart = startOfWeek(now)
-  const weekEnd = endOfWeek(now)
+
+  // Sessions happen in the trainer's locale, and so does "this week" — the week
+  // has to roll over at the trainer's midnight, not the server's (Vercel is UTC).
+  const timeZone = clientProfile.trainer.user?.timezone ?? 'Pacific/Auckland'
+
+  // TrainingTask.date is a Postgres DATE (a calendar day, no time), so the
+  // bounds are calendar days too — see weekBoundsUtcDates. The old version
+  // built local-midnight *instants* and handed them to a DATE comparison,
+  // which knocked the whole window a day earlier in any zone ahead of UTC: on
+  // a Sunday `lt weekEnd` became "< today", so homework the trainer had set
+  // for today vanished from the client's "This week" list entirely.
+  const { weekStart, weekEnd } = weekBoundsUtcDates(todayInTz(timeZone))
 
   const [
     upcomingSession,
@@ -240,7 +234,7 @@ export default async function ClientHomePage() {
       shopEnabled={shopEnabled}
       // Sessions happen in the trainer's locale — render them there, not in the
       // server's zone (UTC) or whatever zone the client's device is in.
-      timeZone={clientProfile.trainer.user?.timezone ?? 'Pacific/Auckland'}
+      timeZone={timeZone}
       clientName={clientProfile.user.name ?? 'there'}
       businessName={clientProfile.trainer.businessName}
       welcomeNote={clientProfile.trainer.clientWelcomeNote}

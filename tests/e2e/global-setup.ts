@@ -8,6 +8,7 @@ import { execSync } from 'node:child_process'
 import bcrypt from 'bcryptjs'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { TEST_DB, TEST_DATABASE_URL, SEED } from './test-db'
+import { dateOnlyUtc, todayInTz } from '../../src/lib/timezone'
 
 export default async function globalSetup() {
   // The seeding PrismaClient (below) reads DATABASE_URL at construction.
@@ -423,15 +424,22 @@ export default async function globalSetup() {
       data: { id: LIB.businessBItemId, themeId: LIB.businessBThemeId, title: 'Rival Item', order: 0 },
     })
 
-    // A homework task on the assigned client, dated now so it shows in the
+    // A homework task on the assigned client, dated today so it shows in the
     // client home's "This week" list. The homework-log spec opens it and logs
     // a practice against it.
+    //
+    // "Today" means today in the TRAINER's timezone (User.timezone defaults to
+    // Pacific/Auckland), because that's the week the client home renders and
+    // it's what a trainer's own date picker would have sent. `new Date()` here
+    // stored the UTC calendar day instead, which on a NZ Monday morning is
+    // last week — the seeded homework then fell outside the window whatever
+    // zone the test host ran in.
     await prisma.trainingTask.create({
       data: {
         id: SEED.homework.taskId,
         clientId: SEED.assignedClientId,
         dogId: dog.id,
-        date: new Date(),
+        date: dateOnlyUtc(todayInTz('Pacific/Auckland')),
         title: SEED.homework.title,
         description: 'Practise loose-lead walking for 10 minutes on a quiet street.',
         repetitions: 3,
