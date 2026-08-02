@@ -73,25 +73,32 @@ export default async function EnquiriesPage({
           the last row's tap area ends up under it. Emulators report a 0px inset,
           which is why this only shows on a real device. */}
       <div
-        className="p-4 md:p-8 w-full max-w-3xl md:max-w-5xl xl:max-w-7xl mx-auto"
+        className="w-full p-4 md:p-8"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))' }}
       >
-      <div className="mb-5 flex gap-1 border-b border-slate-200">
+      {/* The same underline tabs as every other list, down to the class names
+          — these stay <Link>s rather than becoming OfferingTabs because the
+          chosen tab lives in the URL, which is what makes an enquiry you were
+          sent a link to open on the right one. What changes is the LOOK: the
+          violet underline and the filled count chips were decorative colour
+          on a screen that has none anywhere else, and a trainer moving here
+          from Classes had to work out that the same control was the same
+          control. */}
+      <div className="mb-3 flex gap-5 overflow-x-auto no-scrollbar border-b border-slate-200">
         {TABS.map(t => (
           <Link
             key={t.key}
             href={`/enquiries${t.key === 'NEW' ? '' : `?tab=${t.key}`}`}
             className={cn(
-              'px-4 py-2.5 text-sm font-medium relative -mb-px',
-              tab === t.key ? 'text-violet-700 border-b-2 border-violet-600' : 'text-slate-500 hover:text-slate-700',
+              '-mb-px shrink-0 border-b-2 py-2 text-sm font-medium transition-colors',
+              tab === t.key
+                ? 'border-slate-900 text-slate-900'
+                : 'border-transparent text-slate-500 hover:text-slate-700',
             )}
           >
             {t.label}
-            {countByStatus[t.key] != null && countByStatus[t.key] > 0 && (
-              <span className={cn(
-                'ml-1.5 inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] tabular-nums',
-                tab === t.key ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-500',
-              )}>
+            {countByStatus[t.key] != null && (
+              <span className="ml-1.5 text-[11px] font-normal tabular-nums text-slate-400">
                 {countByStatus[t.key]}
               </span>
             )}

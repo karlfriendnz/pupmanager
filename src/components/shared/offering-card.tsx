@@ -9,7 +9,9 @@ import { closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, ty
 import { DndArea } from './dnd-area'
 import { SortableContext, sortableKeyboardCoordinates, useSortable, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { usePathname } from 'next/navigation'
 import { groupOfferingsByTag, type TagRef } from '@/lib/offering-grouping'
+import { prePickedOfferingHref } from '@/lib/offering-create'
 
 // One card design for everything a trainer sells — 1:1 packages, group classes,
 // drop-in classes and events. They were four hand-rolled layouts that had
@@ -360,7 +362,10 @@ export function useOfferingGrouping(page: string): [boolean, (v: boolean) => voi
 export function OfferingGroupToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   const label = value ? 'Grouped by tag — tap to ungroup' : 'Group by tag'
   return (
-    <div className="flex items-center rounded-xl bg-slate-100 p-1">
+    // p-0.5 around an h-8 button is 36px tall — the same as the add button
+    // beside it. p-1 made it 40, and three controls in a row at three
+    // different heights is what made the bar look assembled rather than designed.
+    <div className="flex items-center rounded-xl bg-slate-100 p-0.5">
       <button
         type="button"
         onClick={() => onChange(!value)}
@@ -397,7 +402,7 @@ export function OfferingGroupHeading({ label, count }: { label: string; count: n
 /** List / grid switch. Hidden on phones — one column either way there. */
 export function OfferingViewToggle({ value, onChange }: { value: OfferingView; onChange: (v: OfferingView) => void }) {
   return (
-    <div className="hidden items-center gap-0.5 rounded-xl bg-slate-100 p-1 md:flex">
+    <div className="hidden items-center gap-0.5 rounded-xl bg-slate-100 p-0.5 md:flex">
       {([
         { id: 'list' as const, icon: <ListIcon className="h-4 w-4" />, label: 'List view' },
         { id: 'grid' as const, icon: <LayoutGrid className="h-4 w-4" />, label: 'Grid view' },
@@ -459,11 +464,21 @@ export function OfferingListBar({ children, view, onView, action, grouped, onGro
   onGrouped?: (v: boolean) => void
 }) {
   const canGroup = grouped !== undefined && onGrouped !== undefined
+  // On a phone the create circle in the bottom-right corner already makes the
+  // thing this list holds — but only on the pages where it can pre-pick the
+  // kind. Tags, the waitlist, lead magnets, achievements and memberships are
+  // not among them, and on those this button is the ONLY way to make one, so it
+  // stays at every width. Hiding it everywhere would have been a tidier rule
+  // and would have stranded five screens.
+  const pathname = usePathname()
+  const duplicatedByCreateButton = prePickedOfferingHref(pathname) !== null
   return (
     <div className={`mb-3 flex items-end justify-between gap-3 ${children ? 'border-b border-slate-200' : ''}`}>
       <div className="min-w-0">{children}</div>
       <div className={`flex flex-shrink-0 items-center gap-2 ${children ? 'pb-1.5' : ''}`}>
-        {action}
+        {action && (duplicatedByCreateButton
+          ? <span className="hidden md:inline-flex">{action}</span>
+          : action)}
         {canGroup && <OfferingGroupToggle value={grouped} onChange={onGrouped} />}
         {view !== undefined && onView !== undefined && <OfferingViewToggle value={view} onChange={onView} />}
       </div>

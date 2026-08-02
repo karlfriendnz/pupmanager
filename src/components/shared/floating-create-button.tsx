@@ -6,13 +6,23 @@ import { Plus, Receipt, UserPlus, Package, Zap, X, ChevronRight } from 'lucide-r
 import type { LucideIcon } from 'lucide-react'
 import { SaleComposer } from './sale-composer'
 import { ModalPortal } from './modal-portal'
+import { prePickedOfferingHref } from '@/lib/offering-create'
+import { usePageImmersive } from './page-title'
 
 // The mobile "+" — the phone counterpart to the desktop control bar's "+".
 //
-// Lives in the mobile top bar (TrainerMobileHeader), NOT as a floating dashboard
-// button, so it's reachable from every page just like the desktop one. Offers
-// the SAME choices (New offering / Quick client / Full client / New sale) so the
-// two bars stay in step.
+// It is MOUNTED in the mobile top bar (TrainerMobileHeader) but it no longer
+// DRAWS there: the trigger is portaled out to a circle pinned above the bottom
+// tab bar, on the right. The top-right corner of a phone is the furthest point
+// on the screen from a thumb holding it, and it is where the one control a
+// trainer reaches for all day was sitting. The bottom right is where the thumb
+// already rests.
+//
+// It replaces rather than joins. There is no + in the header any more and no
+// add button in a list's own top row on a phone (see OfferingListBar) — three
+// ways to create the same thing is what made that row unusable at 390px.
+// Offers the SAME choices as the desktop "+" (New offering / Quick client /
+// Full client / New sale), so the two never drift.
 //
 // On a phone those choices open as a full screen rather than a dropdown: a
 // 56px-wide menu hanging off the corner is a poor target and gives no room to
@@ -28,6 +38,16 @@ export function FloatingCreateButton({
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [saleOpen, setSaleOpen] = useState(false)
+
+  // The circle goes exactly where the bottom tab bar is, so it goes wherever
+  // the tab bar goes — and on the two screens that hide it, the page has put
+  // something of its own down there. The offering wizard's Cancel/Next bar is
+  // one: the circle landed on top of it, offering to start a second offering
+  // over the one being filled in. An open message thread is the other, where
+  // the composer owns the bottom of the screen. Both conditions are copied
+  // from the tab bar in app-shell, and must stay in step with it.
+  const immersive = usePageImmersive()
+  const hideOnPhone = immersive || pathname === '/offerings/new'
 
   useEffect(() => {
     if (!open) return
@@ -53,12 +73,9 @@ export function FloatingCreateButton({
   // it routes, and Escape / the X cover the rest.
 
   // New offering pre-picks the kind when you're on a specific offering page,
-  // matching the desktop "+".
-  const newOfferingHref = pathname.startsWith('/classes') ? '/offerings/new?kind=group'
-    : pathname.startsWith('/casual-classes') ? '/offerings/new?kind=dropin'
-    : pathname.startsWith('/events') ? '/offerings/new?kind=oneoff'
-    : pathname.startsWith('/packages') ? '/offerings/new?kind=onetoone'
-    : '/offerings/new'
+  // matching the desktop "+". The rule lives in one place because the list bar
+  // reads it too — see prePickedOfferingHref.
+  const newOfferingHref = prePickedOfferingHref(pathname) ?? '/offerings/new'
 
   type Choice = { icon: LucideIcon; label: string; hint: string; run: () => void }
   const groups: { heading: string; choices: Choice[] }[] = [
@@ -105,15 +122,44 @@ export function FloatingCreateButton({
 
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        aria-label="Create"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-slate-500 transition-colors active:bg-slate-100"
-      >
-        <Plus className="h-[20px] w-[20px]" />
-      </button>
+      {/* Portaled to <body> for the same reason the screen below is: the mobile
+          header this is mounted in uses backdrop-blur, and a filtered ancestor
+          becomes the containing block for anything fixed inside it — the circle
+          would be pinned to the bottom of a 56px bar rather than the screen.
+
+          Sits 4.5rem up, which clears the 58px tab bar with 14px to spare, plus
+          whatever the home indicator claims. z-30 is deliberately BELOW the tab
+          bar (z-40) and every sheet and modal (z-70), so an open full screen
+          covers it rather than floating a create button over a form.
+
+          md:hidden because the portal escapes the header that was hiding it —
+          on a desktop the "+" in the control bar is the one that exists. */}
+      {!hideOnPhone && (
+      <ModalPortal>
+        {/* The room the circle needs under the last row, declared BY the circle
+            — so it appears and disappears with it rather than being a constant
+            gap on the two screens that have no circle.
+
+            The shell reserves 5rem plus the home-indicator inset for the tab
+            bar, which was the whole story while the "+" lived in the header.
+            The circle's top edge now reaches 8rem up, and the bottom half of
+            the last card in every list was underneath it. !important because
+            the value it beats is a Tailwind arbitrary utility of equal
+            specificity, where the winner would otherwise be decided by the
+            order the stylesheet happened to be built in. */}
+        <style>{`@media (max-width: 767px) { .pm-main { padding-bottom: calc(9rem + env(safe-area-inset-bottom, 0px)) !important; } }`}</style>
+        <button
+          onClick={() => setOpen(true)}
+          aria-label="Create"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          className="md:hidden fixed right-4 z-30 grid h-14 w-14 place-items-center rounded-full bg-[var(--pm-brand-600)] text-white shadow-[0_6px_16px_rgba(15,31,36,0.18)] transition-colors active:bg-[var(--pm-brand-700)]"
+          style={{ bottom: 'calc(4.5rem + env(safe-area-inset-bottom, 0px))' }}
+        >
+          <Plus className="h-6 w-6" strokeWidth={2.25} />
+        </button>
+      </ModalPortal>
+      )}
 
       {/* Portaled to <body>: this button lives in the mobile header, which uses
           backdrop-blur — and a filtered ancestor becomes the containing block

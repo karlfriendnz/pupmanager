@@ -101,9 +101,18 @@ describe('legibility over a photograph nobody has seen', () => {
   // The rows and tiles are opaque white blocks, so only the logo and greeting
   // sit directly on the photo. Rather than dim the image — the one thing the
   // trainer asked to see at full strength — those two carry their own contrast.
-  it('uses white type with a DARK halo, which works over light and dark alike', () => {
-    expect(hero).toContain('textShadow: GREETING_SHADOW')
-    expect(hero).toContain('filter: LOGO_SHADOW')
+  it('carries NO shadow on the greeting or the logo — Karl looked and wanted it clean', () => {
+    // Two treatments were tried and both were rejected: a soft white glow (too
+    // tight over dark hair) and three stacked white glows (a grey plate over a
+    // pale sky). Karl then asked for the type and his mark plain, having seen
+    // the third version on his own photograph.
+    //
+    // The risk is real and stated rather than hidden: white type on a bright
+    // photo can disappear. If that turns up, the fix is to DIM THE PHOTOGRAPH,
+    // not to dress the type a fourth time.
+    expect(hero).not.toContain('textShadow:')
+    expect(hero).not.toContain('filter: LOGO_SHADOW')
+    // White over a photo is what remains, and it still has to be white.
     expect(hero).toContain("image ? 'font-medium text-white' : 'text-slate-500'")
   })
 
@@ -115,9 +124,18 @@ describe('legibility over a photograph nobody has seen', () => {
     expect(GREETING_SHADOW_SRC.match(/rgb\(/g)?.length ?? 0).toBeLessThanOrEqual(2)
   })
 
-  it('applies neither when there is no image', () => {
-    expect(hero).toContain('style={image ? { textShadow: GREETING_SHADOW } : undefined}')
-    expect(hero).toContain('style={image ? { filter: LOGO_SHADOW } : undefined}')
+  it('leaves the no-photo case reading as ordinary page type', () => {
+    // Without a photo the greeting is slate on the page background and the mark
+    // sits on white — nothing to compensate for, and nothing applied.
+    expect(hero).toContain("image ? 'font-medium text-white' : 'text-slate-500'")
+    // Comments are excluded on purpose: the rejected values are kept commented
+    // out as a record of what was tried, so a bare substring search would fail
+    // on the very note explaining why they are gone.
+    const live = hero
+      .split('\n')
+      .filter(l => !l.trim().startsWith('//') && !l.trim().startsWith('*'))
+      .join('\n')
+    expect(live).not.toContain('drop-shadow(')
   })
 })
 
