@@ -12,6 +12,7 @@ import {
   fetchCalendarEvents,
   type CalendarEventInput,
 } from '@/lib/google-calendar'
+import { LIVE_SESSION } from '@/lib/run-occurrences'
 
 // One-way sync engine (PupManager → each staff member's own Google Calendar) plus
 // the busy-import half (Google → PupManager) that powers soft double-booking
@@ -211,7 +212,10 @@ export async function syncSessionToGoogle(sessionId: string): Promise<void> {
 export async function syncSessionsToGoogle(sessionIds: string[]): Promise<void> {
   if (sessionIds.length === 0) return
   try {
-    const sessions = await prisma.trainingSession.findMany({ where: { id: { in: sessionIds } } })
+    // …and never a cancelled occurrence. A batch caller (a class rebuild, the
+    // backfill sweep) hands over ids it gathered before this ran; mirroring a
+    // week the trainer called off is the one thing this must not do.
+    const sessions = await prisma.trainingSession.findMany({ where: { id: { in: sessionIds }, ...LIVE_SESSION } })
     if (sessions.length === 0) return
 
     const cache = new Map<string, GoogleCalendarConnection | null>()
@@ -433,6 +437,10 @@ export async function backfillSessionsToGoogle(opts: {
     trainerId: { in: activeCompanyIds },
     scheduledAt: { gte: new Date() },
     googleCalendarEventId: null,
+    // A cancelled occurrence has just had its mirrored event DELETED and its id
+    // cleared, which is exactly the shape this sweep looks for — without this it
+    // would put the cancelled week straight back on the trainer's calendar.
+    ...LIVE_SESSION,
   }
 
   const candidates = activeCompanyIds.length
