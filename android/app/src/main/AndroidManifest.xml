@@ -32,4 +32,25 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+        Tap to Pay on Android (Stripe Terminal).
+
+        NFC is the radio that reads the card. LOCATION is not optional garnish:
+        Stripe Terminal refuses to take an in-person payment without it, because
+        card networks and dispute rules key off where the tap happened.
+        ACCESS_NETWORK_STATE lets the SDK tell "declined" apart from "no signal",
+        which is the difference between a trainer trying another card and a
+        trainer trying the same card six times in front of a customer.
+
+        uses-feature is required="false" ON PURPOSE. The app has to keep
+        installing on phones with no NFC — most trainers will never tap a card,
+        and the Play Store would otherwise hide PupManager from them entirely
+        to gate one feature. Whether this handset can actually do it is a
+        RUNTIME question, answered by the plugin's isSupported().
+    -->
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
 </manifest>
