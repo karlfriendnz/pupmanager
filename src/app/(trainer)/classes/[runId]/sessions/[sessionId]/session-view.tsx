@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
-import { ModalPortal } from '@/components/shared/modal-portal'
+import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
 import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
 import { SuggestedHomework } from '@/components/trainer/suggested-homework'
 import { SessionSeriesStep } from '@/components/trainer/session-series-step'
@@ -101,12 +101,15 @@ function StatusAvatar({ name, photoUrl, status }: { name: string; photoUrl: stri
 }
 
 /**
- * A full screen of choices, portaled to <body>.
+ * The status / "mark everyone as…" picker.
  *
  * Replaces the two dropdowns this screen used to hang off a corner — a 160px
  * status menu and a "Mark as…" <select> — neither of which is a phone control
- * for five options (AGENTS.md: full screens, not dropdowns). Body scroll is
- * locked for as long as it's open so there's never a second scrollbar.
+ * for five options (AGENTS.md: full screens, not dropdowns).
+ *
+ * The shell is shared: the whole screen on a phone, a centred panel on a
+ * desktop, where a full-bleed grey page holding five short rows was the mess
+ * Karl marked.
  */
 function ChoiceScreen({
   title,
@@ -123,49 +126,27 @@ function ChoiceScreen({
   onPick: (id: string) => void
   onClose: () => void
 }) {
-  useEffect(() => {
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey) }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   return (
-    <ModalPortal>
-      <div role="dialog" aria-modal="true" aria-label={title} className="fixed inset-0 z-[90] flex flex-col bg-slate-50">
-        <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 pt-[env(safe-area-inset-top)]">
-          <div className="min-w-0 flex-1 py-3.5">
-            <p className="truncate text-[15px] font-semibold text-slate-900">{title}</p>
-            {sub && <p className="mt-0.5 truncate text-[13px] text-slate-500">{sub}</p>}
-          </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="-mr-1 flex-shrink-0 p-2 text-slate-400 active:text-slate-700">
-            <X className="h-5 w-5" strokeWidth={1.75} />
-          </button>
-        </div>
-        <div className="no-scrollbar flex-1 overflow-y-auto p-4">
-          <div className="mx-auto w-full max-w-lg">
-            <FlatBlock>
-              {options.map(o => (
-                <button
-                  key={o.id}
-                  type="button"
-                  onClick={() => onPick(o.id)}
-                  className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50"
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-slate-900">{o.label}</span>
-                    {o.sub && <span className="mt-0.5 block truncate text-[13px] text-slate-500">{o.sub}</span>}
-                  </span>
-                  {activeId === o.id && <Check className="h-4 w-4 flex-shrink-0 text-slate-700" strokeWidth={1.75} />}
-                </button>
-              ))}
-            </FlatBlock>
-          </div>
-        </div>
+    <FullScreenSheet title={title} sub={sub} onClose={onClose}>
+      <div className="mx-auto w-full max-w-lg">
+        <FlatBlock>
+          {options.map(o => (
+            <button
+              key={o.id}
+              type="button"
+              onClick={() => onPick(o.id)}
+              className="flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-slate-900">{o.label}</span>
+                {o.sub && <span className="mt-0.5 block truncate text-[13px] text-slate-500">{o.sub}</span>}
+              </span>
+              {activeId === o.id && <Check className="h-4 w-4 flex-shrink-0 text-slate-700" strokeWidth={1.75} />}
+            </button>
+          ))}
+        </FlatBlock>
       </div>
-    </ModalPortal>
+    </FullScreenSheet>
   )
 }
 

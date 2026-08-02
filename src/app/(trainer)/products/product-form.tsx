@@ -261,7 +261,7 @@ export function ProductForm({
           field, not two stacked ones. It STICKS, which is what the pinned
           bottom bar was really buying (it is always reachable) without a bar
           that has to dodge the desktop sidebar and the phone's safe area. */}
-      <div className="sticky top-0 z-20 -mx-4 flex items-end justify-between gap-3 border-b border-slate-200 bg-white/90 px-4 pb-1.5 pt-1 backdrop-blur md:mx-0 md:px-0">
+      <div className="sticky top-0 z-20 -mx-4 flex items-end justify-between gap-3 border-b border-slate-200 bg-slate-50/95 px-4 pb-1.5 pt-1 backdrop-blur md:mx-0 md:px-0">
         {heading ?? <span />}
         <span className="flex flex-shrink-0 items-center gap-2 pb-1">
         <Button variant="ghost" size="sm" onClick={() => router.push('/products')}>Cancel</Button>
@@ -318,6 +318,27 @@ export function ProductForm({
               minHeight={120}
               theme="light"
             />
+          </div>
+
+          {/* Stock sits with the listing, under the description. It is a fact
+              ABOUT this item like its name and its words are — a section of its
+              own for one number put a heading and a card around it. */}
+          <div className="flex flex-col gap-1.5 border-t border-slate-200 p-4">
+            <label htmlFor="product-stock" className="text-sm font-medium text-slate-700">Units on hand</label>
+            <input
+              id="product-stock"
+              type="number"
+              min="0"
+              step="1"
+              inputMode="numeric"
+              value={draft.stockCount ?? ''}
+              onChange={e => update('stockCount', e.target.value === '' ? null : Math.max(0, Math.floor(Number(e.target.value))))}
+              placeholder="Leave blank if you don't count this"
+              className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-xs text-slate-500">
+              Counts down as items go out. At zero it stops being sellable until you add more.
+            </p>
           </div>
 
           {/* A real <select>, not a <datalist>.
@@ -396,61 +417,6 @@ export function ProductForm({
         </div>
       </section>
 
-      {/* ── Type + download ────────────────────────────────────────────── */}
-      <section>
-        <SectionLabel>Type</SectionLabel>
-        <div className="rounded-xl border border-slate-200 bg-white">
-          <div className="p-4">
-            <div className="flex rounded-lg bg-slate-100 p-1">
-              {(['PHYSICAL', 'DIGITAL'] as Kind[]).map(k => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => update('kind', k)}
-                  className={cn(
-                    'flex-1 rounded-[6px] py-2 text-sm font-medium transition-all',
-                    draft.kind === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
-                  )}
-                >
-                  {k === 'PHYSICAL' ? 'Physical product' : 'Digital download'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {draft.kind === 'DIGITAL' && (
-            <div className="flex flex-col gap-2 border-t border-slate-200 p-4">
-              <label className="text-sm font-medium text-slate-700">Download file</label>
-              <div className="flex flex-wrap items-center gap-3">
-                <Button type="button" variant="ghost" size="sm" onClick={() => downloadInputRef.current?.click()} disabled={uploadingDownload}>
-                  {uploadingDownload
-                    ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Uploading…</>
-                    : draft.downloadUrl ? 'Replace file' : 'Upload file'}
-                </Button>
-                {draft.downloadUrl && (
-                  <a href={draft.downloadUrl} target="_blank" rel="noopener noreferrer" className="truncate text-xs text-blue-600 hover:underline">
-                    Preview file
-                  </a>
-                )}
-              </div>
-              <input
-                ref={downloadInputRef}
-                type="file"
-                className="hidden"
-                onChange={e => { const f = e.target.files?.[0]; if (f) uploadDownload(f); e.target.value = '' }}
-              />
-              <Input
-                label="…or paste a URL"
-                type="url"
-                placeholder="https://…"
-                value={draft.downloadUrl ?? ''}
-                onChange={e => update('downloadUrl', e.target.value || null)}
-              />
-            </div>
-          )}
-        </div>
-      </section>
-
       {/* ── Price ──────────────────────────────────────────────────────── */}
       <section>
         <SectionLabel>Price</SectionLabel>
@@ -522,27 +488,58 @@ export function ProductForm({
         </div>
       </section>
 
-      {/* ── Stock ──────────────────────────────────────────────────────── */}
+      {/* ── Type + download ────────────────────────────────────────────── */}
       <section>
-        <SectionLabel>Stock</SectionLabel>
+        <SectionLabel>Type</SectionLabel>
         <div className="rounded-xl border border-slate-200 bg-white">
-          <div className="flex flex-col gap-1.5 p-4">
-            <label htmlFor="product-stock" className="text-sm font-medium text-slate-700">Units on hand</label>
-            <input
-              id="product-stock"
-              type="number"
-              min="0"
-              step="1"
-              inputMode="numeric"
-              value={draft.stockCount ?? ''}
-              onChange={e => update('stockCount', e.target.value === '' ? null : Math.max(0, Math.floor(Number(e.target.value))))}
-              placeholder="Leave blank if you don't count this"
-              className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p className="text-xs text-slate-500">
-              Counts down as items go out. At zero it stops being sellable until you add more.
-            </p>
+          <div className="p-4">
+            <div className="flex rounded-lg bg-slate-100 p-1">
+              {(['PHYSICAL', 'DIGITAL'] as Kind[]).map(k => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => update('kind', k)}
+                  className={cn(
+                    'flex-1 rounded-[6px] py-2 text-sm font-medium transition-all',
+                    draft.kind === k ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+                  )}
+                >
+                  {k === 'PHYSICAL' ? 'Physical product' : 'Digital download'}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {draft.kind === 'DIGITAL' && (
+            <div className="flex flex-col gap-2 border-t border-slate-200 p-4">
+              <label className="text-sm font-medium text-slate-700">Download file</label>
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="button" variant="ghost" size="sm" onClick={() => downloadInputRef.current?.click()} disabled={uploadingDownload}>
+                  {uploadingDownload
+                    ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Uploading…</>
+                    : draft.downloadUrl ? 'Replace file' : 'Upload file'}
+                </Button>
+                {draft.downloadUrl && (
+                  <a href={draft.downloadUrl} target="_blank" rel="noopener noreferrer" className="truncate text-xs text-blue-600 hover:underline">
+                    Preview file
+                  </a>
+                )}
+              </div>
+              <input
+                ref={downloadInputRef}
+                type="file"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) uploadDownload(f); e.target.value = '' }}
+              />
+              <Input
+                label="…or paste a URL"
+                type="url"
+                placeholder="https://…"
+                value={draft.downloadUrl ?? ''}
+                onChange={e => update('downloadUrl', e.target.value || null)}
+              />
+            </div>
+          )}
         </div>
       </section>
 

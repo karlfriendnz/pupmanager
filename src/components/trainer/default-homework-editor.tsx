@@ -1,9 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Check, ListChecks, Loader2, Plus, Search, Trash2, X } from 'lucide-react'
+import { Check, ListChecks, Loader2, Plus, Search, Trash2 } from 'lucide-react'
 import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
-import { ModalPortal } from '@/components/shared/modal-portal'
+import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
 
 // The default homework a trainer sets up on an offering: "everyone who books
 // the puppy consult gets these three things after session 1".
@@ -265,19 +265,14 @@ function LibraryPicker({
   }, [tasks, search])
 
   return (
-    <ModalPortal>
-      <div role="dialog" aria-modal="true" aria-label={`Add homework to ${title}`} className="fixed inset-0 z-[90] flex flex-col bg-slate-50">
-        <div className="flex items-center gap-3 border-b border-slate-200 bg-white px-4 pt-[env(safe-area-inset-top)]">
-          <div className="min-w-0 flex-1 py-3.5">
-            <p className="truncate text-[15px] font-semibold text-slate-900">Add homework</p>
-            <p className="truncate text-xs text-slate-500">{title}</p>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="-mr-1 flex-shrink-0 p-2 text-slate-400 active:text-slate-700">
-            <X className="h-5 w-5" strokeWidth={1.75} />
-          </button>
-        </div>
-
-        <div className="border-b border-slate-200 bg-white px-4 pb-3">
+    // The whole screen on a phone, a centred panel on a desktop — the shared
+    // shell, so this and the attendance picker can't drift apart again.
+    <FullScreenSheet
+      title="Add homework"
+      sub={title}
+      onClose={onClose}
+      headerExtra={
+        <div className="flex-shrink-0 border-b border-slate-200 bg-white px-4 pb-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" strokeWidth={1.75} />
             <input
@@ -289,8 +284,8 @@ function LibraryPicker({
             />
           </div>
         </div>
-
-        <div className="no-scrollbar flex-1 overflow-y-auto p-4">
+      }
+    >
           <div className="mx-auto w-full max-w-lg">
             {tasks.length === 0 ? (
               <p className="py-8 text-center text-sm text-slate-500">
@@ -325,8 +320,6 @@ function LibraryPicker({
               </FlatBlock>
             )}
           </div>
-        </div>
-      </div>
-    </ModalPortal>
+    </FullScreenSheet>
   )
 }
