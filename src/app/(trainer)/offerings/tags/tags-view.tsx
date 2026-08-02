@@ -12,7 +12,6 @@ import {
   SortableOfferingCard,
   SortableOfferingList,
   useOfferingView,
-  type OfferingView,
 } from '@/components/shared/offering-card'
 import { ConfirmSheet } from '@/components/shared/confirm-sheet'
 import { readApiError } from '@/lib/api-error'
