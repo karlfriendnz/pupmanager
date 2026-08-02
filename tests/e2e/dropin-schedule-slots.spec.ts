@@ -175,7 +175,14 @@ test.describe('drop-in schedule slots', () => {
       // The headline price follows the schedule down as well as up.
       expect((await prisma.package.findUnique({ where: { id: pkgId } }))!.dropInPriceCents).toBe(3000)
 
-      // Dropping a slot from the payload removes it, leaving its sessions alone.
+      // ── Taking Saturdays OFF the timetable takes the empty Saturdays with it ──
+      // Dropping a slot used to delete only the row. The FK is SetNull, so every
+      // session it had generated stayed in the diary — dates the trainer had
+      // just removed, still on the board, still bookable, and now priced off the
+      // package's headline rate because their own slot was gone. Nothing could
+      // tidy them either: the nightly top-up keys on a non-null slot id, so an
+      // orphan is invisible to it forever. Removing Saturdays left Saturdays
+      // selling. So the future ones go — with one exception, below.
       const dropRes = await page.request.patch(`/api/packages/${pkgId}`, {
         data: {
           sessionSlots: [
@@ -185,8 +192,28 @@ test.describe('drop-in schedule slots', () => {
       })
       expect(dropRes.status()).toBe(200)
       expect(await prisma.packageSessionSlot.count({ where: { packageId: pkgId } })).toBe(1)
-      // The FK is SetNull — sessions already in the diary survive.
-      expect(await prisma.trainingSession.count({ where: { classRunId: runId } })).toBe(4)
+
+      const afterDrop = await prisma.trainingSession.findMany({
+        where: { classRunId: runId },
+        orderBy: { scheduledAt: 'asc' },
+        select: { id: true, packageSessionSlotId: true },
+      })
+      // Both Tuesdays, untouched and still pointing at their slot — removing one
+      // day-part says nothing about another.
+      expect(afterDrop.filter(s => s.packageSessionSlotId === tuesdaySlotId)).toHaveLength(2)
+
+      // The booked Saturday SURVIVES. Deleting it would cascade the register and
+      // this client's casual booking away, silently, from the person who most
+      // needs telling — so it stays, orphaned (SetNull) and inert, for the
+      // trainer to cancel or move with the per-occurrence tools once they can
+      // see who is in it.
+      const survivor = afterDrop.find(s => s.id === saturdaySessions[0].id)
+      expect(survivor, 'a session somebody has booked is never deleted').toBeTruthy()
+      expect(survivor!.packageSessionSlotId).toBeNull()
+
+      // The empty Saturday is gone, not orphaned.
+      expect(afterDrop.some(s => s.id === saturdaySessions[1].id)).toBe(false)
+      expect(afterDrop).toHaveLength(3)
     } finally {
       for (const fn of cleanup.reverse()) await fn()
       await prisma.$disconnect()

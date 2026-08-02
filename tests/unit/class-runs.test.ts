@@ -257,6 +257,35 @@ describe('planSlotSessions (a drop-in class schedules itself from its slots)', (
     expect(out.map(s => s.slotId)).toEqual(['tue', 'sat', 'tue', 'sat', 'tue', 'sat'])
   })
 
+  it('two slots × two occurrences is FOUR sessions, never three', () => {
+    // The arithmetic that decides whether a date exists to be sold. Each slot
+    // prices its own sessions, so one occurrence quietly missing is money the
+    // trainer never bills and a date a client cannot book while the trainer
+    // believes it is on. The shape mirrors tests/e2e/dropin-schedule-slots —
+    // two slots, each with its OWN "starts from" on its own weekday, each
+    // ending after two — because that is the arrangement where a
+    // de-duplication keyed too loosely, or a cutoff applied to the wrong end,
+    // swallows an occurrence without anything else looking wrong.
+    const out = planSlotSessions(
+      [
+        slot({ id: 'tue', order: 0, day: 2, startDate: new Date('2026-07-21T00:00:00.000Z'), recurrenceRule: 'FREQ=WEEKLY;COUNT=2' }),
+        slot({ id: 'sat', order: 1, day: 6, startTime: '09:00', endTime: '10:00', startDate: new Date('2026-07-25T00:00:00.000Z'), recurrenceRule: 'FREQ=WEEKLY;COUNT=2' }),
+      ],
+      { runStart, tz, through: new Date('2027-07-20T00:00:00.000Z') },
+    )
+    expect(out).toHaveLength(4)
+    expect(out.map(s => s.slotId)).toEqual(['tue', 'sat', 'tue', 'sat'])
+    expect(out.map(s => s.scheduledAt.toISOString())).toEqual([
+      '2026-07-21T03:00:00.000Z', // Tue 15:00 NZST
+      '2026-07-24T21:00:00.000Z', // Sat 09:00 NZST
+      '2026-07-28T03:00:00.000Z',
+      '2026-07-31T21:00:00.000Z',
+    ])
+    // Each session knows which slot priced it, and carries that slot's length.
+    expect(out.filter(s => s.slotId === 'tue').every(s => s.durationMins === 120)).toBe(true)
+    expect(out.filter(s => s.slotId === 'sat').every(s => s.durationMins === 60)).toBe(true)
+  })
+
   it('carries the slot’s gap and first assigned trainer onto every session', () => {
     const out = planSlotSessions(
       [slot({ gapMins: 15, assignedMembershipIds: ['m1', 'm2'] })],
