@@ -60,10 +60,6 @@ export default async function ClientsPage({
       // the "extra dogs" column/badge has to exclude it or a one-dog client
       // reads "Bailey  +1 Bailey".
       dogs: { select: { id: true, name: true, breed: true, photoUrl: true } },
-      diaryEntries: {
-        where: { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
-        select: { id: true, completion: { select: { id: true } } },
-      },
     },
     orderBy: { user: { name: 'asc' } },
   })
@@ -75,10 +71,6 @@ export default async function ClientsPage({
           user: { select: { name: true, email: true } },
           dog: { select: { id: true, name: true, breed: true, photoUrl: true } },
           dogs: { select: { id: true, name: true, breed: true, photoUrl: true } },
-          diaryEntries: {
-            where: { date: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } },
-            select: { id: true, completion: { select: { id: true } } },
-          },
         },
       },
     },
@@ -128,8 +120,6 @@ export default async function ClientsPage({
       dogBreed: c.dog?.breed ?? c.dogs[0]?.breed ?? null,
       dogPhotoUrl: c.dog?.photoUrl ?? c.dogs[0]?.photoUrl ?? null,
       extraDogNames: extraClientDogs(c.dogId, c.dogs).map(d => d.name),
-      taskCount: c.diaryEntries.length,
-      completedCount: c.diaryEntries.filter(t => t.completion).length,
       nextSessionAt: nextSessionByClient.get(c.id)?.toISOString() ?? null,
       shared: false,
     })),
@@ -141,8 +131,6 @@ export default async function ClientsPage({
       dogBreed: s.client.dog?.breed ?? s.client.dogs[0]?.breed ?? null,
       dogPhotoUrl: s.client.dog?.photoUrl ?? s.client.dogs[0]?.photoUrl ?? null,
       extraDogNames: extraClientDogs(s.client.dogId, s.client.dogs).map(d => d.name),
-      taskCount: s.client.diaryEntries.length,
-      completedCount: s.client.diaryEntries.filter(t => t.completion).length,
       nextSessionAt: nextSessionByClient.get(s.client.id)?.toISOString() ?? null,
       shared: true,
     })),

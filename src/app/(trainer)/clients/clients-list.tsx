@@ -15,7 +15,7 @@ import { ClientAvatar } from '@/components/shared/client-avatar'
 import { BulkEmailModal } from './bulk-email-modal'
 import { GroupComposer } from '../messages/group-composer'
 
-type BuiltinColumnId = 'email' | 'dog' | 'breed' | 'extraDogs' | 'nextSession' | 'compliance' | 'shared'
+type BuiltinColumnId = 'email' | 'dog' | 'breed' | 'extraDogs' | 'nextSession' | 'shared'
 
 const BUILTIN_OPTIONS: { id: BuiltinColumnId; label: string }[] = [
   { id: 'email',       label: 'Email' },
@@ -23,7 +23,6 @@ const BUILTIN_OPTIONS: { id: BuiltinColumnId; label: string }[] = [
   { id: 'breed',       label: 'Breed' },
   { id: 'extraDogs',   label: 'Additional dogs' },
   { id: 'nextSession', label: 'Next session' },
-  { id: 'compliance',  label: '7-day compliance' },
   { id: 'shared',      label: 'Shared badge' },
 ]
 
@@ -117,8 +116,6 @@ interface ClientRow {
   dogBreed: string | null
   dogPhotoUrl: string | null   // primary dog photo, else first additional dog's
   extraDogNames: string[]   // for searching multi-dog households
-  taskCount: number
-  completedCount: number
   nextSessionAt: string | null  // ISO string
   shared: boolean
 }
@@ -717,20 +714,11 @@ function buildDataColumns(
       },
     })
   }
-  if (visible.has('compliance')) {
-    cols.push({
-      key: 'compliance',
-      label: '7-day',
-      align: 'right',
-      width: 'minmax(72px, auto)',
-      render: c => {
-        if (c.taskCount === 0) return <span className="text-xs text-slate-300">no tasks</span>
-        const rate = Math.round((c.completedCount / c.taskCount) * 100)
-        const color = rate >= 70 ? 'text-green-600' : rate >= 40 ? 'text-amber-600' : 'text-red-500'
-        return <span className={`font-semibold tabular-nums ${color}`}>{rate}%</span>
-      },
-    })
-  }
+  // No "7-day compliance" column. A homework completion rate over a rolling
+  // week is a number nobody acted on — it moves for reasons that have nothing
+  // to do with the client (a week with no tasks set reads the same as a week
+  // they ignored), and a red 30% beside someone's name is a judgement the list
+  // has no business making at a glance.
 
   return cols
 }
