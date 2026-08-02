@@ -638,6 +638,23 @@ model TrainerProfile {
   // location's display_name, so a wrong value here is a wrong merchant name on
   // a stranger's phone. It is re-derived if the trainer renames their business.
   terminalLocationId        String?
+  // APPLE's Tap to Pay terms, which every merchant accepts individually with a
+  // real Apple ID before their first tap. With direct charges the acceptance is
+  // per CONNECTED ACCOUNT, so PupManager accepting as a platform does nothing
+  // for the trainer — this is genuinely their paperwork, and these two columns
+  // are the only record of it we can hold.
+  //
+  // Two dates, because they mean different things and only one is proof:
+  //   - LinkedAt   we minted them an Apple link. Says they started, nothing more;
+  //                Apple's page is Apple's, and there is no webhook back.
+  //   - AcceptedAt a device actually connected a Tap to Pay reader on this
+  //                account. Stripe's SDK refuses to connect until Apple's terms
+  //                are accepted, so a successful connection IS the acceptance,
+  //                observed rather than claimed. Never set from a "I did it"
+  //                button — a trainer who ticks that and hasn't would be told
+  //                they're ready and then fail in front of a customer.
+  tapToPayTermsLinkedAt     DateTime?
+  tapToPayTermsAcceptedAt   DateTime?
   // What this trainer calls the things in their own left menu — a map of nav key
   // to their word for it ({"/packages": "Private lessons"}). A groomer says
   // "Services", a daycare says "Programmes"; the software shouldn't insist.

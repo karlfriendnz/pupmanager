@@ -127,7 +127,7 @@ export async function POST(req: Request) {
   // one the ledger is expecting.
   const payment = await prisma.payment.findUniqueOrThrow({
     where: { id: paymentId },
-    select: { amountTotal: true, currency: true },
+    select: { amountTotal: true, currency: true, applicationFeeAmount: true },
   })
   amount = payment.amountTotal
   currency = payment.currency
@@ -137,6 +137,9 @@ export async function POST(req: Request) {
     connectAccountId: guard.connectAccountId,
     amount,
     currency,
+    // Our cut as the Payment row already recorded it, so the earnings ledger and
+    // Stripe cannot disagree about what we took.
+    applicationFeeAmount: payment.applicationFeeAmount,
     paymentId,
     description,
     metadata,

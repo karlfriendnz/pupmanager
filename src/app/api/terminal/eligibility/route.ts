@@ -32,6 +32,9 @@ export async function GET() {
         connectAccountId: true,
         addressCountry: true,
         signupCountry: true,
+        businessName: true,
+        tapToPayTermsLinkedAt: true,
+        tapToPayTermsAcceptedAt: true,
       },
     }),
   ])
@@ -60,5 +63,20 @@ export async function GET() {
       ios: tapToPaySupported(country, 'ios'),
       android: tapToPaySupported(country, 'android'),
     },
+    // Apple's terms are NOT part of `reason`, on purpose. Everything above is a
+    // reason the row should not appear at all; this is a step the trainer takes
+    // once, and the honest UI for it is a visible row that says "one thing left"
+    // — not a hidden feature. It is also the only state a trainer can fix in
+    // thirty seconds, so burying it would be the worst of both.
+    terms: {
+      /** Proof: a device connected, which Stripe only allows once Apple's terms are accepted. */
+      accepted: !!trainer?.tapToPayTermsAcceptedAt,
+      /** We minted them a link. Says they started, not that they finished. */
+      linked: !!trainer?.tapToPayTermsLinkedAt,
+    },
+    // Whose name the cardholder sees on the tap screen. Shown back to the
+    // trainer before they start, because it is THEIR business a stranger reads
+    // off the phone and they should get to notice if it is wrong.
+    merchantName: trainer?.businessName ?? null,
   })
 }

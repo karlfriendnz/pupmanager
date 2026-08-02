@@ -208,6 +208,16 @@ export interface CardPresentIntentInput {
   currency: string
   /** Our Payment row id — the ONLY thing the webhook needs to fulfil. */
   paymentId: string
+  /**
+   * Our cut, in minor units, as already computed and STORED on the Payment row.
+   *
+   * Passed in rather than recomputed here on purpose. The number the trainer's
+   * earnings list shows and the number Stripe transfers to us have to be the
+   * same number, and the only way to guarantee that is for there to be one of
+   * them. This repo has twice charged a real customer wrong by having two places
+   * work out the same figure.
+   */
+  applicationFeeAmount: number
   description?: string | null
   metadata?: Record<string, string>
 }
@@ -227,12 +237,17 @@ export interface CardPresentIntentInput {
  * 3. `application_fee_amount` set here AND re-asserted at capture. Stripe's own
  *    Terminal guidance is to check the fee before capturing, because the
  *    captured amount can legitimately differ from the authorised one.
+ *
+ * Verified against a real Express connected account in the Stripe sandbox
+ * (2026-08-02): a `card_present` intent created as a DIRECT charge on an Express
+ * account, carrying `application_fee_amount`, is accepted. Express is not
+ * restricted, which was the one open question that could have killed this.
  */
 export async function createCardPresentPaymentIntent(
   input: CardPresentIntentInput,
 ): Promise<Stripe.PaymentIntent> {
   const stripe = stripeFor(input.sandbox)
-  const fee = platformFeeAmount(input.amount, input.currency)
+  const fee = input.applicationFeeAmount
   return stripe.paymentIntents.create(
     {
       amount: input.amount,

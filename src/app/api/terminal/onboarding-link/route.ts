@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { prisma } from '@/lib/prisma'
 import { requireSameOrigin } from '@/lib/csrf'
 import { createTapToPayOnboardingLink } from '@/lib/terminal'
 import { guardTapToPay } from '../_guard'
@@ -33,6 +34,16 @@ export async function POST(req: Request) {
     connectAccountId: guard.connectAccountId,
     businessName: guard.businessName,
     allowRelinking: parsed.data.allowRelinking,
+  })
+
+  // We asked; we did not witness. Apple's page is Apple's and there is no
+  // webhook back, so this date only ever means "a link was minted for them" —
+  // enough for the settings screen to stop nagging a trainer who is mid-flow,
+  // and nothing like proof. The proof is tapToPayTermsAcceptedAt, which only a
+  // device that actually connected can set.
+  await prisma.trainerProfile.update({
+    where: { id: guard.trainerId },
+    data: { tapToPayTermsLinkedAt: new Date() },
   })
 
   return NextResponse.json({ url })

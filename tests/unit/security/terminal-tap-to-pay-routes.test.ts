@@ -68,6 +68,7 @@ import { POST as connectionToken } from '@/app/api/terminal/connection-token/rou
 import { POST as onboardingLink } from '@/app/api/terminal/onboarding-link/route'
 import { POST as paymentIntent } from '@/app/api/terminal/payment-intent/route'
 import { POST as capture } from '@/app/api/terminal/capture/route'
+import { POST as readerConnected } from '@/app/api/terminal/reader-connected/route'
 import { GET as eligibility } from '@/app/api/terminal/eligibility/route'
 
 const req = (path: string, body: unknown = {}) =>
@@ -105,7 +106,7 @@ beforeEach(() => {
   h.paymentIntentsRetrieve.mockResolvedValue({ id: 'pi_1', amount: 5000, amount_capturable: 5000 })
   h.paymentIntentsCapture.mockResolvedValue({ id: 'pi_1', status: 'succeeded' })
   h.createPaymentRecord.mockResolvedValue('pay_1')
-  h.paymentFindUniqueOrThrow.mockResolvedValue({ amountTotal: 5180, currency: 'nzd' })
+  h.paymentFindUniqueOrThrow.mockResolvedValue({ amountTotal: 5180, currency: 'nzd', applicationFeeAmount: 52 })
   h.paymentUpdate.mockResolvedValue({})
   h.trainerUpdate.mockResolvedValue({})
 })
@@ -176,11 +177,20 @@ describe('the PaymentIntent itself', () => {
     expect(params.amount).toBe(5180)
   })
 
-  it('takes our 1% platform fee', async () => {
-    const [params] = (await paymentIntent(req('payment-intent', {
+  it('sends the fee the Payment row already recorded, not a second calculation', async () => {
+    // The ledger number and the Stripe number have to be the same number. The
+    // mock deliberately returns a fee that does NOT match a fresh 1% of the
+    // total, so a route that recomputed instead of reading would show up here —
+    // this repo has twice charged a real customer wrong by having two places
+    // work out one figure.
+    h.paymentFindUniqueOrThrow.mockResolvedValue({
+      amountTotal: 5180, currency: 'nzd', applicationFeeAmount: 41,
+    })
+    await paymentIntent(req('payment-intent', {
       lines: [{ description: 'Treat pouch', quantity: 1, unitAmountCents: 5000 }],
-    })), h.paymentIntentsCreate.mock.calls[0])
-    expect(params.application_fee_amount).toBe(52) // 1% of 5180
+    }))
+    const [params] = h.paymentIntentsCreate.mock.calls[0]
+    expect(params.application_fee_amount).toBe(41)
   })
 
   it('rejects both invoiceId and lines together', async () => {
@@ -220,6 +230,74 @@ describe('cross-tenant reach', () => {
     })
     await capture(req('capture', { paymentId: 'pay_1', paymentIntentId: 'pi_someone_elses' }))
     expect(h.paymentIntentsRetrieve.mock.calls[0][0]).toBe('pi_ours')
+  })
+})
+
+describe('a trainer can only ever get a token for their OWN account', () => {
+  // THE one that matters. A connection token is authority to take money on a
+  // connected account from any phone holding it, so if any of these ever pass a
+  // caller-supplied id through, one trainer can take payments into another
+  // trainer's Stripe balance — or, with the platform account, into ours.
+
+  it('looks the account up by the SESSION\'s company, never the body', async () => {
+    await connectionToken(req('connection-token', {
+      trainerId: 'co_someone_else',
+      connectAccountId: 'acct_someone_else',
+      companyId: 'co_someone_else',
+    }))
+    const where = h.trainerFindUnique.mock.calls[0][0].where
+    expect(where.id, 'the tenant comes from guardPermission, not the request').toBe('co_1')
+    expect(h.connectionTokensCreate.mock.calls[0][1]?.stripeAccount).toBe('acct_trainer')
+  })
+
+  it('mints Apple\'s terms link against the caller\'s own account only', async () => {
+    await onboardingLink(req('onboarding-link', { connectAccountId: 'acct_someone_else' }))
+    expect(h.trainerFindUnique.mock.calls[0][0].where.id).toBe('co_1')
+    expect(h.onboardingLinksCreate.mock.calls[0][1]?.stripeAccount).toBe('acct_trainer')
+  })
+
+  it('records terms acceptance against the caller, not a named trainer', async () => {
+    const res = await readerConnected(req('reader-connected', { trainerId: 'co_someone_else' }))
+    expect(res.status).toBe(200)
+    expect(h.trainerUpdate.mock.calls[0][0].where.id).toBe('co_1')
+  })
+
+  it('will not record acceptance for a business that cannot take payments at all', async () => {
+    // Otherwise a South African trainer ends up flagged as Tap-to-Pay-ready in
+    // their own settings for a feature they can never use.
+    h.trainerFindUnique.mockResolvedValue({ ...NZ_TRAINER, addressCountry: 'South Africa', signupCountry: 'ZA' })
+    const res = await readerConnected(req('reader-connected'))
+    expect(res.status).toBe(409)
+    expect(h.trainerUpdate).not.toHaveBeenCalled()
+  })
+})
+
+describe('Apple\'s terms, which are the trainer\'s paperwork and not ours', () => {
+  it('records that a link was minted, so settings can stop nagging mid-flow', async () => {
+    await onboardingLink(req('onboarding-link'))
+    const data = h.trainerUpdate.mock.calls[0][0].data
+    expect(data.tapToPayTermsLinkedAt).toBeInstanceOf(Date)
+    expect(
+      data.tapToPayTermsAcceptedAt,
+      'minting a link is not proof anybody accepted anything',
+    ).toBeUndefined()
+  })
+
+  it('only a device that actually connected marks the terms accepted', async () => {
+    await readerConnected(req('reader-connected'))
+    const data = h.trainerUpdate.mock.calls[0][0].data
+    expect(data.tapToPayTermsAcceptedAt).toBeInstanceOf(Date)
+  })
+
+  it('eligibility reports the terms separately from the reasons to hide the feature', async () => {
+    h.trainerFindUnique.mockResolvedValue({
+      ...NZ_TRAINER, tapToPayTermsLinkedAt: new Date(), tapToPayTermsAcceptedAt: null,
+    })
+    const body = await (await eligibility()).json()
+    // Still eligible: outstanding terms are a step to show, not a reason to hide.
+    expect(body.eligible).toBe(true)
+    expect(body.terms).toEqual({ accepted: false, linked: true })
+    expect(body.merchantName, 'the cardholder reads the TRAINER\'s name off the phone').toBe('Mersea Mutts')
   })
 })
 
