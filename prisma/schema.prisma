@@ -1681,6 +1681,12 @@ model ProductVariant {
   salePriceCents Int?
   // NULL = the product's photo. Only worth setting when the colours differ.
   imageUrl       String?
+  // NULL = the product's description. Tiptap HTML, like every other
+  // description in the app — a trainer writes "fits 12–18kg, chest 45–60cm"
+  // against the Medium and the product blurb keeps covering the rest. Resolved
+  // in ONE place beside the prices — resolveVariantPresentation() in
+  // src/lib/product-price.ts.
+  description    String?  @db.Text
   // Units on hand for THIS variant. NULL = not tracked, the same meaning it
   // has on Product. When a product has variants these are the counts that
   // matter and Product.stockCount is ignored.

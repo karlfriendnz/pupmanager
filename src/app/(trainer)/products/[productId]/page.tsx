@@ -68,7 +68,7 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
       orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
       select: {
         id: true, name: true, sku: true, priceCents: true, salePriceCents: true,
-        stockCount: true, active: true,
+        imageUrl: true, description: true, stockCount: true, active: true,
       },
     }),
   ])

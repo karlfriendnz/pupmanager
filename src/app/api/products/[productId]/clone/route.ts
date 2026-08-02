@@ -17,7 +17,8 @@ import { prisma } from '@/lib/prisma'
 // and the copy is a different thing; inheriting 12 would overstate what the
 // trainer actually has.
 //
-// VARIANTS DO come across — names, prices, SKUs and order, with the counts
+// VARIANTS DO come across — names, prices, SKUs, their own photo and notes,
+// and order, with the counts
 // blanked for the reason above. "Small / Medium / Large" is the most laborious
 // part of setting a product up and the likeliest reason to duplicate one at
 // all; a copy that silently lost them would be worse than no copy.
@@ -69,6 +70,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ produc
             priceCents: v.priceCents,
             salePriceCents: v.salePriceCents,
             imageUrl: v.imageUrl,
+            description: v.description,
             active: v.active,
             order: i,
             // Blank, for the same reason the product's own count is: this is a

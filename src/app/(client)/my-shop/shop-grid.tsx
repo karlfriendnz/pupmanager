@@ -10,7 +10,12 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatMoney } from '@/lib/money'
-import { effectivePriceCents, productPriceSummary, resolveVariantPricing } from '@/lib/product-price'
+import {
+  effectivePriceCents,
+  productPriceSummary,
+  resolveVariantPresentation,
+  resolveVariantPricing,
+} from '@/lib/product-price'
 import { ProductPrice, SaleTag } from '@/components/shared/product-price'
 import { useIsNative, nativePlatform } from '@/lib/native'
 import { openExternal } from '@/lib/external-link'
@@ -24,6 +29,10 @@ export interface Variant {
   priceCents: number | null
   salePriceCents: number | null
   stockCount: number | null
+  /** Null = the product's photo. Set when the Red one looks nothing like it. */
+  imageUrl?: string | null
+  /** Null/blank = the product's description. Tiptap HTML. */
+  description?: string | null
 }
 
 interface Product {
@@ -401,6 +410,12 @@ function ProductModal({
   // product's where it has none. One helper, so this can never disagree with
   // what the server charges.
   const pricing = resolveVariantPricing(product, picked)
+  // And what is actually being LOOKED at. Same rule, same helper: the picked
+  // option's photo and words when it has them, the product's when it doesn't —
+  // which is the case for nearly every option, so nothing on this screen
+  // changes until a trainer deliberately gives one its own. Picking the Red
+  // collar and still seeing the blue photo is the bug this closes.
+  const shown = resolveVariantPresentation(product, picked)
   // The count that decides "out of stock" — the picked option's once there are
   // options at all, otherwise the product's own, unchanged.
   const available = picked
@@ -430,9 +445,15 @@ function ProductModal({
     <div className="fixed inset-0 z-50 bg-white sm:bg-slate-900/40 sm:backdrop-blur-sm flex sm:items-center justify-center p-0 sm:p-4">
       <div className="flex h-full w-full flex-col overflow-y-auto no-scrollbar bg-white sm:h-auto sm:max-h-[92vh] sm:max-w-md sm:rounded-3xl">
         <div className="aspect-square bg-gradient-to-br from-amber-50 to-rose-50 relative">
-          {product.imageUrl ? (
+          {shown.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={product.imageUrl} alt={product.name} className="absolute inset-0 h-full w-full object-cover" />
+            <img
+              src={shown.imageUrl}
+              // Named, because once the picture can change under the choice the
+              // alt has to say WHICH one is on screen.
+              alt={picked ? `${product.name} — ${picked.name}` : product.name}
+              className="absolute inset-0 h-full w-full object-cover"
+            />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-5xl">
               {product.kind === 'DIGITAL' ? '📁' : '🛍️'}
@@ -476,7 +497,9 @@ function ProductModal({
             ) : null}
           </div>
 
-          <RichText html={product.description} className="text-sm text-slate-600" />
+          {/* Through <RichText>, always — it sanitizes before it renders, and a
+              variant description is trainer-authored HTML shown to a client. */}
+          <RichText html={shown.description} className="text-sm text-slate-600" />
 
           {variants.length > 0 && (
             <VariantPicker

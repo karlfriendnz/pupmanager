@@ -6,6 +6,7 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { optionalAssetUrlSchema } from '@/lib/asset-url'
 import { validateSalePrice } from '@/lib/product-price'
+import { isRichTextEmpty } from '@/lib/rich-text'
 import { recordOpeningBalance } from '@/lib/stock'
 
 // One product's variants — "Small", "Large", "Red · Large".
@@ -30,6 +31,9 @@ const variantSchema = z.object({
   priceCents: z.number().int().min(0).nullable().optional(),
   salePriceCents: z.number().int().min(0).nullable().optional(),
   imageUrl: optionalAssetUrlSchema(),
+  // Null = inherit the product's description. Tiptap HTML, capped at the same
+  // order of magnitude a product blurb is: this is a size note, not an article.
+  description: z.string().max(20_000).nullable().optional(),
   // Only read when the row is NEW — see below.
   stockCount: z.number().int().min(0).max(1_000_000).nullable().optional(),
   active: z.boolean().optional(),
@@ -55,6 +59,7 @@ function serialise(v: {
   priceCents: number | null
   salePriceCents: number | null
   imageUrl: string | null
+  description: string | null
   stockCount: number | null
   active: boolean
   order: number
@@ -75,7 +80,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ product
     orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
     select: {
       id: true, name: true, sku: true, priceCents: true, salePriceCents: true,
-      imageUrl: true, stockCount: true, active: true, order: true,
+      imageUrl: true, description: true, stockCount: true, active: true, order: true,
     },
   })
   return NextResponse.json({ variants: variants.map(serialise) })
@@ -128,9 +133,18 @@ export async function PUT(req: Request, { params }: { params: Promise<{ productI
         active: v.active ?? true,
         order: index,
         // Only when the key was actually SENT. A caller that doesn't manage
-        // the picture — the editor doesn't today — must not blank it just by
-        // saving a rename; an absent key means "leave it", not "clear it".
+        // the picture must not blank it just by saving a rename; an absent key
+        // means "leave it", not "clear it".
         ...(v.imageUrl !== undefined ? { imageUrl: v.imageUrl || null } : {}),
+        // Same rule for the words — and emptied-out rich text is stored as
+        // NULL, not as `<p></p>`. A variant whose description is an empty
+        // document would otherwise override the product's blurb with nothing,
+        // and the shop would show a blank where the product's words used to be
+        // while the editor showed nothing wrong. NULL means inherit, so an
+        // emptied field has to become NULL to mean what the trainer intended.
+        ...(v.description !== undefined
+          ? { description: isRichTextEmpty(v.description) ? null : v.description }
+          : {}),
       }
 
       if (v.id && known.has(v.id)) {
@@ -167,7 +181,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ productI
     orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
     select: {
       id: true, name: true, sku: true, priceCents: true, salePriceCents: true,
-      imageUrl: true, stockCount: true, active: true, order: true,
+      imageUrl: true, description: true, stockCount: true, active: true, order: true,
     },
   })
   return NextResponse.json({ variants: variants.map(serialise) })

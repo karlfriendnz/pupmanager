@@ -1,5 +1,5 @@
 /**
- * Product pricing, in one place.
+ * Product pricing — and everything else a variant inherits — in one place.
  *
  * A product carries its normal `priceCents` plus an optional `salePriceCents`.
  * The sale price is not a display decoration — it is the price actually
@@ -13,6 +13,12 @@
  * resolved at the bottom of this file (resolveVariantPricing). It lives here,
  * once, because a screen that re-derives "the variant's price, or the
  * product's" is a screen that will eventually derive it differently.
+ *
+ * The variant's PHOTO and DESCRIPTION inherit by exactly the same rule, so
+ * resolveVariantPresentation sits beside the pricing rather than in a file of
+ * its own: "what does this variant fall back to?" is one question with one
+ * answer, and splitting it across two modules is how the shop and the editor
+ * end up disagreeing about what a blank field means.
  */
 
 export type ProductPricing = {
@@ -127,6 +133,69 @@ export function productPriceSummary(
   // "varies" also covers a variant with no price at all sitting beside priced
   // ones — "from $20" is honest there, "$20" would not be.
   return { count: sellable.length, from, to, varies: from !== to || prices.length !== sellable.length }
+}
+
+// ─── What a variant LOOKS like ───────────────────────────────────────────────
+
+/** The photo and the words. NULL/blank on either = inherit the product's. */
+export type Presentation = {
+  imageUrl?: string | null
+  /** Tiptap HTML, as every description in this app is. */
+  description?: string | null
+}
+
+export type ResolvedPresentation = {
+  imageUrl: string | null
+  /** Still raw HTML — sanitize at DISPLAY, via <RichText>. Never here. */
+  description: string | null
+  /** True when the value shown came off the product, not the variant. */
+  inheritsImage: boolean
+  inheritsDescription: boolean
+}
+
+/**
+ * What ONE variant shows — the single place photo/description inheritance is
+ * decided, mirroring resolveVariantPricing directly above.
+ *
+ * The default is INHERIT, and it has to be, because that is what every variant
+ * that exists today does: three sizes of one harness share one photo and one
+ * blurb, typed once on the product. A variant only speaks for itself when the
+ * trainer gives it something to say — the Red one photographed in red, the
+ * Medium carrying "fits 12–18kg" that would be wrong on the other two.
+ *
+ * BLANK COUNTS AS ABSENT. A rich-text editor emptied out leaves `<p></p>`, not
+ * null, and an empty string is what a cleared file input hands back; treating
+ * either as an override would blank the product's photo/blurb on the shop while
+ * the trainer's screen showed nothing wrong. The API normalises an empty
+ * document to NULL on save as well, so the two agree.
+ *
+ * The `inherits*` flags exist so the editor can SAY "using the product's photo"
+ * instead of showing an empty box that reads as broken.
+ */
+export function resolveVariantPresentation(
+  product: Presentation,
+  variant: Presentation | null | undefined,
+): ResolvedPresentation {
+  const ownImage = variant?.imageUrl?.trim() ? variant.imageUrl! : null
+  // Cheap emptiness test on purpose: this module is imported by client
+  // components, and pulling sanitize-html in to ask "is this <p></p>?" would
+  // put the sanitizer in every bundle that shows a price. The one document the
+  // regex can't see through — `<p></p>` — is already turned into null by the
+  // route that saves it.
+  const ownDescription = stripsToNothing(variant?.description) ? null : variant!.description!
+
+  return {
+    imageUrl: ownImage ?? (product.imageUrl?.trim() ? product.imageUrl! : null),
+    description: ownDescription ?? (stripsToNothing(product.description) ? null : product.description!),
+    inheritsImage: ownImage == null,
+    inheritsDescription: ownDescription == null,
+  }
+}
+
+/** Empty, whitespace, or an editor's empty document — all mean "nothing here". */
+function stripsToNothing(html: string | null | undefined): boolean {
+  if (!html) return true
+  return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim() === ''
 }
 
 /**

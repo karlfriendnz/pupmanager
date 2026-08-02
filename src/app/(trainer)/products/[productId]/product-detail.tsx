@@ -84,6 +84,11 @@ export function ProductDetail({
             productName={product.name}
             productPriceCents={product.priceCents}
             productSalePriceCents={product.salePriceCents}
+            // What a variant falls back to when it says nothing of its own.
+            // Passed down so a blank photo/notes field can SHOW the product's
+            // rather than sit empty and read as broken.
+            productImageUrl={product.imageUrl}
+            productDescription={product.description}
             initial={variants}
           />
         </>

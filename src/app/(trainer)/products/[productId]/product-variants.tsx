@@ -1,15 +1,24 @@
 'use client'
 
-import { useState } from 'react'
-import { Plus, X } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { ImagePlus, Loader2, Plus, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { SortableOfferingCard, SortableOfferingList } from '@/components/shared/offering-card'
+import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
+import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { RichText } from '@/components/shared/rich-text'
 import { useCurrency } from '@/components/currency-context'
 import { currencySymbol, formatMoney } from '@/lib/money'
 import { readApiError } from '@/lib/api-error'
-import { resolveVariantPricing, effectivePriceCents, validateSalePrice } from '@/lib/product-price'
+import { compressImageFile } from '@/lib/compress-image'
+import {
+  resolveVariantPricing,
+  resolveVariantPresentation,
+  effectivePriceCents,
+  validateSalePrice,
+} from '@/lib/product-price'
 import { StockSheet } from '../stock-sheet'
 
 /**
@@ -33,6 +42,17 @@ import { StockSheet } from '../stock-sheet'
  *    same reason: typing 9 over 12 records nothing about the three that went.
  *    A brand-new row is the exception (there is no history to keep yet), so it
  *    takes an opening count inline.
+ *
+ *  • PHOTO AND NOTES INHERIT TOO, and they open in a SHEET, not inline. The
+ *    row is already six controls wide and has to survive 390px; a rich-text
+ *    editor and an upload box per row would turn a nine-size list into nine
+ *    screens of scrolling, and a trainer setting prices would be wading past
+ *    editors they never opened. So the row carries a thumbnail — small, and
+ *    the thing that tells you at a glance whether this size has a picture of
+ *    its own — and pressing it opens the house overlay (FullScreenSheet: the
+ *    whole screen on a phone, a panel on desktop) with the photo and the words
+ *    together. They belong together: both answer "what does the client see
+ *    when they pick THIS one".
  */
 
 export interface VariantDraft {
@@ -44,6 +64,10 @@ export interface VariantDraft {
   sku: string | null
   priceCents: number | null
   salePriceCents: number | null
+  /** Null = the product's photo. */
+  imageUrl: string | null
+  /** Null/blank = the product's description. Tiptap HTML. */
+  description: string | null
   stockCount: number | null
   active: boolean
 }
@@ -54,6 +78,8 @@ export interface VariantRow {
   sku: string | null
   priceCents: number | null
   salePriceCents: number | null
+  imageUrl: string | null
+  description: string | null
   stockCount: number | null
   active: boolean
 }
@@ -77,6 +103,8 @@ export function ProductVariants({
   productName,
   productPriceCents,
   productSalePriceCents,
+  productImageUrl,
+  productDescription,
   initial,
 }: {
   productId: string
@@ -84,6 +112,9 @@ export function ProductVariants({
   /** What a variant inherits when its own price is blank. */
   productPriceCents: number | null
   productSalePriceCents: number | null
+  /** What a variant inherits when its own photo/notes are blank. */
+  productImageUrl: string | null
+  productDescription: string | null
   initial: VariantRow[]
 }) {
   const currency = useCurrency()
@@ -102,6 +133,11 @@ export function ProductVariants({
   const [error, setError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [stockFor, setStockFor] = useState<VariantDraft | null>(null)
+  // Which row's photo + notes are open. A key, not the row itself, so the sheet
+  // always reads the CURRENT draft — a stale copy would put back the old name
+  // in its title after a rename behind it.
+  const [mediaKey, setMediaKey] = useState<string | null>(null)
+  const mediaRow = rows.find(r => r.key === mediaKey) ?? null
 
   const inherited = effectivePriceCents({ priceCents: productPriceCents, salePriceCents: productSalePriceCents })
 
@@ -126,6 +162,10 @@ export function ProductVariants({
       sku: null,
       priceCents: null,
       salePriceCents: null,
+      // Blank = inherits the product's. A new size is the same thing in a
+      // different size far more often than it is a different-looking thing.
+      imageUrl: null,
+      description: null,
       stockCount: null,
       active: true,
     }])
@@ -151,6 +191,8 @@ export function ProductVariants({
       sku: string | null
       priceCents: number | null
       salePriceCents: number | null
+      imageUrl: string | null
+      description: string | null
       stockCount: number | null
       active: boolean
     }[] = []
@@ -169,6 +211,11 @@ export function ProductVariants({
         sku: r.sku,
         priceCents: cents ?? null,
         salePriceCents: r.salePriceCents,
+        // Always sent, because this editor now OWNS both: "cleared the photo"
+        // has to reach the server as null, and an absent key would mean
+        // "leave it" and quietly keep the old one.
+        imageUrl: r.imageUrl,
+        description: r.description,
         // Only read for a NEW row — the server ignores it on one that exists,
         // because the ledger owns that count.
         stockCount: r.stockCount,
@@ -234,6 +281,12 @@ export function ProductVariants({
                     <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center">
                       <div className="flex min-w-0 flex-1 items-center gap-1">
                         {handle}
+                        <VariantThumbButton
+                          row={r}
+                          productImageUrl={productImageUrl}
+                          productDescription={productDescription}
+                          onOpen={() => setMediaKey(r.key)}
+                        />
                         <input
                           value={r.name}
                           onChange={e => patch(r.key, { name: e.target.value })}
@@ -349,8 +402,21 @@ export function ProductVariants({
         <p className="text-xs text-slate-500">
           With options set, the count that matters is each option&rsquo;s — the
           product&rsquo;s own stock number is no longer used, and a client picks
-          one before they can buy.
+          one before they can buy. Tap an option&rsquo;s picture to give that one
+          its own photo and notes.
         </p>
+      )}
+
+      {mediaRow && (
+        <VariantMediaSheet
+          key={mediaRow.key}
+          row={mediaRow}
+          productName={productName}
+          productImageUrl={productImageUrl}
+          productDescription={productDescription}
+          onChange={next => patch(mediaRow.key, next)}
+          onClose={() => setMediaKey(null)}
+        />
       )}
 
       {stockFor?.id && (
@@ -366,5 +432,217 @@ export function ProductVariants({
         />
       )}
     </div>
+  )
+}
+
+/**
+ * The row's picture, and the way in to its photo + notes.
+ *
+ * It shows what the CLIENT will see for this option, which for most rows is the
+ * product's photo — greyed back, with the word "Shared" under a corner dot when
+ * this one has something of its own. An empty box would read as a missing
+ * picture; a faded product photo reads as "this one uses that", which is the
+ * truth and the thing the trainer needs to know before deciding to change it.
+ */
+function VariantThumbButton({
+  row,
+  productImageUrl,
+  productDescription,
+  onOpen,
+}: {
+  row: VariantDraft
+  productImageUrl: string | null
+  productDescription: string | null
+  onOpen: () => void
+}) {
+  const shown = resolveVariantPresentation(
+    { imageUrl: productImageUrl, description: productDescription },
+    row,
+  )
+  const own = !shown.inheritsImage || !shown.inheritsDescription
+  const what = row.name || 'this option'
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={own ? `${what} has its own photo or notes` : `${what} uses the product’s photo and notes`}
+      aria-label={
+        own
+          ? `Photo and notes for ${what} — it has its own`
+          : `Photo and notes for ${what} — using the product’s`
+      }
+      className="relative grid h-9 w-9 flex-shrink-0 place-items-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 hover:border-slate-300"
+    >
+      {shown.imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={shown.imageUrl}
+          alt=""
+          className={`h-full w-full object-cover ${shown.inheritsImage ? 'opacity-50' : ''}`}
+        />
+      ) : (
+        <ImagePlus className="h-4 w-4 text-slate-400" strokeWidth={1.75} />
+      )}
+      {own && (
+        <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-slate-900 ring-2 ring-white" />
+      )}
+    </button>
+  )
+}
+
+/**
+ * One option's photo and notes.
+ *
+ * Why a sheet and not fields in the row: see the note at the top of this file —
+ * the row has to survive 390px, and an editor per row would bury the prices.
+ *
+ * Why no Save button of its own: the list has ONE save, and a second one here
+ * would leave a trainer wondering which of the two kept their work (and which
+ * one loses it if they press the wrong one). Changes go into the same draft the
+ * name and price do, and "Save options" writes the lot.
+ *
+ * BLANK MEANS INHERIT, and both fields say so out loud rather than sitting
+ * empty — an empty description box beside a product that HAS a description is
+ * indistinguishable from a description that got lost.
+ */
+function VariantMediaSheet({
+  row,
+  productName,
+  productImageUrl,
+  productDescription,
+  onChange,
+  onClose,
+}: {
+  row: VariantDraft
+  productName: string
+  productImageUrl: string | null
+  productDescription: string | null
+  onChange: (next: Partial<VariantDraft>) => void
+  onClose: () => void
+}) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  // The words are held LOCALLY while they are typed and pushed up on close.
+  // Tiptap fires per keystroke, and patching the parent each time re-renders
+  // every row in a list that can hold a hundred of them.
+  const [html, setHtml] = useState(row.description ?? '')
+
+  function close() {
+    onChange({ description: html.trim() === '' ? null : html })
+    onClose()
+  }
+
+  async function upload(file: File) {
+    setError(null)
+    setUploading(true)
+    try {
+      // Compressed client-side, exactly as the product's own photo is: the
+      // upload route sits behind Vercel's 4.5MB body cap and a phone photo of
+      // a harness goes straight past it.
+      const toSend = await compressImageFile(file)
+      const fd = new FormData()
+      fd.append('file', toSend)
+      fd.append('kind', 'product')
+      const res = await fetch('/api/trainer/branding-image', { method: 'POST', body: fd })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) { setError(readApiError(body, 'Upload failed')); return }
+      onChange({ imageUrl: body.url })
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const usingProductPhoto = !row.imageUrl
+  const shownPhoto = row.imageUrl ?? productImageUrl
+
+  return (
+    <FullScreenSheet
+      title="Photo and notes"
+      sub={`${productName} · ${row.name || 'this option'}`}
+      onClose={close}
+      footer={<Button className="w-full" onClick={close}>Done</Button>}
+    >
+      <div className="flex flex-col gap-5">
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <p className="text-sm font-medium text-slate-700">Photo</p>
+          <div className="mt-2 aspect-4/3 w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+            {shownPhoto ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={shownPhoto}
+                alt=""
+                className={`h-full w-full object-cover ${usingProductPhoto ? 'opacity-60' : ''}`}
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center">
+                <ImagePlus className="h-6 w-6 text-slate-400" strokeWidth={1.75} />
+              </div>
+            )}
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            {usingProductPhoto
+              ? shownPhoto
+                ? 'Using the product’s photo. Upload one to show this option instead.'
+                : 'The product has no photo either. Upload one to show for this option.'
+              : 'This option has its own photo.'}
+          </p>
+          <div className="mt-2 flex items-center gap-1">
+            <Button type="button" variant="ghost" size="sm" onClick={() => fileRef.current?.click()} disabled={uploading}>
+              {uploading
+                ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Uploading…</>
+                : row.imageUrl ? 'Replace photo' : 'Upload photo'}
+            </Button>
+            {row.imageUrl && (
+              <button
+                type="button"
+                onClick={() => onChange({ imageUrl: null })}
+                className="px-2 text-xs text-slate-400 hover:text-red-500"
+              >
+                Use the product&rsquo;s
+              </button>
+            )}
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = '' }}
+          />
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <p className="text-sm font-medium text-slate-700">Notes for this option</p>
+          <p className="mt-1 text-xs text-slate-500">
+            What is true of THIS one — &ldquo;fits 12&ndash;18kg&rdquo;,
+            &ldquo;deep chest&rdquo;. Leave it blank and the product&rsquo;s own
+            description is shown, as it is now.
+          </p>
+          <div className="mt-2">
+            {/* Keyed by the row so the editor mounts with the right document —
+                RichTextEditor takes its initial content once, by design. */}
+            <RichTextEditor
+              key={row.key}
+              value={html}
+              onChange={setHtml}
+              theme="light"
+              minHeight={160}
+            />
+          </div>
+          {html.trim() === '' && productDescription && (
+            <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Clients will see the product&rsquo;s description
+              </p>
+              <RichText html={productDescription} className="mt-1 text-sm text-slate-600" />
+            </div>
+          )}
+        </div>
+
+        {error && <Alert variant="error">{error}</Alert>}
+      </div>
+    </FullScreenSheet>
   )
 }
