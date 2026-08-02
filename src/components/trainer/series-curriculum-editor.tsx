@@ -103,12 +103,20 @@ export function SeriesCurriculumEditor({
    * inside the list it reorders.
    */
   view = 'list',
+  /**
+   * Told whenever this drills into a session or comes back to the list, so the
+   * HOST can hide the controls that only make sense over the list — the
+   * grid/list toggle and "Add a session" both belong to the list, and they sat
+   * there unchanged while you were inside session 1 writing its plan.
+   */
+  onViewingListChange,
 }: {
   packageId: string
   sessionCount: number
   isGroup?: boolean
   scheduledSessions?: ScheduledSession[]
   view?: 'list' | 'grid'
+  onViewingListChange?: (viewingList: boolean) => void
 }) {
   const [steps, setSteps] = useState<Record<number, Step>>({})
   const [homeworkCounts, setHomeworkCounts] = useState<Record<string, number>>({})
@@ -148,8 +156,9 @@ export function SeriesCurriculumEditor({
 
   const backToList = useCallback(() => {
     setOpen('list')
+    onViewingListChange?.(true)
     void loadHomeworkCounts()
-  }, [loadHomeworkCounts])
+  }, [loadHomeworkCounts, onViewingListChange])
 
   // Typing is saved on blur, not per keystroke. A curriculum is written in
   // prose — a request per character would be a request per character.
@@ -338,7 +347,7 @@ export function SeriesCurriculumEditor({
                 homework={homeworkCounts[bucketKey(bucket)] ?? 0}
                 past={bucket !== null && bucket > sessionCount}
                 scheduled={bucket === null ? undefined : scheduledByIndex.get(bucket)}
-                onOpen={() => setOpen(bucket)}
+                onOpen={() => { setOpen(bucket); onViewingListChange?.(false) }}
               />
             ))}
           </div>
@@ -352,7 +361,7 @@ export function SeriesCurriculumEditor({
               homework={homeworkCounts[bucketKey(bucket)] ?? 0}
               past={bucket !== null && bucket > sessionCount}
               scheduled={bucket === null ? undefined : scheduledByIndex.get(bucket)}
-              onOpen={() => setOpen(bucket)}
+              onOpen={() => { setOpen(bucket); onViewingListChange?.(false) }}
             />
           ))}
         </FlatBlock>

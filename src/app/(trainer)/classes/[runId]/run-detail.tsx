@@ -108,6 +108,9 @@ export function RunDetail({
   const formatPrice = (cents: number | null): string =>
     cents === null || cents === undefined ? '—' : formatMoney(cents, currency)
   const [tab, setTab] = useState<Tab>('details')
+  // The Sessions tab's controls belong to the LIST. Inside one session they
+  // are actions with nothing to act on, so the editor tells us which it is on.
+  const [onSessionList, setOnSessionList] = useState(true)
   const [sessionView, setSessionView] = useOfferingView('class-sessions')
   const [clientTab, setClientTab] = useState<'current' | 'past'>('current')
   const [error, setError] = useState<string | null>(null)
@@ -236,7 +239,7 @@ export function RunDetail({
             </Button>
           </span>
         )}
-        {tab === 'homework' && (
+        {tab === 'homework' && onSessionList && (
           <span className="flex flex-shrink-0 items-center gap-2 pb-1.5">
             <OfferingViewToggle value={sessionView} onChange={setSessionView} />
           </span>
@@ -469,6 +472,7 @@ export function RunDetail({
           isGroup
           scheduledSessions={scheduledSessions}
           view={sessionView}
+          onViewingListChange={setOnSessionList}
         />
       </div>
 

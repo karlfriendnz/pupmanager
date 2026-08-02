@@ -90,6 +90,9 @@ const STATUS_BADGE: Record<'Active' | 'Completed' | 'Inactive', string> = {
 
 export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; clients: PackageClientRow[]; currency: string }) {
   const [tab, setTab] = useState<Tab>('details')
+  // The Sessions tab's controls belong to the LIST. Inside one session they
+  // are actions with nothing to act on, so the editor tells us which it is on.
+  const [onSessionList, setOnSessionList] = useState(true)
   const [sessionView, setSessionView] = useOfferingView('package-sessions')
   const [clientTab, setClientTab] = useState<'current' | 'past'>('current')
 
@@ -164,7 +167,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             list meant scrolling past every session to reach it. */}
         <div className="mb-4 flex items-end justify-between gap-3">
           <OfferingTabs tabs={tabs} value={tab} onChange={setTab} />
-          {tab === 'homework' && (
+          {tab === 'homework' && onSessionList && (
             <span className="flex flex-shrink-0 items-center gap-2 pb-1.5">
               <OfferingViewToggle value={sessionView} onChange={setSessionView} />
               <AddSessionButton packageId={pkg.id} sessionCount={pkg.sessionCount} />
@@ -378,6 +381,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             sessionCount={pkg.sessionCount}
             isGroup={pkg.isGroup}
             view={sessionView}
+            onViewingListChange={setOnSessionList}
           />
         </div>
 
