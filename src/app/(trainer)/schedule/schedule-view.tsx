@@ -1,5 +1,7 @@
 'use client'
 
+import { richTextToPlain } from '@/lib/rich-text'
+
 import { useState, useRef, useEffect, useLayoutEffect, useCallback, createContext, useContext } from 'react'
 import { ymdInTz, minutesIntoDayInTz, dateParts } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
@@ -2783,7 +2785,7 @@ function SessionModal({
                     <div key={t.id} className="flex items-start gap-3 p-3 bg-slate-50 rounded-xl">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-slate-900">{t.title}</p>
-                        {t.description && <p className="text-xs text-slate-500 mt-0.5">{t.description}</p>}
+                        {t.description && <p className="text-xs text-slate-500 mt-0.5">{richTextToPlain(t.description)}</p>}
                         <div className="flex items-center gap-2 mt-0.5">
                           {t.repetitions && <p className="text-xs text-slate-400">{t.repetitions} reps</p>}
                           {dogName && <p className="text-xs text-blue-500">🐕 {dogName}</p>}

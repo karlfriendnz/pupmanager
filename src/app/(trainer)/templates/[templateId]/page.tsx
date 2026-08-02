@@ -1,4 +1,5 @@
 import { redirect, notFound } from 'next/navigation'
+import { richTextToPlain } from '@/lib/rich-text'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
@@ -65,7 +66,7 @@ export default async function TemplateDetailPage({ params }: { params: Promise<{
                 <div>
                   <p className="font-medium text-slate-900 text-sm">{task.title}</p>
                   {task.repetitions && <p className="text-xs text-slate-500">{task.repetitions} reps</p>}
-                  {task.description && <p className="text-sm text-slate-600 mt-0.5">{task.description}</p>}
+                  {task.description && <p className="text-sm text-slate-600 mt-0.5">{richTextToPlain(task.description)}</p>}
                 </div>
               </div>
             </CardBody>
