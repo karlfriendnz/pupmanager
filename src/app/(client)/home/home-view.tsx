@@ -491,13 +491,18 @@ export function ClientHomeView({
                         <p className="text-sm font-semibold text-slate-900 truncate">{item.name}</p>
                         {!isRichTextEmpty(item.description) && <p className="text-xs text-slate-500 truncate">{richTextToPlain(item.description)}</p>}
                       </div>
-                      <ChevronRight className="h-4 w-4 text-slate-300 flex-shrink-0" />
+                      {item.downloadUrl
+                        ? <ChevronRight className="h-4 w-4 text-slate-300 flex-shrink-0" />
+                        : <span className="flex-shrink-0 text-[11px] text-slate-400">Ask your trainer</span>}
                     </>
                   )
-                  const className = cn('w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-slate-50 transition-colors', i > 0 && 'border-t border-slate-100')
+                  const className = cn('w-full flex items-center gap-3 px-4 py-3.5 text-left', i > 0 && 'border-t border-slate-100')
+                  // No file on it yet is not a reason to send someone shopping
+                  // for a thing they already own — which is what this row used
+                  // to do, silently, from a heading that says "Your library".
                   return item.downloadUrl
-                    ? <a key={item.id} href={item.downloadUrl} target="_blank" rel="noopener noreferrer" className={className}>{inner}</a>
-                    : <Link key={item.id} href="/my-shop" className={className}>{inner}</Link>
+                    ? <a key={item.id} href={item.downloadUrl} target="_blank" rel="noopener noreferrer" className={cn(className, 'hover:bg-slate-50 transition-colors')}>{inner}</a>
+                    : <div key={item.id} className={className}>{inner}</div>
                 })}
               </div>
             </section>

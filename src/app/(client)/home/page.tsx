@@ -154,8 +154,23 @@ export default async function ClientHomePage() {
         id: true, name: true, kind: true, priceCents: true, salePriceCents: true, imageUrl: true,
       },
     }),
+    // "Your library" = the downloads THIS CLIENT actually has. It used to be
+    // every digital product the trainer sells, which put things they had never
+    // bought under a heading that says they own them — and, having no download
+    // of their own, those rows quietly linked to the shop instead.
+    //
+    // Having it means one of two things: they paid (a PaymentItem on a PAID
+    // payment), or the trainer handed it over and marked the request fulfilled.
     prisma.product.findMany({
-      where: { trainerId: clientProfile.trainer.id, active: true, kind: 'DIGITAL' },
+      where: {
+        trainerId: clientProfile.trainer.id,
+        active: true,
+        kind: 'DIGITAL',
+        OR: [
+          { paymentItems: { some: { payment: { status: 'PAID', clientId: clientProfile.id } } } },
+          { requests: { some: { clientId: clientProfile.id, fulfilledAt: { not: null } } } },
+        ],
+      },
       orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
       take: 6,
       select: {
