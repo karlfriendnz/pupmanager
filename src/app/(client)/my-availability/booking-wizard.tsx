@@ -3,8 +3,8 @@
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   CalendarPlus, GraduationCap, Clock, Users, Video, MapPin, Check, CheckCircle2,
-  Loader2, ChevronLeft, ArrowRight, CalendarDays, Repeat, Ticket, PartyPopper,
-  Minus, Plus, ShoppingBag, Tag as TagIcon,
+  Loader2, ChevronLeft, ChevronRight, ArrowRight, CalendarDays, Repeat, Ticket, PartyPopper,
+  Minus, Plus, ShoppingBag, Tag as TagIcon, X,
 } from 'lucide-react'
 import { openExternal } from '@/lib/external-link'
 import { labelFor } from '@/lib/nav-labels'
@@ -14,6 +14,10 @@ import { MembershipCards } from '@/components/shared/membership-cards'
 import type { ClientMembership } from '@/lib/client-memberships'
 import { enumerateStartTimes, type AvailabilityRow, type BlackoutRow, type BusyInterval } from '@/lib/availability'
 import { zonedToUtc, todayInTz } from '@/lib/timezone'
+import {
+  groupSessionsByDay, monthOf, monthLabel, monthGrid, monthsWithSessions,
+  defaultOpenDay, picksOnDay, selectedInOrder, allSelectableIds,
+} from '@/lib/session-calendar'
 import type { BasketClassLine } from '@/lib/basket'
 import { useBasketOptional } from '../basket/basket-context'
 
@@ -168,6 +172,13 @@ function fmtFullDate(dateStr: string): string {
   return `${WEEKDAY_SHORT[dowIdx(dateStr)]} ${d} ${MONTH_SHORT[m - 1]}`
 }
 function fmtMonth(dateStr: string): string { return MONTH_SHORT[Number(dateStr.split('-')[1]) - 1] }
+
+// Just the clock time of a session, in the TRAINER's zone — same reasoning as
+// fmtNextSession below: the viewer's zone is not the class's zone, and a 7:30pm
+// NZ class read as 7:30am to anyone looking from London.
+function fmtTimeInTz(iso: string, timeZone: string): string {
+  return new Date(iso).toLocaleTimeString('en-NZ', { timeZone, hour: 'numeric', minute: '2-digit' }).toUpperCase()
+}
 
 function fmtTimeLabel(hhmm: string): string {
   const [h, m] = hhmm.split(':').map(Number)
@@ -1028,14 +1039,10 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogIds, onT
 }) {
   const isFull = cls.seatsLeft === 0
   const paidButNoPayments = !!cls.fullPriceCents && !acceptPayments
-  const drop = price(cls.dropInPerSessionCents, currency)
   const dropping = classType === 'DROP_IN'
   // Drop-ins pick sessions; the whole class being "full" for the term doesn't
   // block a single session that still has room.
   const needsSession = dropping && dropInSessionIds.length === 0
-  // What's actually on offer: not already theirs, and not full.
-  const bookable = cls.sessions.filter(s => !s.booked && s.spacesLeft !== 0)
-  const allPicked = bookable.length > 0 && dropInSessionIds.length === bookable.length
 
   return (
     <div className="flex flex-col gap-5">
@@ -1051,88 +1058,23 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogIds, onT
         </div>
       )}
 
-      {/* The one place a class's sessions are listed. Read-only for a full
-          course; the SAME list becomes the picker when dropping in — one
+      {/* The one place a class's sessions are shown. Read-only for a full
+          course; the SAME calendar becomes the picker when dropping in — one
           component, so the client never learns two different layouts. */}
       {cls.sessions.length > 0 && (
-        <div>
-          <div className="mb-2 flex items-baseline justify-between gap-3">
-            <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
-              {dropping ? 'Pick the sessions you want' : 'Session schedule'} <span className="text-slate-300">· {cls.sessions.length}</span>
-            </p>
-            {/* Taking the whole course IS ticking every session — one control
-                rather than a separate full-course mode to find first. Only
-                what's actually bookable: sessions they hold or that are full
-                aren't on offer. */}
-            {dropping && bookable.length > 0 && (
-              <button
-                type="button"
-                onClick={() => onSessionsSet(allPicked ? [] : bookable.map(s => s.id))}
-                className="shrink-0 text-xs font-semibold text-accent hover:underline"
-              >
-                {allPicked ? 'Clear all' : `Select all ${bookable.length}`}
-              </button>
-            )}
-          </div>
-          <div className="rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden">
-            {cls.sessions.map((s, i) => {
-              const sessionFull = s.spacesLeft === 0
-              const selected = dropping && dropInSessionIds.includes(s.id)
-              // Theirs already — never selectable, and it says so rather than
-              // looking like an option that silently fails.
-              const mine = dropping && s.booked
-              const rowInner = (
-                <>
-                  {/* The number badge becomes a tick once picked — several can
-                      be on at once, so each row has to say whether it's in. */}
-                  <span className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-bold shrink-0 tabular-nums ${
-                    selected ? 'bg-accent text-accent-fg' : mine ? 'bg-emerald-100 text-emerald-700' : 'bg-accent-soft text-accent'
-                  }`}>
-                    {selected || mine ? <Check className="h-4 w-4" /> : i + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-800">{fmtNextSession(s.at, tz)}</p>
-                    {s.title && <p className="text-xs text-slate-400 truncate">{s.title}</p>}
-                  </div>
-                  {dropping
-                    ? mine
-                      ? <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">You&apos;re booked</span>
-                      : (
-                        // Price first (it's what they're deciding on), spaces under it.
-                        <span className="shrink-0 text-right">
-                          {price(s.dropInPriceCents, currency) && (
-                            <span className="block text-sm font-semibold text-slate-800">{price(s.dropInPriceCents, currency)}</span>
-                          )}
-                          <span className={`block text-xs ${sessionFull ? 'text-rose-500' : 'text-emerald-600'}`}>
-                            {s.spacesLeft == null ? `${s.durationMins} min` : sessionFull ? 'Full' : `${s.spacesLeft} left`}
-                          </span>
-                        </span>
-                      )
-                    : <span className="text-xs text-slate-400 shrink-0">{s.durationMins} min</span>}
-                </>
-              )
-              return dropping ? (
-                <button
-                  key={s.id}
-                  type="button"
-                  disabled={sessionFull || mine}
-                  onClick={() => onSessionToggle(s.id)}
-                  // A session they hold isn't "unavailable" — it's theirs, so it
-                  // reads normally rather than greyed out like a full one.
-                  className={`w-full flex items-center gap-3 px-4 py-2.5 border-t border-slate-100 first:border-t-0 text-left transition-colors ${
-                    selected ? 'bg-accent-soft' : mine ? 'bg-emerald-50/40 cursor-default' : 'hover:bg-slate-50'
-                  } ${mine ? '' : 'disabled:opacity-40 disabled:cursor-not-allowed'}`}
-                >
-                  {rowInner}
-                </button>
-              ) : (
-                <div key={s.id} className="flex items-center gap-3 px-4 py-2.5 border-t border-slate-100 first:border-t-0">
-                  {rowInner}
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        <SessionCalendar
+          // Keyed on the run: the month it is paged to and the day it is open
+          // on are about THIS class, and backing out to pick another one has to
+          // start it over rather than land on August of a term that ended.
+          key={cls.id}
+          tz={tz}
+          currency={currency}
+          sessions={cls.sessions}
+          picking={dropping}
+          selectedIds={dropInSessionIds}
+          onToggle={onSessionToggle}
+          onSet={onSessionsSet}
+        />
       )}
 
       {dogs.length > 1 && (
@@ -1163,6 +1105,301 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogIds, onT
           {isFull ? (cls.allowWaitlist ? 'Continue to waitlist' : 'Class is full') : 'Continue'}
         </StickyCta>
       )}
+    </div>
+  )
+}
+
+/* ============================ session calendar ============================ */
+
+const WEEKDAY_INITIALS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
+
+/**
+ * A month calendar over a class run's sessions, with the chosen day's sessions
+ * underneath it and every pick listed at the bottom.
+ *
+ * WHY IT ISN'T A LIST ANY MORE. This used to render one row per upcoming
+ * session. That is fine for an eight-week course and unusable for a casual
+ * class: the trainer's rolling horizon put 180 sessions on a real Waggy Tails
+ * run, which came out as 180 tap targets and 10,765px of page on a 390px phone
+ * — about thirteen screens of one flat list. A month grid says the same thing
+ * in one screen because a casual class is a PATTERN ("Tuesdays and Thursdays"),
+ * and a grid is what a pattern looks like.
+ *
+ * WHY THE PICKS ARE LISTED SEPARATELY. Multi-select is the point — a client
+ * buys four Saturdays in one go. Paging to October must not lose sight of the
+ * two August dates already chosen, so the picks are derived from the whole run
+ * rather than from the month on screen, and they carry their own total. A
+ * picker that hides the selection would be a worse bug than the wall.
+ *
+ * REJECTED: a FullScreenSheet over the class screen. Step 2 already IS a full
+ * screen; an overlay on top of it is a screen over a screen, and it would have
+ * put the picks behind a "done" button instead of beside the CTA that uses them.
+ */
+function SessionCalendar({ tz, currency, sessions, picking, selectedIds, onToggle, onSet }: {
+  tz: string
+  currency: string | null
+  sessions: WizardClass['sessions']
+  /** True when the client is choosing sessions; false = read-only schedule. */
+  picking: boolean
+  selectedIds: string[]
+  onToggle: (id: string) => void
+  /** Replace the whole selection — Select all / Clear all. */
+  onSet: (ids: string[]) => void
+}) {
+  const days = useMemo(() => groupSessionsByDay(sessions, tz), [sessions, tz])
+  const months = useMemo(() => monthsWithSessions(days), [days])
+  const byDate = useMemo(() => new Map(days.map(d => [d.dateStr, d])), [days])
+  const bookableIds = useMemo(() => allSelectableIds(days), [days])
+
+  const firstDay = useMemo(() => defaultOpenDay(days), [days])
+  const [openDay, setOpenDay] = useState<string | null>(firstDay)
+  const [month, setMonth] = useState<string>(firstDay ? monthOf(firstDay) : (months[0] ?? ''))
+
+  const monthIdx = months.indexOf(month)
+  const prevMonth = monthIdx > 0 ? months[monthIdx - 1] : null
+  const nextMonth = monthIdx >= 0 && monthIdx < months.length - 1 ? months[monthIdx + 1] : null
+  const weeks = useMemo(() => (month ? monthGrid(month) : []), [month])
+
+  const day = openDay ? byDate.get(openDay) ?? null : null
+  const picked = useMemo(() => selectedInOrder(days, selectedIds), [days, selectedIds])
+  const allPicked = bookableIds.length > 0 && selectedIds.length === bookableIds.length
+  const totalCents = picked.reduce((sum, p) => sum + (p.session.dropInPriceCents ?? 0), 0)
+
+  // Paging to a month drops onto its first day with something on, so the panel
+  // underneath is never empty after an arrow tap.
+  function goMonth(to: string | null) {
+    if (!to) return
+    setMonth(to)
+    const first = days.find(d => monthOf(d.dateStr) === to && d.selectableCount > 0)
+      ?? days.find(d => monthOf(d.dateStr) === to)
+    if (first) setOpenDay(first.dateStr)
+  }
+
+  return (
+    // A query container: this sits in the wizard's centred column, which is far
+    // narrower than the window once the desktop rail takes its 17rem. The picks
+    // spread to two columns off THIS width, never the viewport's.
+    <div className="@container">
+      <div className="mb-2 flex items-baseline justify-between gap-3">
+        <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+          {picking ? 'Pick the sessions you want' : 'Session schedule'} <span className="text-slate-300">· {sessions.length}</span>
+        </p>
+        {/* Taking the whole course IS ticking every session — one control
+            rather than a separate full-course mode to find first. Only what's
+            actually bookable: sessions they hold or that are full aren't on
+            offer. */}
+        {picking && bookableIds.length > 0 && (
+          <button
+            type="button"
+            onClick={() => onSet(allPicked ? [] : bookableIds)}
+            className="shrink-0 text-xs font-semibold text-accent hover:underline"
+          >
+            {allPicked ? 'Clear all' : `Select all ${bookableIds.length}`}
+          </button>
+        )}
+      </div>
+
+      {/* ONE bordered surface with hairlines through it — the month, the day
+          it opens onto and the picks are three parts of one decision, not
+          three floating cards. */}
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-2 py-2">
+          <button
+            type="button"
+            onClick={() => goMonth(prevMonth)}
+            disabled={!prevMonth}
+            aria-label="Previous month"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50 disabled:opacity-25"
+          >
+            <ChevronLeft className="h-5 w-5" strokeWidth={1.75} />
+          </button>
+          <p aria-live="polite" className="text-sm font-semibold text-slate-900">{month ? monthLabel(month) : ''}</p>
+          <button
+            type="button"
+            onClick={() => goMonth(nextMonth)}
+            disabled={!nextMonth}
+            aria-label="Next month"
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50 disabled:opacity-25"
+          >
+            <ChevronRight className="h-5 w-5" strokeWidth={1.75} />
+          </button>
+        </div>
+
+        <div className="px-2 pb-2 pt-1">
+          <div className="grid grid-cols-7">
+            {WEEKDAY_INITIALS.map(w => (
+              <div key={w} className="pb-1 text-center text-[10px] font-bold uppercase tracking-wide text-slate-400">{w}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-0.5">
+            {weeks.flat().map(dateStr => {
+              const d = byDate.get(dateStr) ?? null
+              const inMonth = monthOf(dateStr) === month
+              const picks = d ? picksOnDay(d, selectedIds) : 0
+              const open = dateStr === openDay
+              const spare = (d?.selectableCount ?? 0) > 0
+              return (
+                <button
+                  key={dateStr}
+                  type="button"
+                  disabled={!d}
+                  // A grid row spills into the neighbouring month, and those
+                  // days are real. Tapping one moves the header with it —
+                  // otherwise the panel says "Tue 1 Sep" under a title that
+                  // still reads August.
+                  onClick={() => {
+                    setOpenDay(dateStr)
+                    if (!inMonth && months.includes(monthOf(dateStr))) setMonth(monthOf(dateStr))
+                  }}
+                  aria-pressed={open}
+                  aria-label={d
+                    ? `${fmtFullDate(dateStr)} — ${d.sessions.length} session${d.sessions.length === 1 ? '' : 's'}${picks > 0 ? `, ${picks} picked` : spare ? '' : ', none left'}`
+                    : fmtFullDate(dateStr)}
+                  // Square on a phone, capped once the column has room —
+                  // otherwise a 544px column gives 75px cells and the month
+                  // alone is taller than the screen it is meant to save.
+                  className={`flex aspect-square max-h-14 flex-col items-center justify-center rounded-lg text-sm tabular-nums transition-colors ${
+                    open
+                      ? 'bg-accent font-bold text-accent-fg'
+                      : picks > 0
+                        ? 'font-semibold text-slate-900 ring-1 ring-inset ring-accent hover:bg-slate-50'
+                        : d
+                          // A spilled day, and a day with nothing left on it,
+                          // both stay lighter — so the current month reads as
+                          // one block and "there's room here" reads at a glance.
+                          ? `font-semibold hover:bg-slate-50 ${inMonth && spare ? 'text-slate-900' : 'text-slate-400'}`
+                          : `${inMonth ? 'text-slate-300' : 'text-slate-200'} cursor-default`
+                  }`}
+                >
+                  <span>{Number(dateStr.slice(8))}</span>
+                  {/* A dot row rather than a number: at a glance you want "is
+                      anything on, and have I picked it", not a count. */}
+                  <span className="mt-0.5 flex h-1.5 items-center gap-[3px]">
+                    {picks > 0
+                      ? Array.from({ length: Math.min(picks, 3) }).map((_, i) => (
+                          <span key={i} className={`h-1.5 w-1.5 rounded-full ${open ? 'bg-accent-fg' : 'bg-accent'}`} />
+                        ))
+                      : d && (
+                          <span className={`h-1.5 w-1.5 rounded-full ${open ? 'bg-accent-fg/60' : spare ? 'bg-slate-300' : 'bg-slate-200'}`} />
+                        )}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* The chosen day, opened out. 2–3 sessions is the real shape of a
+            casual class day, so this is short by construction. */}
+        {day && (
+          <div className="border-t border-slate-100">
+            <p className="px-4 pb-1 pt-3 text-xs font-bold uppercase tracking-wide text-slate-400">
+              {fmtFullDate(day.dateStr)} <span className="text-slate-300">· {day.sessions.length} session{day.sessions.length === 1 ? '' : 's'}</span>
+            </p>
+            <div>
+              {day.sessions.map(s => {
+                const full = s.spacesLeft === 0
+                const mine = s.booked
+                const selected = picking && selectedIds.includes(s.id)
+                const priceLabel = price(s.dropInPriceCents, currency)
+                const time = fmtTimeInTz(s.at, tz)
+                const inner = (
+                  <>
+                    {picking && (
+                      // A checkbox, not a badge. Several can be on at once, so
+                      // each row has to say whether it is in — and a tick box is
+                      // the one control everybody already reads that way.
+                      <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                        selected ? 'border-accent bg-accent text-accent-fg' : mine ? 'border-emerald-300 bg-emerald-50 text-emerald-600' : 'border-slate-300'
+                      }`}>
+                        {(selected || mine) && <Check className="h-4 w-4" strokeWidth={1.75} />}
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold tabular-nums text-slate-900">{time}</span>
+                      {s.title && <span className="block truncate text-xs text-slate-500">{s.title}</span>}
+                    </span>
+                    {picking && mine ? (
+                      <span className="shrink-0 text-xs font-semibold text-emerald-700">You&apos;re booked</span>
+                    ) : picking ? (
+                      <span className="shrink-0 text-right">
+                        {priceLabel && <span className="block text-sm font-semibold text-slate-900">{priceLabel}</span>}
+                        <span className={`block text-xs ${full ? 'text-rose-500' : 'text-slate-500'}`}>
+                          {s.spacesLeft == null ? `${s.durationMins} min` : full ? 'Full' : `${s.spacesLeft} left`}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="shrink-0 text-xs text-slate-500">{s.durationMins} min</span>
+                    )}
+                  </>
+                )
+                return picking ? (
+                  <button
+                    key={s.id}
+                    type="button"
+                    disabled={full || mine}
+                    onClick={() => onToggle(s.id)}
+                    // The action leads the label so a screen reader — and a
+                    // test — can find "the next one I can add" without parsing
+                    // a price out of it.
+                    aria-label={`${mine ? "You're booked" : full ? 'Full' : selected ? 'Remove' : 'Add'} ${fmtFullDate(day.dateStr)} ${time}`}
+                    className={`flex w-full items-center gap-3 border-t border-slate-100 px-4 py-3 text-left transition-colors first:border-t-0 ${
+                      selected ? 'bg-accent-soft' : mine ? 'cursor-default' : 'hover:bg-slate-50'
+                    } ${mine ? '' : 'disabled:cursor-not-allowed disabled:opacity-40'}`}
+                  >
+                    {inner}
+                  </button>
+                ) : (
+                  <div key={s.id} className="flex items-center gap-3 border-t border-slate-100 px-4 py-3 first:border-t-0">
+                    {inner}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Everything picked, whatever month it is in — the answer to "which
+            four did I choose?" without paging back to look. */}
+        {picking && picked.length > 0 && (
+          <div className="border-t border-slate-100 bg-slate-50/60">
+            <div className="flex items-baseline justify-between gap-3 px-4 pb-1 pt-3">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                You&apos;ve picked {picked.length}
+              </p>
+              <button type="button" onClick={() => onSet([])} className="shrink-0 text-xs font-semibold text-accent hover:underline">
+                Clear all
+              </button>
+            </div>
+            <ul className="grid grid-cols-1 gap-x-4 px-4 pb-2 @md:grid-cols-2">
+              {picked.map(({ dateStr, session }) => (
+                <li key={session.id} className="flex items-center gap-2 py-1.5 text-sm">
+                  <span className="min-w-0 flex-1 truncate text-slate-700">
+                    {fmtFullDate(dateStr)} · <span className="tabular-nums">{fmtTimeInTz(session.at, tz)}</span>
+                  </span>
+                  {price(session.dropInPriceCents, currency) && (
+                    <span className="shrink-0 tabular-nums text-slate-500">{price(session.dropInPriceCents, currency)}</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => onToggle(session.id)}
+                    aria-label={`Remove ${fmtFullDate(dateStr)} ${fmtTimeInTz(session.at, tz)}`}
+                    className="-mr-1 shrink-0 rounded-md p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+                  >
+                    <X className="h-4 w-4" strokeWidth={1.75} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {totalCents > 0 && (
+              <div className="flex items-center justify-between gap-4 border-t border-slate-200/70 px-4 py-2.5">
+                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">Total</span>
+                <span className="text-sm font-bold tabular-nums text-slate-900">{price(totalCents, currency)}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
