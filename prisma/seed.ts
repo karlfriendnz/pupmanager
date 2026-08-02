@@ -63,6 +63,25 @@ async function main() {
       data: {
         userId: trainer.id,
         businessName: 'Pawsome Dog Training',
+        // Without these three the seeded account cannot USE the app it just
+        // seeded, and the reason is invisible:
+        //
+        //  • subscriptionStatus defaults to TRIALING and trialEndsAt is null,
+        //    which trainerHasAccess() reads as "the trial is over" — so every
+        //    trainer route bounces to /billing/setup.
+        //  • phone is null, so the profile-completion gate bounces to
+        //    /complete-profile.
+        //
+        // Together they are a redirect loop: a fresh `npm run db:reset:dev`
+        // produced an app you could log into and not use, with nothing on
+        // screen saying why.
+        //
+        // 30 days rather than the real 10 on purpose — a dev seed that expires
+        // mid-week would resurrect exactly this confusion, and the person
+        // hitting it would have no reason to connect it to a seed they ran a
+        // fortnight ago.
+        trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+        phone: '+64 21 555 0100',
       },
     })
     console.log('Created demo trainer:', trainerEmail)

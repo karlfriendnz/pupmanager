@@ -204,8 +204,18 @@ function AssignModal({
   const [markInvoiced, setMarkInvoiced] = useState(false)
   const [notify, setNotify] = useState(true)
 
-  const pkg = packages.find(p => p.id === packageId)!
-  const isOngoing = pkg.sessionCount === 0
+  // `packages` can be empty while `classes` is not — the button above only
+  // hides itself when BOTH are empty, and `mode` then starts on 'class'. So
+  // this component really does render with nothing to find here, and the `!`
+  // was a lie: `pkg.sessionCount` threw and took the whole client page down
+  // with it ("This page couldn't load"). Any new trainer who opened a client
+  // before building their first 1:1 programme hit it.
+  //
+  // Nothing below needs a package when there isn't one — the package half of
+  // the form is not rendered in class mode — so the safe shape is simply
+  // "there is no package", and every derived value reads from that.
+  const pkg = packages.find(p => p.id === packageId) ?? null
+  const isOngoing = pkg?.sessionCount === 0
 
   // Snap end date forward if the user moves the start past it.
   useEffect(() => {
@@ -214,6 +224,7 @@ function AssignModal({
 
   const proposals = useMemo<({ at: Date | null })[]>(() => {
     const out: ({ at: Date | null })[] = []
+    if (!pkg) return out
     const start = parseDate(startDate)
     if (!start) return isOngoing ? [] : Array.from({ length: pkg.sessionCount }, () => ({ at: null }))
 
@@ -237,8 +248,8 @@ function AssignModal({
   }, [availability, pkg, startDate, endDate, isOngoing])
 
   const placedCount = proposals.filter(p => p.at !== null).length
-  const allPlaced = isOngoing ? placedCount > 0 : placedCount === pkg.sessionCount
-  const anyMissing = !isOngoing && placedCount < pkg.sessionCount
+  const allPlaced = isOngoing ? placedCount > 0 : placedCount === pkg?.sessionCount
+  const anyMissing = !isOngoing && !!pkg && placedCount < pkg.sessionCount
 
   async function handleSubmit() {
     if (placedCount === 0) {
@@ -519,7 +530,7 @@ function AssignModal({
                 >
                   <span className="text-slate-600 flex items-center gap-1.5">
                     {!p.at && <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}
-                    Session {i + 1}{isOngoing ? '' : `/${pkg.sessionCount}`}
+                    Session {i + 1}{isOngoing || !pkg ? '' : `/${pkg.sessionCount}`}
                   </span>
                   {p.at ? (
                     <span className="text-slate-900 font-medium">
