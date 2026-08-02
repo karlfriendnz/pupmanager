@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, Loader2, Clock, Trash2, ChevronRight, Mail, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { AddOfferingButton, OfferingListBar, OfferingTabs } from '@/components/shared/offering-card'
 import { money, minutesToHours } from '@/lib/timesheets'
 import { currencySymbol } from '@/lib/money'
 
@@ -58,6 +59,7 @@ export function TimesheetsView({ currency, isOwner, members }: { currency: strin
   const [rows, setRows] = useState<Row[] | null>(null)
   const [rates, setRates] = useState<Rate[] | null>(null)
   const [week, setWeek] = useState(todayISO())
+  const [adding, setAdding] = useState(false)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -97,74 +99,103 @@ export function TimesheetsView({ currency, isOwner, members }: { currency: strin
 
   return (
     <div className="flex flex-col gap-6">
-      {members.length > 1 && (
-        <div className="flex gap-1 overflow-x-auto overflow-y-hidden -mx-4 px-4 md:mx-0 md:px-0 border-b border-slate-200">
-          {members.map(m => {
-            const active = m.id === activeMemberId
-            return (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => selectMember(m.id)}
-                className={`relative px-4 py-2.5 text-sm font-medium whitespace-nowrap rounded-t-lg transition-colors ${
-                  active ? 'text-blue-600' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                {m.name}{m.isSelf ? ' (You)' : ''}
-                {active && <span className="absolute -bottom-px left-3 right-3 h-0.5 bg-blue-600 rounded-full" />}
-              </button>
-            )
-          })}
-        </div>
-      )}
-      {/* New timesheet */}
-      <div className="rounded-2xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-5">
-        <h2 className="text-sm font-semibold text-slate-900 mb-3">
-          {viewingSelf ? 'Start a new timesheet' : `Start a new timesheet for ${activeMemberName}`}
-        </h2>
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Any day in the week</label>
-            <input type="date" value={week} onChange={e => setWeek(e.target.value ? mondayISO(e.target.value) : todayISO())} className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
-            <p className="mt-1 text-xs text-slate-400">Week: {weekRange(week)} (Mon – Sun)</p>
-          </div>
-          <Button type="button" onClick={create} loading={creating}>
-            {!creating && <Plus className="h-4 w-4" />} New timesheet
-          </Button>
-        </div>
-        {error && <p className="text-sm text-rose-600 mt-2">{error}</p>}
-      </div>
+      {/* The same top bar every other list has: whose timesheets you are looking
+          at on the left, on the hairline, and the one way to make another on the
+          right. It used to be a whole card of its own between the tabs and the
+          list — a heading, a date field and a button — so the further down the
+          year you got, the more of the screen was spent on the thing you press
+          once a week.
 
-      {/* Rates */}
-      <RatesCard currency={currency} isOwner={isOwner} rates={rates} onChange={setRates} />
-
-      {/* List */}
+          The button stays visible on a phone: the create circle in the corner
+          offers offerings, clients and sales, and a timesheet is none of them,
+          so this is the only way to start one (see prePickedOfferingHref). */}
       <div>
-        <h2 className="text-sm font-semibold text-slate-900 mb-3">{viewingSelf ? 'Your timesheets' : `${activeMemberName}’s timesheets`}</h2>
-        {rows === null && <div className="flex items-center gap-2 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>}
-        {rows?.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-slate-200 grid place-items-center py-12 text-center text-sm text-slate-400">
-            <div><Clock className="h-6 w-6 mx-auto mb-2 text-slate-300" />No timesheets yet — start one above.</div>
+        <OfferingListBar
+          action={<AddOfferingButton label="New timesheet" onClick={() => { setAdding(a => !a); setError(null) }} />}
+        >
+          {members.length > 1 && (
+            <OfferingTabs
+              tabs={members.map(m => ({ id: m.id, label: `${m.name}${m.isSelf ? ' (You)' : ''}` }))}
+              value={activeMemberId ?? members[0].id}
+              onChange={selectMember}
+            />
+          )}
+        </OfferingListBar>
+
+        {/* Opens directly under the button that asked for it. A timesheet needs
+            a week before it can exist, so this is the same deliberate two-step
+            Tags uses — press, then say which one. */}
+        {adding && (
+          <div className="mb-4 flex max-w-xl flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-3">
+            <div>
+              <label htmlFor="timesheet-week" className="mb-1 block text-xs font-medium text-slate-600">
+                {viewingSelf ? 'Any day in the week' : `Any day in the week — for ${activeMemberName}`}
+              </label>
+              <input
+                id="timesheet-week"
+                type="date"
+                autoFocus
+                value={week}
+                onChange={e => setWeek(e.target.value ? mondayISO(e.target.value) : todayISO())}
+                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+              />
+              <p className="mt-1 text-xs text-slate-400">Week: {weekRange(week)} (Mon – Sun)</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button type="button" onClick={create} loading={creating}>
+                {!creating && <Plus className="h-4 w-4" />} Create
+              </Button>
+              <button
+                type="button"
+                onClick={() => { setAdding(false); setError(null) }}
+                className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
+            {error && <p className="w-full text-sm text-rose-600">{error}</p>}
           </div>
         )}
-        <div className="flex flex-col gap-2">
-          {rows?.map(r => (
-            <Link key={r.id} href={`/timesheets/${r.id}`} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 hover:border-slate-300 transition-colors">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-slate-900">{weekRange(r.weekStart)}</span>
-                  <StatusBadge status={r.status} sent={!!r.sentAt} />
+
+        {rows === null && <div className="flex items-center gap-2 text-sm text-slate-400"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>}
+        {rows?.length === 0 && (
+          <div className="grid place-items-center rounded-xl border border-dashed border-slate-200 py-12 text-center text-sm text-slate-400">
+            <div>
+              <Clock className="mx-auto mb-2 h-6 w-6 text-slate-300" strokeWidth={1.75} />
+              {viewingSelf
+                ? 'No timesheets yet — “New timesheet” starts one.'
+                : `${activeMemberName} has no timesheets yet.`}
+            </div>
+          </div>
+        )}
+        {/* One bordered block split by hairlines, not a stack of separate
+            cards each with its own border. */}
+        {!!rows?.length && (
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white [&>*+*]:border-t [&>*+*]:border-slate-200">
+            {rows.map(r => (
+              <Link key={r.id} href={`/timesheets/${r.id}`} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-slate-900">{weekRange(r.weekStart)}</span>
+                    <StatusBadge status={r.status} sent={!!r.sentAt} />
+                  </div>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                    {r.title ? `${r.title} · ` : ''}{r.entryCount} {r.entryCount === 1 ? 'entry' : 'entries'} · {minutesToHours(r.totalMinutes).toFixed(2)}h
+                  </p>
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5 truncate">
-                  {r.title ? `${r.title} · ` : ''}{r.entryCount} {r.entryCount === 1 ? 'entry' : 'entries'} · {minutesToHours(r.totalMinutes).toFixed(2)}h
-                </p>
-              </div>
-              <span className="text-sm font-semibold text-slate-900">{money(r.totalCents, currency)}</span>
-              <ChevronRight className="h-4 w-4 text-slate-300" />
-            </Link>
-          ))}
-        </div>
+                <span className="text-sm font-semibold tabular-nums text-slate-900">{money(r.totalCents, currency)}</span>
+                <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-300" strokeWidth={1.75} />
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* The rates come AFTER the list. They are set once and then left alone,
+          which is not what a trainer opens this screen to do — and they were
+          sitting between the tabs and the timesheets, so every visit scrolled
+          past them. */}
+      <RatesCard currency={currency} isOwner={isOwner} rates={rates} onChange={setRates} />
     </div>
   )
 }
@@ -201,7 +232,9 @@ function RatesCard({ currency, isOwner, rates, onChange }: { currency: string; i
   }
 
   return (
-    <div className="rounded-2xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-5">
+    // Flat and bordered, not a floating shadowed card — and capped, because a
+    // name and an hourly figure do not get more readable across 1400px.
+    <div className="max-w-2xl rounded-xl border border-slate-200 bg-white p-4">
       <h2 className="text-sm font-semibold text-slate-900">Hourly rates</h2>
       <p className="text-xs text-slate-500 mt-0.5 mb-3">Named rates you apply to time entries. {isOwner ? '' : 'Only the owner can change these.'}</p>
       {rates === null ? (

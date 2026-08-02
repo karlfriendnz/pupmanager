@@ -44,7 +44,8 @@ export default async function TimesheetsPage() {
   return (
     <>
       <PageHeader title="Timesheets" />
-      <div className="p-4 md:p-8 w-full max-w-2xl md:max-w-4xl mx-auto">
+      {/* Full width, like every other list. */}
+      <div className="w-full p-4 md:p-8">
         <TimesheetsView
           currency={profile?.payoutCurrency ?? 'nzd'}
           isOwner={ctx.role === 'OWNER'}

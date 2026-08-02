@@ -670,7 +670,17 @@ export function OfferingTabs<T extends string>({
   value,
   onChange,
 }: {
-  tabs: { id: T; label: string; count: number }[]
+  /**
+   * `count` is OPTIONAL. It is there for the tabs that filter one list — Current
+   * and Past over the same offerings, or the waitlist's four statuses — where
+   * "how many are behind this tab?" is the question the trainer is asking.
+   *
+   * Timesheets' tabs are not that: they are WHOSE timesheets you are looking at,
+   * and every one of them has its own list on the other side of a fetch. A
+   * number there would either be a lie or a query per team member to print a
+   * figure nobody wants.
+   */
+  tabs: { id: T; label: string; count?: number }[]
   value: T
   onChange: (id: T) => void
 }) {
@@ -696,7 +706,9 @@ export function OfferingTabs<T extends string>({
           }`}
         >
           {t.label}
-          <span className="ml-1.5 text-[11px] font-normal tabular-nums text-slate-400">{t.count}</span>
+          {t.count !== undefined && (
+            <span className="ml-1.5 text-[11px] font-normal tabular-nums text-slate-400">{t.count}</span>
+          )}
         </button>
       ))}
     </div>
