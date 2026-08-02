@@ -620,6 +620,19 @@ export function TopBarControls({
         <Settings className="h-[18px] w-[18px]" />
       </Link>
 
+      {/* Help sits beside the cog rather than out past the avatar. Both are
+          "about the app" rather than about the work, so they belong together —
+          and stranded on the far right it read as belonging to the account
+          menu, which it doesn't. */}
+      <Link
+        href="/help"
+        title="Help"
+        aria-label="Help"
+        className="h-9 w-9 grid place-items-center rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+      >
+        <HelpCircle className="h-[18px] w-[18px]" />
+      </Link>
+
       {/* Divider keeps the account control visually distinct from the actions. */}
       <span className="mx-1.5 h-5 w-px bg-slate-200" aria-hidden />
 
@@ -682,15 +695,6 @@ export function TopBarControls({
         )}
       </div>
 
-      {/* Help — kept as the far-right icon. */}
-      <Link
-        href="/help"
-        title="Help"
-        aria-label="Help"
-        className="h-9 w-9 grid place-items-center rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
-      >
-        <HelpCircle className="h-[18px] w-[18px]" />
-      </Link>
       </>}
     </div>
   )
