@@ -14,6 +14,7 @@ import { effectivePriceCents } from '@/lib/product-price'
 import { ProductPrice, SaleTag } from '@/components/shared/product-price'
 import { useIsNative, nativePlatform } from '@/lib/native'
 import { openExternal } from '@/lib/external-link'
+import { PREVIEW_REASON, useIsPreview } from '../preview-context'
 
 interface Product {
   id: string
@@ -54,6 +55,10 @@ export function ShopGrid({
   // Optimistic overrides for the requested flag — keys are product IDs.
   const [optimisticRequested, setOptimisticRequested] = useState<Record<string, boolean>>({})
   const [busyId, setBusyId] = useState<string | null>(null)
+  // A trainer previewing cannot buy or request on their client's behalf — the
+  // API refuses it, because both are real commitments on somebody else's
+  // account. Read here so the buttons say so instead of failing on press.
+  const isPreview = useIsPreview()
   const [buyingId, setBuyingId] = useState<string | null>(null)
   const [buyError, setBuyError] = useState<string | null>(null)
 
@@ -196,7 +201,8 @@ export function ShopGrid({
         <ProductModal
           product={{ ...open, requested: isRequested(open) }}
           currency={currency}
-          payable={isPayable(open)}
+          payable={isPayable(open) && !isPreview}
+          previewNote={isPreview ? PREVIEW_REASON : null}
           native={native}
           onClose={() => setOpen(null)}
           onToggleRequest={() => toggleRequest(open)}
@@ -230,6 +236,7 @@ function ProductModal({
   product,
   currency,
   payable,
+  previewNote,
   native,
   onClose,
   onToggleRequest,
@@ -241,6 +248,8 @@ function ProductModal({
   product: Product
   currency: string | null
   payable: boolean
+  /** Set while a trainer previews — says why nothing here is live. */
+  previewNote?: string | null
   native: boolean
   onClose: () => void
   onToggleRequest: () => void
@@ -341,7 +350,7 @@ function ProductModal({
           ) : product.requested ? (
             <button
               onClick={onToggleRequest}
-              disabled={busy}
+              disabled={busy || !!previewNote}
               className="w-full h-12 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
             >
               {busy
@@ -352,7 +361,7 @@ function ProductModal({
           ) : (
             <button
               onClick={onToggleRequest}
-              disabled={busy}
+              disabled={busy || !!previewNote}
               className="w-full h-12 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
             >
               {busy
@@ -364,7 +373,17 @@ function ProductModal({
 
           {buyError && <p className="text-[11px] text-rose-600 text-center">{buyError}</p>}
 
-          {!canDownload && !payable && (
+          {/* Said UP FRONT, not after a press. The API refuses to buy or
+              request in preview — it is a real charge on a real client's
+              account — and a button that looks live until it fails is the
+              worst of both. */}
+          {previewNote && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-center text-[11px] text-amber-800">
+              {previewNote}
+            </p>
+          )}
+
+          {!canDownload && !payable && !previewNote && (
             <p className="text-[11px] text-slate-400 text-center">
               You&apos;ll get this at your next session.
             </p>

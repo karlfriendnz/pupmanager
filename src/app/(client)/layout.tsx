@@ -15,6 +15,7 @@ import { IntakeGate } from './intake-gate'
 import { FormIntakeGate } from './form-intake-gate'
 import { renderUnifiedForm } from '@/lib/unified-form-render'
 import { PreviewBanner, PREVIEW_SHELL_CLASS } from './preview-banner'
+import { PreviewProvider } from './preview-context'
 import { PreviewOnboardingGuide } from './preview-onboarding-guide'
 import { ReviewMount } from '@/components/review/review-mount'
 
@@ -316,9 +317,11 @@ export default async function ClientLayout({ children }: { children: React.React
         unreadTotal={unreadMessageCount}
         hiddenNavHrefs={hiddenClientNav.length ? hiddenClientNav : undefined}
       >
-        <CurrencyProvider currency={clientProfile.trainer.payoutCurrency ?? 'nzd'}>
-          {children}
-        </CurrencyProvider>
+        <PreviewProvider value={active.isPreview}>
+          <CurrencyProvider currency={clientProfile.trainer.payoutCurrency ?? 'nzd'}>
+            {children}
+          </CurrencyProvider>
+        </PreviewProvider>
       </AppShell>
       {/* Dev only — renders nothing in production. */}
       <ReviewMount />
