@@ -94,6 +94,8 @@ interface FormResponse {
   imagesByQuestion?: Record<string, string[]>
   introMessage?: string | null
   closingMessage?: string | null
+  /** Null while it is still a DRAFT. The client sees nothing until this is set. */
+  sentAt?: string | null
   form: { id: string; name: string; questions: Question[]; introText?: string | null; closingText?: string | null }
 }
 
@@ -245,6 +247,9 @@ export function SessionFormReport({
             template={template}
             linkedFieldMap={linkedFieldMap}
             onEdit={() => setEditing({ template, existing: r })}
+            onSent={() => setResponses(prev =>
+              (prev ?? []).map(x => (x.id === r.id ? { ...x, sentAt: new Date().toISOString() } : x)),
+            )}
           />
         )
       }
@@ -422,13 +427,40 @@ function InlineNotesPreview({
   template,
   linkedFieldMap,
   onEdit,
+  onSent,
 }: {
   response: FormResponse
   template: FormTemplate
   linkedFieldMap: Map<string, { label: string; type?: 'TEXT' | 'NUMBER' | 'DROPDOWN' }>
   onEdit: () => void
+  onSent: () => void
 }) {
   const filled = template.questions.filter(q => response.answers[q.id])
+  const sent = !!response.sentAt
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
+
+  // A saved write-up is a DRAFT until it is sent, and nothing on this screen
+  // said so — you wrote the notes, the card showed them back, and the client
+  // saw nothing. Same endpoint the Draft notes screen uses, for one response.
+  async function send() {
+    if (sending || sent) return
+    setSending(true)
+    setSendError(null)
+    try {
+      const res = await fetch('/api/sessions/bulk-send-notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ responseIds: [response.id] }),
+      })
+      if (!res.ok) { setSendError('Could not send it.'); return }
+      onSent()
+    } catch {
+      setSendError('Could not send it.')
+    } finally {
+      setSending(false)
+    }
+  }
   return (
     <div>
       {/* Header strip */}
@@ -439,16 +471,34 @@ function InlineNotesPreview({
           </span>
           <div className="min-w-0">
             <p className="font-semibold text-slate-900 text-sm truncate leading-tight">{response.form.name}</p>
-            <p className="text-[11px] text-slate-400 leading-tight">Session notes</p>
+            <p className="text-[11px] leading-tight">
+              {filled.length === 0
+                ? <span className="text-slate-400">Session notes</span>
+                : sent
+                  ? <span className="text-emerald-600">Sent — your client can read this</span>
+                  : <span className="font-medium text-amber-600">Draft — your client can&rsquo;t see this yet</span>}
+            </p>
           </div>
         </div>
-        <button
-          onClick={onEdit}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 h-9 rounded-xl bg-slate-900 text-white hover:bg-slate-800 active:scale-95 transition flex-shrink-0 shadow-sm"
-        >
-          <Pencil className="h-3.5 w-3.5" /> Edit
-        </button>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          {filled.length > 0 && !sent && (
+            <button
+              onClick={send}
+              disabled={sending}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 h-9 rounded-xl bg-accent text-white hover:bg-accent-strong active:scale-95 transition disabled:opacity-60"
+            >
+              {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Send
+            </button>
+          )}
+          <button
+            onClick={onEdit}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3.5 h-9 rounded-xl bg-slate-900 text-white hover:bg-slate-800 active:scale-95 transition shadow-sm"
+          >
+            <Pencil className="h-3.5 w-3.5" /> Edit
+          </button>
+        </div>
       </div>
+      {sendError && <p className="px-5 pt-2 text-xs text-rose-600">{sendError}</p>}
 
       {filled.length === 0 ? (
         <div className="px-5 py-12 text-center">
