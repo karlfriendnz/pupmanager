@@ -78,11 +78,32 @@ test.describe('timesheets — owner UAT happy path', () => {
     await login(page, SEED.owner.email, SEED.owner.password)
     await page.goto('/timesheets')
     await expect(page.getByRole('heading', { name: 'Timesheets', exact: true })).toBeVisible()
-    await expect(page.getByText('Start a new timesheet')).toBeVisible()
 
-    await page.getByRole('button', { name: /New timesheet/i }).click()
-    // Lands on the detail page (week-range heading) or shows it in the list.
-    await page.waitForURL('**/timesheets/**', { timeout: 30_000 })
+    // Starting a sheet is a button on the top bar, not a card sitting above the
+    // list. It used to be a whole block of its own — a heading, a date field and
+    // a button, permanently between the tabs and the list — so the further down
+    // the year you got the more of the screen was spent on the thing you press
+    // once a week. The card going is the point of the change, so the spec says
+    // so: nothing on this page invites you to "start a new timesheet" any more.
+    await expect(page.getByText('Start a new timesheet')).toHaveCount(0)
+    const add = page.getByRole('button', { name: /New timesheet/i })
+    await expect(add).toBeVisible()
+
+    // Two steps on purpose: a timesheet cannot exist without a week, so the
+    // button asks which one before it makes anything.
+    await add.click()
+    await expect(page.getByLabel(/Any day in the week/)).toBeVisible()
+
+    // Not the global "+" in the top bar: that is titled "Create" too, and it
+    // opens a menu of offerings, clients and sales — none of which is a
+    // timesheet, which is exactly why this button had to stay on the page.
+    await page
+      .getByRole('button', { name: 'Create', exact: true })
+      .and(page.locator('button:not([aria-haspopup])'))
+      .click()
+    // Lands on the week itself, ready to log time — the same destination the
+    // card used to reach.
+    await page.waitForURL(/\/timesheets\/[^/]+$/, { timeout: 30_000 })
     await expect(page.getByRole('heading', { name: 'Entries' })).toBeVisible()
   })
 })

@@ -459,6 +459,26 @@ test('the item screen is two tabs, and keeps its actions across both', async ({ 
   await expect(page.getByLabel('Name')).toHaveValue(LIB.itemTitle)
 })
 
+/**
+ * Attach a clip by pasting a link.
+ *
+ * Adding is a full screen that asks WHAT you are attaching before it asks for
+ * anything else — a picture, a clip, a handout and a link each need a different
+ * question, and four permanent controls on the page was the shape that made a
+ * second handout impossible to attach at all. So the walk is: Add media → the
+ * kind → the link.
+ */
+async function addVideoByLink(page: Page, url: string) {
+  await page.getByRole('button', { name: 'Add media' }).click()
+  const sheet = page.getByRole('dialog')
+  await sheet.getByRole('button', { name: /A video/ }).click()
+  await sheet.getByLabel('Video link').fill(url)
+  await sheet.getByRole('button', { name: 'Add it' }).click()
+  // The sheet closes on success — wait for it, or the next add types into a
+  // screen that is on its way out.
+  await expect(sheet).toHaveCount(0)
+}
+
 test('an item holds several clips, in order, and all of them reach the client', async ({ page }) => {
   await login(page, SEED.owner.email, SEED.owner.password)
   const prisma = db()
@@ -468,12 +488,12 @@ test('an item holds several clips, in order, and all of them reach the client', 
 
     // Two clips, added by link. The second is an .mp4 so the client side has
     // one embed and one inline player to render.
-    await page.getByLabel('Video link').fill('https://www.youtube.com/watch?v=aaa111')
-    await page.getByRole('button', { name: 'Add this video' }).click()
-    await page.getByLabel('Video link').fill('https://example.com/step-two.mp4')
-    await page.getByRole('button', { name: 'Add this video' }).click()
+    await addVideoByLink(page, 'https://www.youtube.com/watch?v=aaa111')
+    await addVideoByLink(page, 'https://example.com/step-two.mp4')
 
-    // Name the steps — this is what a client is shown above each clip.
+    // Name the steps — this is what a client is shown above each clip. The row
+    // is labelled by what it currently shows ("Video 2" until it has a name),
+    // which is also how a trainer refers to it.
     await page.getByLabel('Name for video 1').fill('Step 1 — approach')
     await page.getByLabel('Name for video 2').fill('Step 2 — reward')
 
@@ -482,12 +502,19 @@ test('an item holds several clips, in order, and all of them reach the client', 
 
     await expect(async () => {
       const row = await prisma.libraryTask.findUnique({ where: { id: LIB.itemId } })
+      // Everything attached is ONE ordered list now — a clip, a picture and a
+      // handout are the same job, and the order is the sequence a client is
+      // taught in, so it is the thing worth asserting.
+      expect(row?.media).toEqual([
+        { kind: 'video', url: 'https://www.youtube.com/watch?v=aaa111', title: 'Step 1 — approach' },
+        { kind: 'video', url: 'https://example.com/step-two.mp4', title: 'Step 2 — reward' },
+      ])
+      // …and the old columns are still written from it, so no reader that
+      // hasn't moved across goes blank.
       expect(row?.videos).toEqual([
         { url: 'https://www.youtube.com/watch?v=aaa111', title: 'Step 1 — approach' },
         { url: 'https://example.com/step-two.mp4', title: 'Step 2 — reward' },
       ])
-      // The old single column still mirrors the first, so every reader that
-      // hasn't moved across keeps showing a video.
       expect(row?.videoUrl).toBe('https://www.youtube.com/watch?v=aaa111')
     }).toPass({ timeout: 10_000 })
 
@@ -504,14 +531,20 @@ test('an item holds several clips, in order, and all of them reach the client', 
     const handed = await prisma.trainingTask.findFirst({
       where: { libraryTaskId: LIB.itemId, clientId: SEED.unassignedClientId },
     })
-    // Not just the first clip — the whole lesson.
+    // Not just the first clip — the whole lesson, in the trainer's order. The
+    // homework is a SNAPSHOT, so the list has to copy across whole; a client
+    // shown only step one is being taught half the exercise.
+    expect(handed?.media).toEqual([
+      { kind: 'video', url: 'https://www.youtube.com/watch?v=aaa111', title: 'Step 1 — approach' },
+      { kind: 'video', url: 'https://example.com/step-two.mp4', title: 'Step 2 — reward' },
+    ])
     expect(handed?.videos).toHaveLength(2)
     expect(handed?.videoUrl).toBe('https://www.youtube.com/watch?v=aaa111')
   } finally {
     await prisma.trainingTask.deleteMany({ where: { libraryTaskId: LIB.itemId } })
     await prisma.libraryTask.update({
       where: { id: LIB.itemId },
-      data: { videos: [], videoUrl: null },
+      data: { media: [], videos: [], videoUrl: null },
     })
     await prisma.$disconnect()
   }
@@ -521,11 +554,23 @@ test('a junk video link is refused before it can be saved', async ({ page }) => 
   await login(page, SEED.owner.email, SEED.owner.password)
   await page.goto(`/library/item/${LIB.itemId}`)
 
-  // javascript: passes a naive URL parse and would run inside the client's app.
-  await page.getByLabel('Video link').fill('javascript:alert(1)')
-  await page.getByRole('button', { name: 'Add this video' }).click()
-  await expect(page.getByText('That needs to be a full http(s) link.')).toBeVisible()
-  await expect(page.getByLabel('Name for video 1')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Add media' }).click()
+  const sheet = page.getByRole('dialog')
+  await sheet.getByRole('button', { name: /A video/ }).click()
+
+  // javascript: passes a naive URL parse and would land in a client's <a href>
+  // and <video src>. The server drops it too, but a row that vanishes on save
+  // is a trainer who thinks they attached something — so it is refused HERE.
+  await sheet.getByLabel('Video link').fill('javascript:alert(1)')
+  await sheet.getByRole('button', { name: 'Add it' }).click()
+
+  // Refused where the trainer is looking. The sheet is the whole screen on a
+  // phone, so a message painted on the page behind it is a message nobody
+  // reads — it stays open and says why.
+  await expect(sheet.getByText('That needs to be a full http(s) link.')).toBeVisible()
+  await expect(sheet).toBeVisible()
+  // And nothing was attached.
+  await expect(page.getByLabel(/^Name for /)).toHaveCount(0)
 })
 
 test('an item is duplicated and deleted from the ⋯ menu', async ({ page }) => {
