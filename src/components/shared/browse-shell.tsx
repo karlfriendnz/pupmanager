@@ -26,7 +26,7 @@ function subscribe(cb: () => void) {
  * screen is right on the first paint; a phone corrects itself on hydration,
  * where the rail was invisible anyway.
  */
-function useIsDesktop(): boolean {
+export function useIsDesktop(): boolean {
   const snapshot = useCallback(() => window.matchMedia(DESKTOP).matches, [])
   return useSyncExternalStore(subscribe, snapshot, () => true)
 }

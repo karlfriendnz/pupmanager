@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Layers } from 'lucide-react'
 
+import { useIsDesktop } from '@/components/shared/browse-shell'
 import { FlatTile, FlatTileGrid, SectionHeader } from '@/components/shared/flat-list'
 import {
   OfferingViewToggle,
@@ -21,6 +23,12 @@ import {
 // category. A trainer who runs puppy classes wants Puppy first, not whichever
 // category they happened to type first.
 //
+// List view is a TABLE, the same one the shop's products use — a grip column,
+// the name, and the counts under headings that say what the numbers are. The
+// two screens are the same idea (things, in shelves, in an order you choose),
+// so they read the same way. No column picker: three columns is not a choice
+// worth offering.
+//
 // A client component because the switch is state and the Lucide icon has to be
 // imported on this side of the boundary — handing `icon={Layers}` from a Server
 // Component throws "Only plain objects can be passed to Client Components".
@@ -33,9 +41,26 @@ export interface CategoryTile {
   items: number
 }
 
+/**
+ * The frame the table's header and rows share.
+ *
+ * Two templates, picked by a CONTAINER query: in a column too narrow for them
+ * the counts drop out rather than landing on top of the name. Container, not
+ * window — this sits beside a 17rem rail, so a wide window is not a wide table.
+ */
+const ROW = 'grid items-center gap-x-3 px-3 [grid-template-columns:1.5rem_1.75rem_minmax(0,1fr)] @lg:[grid-template-columns:1.5rem_1.75rem_minmax(0,1fr)_5rem_5rem]'
+const OPTIONAL_CELL = 'hidden @lg:block'
+
 export function LibraryCategories({ categories }: { categories: CategoryTile[] }) {
   const [view, setView] = useOfferingView('library')
+  const isDesktop = useIsDesktop()
   const router = useRouter()
+
+  // A phone always gets the tiles. The list/grid switch is desktop-only, so a
+  // trainer who left the switch on "list" at their desk would otherwise open
+  // the app on their phone to a table too narrow for its own columns, with no
+  // control on screen to get out of it.
+  const asTable = isDesktop && view === 'list'
   const [items, setItems] = useState(categories)
   const [error, setError] = useState<string | null>(null)
 
@@ -69,7 +94,7 @@ export function LibraryCategories({ categories }: { categories: CategoryTile[] }
           body: JSON.stringify({ ids }),
         })
         if (!res.ok) { revert(); return }
-        // So the tree in the rail moves with the grid rather than waiting for
+        // So the tree in the rail moves with the list rather than waiting for
         // the next navigation.
         router.refresh()
       } catch {
@@ -77,25 +102,6 @@ export function LibraryCategories({ categories }: { categories: CategoryTile[] }
       }
     })()
   }
-
-  const tiles = items.map(c => (
-    <SortableOfferingCard key={c.id} id={c.id}>
-      {handle => (
-        <>
-          <FlatTile
-            icon={Layers}
-            label={c.name}
-            sub={`${c.themes} theme${c.themes === 1 ? '' : 's'} · ${c.items} item${c.items === 1 ? '' : 's'}`}
-            href={`/library/type/${c.id}`}
-          />
-          {/* Over the tile's top-right rather than inline: the tile is one tap
-              target from edge to edge, and a grip sharing that row would either
-              shrink the name or swallow the tap that opens the category. */}
-          <span className="absolute right-1 top-1">{handle}</span>
-        </>
-      )}
-    </SortableOfferingCard>
-  ))
 
   return (
     <>
@@ -115,23 +121,83 @@ export function LibraryCategories({ categories }: { categories: CategoryTile[] }
         </p>
       )}
 
-      {/* Both views keep the CARD. FlatTile is only ever a cell — the border,
-          the white and the dividers come from its container — so dropping it
-          into a bare grid leaves the rows floating on the page background,
-          which is what "untidy" looked like. */}
       {/* A named region, so "the categories" is one addressable thing rather
-          than whichever div the current view happens to render. */}
+          than whichever view happens to be rendering them. */}
       <section aria-label="Categories">
         <SortableOfferingList ids={items.map(c => c.id)} onReorder={reorder}>
-          {view === 'grid' ? (
-            <FlatTileGrid count={items.length}>{tiles}</FlatTileGrid>
+          {!asTable ? (
+            <FlatTileGrid count={items.length}>
+              {items.map(c => (
+                <SortableOfferingCard key={c.id} id={c.id}>
+                  {handle => (
+                    <FlatTile
+                      icon={Layers}
+                      label={c.name}
+                      sub={`${c.themes} theme${c.themes === 1 ? '' : 's'} · ${c.items} item${c.items === 1 ? '' : 's'}`}
+                      href={`/library/type/${c.id}`}
+                      dragHandle={handle}
+                    />
+                  )}
+                </SortableOfferingCard>
+              ))}
+            </FlatTileGrid>
           ) : (
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white [&>*+*]:border-t [&>*+*]:border-slate-200">
-              {tiles}
+            // One bordered box with hairlines between the rows — a table only
+            // reads as a table when its columns run the whole way down it.
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <CategoryTableHead />
+              <div className="[&>*+*]:border-t [&>*+*]:border-slate-100">
+                {items.map(c => (
+                  <SortableOfferingCard key={c.id} id={c.id}>
+                    {handle => <CategoryRow category={c} dragHandle={handle} />}
+                  </SortableOfferingCard>
+                ))}
+              </div>
             </div>
           )}
         </SortableOfferingList>
       </section>
     </>
+  )
+}
+
+/** The column names, on the same grid the rows use. */
+function CategoryTableHead() {
+  const cell = 'text-[11px] font-semibold uppercase tracking-wide text-slate-400'
+  return (
+    <div className={`${ROW} h-9 border-b border-slate-200 bg-slate-50/70`}>
+      <span aria-hidden />
+      <span aria-hidden />
+      <span className={cell}>Category</span>
+      <span className={`${OPTIONAL_CELL} ${cell} text-right`}>Themes</span>
+      <span className={`${OPTIONAL_CELL} ${cell} text-right`}>Items</span>
+    </div>
+  )
+}
+
+function CategoryRow({ category, dragHandle }: { category: CategoryTile; dragHandle: ReactNode }) {
+  return (
+    <div className={`${ROW} h-14 transition-colors hover:bg-slate-50`}>
+      {dragHandle}
+      <Layers className="h-4 w-4 text-slate-400" strokeWidth={1.75} />
+
+      {/* The link is wrapped rather than being the grid cell itself: as a bare
+          grid item its box is the line box, which sits a few pixels proud of
+          the cells either side of it. A flex cell centres it against the row. */}
+      <span className="flex min-w-0 items-center">
+        <Link
+          href={`/library/type/${category.id}`}
+          className="truncate text-sm font-medium text-slate-900 hover:underline"
+        >
+          {category.name}
+        </Link>
+      </span>
+
+      {/* Just the figures. "2 themes · 1 item" is a phrase for a tile, where
+          there is no heading to say which number is which; down a column the
+          heading already said it. */}
+      <span className={`${OPTIONAL_CELL} text-right text-sm tabular-nums text-slate-500`}>{category.themes}</span>
+      <span className={`${OPTIONAL_CELL} text-right text-sm tabular-nums text-slate-500`}>{category.items}</span>
+    </div>
   )
 }

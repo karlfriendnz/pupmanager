@@ -221,6 +221,7 @@ export function FlatTile({
   href,
   onClick,
   accent,
+  dragHandle,
 }: {
   icon: LucideIcon
   label: string
@@ -228,6 +229,13 @@ export function FlatTile({
   href?: string
   onClick?: () => void
   accent?: string
+  /**
+   * The grip a reorderable tile is dragged by. Given one, the tile grows a
+   * gutter down its LEFT edge for it — a tile is one target from edge to edge,
+   * so the grip needs room of its own rather than a corner it shares with the
+   * icon.
+   */
+  dragHandle?: ReactNode
 }) {
   const inner = (
     <>
@@ -236,8 +244,22 @@ export function FlatTile({
       {sub && <span className="mt-1 block text-[13px] leading-tight text-slate-500">{sub}</span>}
     </>
   )
-  const cls = 'flex min-h-[104px] flex-col items-start justify-center px-4 py-4 text-left active:bg-slate-50'
+  const cls = cn(
+    'flex min-h-[104px] flex-col items-start justify-center px-4 py-4 text-left active:bg-slate-50',
+    dragHandle && 'pl-9',
+  )
 
-  if (href) return <Link href={href} className={cls}>{inner}</Link>
-  return <button type="button" onClick={onClick} className={cls}>{inner}</button>
+  const tile = href
+    ? <Link href={href} className={cls}>{inner}</Link>
+    : <button type="button" onClick={onClick} className={cls}>{inner}</button>
+
+  if (!dragHandle) return tile
+  // The grip sits OUTSIDE the link. A button nested in an anchor is invalid
+  // markup, and the browser hands the drag's pointer events to the navigation.
+  return (
+    <div className="relative">
+      <span className="absolute left-1 top-1 z-10">{dragHandle}</span>
+      {tile}
+    </div>
+  )
 }
