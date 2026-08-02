@@ -11,9 +11,9 @@ import {
 import type { CustomFieldOption, FormStep, Question } from '@/lib/session-form-builder'
 import {
   FORM_INPUT, FORM_QUIET_ACTION, FORM_TEXTAREA,
-  FormEditorSection, FormEditorShell, FormField, FormRowGroup, FormToggleRow,
+  FormEditorSection, FormField, FormRowGroup, FormToggleRow,
 } from '../_form-editor-shell'
-import { QuestionsSection } from '../_question-list'
+import { FormBuilder } from '../_form-builder'
 
 // Platform default copy for the invite email, mirrored from src/lib/enquiries.ts
 // (DEFAULT_WELCOME_*). Kept as literals because that module is server-only.
@@ -46,9 +46,10 @@ function newStepId() { return Math.random().toString(36).slice(2, 10) }
  * an intake form assigned at invite time, and a public website enquiry form.
  * Which it is (or both) is two switches, not two editors.
  *
- * Wears the same FormEditorShell as the session and lead-capture editors, and
- * shares the question list with them (`_question-list.tsx`), so a trainer only
- * ever learns one screen.
+ * Runs the shared FormBuilder (`_form-builder.tsx`) — palette on the left, the
+ * form on the right, settings on their own panel — which is the SAME builder the
+ * session-form editor runs. Karl, 2026-08-02: "There should not be 2 different
+ * interfaces." What differs between the two is props, not a second screen.
  */
 export function ClientFormEditor({
   initial,
@@ -221,7 +222,16 @@ export function ClientFormEditor({
   const stepFallback = steps[0]?.id ?? null
 
   return (
-    <FormEditorShell
+    <FormBuilder
+      questions={questions}
+      onChange={setQuestions}
+      customFields={customFields}
+      allowConditional
+      minQuestions={1}
+      activeStep={steps.length ? activeStep : null}
+      stepFallback={stepFallback}
+      questionsTitle={steps.length ? `Questions · ${steps.find(s => s.id === activeStep)?.title ?? 'Page 1'}` : 'Questions'}
+      questionsHint="Drag a question by its handle to reorder it. A question can be set to only appear when an earlier answer matches."
       status={initial ? { isActive, busy: togglingActive, onToggle: onToggleActive } : undefined}
       statusActions={initial ? (
         <>
@@ -251,7 +261,7 @@ export function ClientFormEditor({
       onSave={save}
       saving={saving}
       saveLabel={initial ? 'Save changes' : 'Create form'}
-    >
+      above={<>
       <FormEditorSection title="Basics">
         <FormField label="Form name" required>
           <input
@@ -346,19 +356,9 @@ export function ClientFormEditor({
           </FormRowGroup>
         )}
       </FormEditorSection>
-
-      <QuestionsSection
-        questions={questions}
-        onChange={setQuestions}
-        customFields={customFields}
-        title={steps.length ? `Questions · ${steps.find(s => s.id === activeStep)?.title ?? 'Page 1'}` : 'Questions'}
-        hint="Drag a question by its handle to reorder it. A question can be set to only appear when an earlier answer matches."
-        allowConditional
-        minQuestions={1}
-        activeStep={steps.length ? activeStep : null}
-        stepFallback={stepFallback}
-      />
-
+      </>}
+      settingsLabel="Settings"
+      settings={<>
       {asEnquiry && (
         <FormEditorSection title="Success page" hint="What they see once they've hit submit.">
           <FormField label="Heading">
@@ -437,6 +437,7 @@ export function ClientFormEditor({
           )}
         </FormEditorSection>
       )}
-    </FormEditorShell>
+      </>}
+    />
   )
 }

@@ -6,11 +6,12 @@ import { useSearchParams } from 'next/navigation'
 import { useRouter } from 'next/navigation'
 import {
   Plus, Copy, Check, ExternalLink, Sparkles,
-  Globe, Code2, FileText, ChevronRight,
+  Globe, Code2, FileText, ChevronRight, List, Trash2,
   ClipboardList, ListChecks,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
 import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
 import { isRichTextEmpty, richTextToPlain } from '@/lib/rich-text'
 import type { FormRow as SessionFormRow } from './session/session-forms-manager'
@@ -105,11 +106,91 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 
 // ─── Lead-capture form editor ────────────────────────────────────────────────
 
+/** One field that is ON this form, in the right-hand pane. */
+function EmbedFieldRow({
+  label,
+  note,
+  required,
+  onToggleRequired,
+  onRemove,
+}: {
+  label: string
+  note?: string
+  required: boolean
+  /** Absent when requiredness belongs to the field itself, not to this form. */
+  onToggleRequired?: () => void
+  /** Absent for name/email — a registration without either is not a lead. */
+  onRemove?: () => void
+}) {
+  return (
+    <div className="flex items-center gap-3 bg-white px-3 py-3">
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-slate-900">{label}</span>
+        {note && <span className="mt-0.5 block truncate text-xs text-slate-400">{note}</span>}
+      </span>
+      {onToggleRequired ? (
+        <button
+          type="button"
+          onClick={onToggleRequired}
+          className="flex-shrink-0 text-xs font-medium text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline"
+        >
+          {required ? 'Required' : 'Optional'}
+        </button>
+      ) : (
+        <span className="flex-shrink-0 text-xs text-slate-400">{required ? 'Required' : 'Optional'}</span>
+      )}
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`Remove ${label}`}
+          className="flex-shrink-0 p-1 text-slate-300 hover:text-red-500"
+        >
+          <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** A row on the lead-capture rail — click to put that field on the form. */
+function EmbedPaletteRow({ label, note, onClick }: { label: string; note?: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`Add ${label}`}
+      className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left hover:bg-slate-50 active:bg-slate-50"
+    >
+      <Plus className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-medium text-slate-900">{label}</span>
+        {note && <span className="mt-0.5 block truncate text-xs text-slate-400">{note}</span>}
+      </span>
+    </button>
+  )
+}
+
 // Page-style lead-capture (embed) form editor. Renders in a dedicated route
 // (/forms/embed/new or /forms/embed/[formId]) — the parent page provides the
 // chrome (back link + title), FormEditorShell provides the frame every form
 // editor shares, and this component owns the sections. Save and delete redirect
 // back to Settings → Fields & forms.
+//
+// It wears the SAME shape as the FormBuilder the other two editors run — fields
+// on the left, the form on the right, a Settings panel for what happens after
+// submit — because Karl's complaint was that opening one form and opening
+// another gave you two different screens.
+//
+// It does NOT run the FormBuilder itself, and can't: an EmbedForm has no
+// questions. Its shape is `fields: [{key, required}]` plus `customFieldIds: []`
+// — two fixed toggles and a set of links, with no question types, no answer
+// types, no conditional logic and no single ordered list. Giving it a real
+// palette-drop would mean converting these rows into the Form model, which is a
+// DATA migration, not a UI one. Nothing creates an EmbedForm any more (a client
+// form set to "Website enquiry" replaced it); this screen exists so the ones
+// already embedded on trainers' sites stay maintainable. Hence: same layout,
+// click to add rather than drag.
 export function EmbedFormEditor({
   initial,
   customFields,
@@ -166,6 +247,12 @@ export function EmbedFormEditor({
   const [autoReplyBody, setAutoReplyBody] = useState(initial?.autoReplyBody ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Same two panels as the shared builder: what the form IS, and what happens
+  // once someone has filled it in.
+  const [tab, setTab] = useState<'build' | 'settings'>('build')
+  // Phones get no rail (see FormEditorShell.sidebar) — the same list opens as a
+  // full screen instead.
+  const [paletteSheetOpen, setPaletteSheetOpen] = useState(false)
 
   function toggleField(key: string, prop: 'enabled' | 'required') {
     setFieldConfig(prev => ({
@@ -265,9 +352,71 @@ export function EmbedFormEditor({
 
   const ownerCustom = customFields.filter(f => f.appliesTo === 'OWNER')
   const dogCustom = customFields.filter(f => f.appliesTo === 'DOG')
+  const orderedCustom = [...ownerCustom, ...dogCustom]
+
+  const customLabel = (cf: CustomField) => (cf.appliesTo === 'DOG' ? `${cf.label} (dog)` : cf.label)
+  const offStandard = STANDARD_FIELDS.filter(f => !fieldConfig[f.key]?.enabled)
+  const offCustom = orderedCustom.filter(cf => !enabledCustomIds.has(cf.id))
+
+  function addField(add: () => void) {
+    add()
+    setPaletteSheetOpen(false)
+  }
+
+  const palette = (
+    <div className="flex flex-col gap-4">
+      <div>
+        <SectionLabel>Add a field</SectionLabel>
+        <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white [&>*+*]:border-t [&>*+*]:border-slate-100">
+          {offStandard.length === 0 && offCustom.length === 0 ? (
+            <p className="px-3 py-3 text-xs text-slate-400">
+              Everything you have is already on this form.
+            </p>
+          ) : (
+            <>
+              {offStandard.map(f => (
+                <EmbedPaletteRow
+                  key={f.key}
+                  label={f.label}
+                  onClick={() => addField(() => toggleField(f.key, 'enabled'))}
+                />
+              ))}
+              {offCustom.map(cf => (
+                <EmbedPaletteRow
+                  key={cf.id}
+                  label={customLabel(cf)}
+                  note={cf.type.toLowerCase()}
+                  onClick={() => addField(() => toggleCustom(cf.id))}
+                />
+              ))}
+            </>
+          )}
+        </div>
+      </div>
+      <p className="px-1 text-xs text-slate-400">
+        Name and email are on every lead-capture form — an enquiry with neither is
+        nobody you can reply to.
+      </p>
+    </div>
+  )
 
   return (
+    <>
+    {/* Which panel a review pin was made on (AGENTS.md). */}
+    <div data-review-scope={`Lead-capture form: ${tab === 'build' ? 'Build' : 'Settings'}`}>
+    <div className="mb-3 px-1">
+      <FormSegmented
+        ariaLabel="Form builder panel"
+        value={tab}
+        onChange={setTab}
+        options={[
+          { id: 'build' as const, label: 'Build' },
+          { id: 'settings' as const, label: 'Settings' },
+        ]}
+      />
+    </div>
     <FormEditorShell
+      sidebar={tab === 'build' ? palette : undefined}
       status={initial ? { isActive, busy: togglingActive, onToggle: onToggleActive } : undefined}
       statusActions={initial ? (
         <>
@@ -292,6 +441,7 @@ export function EmbedFormEditor({
       saving={saving}
       saveLabel={initial ? 'Save changes' : 'Create form'}
     >
+      {tab === 'build' && <>
       {showEmbed && embedSnippet && (
         <FormEditorSection title="Paste this on your site" action={<CopyButton text={embedSnippet} label="Copy" />}>
           <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-600">
@@ -320,44 +470,49 @@ export function EmbedFormEditor({
         </FormField>
       </FormEditorSection>
 
+      {/* What is ON the form, in the order the public page renders it. Adding
+          happens on the rail (or the sheet on a phone), so this list is the
+          FORM rather than a switchboard of everything that could be on it. */}
       <FormEditorSection
         title="Fields"
-        hint="Name and email are always included. Add fields from your library for anything dog-specific."
+        hint="In the order someone filling it in will meet them."
+        action={
+          <button
+            type="button"
+            onClick={() => setPaletteSheetOpen(true)}
+            className={`${FORM_QUIET_ACTION} lg:hidden`}
+          >
+            <List className="h-3.5 w-3.5" strokeWidth={1.75} />
+            Add a field
+          </button>
+        }
       >
-        <FormRowGroup>
-          {STANDARD_FIELDS.map(f => (
-            <FormToggleRow
+        <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200 [&>*+*]:border-t [&>*+*]:border-slate-200">
+          <EmbedFieldRow label="Name" note="Always asked" required />
+          <EmbedFieldRow label="Email" note="Always asked" required />
+          {STANDARD_FIELDS.filter(f => fieldConfig[f.key]?.enabled).map(f => (
+            <EmbedFieldRow
               key={f.key}
               label={f.label}
-              checked={fieldConfig[f.key]?.enabled ?? false}
-              onChange={() => toggleField(f.key, 'enabled')}
-              trailing={fieldConfig[f.key]?.enabled ? (
-                <button
-                  type="button"
-                  onClick={() => toggleField(f.key, 'required')}
-                  className="flex-shrink-0 text-xs font-medium text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline"
-                >
-                  {fieldConfig[f.key]?.required ? 'Required' : 'Optional'}
-                </button>
-              ) : undefined}
+              required={fieldConfig[f.key]?.required ?? false}
+              onToggleRequired={() => toggleField(f.key, 'required')}
+              onRemove={() => toggleField(f.key, 'enabled')}
             />
           ))}
-          {[...ownerCustom, ...dogCustom].map(cf => (
-            <FormToggleRow
+          {orderedCustom.filter(cf => enabledCustomIds.has(cf.id)).map(cf => (
+            <EmbedFieldRow
               key={cf.id}
-              label={cf.appliesTo === 'DOG' ? `${cf.label} (dog)` : cf.label}
-              checked={enabledCustomIds.has(cf.id)}
-              onChange={() => toggleCustom(cf.id)}
-              trailing={enabledCustomIds.has(cf.id) ? (
-                <span className="flex-shrink-0 text-xs font-medium text-slate-400">
-                  {cf.required ? 'Required' : 'Optional'}
-                </span>
-              ) : undefined}
+              label={customLabel(cf)}
+              note="One of your saved fields"
+              required={cf.required}
+              onRemove={() => toggleCustom(cf.id)}
             />
           ))}
-        </FormRowGroup>
+        </div>
       </FormEditorSection>
+      </>}
 
+      {tab === 'settings' && <>
       {/* Styling — let the trainer match the form to their site's brand. The
           border toggle is useful for embeds where the parent page already
           provides framing; button colour overrides the platform blue. */}
@@ -543,7 +698,20 @@ export function EmbedFormEditor({
           </FormField>
         )}
       </FormEditorSection>
+      </>}
     </FormEditorShell>
+    </div>
+
+    {paletteSheetOpen && (
+      <FullScreenSheet
+        title="Add a field"
+        sub="Tap one to put it on your form"
+        onClose={() => setPaletteSheetOpen(false)}
+      >
+        {palette}
+      </FullScreenSheet>
+    )}
+    </>
   )
 }
 

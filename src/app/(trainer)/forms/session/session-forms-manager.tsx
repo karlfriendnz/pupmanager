@@ -9,10 +9,9 @@ import {
   FORM_INPUT,
   FORM_TEXTAREA,
   FormEditorSection,
-  FormEditorShell,
   FormField,
 } from '../_form-editor-shell'
-import { QuestionsSection } from '../_question-list'
+import { FormBuilder } from '../_form-builder'
 
 // The question model + its pure helpers live in @/lib/session-form-builder
 // (unit-tested there). Re-exported here so existing importers keep working.
@@ -46,13 +45,15 @@ export interface FormRow {
 
 // Note: the standalone SessionFormsManager has been removed — the unified
 // FormsManager on /settings?tab=forms is the only entry point now, and editor
-// pages live at /forms/session/new and /forms/session/[formId]. Both wear the
-// same FormEditorShell as the lead-capture editor, so a trainer learns one
-// screen no matter which kind of form they're building.
+// pages live at /forms/session/new and /forms/session/[formId].
 
 // ─── The editor ──────────────────────────────────────────────────────────────
 
-// Page-style session form editor — same shell as the lead-capture editor.
+// The session-form editor runs the SAME FormBuilder as the client-form editor —
+// palette left, form right, settings on their own panel (Karl, 2026-08-02:
+// "There should not be 2 different interfaces"). What differs is props: a
+// session form is filled in by the TRAINER, so it gets the "Team only" toggle
+// and no conditional logic (whoever writes the report sees every question).
 // Save / delete redirect to /settings?tab=forms. Renders inside a route page
 // that provides the chrome (back link / heading).
 export function SessionFormEditor({
@@ -134,16 +135,20 @@ export function SessionFormEditor({
   }
 
   return (
-    <>
-      <FormEditorShell
-        status={existing ? { isActive, busy: togglingActive, onToggle: onToggleActive } : undefined}
-        error={error}
-        onDelete={existing ? onDelete : undefined}
-        onCancel={() => router.push('/settings?tab=forms')}
-        onSave={handleSave}
-        saving={saving}
-        saveLabel={existing ? 'Save changes' : 'Create form'}
-      >
+    <FormBuilder
+      questions={questions}
+      onChange={setQuestions}
+      customFields={customFields}
+      showPrivateToggle
+      minQuestions={1}
+      status={existing ? { isActive, busy: togglingActive, onToggle: onToggleActive } : undefined}
+      error={error}
+      onDelete={existing ? onDelete : undefined}
+      onCancel={() => router.push('/settings?tab=forms')}
+      onSave={handleSave}
+      saving={saving}
+      saveLabel={existing ? 'Save changes' : 'Create form'}
+      above={
         <FormEditorSection title="Basics">
           <FormField label="Form name" required>
             <input
@@ -167,15 +172,8 @@ export function SessionFormEditor({
             />
           </FormField>
         </FormEditorSection>
-
-        <QuestionsSection
-          questions={questions}
-          onChange={setQuestions}
-          customFields={customFields}
-          showPrivateToggle
-          minQuestions={1}
-        />
-
+      }
+      settings={<>
         <FormEditorSection title="What the client sees" hint="Both optional — top and tail of their report.">
           <FormField label="Welcome / intro text">
             <textarea
@@ -250,8 +248,8 @@ export function SessionFormEditor({
             </div>
           )}
         </FormEditorSection>
-      </FormEditorShell>
-    </>
+      </>}
+    />
   )
 }
 

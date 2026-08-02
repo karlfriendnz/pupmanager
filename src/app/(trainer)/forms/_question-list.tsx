@@ -1,45 +1,28 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import {
-  PointerSensor,
-  useSensor,
-  useSensors,
-  closestCenter,
-  type DragEndEvent,
-} from '@dnd-kit/core'
-import { DndArea } from '@/components/shared/dnd-area'
+import { useEffect } from 'react'
 import {
   SortableContext,
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Plus, Trash2, GripVertical, Link2, X, Copy, UserSquare } from 'lucide-react'
+import { Trash2, GripVertical, Link2, X, Copy, UserSquare } from 'lucide-react'
 import { ModalPortal } from '@/components/shared/modal-portal'
 import {
   NEW_QUESTION_TYPES,
   SAVED_FIELD_TYPES,
   TYPE_LABELS,
-  addQuestion,
-  createCustomFieldQuestion,
-  createClientFieldQuestion,
-  createFieldQuestion,
-  createQuestion,
   fieldSpecFor,
   duplicateQuestion,
   hasLabel,
   hasOptions,
-  newQuestionId,
   removeQuestion as removeQuestionFrom,
-  reorderQuestions,
   updateQuestion,
-  usedCustomFieldIds,
 } from '@/lib/session-form-builder'
 import { isChoiceType as isChoiceAnswer } from '@/lib/session-form-builder'
 import { CLIENT_FIELDS, clientFieldLabel, clientFieldIsDogDetail } from '@/lib/client-fields'
 import type { CustomFieldOption, Question, QuestionType, ShowIf } from '@/lib/session-form-builder'
-import { FORM_QUIET_ACTION, FormEditorSection } from './_form-editor-shell'
 
 /**
  * The one question editor.
@@ -56,6 +39,11 @@ import { FORM_QUIET_ACTION, FormEditorSection } from './_form-editor-shell'
  *   allowConditional  — only a client-filled form can branch on an answer;
  *                       a trainer filling in a report sees every question.
  *   steps             — client forms can be split across pages.
+ *
+ * This list no longer opens its own drag context. `_form-builder.tsx` owns ONE
+ * `DndArea` around the palette AND the list, because Karl's ask was to drag a
+ * field OFF the palette and ONTO the form — two contexts can't see each other,
+ * so the drop would land nowhere.
  */
 
 // ─── Options editor ──────────────────────────────────────────────────────────
@@ -395,8 +383,6 @@ export function QuestionList({
   activeStep?: string | null
   stepFallback?: string | null
 }) {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
-
   function labelFor(q: Question): string {
     if (q.type === 'CUSTOM_FIELD') {
       return customFields.find(f => f.id === q.customFieldId)?.label ?? 'Linked field'
@@ -412,181 +398,49 @@ export function QuestionList({
     ? questions
     : questions.filter(q => (q.step ?? stepFallback) === activeStep)
 
-  function onDragEnd(e: DragEndEvent) {
-    const { active, over } = e
-    if (!over || active.id === over.id) return
-    onChange(reorderQuestions(questions, String(active.id), String(over.id)))
-  }
-
   if (visible.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-400">
-        No questions on this page yet.
+        Nothing here yet — add a field from the list{' '}
+        <span className="hidden lg:inline">on the left</span>
+        <span className="lg:hidden">under &ldquo;Add a field&rdquo;</span>, or drop one in.
       </p>
     )
   }
 
   return (
-    <DndArea sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-      <SortableContext items={visible.map(q => q.id)} strategy={verticalListSortingStrategy}>
-        <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200 [&>*+*]:border-t [&>*+*]:border-slate-200">
-          {visible.map((q, i) => (
-            <QuestionCard
-              key={q.id}
-              question={q}
-              index={i}
-              total={visible.length}
-              customFields={customFields}
-              showPrivateToggle={showPrivateToggle}
-              labelFor={labelFor}
-              // A rule can only key on a question that comes EARLIER and has a
-              // fixed option list — anything else either can't be matched or
-              // hasn't been answered yet when this one renders.
-              conditionSources={
-                allowConditional
-                  ? questions.slice(0, questions.findIndex(x => x.id === q.id)).filter(hasOptions)
-                  : null
-              }
-              onPatch={patch => onChange(updateQuestion(questions, q.id, patch))}
-              onShowIf={showIf =>
-                onChange(questions.map(x => (x.id === q.id ? ({ ...x, showIf } as Question) : x)))
-              }
-              onDuplicate={() => onChange(duplicateQuestion(questions, q.id).questions)}
-              onRemove={() =>
-                onChange(questions.length > minQuestions ? removeQuestionFrom(questions, q.id) : questions)
-              }
-              canRemove={questions.length > minQuestions}
-            />
-          ))}
-        </div>
-      </SortableContext>
-    </DndArea>
-  )
-}
-
-/**
- * The Questions section with its two actions, so neither editor re-derives the
- * header. `onAdd` receives a ready-made question; the caller stamps the current
- * step on it before appending.
- */
-export function QuestionsSection({
-  questions,
-  onChange,
-  customFields,
-  title = 'Questions',
-  hint = 'Drag a question by its handle to reorder it.',
-  extraActions,
-  activeStep = null,
-  stepFallback = null,
-  ...listProps
-}: {
-  questions: Question[]
-  onChange: (next: Question[]) => void
-  customFields: CustomFieldOption[]
-  title?: string
-  hint?: string
-  extraActions?: React.ReactNode
-  showPrivateToggle?: boolean
-  allowConditional?: boolean
-  minQuestions?: number
-  activeStep?: string | null
-  stepFallback?: string | null
-}) {
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const [detailPickerOpen, setDetailPickerOpen] = useState(false)
-  const used = usedCustomFieldIds(questions)
-
-  // A new question joins the page you're looking at, so it doesn't silently
-  // land on page one while you're editing page three.
-  function withStep(q: Question): Question {
-    return activeStep ? ({ ...q, step: activeStep } as Question) : q
-  }
-
-  return (
-    <>
-      <FormEditorSection
-        title={title}
-        hint={hint}
-        action={
-          <>
-            <button
-              type="button"
-              onClick={() => onChange(addQuestion(questions, withStep(createQuestion('LONG_TEXT', newQuestionId()))))}
-              className={FORM_QUIET_ACTION}
-            >
-              <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Add question
-            </button>
-            {/* The built-in details, as questions. They used to be configured on
-                their own screen — but "the system fields are just a result of the
-                forms" (Karl), so the form is what says they're asked for. */}
-            <button
-              type="button"
-              onClick={() => setDetailPickerOpen(true)}
-              className={FORM_QUIET_ACTION}
-              title="Ask for their name, phone, dog's breed…"
-            >
-              <UserSquare className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Add a client detail
-            </button>
-            {/* Making a field used to mean leaving the builder, creating it on
-                another screen, and coming back to link it. */}
-            <button
-              type="button"
-              onClick={() => onChange(addQuestion(questions, withStep(createFieldQuestion(newQuestionId()))))}
-              className={FORM_QUIET_ACTION}
-              title="Ask something and keep the answer on their record"
-            >
-              <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Add a saved field
-            </button>
-            <button
-              type="button"
-              onClick={() => setPickerOpen(true)}
-              disabled={customFields.length === 0}
-              className={FORM_QUIET_ACTION}
-              title={customFields.length === 0 ? 'No client fields defined yet' : 'Ask one of your client fields'}
-            >
-              <Link2 className="h-3.5 w-3.5" strokeWidth={1.75} />
-              Link a field
-            </button>
-            {extraActions}
-          </>
-        }
-      >
-        <QuestionList
-          questions={questions}
-          onChange={onChange}
-          customFields={customFields}
-          activeStep={activeStep}
-          stepFallback={stepFallback}
-          {...listProps}
-        />
-      </FormEditorSection>
-
-      {pickerOpen && (
-        <CustomFieldPicker
-          customFields={customFields}
-          used={used}
-          onPick={f => {
-            onChange(addQuestion(questions, withStep(createCustomFieldQuestion(f.id, newQuestionId()))))
-            setPickerOpen(false)
-          }}
-          onClose={() => setPickerOpen(false)}
-        />
-      )}
-
-      {detailPickerOpen && (
-        <ClientDetailPicker
-          used={new Set(questions.filter(q => q.type === 'CLIENT_FIELD').map(q => q.fieldKey))}
-          onPick={key => {
-            onChange(addQuestion(questions, withStep(createClientFieldQuestion(key, newQuestionId()))))
-            setDetailPickerOpen(false)
-          }}
-          onClose={() => setDetailPickerOpen(false)}
-        />
-      )}
-    </>
+    <SortableContext items={visible.map(q => q.id)} strategy={verticalListSortingStrategy}>
+      <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200 [&>*+*]:border-t [&>*+*]:border-slate-200">
+        {visible.map((q, i) => (
+          <QuestionCard
+            key={q.id}
+            question={q}
+            index={i}
+            total={visible.length}
+            customFields={customFields}
+            showPrivateToggle={showPrivateToggle}
+            labelFor={labelFor}
+            // A rule can only key on a question that comes EARLIER and has a
+            // fixed option list — anything else either can't be matched or
+            // hasn't been answered yet when this one renders.
+            conditionSources={
+              allowConditional
+                ? questions.slice(0, questions.findIndex(x => x.id === q.id)).filter(hasOptions)
+                : null
+            }
+            onPatch={patch => onChange(updateQuestion(questions, q.id, patch))}
+            onShowIf={showIf =>
+              onChange(questions.map(x => (x.id === q.id ? ({ ...x, showIf } as Question) : x)))
+            }
+            onDuplicate={() => onChange(duplicateQuestion(questions, q.id).questions)}
+            onRemove={() =>
+              onChange(questions.length > minQuestions ? removeQuestionFrom(questions, q.id) : questions)
+            }
+            canRemove={questions.length > minQuestions}
+          />
+        ))}
+      </div>
+    </SortableContext>
   )
 }
 
@@ -600,7 +454,7 @@ export function QuestionsSection({
  * are shown as taken rather than hidden, so it's obvious the form has them rather
  * than that they don't exist.
  */
-function ClientDetailPicker({
+export function ClientDetailPicker({
   used,
   onPick,
   onClose,
