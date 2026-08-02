@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
 import { effectivePriceCents, resolveVariantPricing } from '@/lib/product-price'
+import { IN_PERSON_SALE_NOTE } from '@/lib/in-person-sale'
 import { PageHeader } from '@/components/shared/page-header'
 import { ProductDetail } from './product-detail'
 import type { Purchase } from './product-purchases'
@@ -36,6 +37,11 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
         id: true,
         status: true,
         createdAt: true,
+        // Written by the in-person sale path and read back here — the one thing
+        // that separates "the trainer handed this over at the counter" from
+        // "this is owed", since ProductRequest has no column for where a sale
+        // came from. Kept as a single shared constant so the two can't drift.
+        note: true,
         // Which one they asked for — the difference between "a harness is
         // owed" and "a Large is owed", which is what the trainer acts on.
         variant: { select: { name: true, priceCents: true, salePriceCents: true } },
@@ -87,24 +93,37 @@ export default async function ProductPage({ params }: { params: Promise<{ produc
   // A FULFILLED request raised by a card checkout is already counted above, so
   // only the ones with no matching paid line are listed — otherwise a single
   // purchase would appear twice with two different states.
+  //
+  // An IN-PERSON sale is never double-counted by that rule and doesn't need to
+  // be: paying its invoice mints a PaymentItem carrying no productId (the
+  // /pay/<token> checkout settles an invoice, it doesn't re-buy a product), so
+  // it can't turn up in `paidItems` at all. It appears exactly once, as the
+  // hand-over below. What the de-duplication above WOULD do is hide a counter
+  // sale from a client who separately bought the same product on their phone —
+  // so an in-person row is exempted from it. Two sales to one client are two
+  // rows; that is the point of the list.
   const paidClientIds = new Set(paid.map(p => p.clientId).filter(Boolean))
   const fromRequests: Purchase[] = requests
-    .filter(r => r.status !== 'CANCELLED' && !paidClientIds.has(r.client.id))
-    .map(r => ({
-      id: `req_${r.id}`,
-      clientId: r.client.id,
-      clientName: r.client.user?.name ?? 'A client',
-      dogName: r.client.dog?.name ?? null,
-      state: r.status === 'FULFILLED' ? 'OWING' : 'REQUESTED',
-      // What they'll be billed — the sale price when there is one, and the
-      // VARIANT's price when they picked one, exactly as the invoice raised
-      // for them computes it.
-      amountCents: r.status === 'FULFILLED'
-        ? effectivePriceCents(resolveVariantPricing(product, r.variant))
-        : null,
-      variantName: r.variant?.name ?? null,
-      at: r.createdAt.toISOString(),
-    }))
+    .filter(r => r.status !== 'CANCELLED')
+    .filter(r => r.note === IN_PERSON_SALE_NOTE || !paidClientIds.has(r.client.id))
+    .map(r => {
+      const inPerson = r.note === IN_PERSON_SALE_NOTE
+      return {
+        id: `req_${r.id}`,
+        clientId: r.client.id,
+        clientName: r.client.user?.name ?? 'A client',
+        dogName: r.client.dog?.name ?? null,
+        state: inPerson ? 'COUNTER' : r.status === 'FULFILLED' ? 'OWING' : 'REQUESTED',
+        // What they'll be billed — the sale price when there is one, and the
+        // VARIANT's price when they picked one, exactly as the invoice raised
+        // for them computes it.
+        amountCents: inPerson || r.status === 'FULFILLED'
+          ? effectivePriceCents(resolveVariantPricing(product, r.variant))
+          : null,
+        variantName: r.variant?.name ?? null,
+        at: r.createdAt.toISOString(),
+      }
+    })
 
   const purchases = [...paid, ...fromRequests].sort((a, b) => b.at.localeCompare(a.at))
 

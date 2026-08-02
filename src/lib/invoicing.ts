@@ -513,7 +513,11 @@ export interface ManualSaleInput {
  * phone, which mints a Stripe Checkout Session via the same direct-charge path
  * as every other purchase. No new Stripe code, and nothing to install.
  *
- * Idempotent on (trainer, client, 'MANUAL', idempotencyKey).
+ * Idempotent on (trainer, client, 'MANUAL', idempotencyKey) — and it SAYS which
+ * of the two happened. A repeat key hands back the invoice that already exists,
+ * and the caller must be able to tell that apart from a fresh sale, because the
+ * stock behind an in-person sale has already come off the shelf: taking it
+ * again on a double-tap would show four harnesses sold where two went out.
  *
  * NOT best-effort, unlike its siblings in this file: this IS the trainer's
  * action rather than a side effect of one, so a failure must surface instead of
@@ -523,7 +527,7 @@ export interface ManualSaleInput {
  */
 export async function createManualSaleInvoice(
   input: ManualSaleInput,
-): Promise<{ id: string; payToken: string | null; amountCents: number }> {
+): Promise<{ id: string; payToken: string | null; amountCents: number; created: boolean }> {
   if (input.lines.length === 0) throw new Error('a sale needs at least one line')
 
   // Scope the client to this trainer — an id alone must never be enough to
@@ -555,7 +559,7 @@ export async function createManualSaleInvoice(
     },
     select: { id: true, payToken: true, amountCents: true },
   })
-  if (existing) return existing
+  if (existing) return { ...existing, created: false }
 
   const trainer = await prisma.trainerProfile.findUnique({
     where: { id: input.trainerId },
@@ -615,7 +619,7 @@ export async function createManualSaleInvoice(
     return Promise.all(tasks)
   })
 
-  return invoice
+  return { ...invoice, created: true }
 }
 
 /**

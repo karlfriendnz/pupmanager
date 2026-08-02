@@ -12,15 +12,36 @@
  * multi-currency and formatting belongs to `formatMoney`.
  */
 
-import { effectivePriceCents } from './product-price'
+import { effectivePriceCents, variantPriceCents } from './product-price'
+import { inStock } from './stock'
 
-/** One row in the cart. `key` is stable so the steppers can target it. */
+/**
+ * One row in the cart. `key` is stable so the steppers can target it.
+ *
+ * `productId`/`variantId` are what turn a till receipt back into a SALE: a line
+ * that only carries its description is a sentence, and a sentence cannot be
+ * counted off a shelf or listed on the product's own screen. They are null for
+ * a one-off "Something else" line, which genuinely has no catalogue behind it.
+ */
 export type SaleLine = {
   key: string
   description: string
   quantity: number
   unitAmountCents: number
   xeroAccountCode?: string | null
+  productId?: string | null
+  variantId?: string | null
+}
+
+/** One option under a product — a size, a colour. NULL prices inherit. */
+export type SaleVariant = {
+  id: string
+  name: string
+  priceCents?: number | null
+  salePriceCents?: number | null
+  /** NULL = not counted, exactly as on the product. */
+  stockCount?: number | null
+  active?: boolean
 }
 
 /** The shape of a product the composer can ring up. */
@@ -32,6 +53,9 @@ export type SaleProduct = {
   imageUrl: string | null
   active: boolean
   xeroAccountCode?: string | null
+  /** NULL = never runs out (a service, a digital download). */
+  stockCount?: number | null
+  variants?: SaleVariant[]
 }
 
 /** Nobody sells a thousand of anything by tapping "+", so the stepper stops there. */
@@ -49,9 +73,30 @@ export function shouldOfferProductSearch(count: number): boolean {
   return count > PRODUCT_SEARCH_THRESHOLD
 }
 
-/** The cart key a catalogue product occupies, so re-tapping it stacks. */
-export function productLineKey(productId: string): string {
-  return `p_${productId}`
+/**
+ * The cart key a catalogue product occupies, so re-tapping it stacks.
+ *
+ * A variant gets its OWN key. A Small and a Large are two shelves (see
+ * stock.ts), two prices and two things to hand over, so stacking them onto one
+ * line would ring up the wrong money and take the wrong size off the shelf.
+ */
+export function productLineKey(productId: string, variantId?: string | null): string {
+  return variantId ? `p_${productId}_${variantId}` : `p_${productId}`
+}
+
+/** The options a client can actually be sold. A hidden variant is off the shop. */
+export function sellableVariants(product: SaleProduct): SaleVariant[] {
+  return (product.variants ?? []).filter((v) => v.active !== false)
+}
+
+/** Does this product make the trainer pick an option before it can be rung up? */
+export function hasOptions(product: SaleProduct): boolean {
+  return sellableVariants(product).length > 0
+}
+
+/** What one tap rings up — the variant's price when one was picked. */
+export function saleUnitPriceCents(product: SaleProduct, variant?: SaleVariant | null): number | null {
+  return variant ? variantPriceCents(product, variant) : effectivePriceCents(product)
 }
 
 /**
@@ -60,12 +105,56 @@ export function productLineKey(productId: string): string {
  *
  * A product on sale rings up at its SALE price, the same number the client
  * would pay in the shop, so an in-person sale can't quietly cost more.
+ *
+ * With variants the price lives on the OPTIONS, so the product earns its tile
+ * as soon as one option has a usable price — a harness priced only per size is
+ * perfectly sellable, and dropping it because the product row says NULL is how
+ * a trainer ends up typing "Harness" as a free-text line.
  */
 export function sellableProducts<T extends SaleProduct>(products: T[]): T[] {
   return products.filter((p) => {
+    if (!p.active) return false
+    const options = sellableVariants(p)
+    if (options.length > 0) {
+      return options.some((v) => {
+        const cents = variantPriceCents(p, v)
+        return cents != null && cents > 0
+      })
+    }
     const cents = effectivePriceCents(p)
-    return p.active && cents != null && cents > 0
+    return cents != null && cents > 0
   })
+}
+
+/**
+ * Units on hand for the shelf a tap would come off — the variant's when one is
+ * picked, the product's when there are none. NULL means "not counted", and a
+ * digital download or a service is NULL forever.
+ */
+export function shelfStockCount(product: SaleProduct, variant?: SaleVariant | null): number | null {
+  return (variant ? variant.stockCount : product.stockCount) ?? null
+}
+
+/**
+ * Can another one of these go in the cart?
+ *
+ * The cart is checked as well as the shelf: tapping a tile six times when four
+ * are on hand is the same over-sell as tapping it once when none are, and the
+ * trainer should find out at the sixth tap rather than at the till.
+ */
+export function canAddToCart(
+  lines: SaleLine[],
+  product: SaleProduct,
+  variant?: SaleVariant | null,
+): boolean {
+  const onHand = shelfStockCount(product, variant)
+  if (onHand === null) return true // not counted — never runs out
+  return quantityInCart(lines, product.id, variant?.id ?? null) < onHand
+}
+
+/** Is there anything at all left on this shelf? */
+export function shelfInStock(product: SaleProduct, variant?: SaleVariant | null): boolean {
+  return inStock(shelfStockCount(product, variant))
 }
 
 /** Case- and whitespace-insensitive name match. Empty query matches everything. */
@@ -86,9 +175,18 @@ export function filterProducts<T extends SaleProduct>(products: T[], query: stri
  * Tap a product in. Tapping one that's already in the cart bumps its quantity
  * rather than adding a second row — a trainer ringing up three of the same
  * treat taps it three times, and expects one line showing 3.
+ *
+ * The price is never re-derived here: `saleUnitPriceCents` defers to
+ * product-price.ts, which is the one place a variant's inheritance (and its
+ * opt-out from the product's sale) is decided. This repo has mis-priced a real
+ * customer twice by having two code paths work the same number out separately.
  */
-export function addProductToLines<T extends SaleProduct>(lines: SaleLine[], product: T): SaleLine[] {
-  const key = productLineKey(product.id)
+export function addProductToLines<T extends SaleProduct>(
+  lines: SaleLine[],
+  product: T,
+  variant?: SaleVariant | null,
+): SaleLine[] {
+  const key = productLineKey(product.id, variant?.id ?? null)
   if (lines.some((l) => l.key === key)) {
     return lines.map((l) =>
       l.key === key ? { ...l, quantity: Math.min(MAX_LINE_QUANTITY, l.quantity + 1) } : l,
@@ -98,10 +196,14 @@ export function addProductToLines<T extends SaleProduct>(lines: SaleLine[], prod
     ...lines,
     {
       key,
-      description: product.name,
+      // "Harness · Large" — the option is part of what was sold, so it belongs
+      // on the invoice line the client reads, not just in our own data.
+      description: variant ? `${product.name} · ${variant.name}` : product.name,
       quantity: 1,
-      unitAmountCents: effectivePriceCents(product) ?? 0,
+      unitAmountCents: saleUnitPriceCents(product, variant) ?? 0,
       xeroAccountCode: product.xeroAccountCode ?? null,
+      productId: product.id,
+      variantId: variant?.id ?? null,
     },
   ]
 }
@@ -133,9 +235,42 @@ export function cartTotalCents(lines: SaleLine[]): number {
   return lines.reduce((sum, l) => sum + lineTotalCents(l), 0)
 }
 
-/** How many of this product are already in the cart. 0 when it isn't. */
-export function quantityInCart(lines: SaleLine[], productId: string): number {
-  return lines.find((l) => l.key === productLineKey(productId))?.quantity ?? 0
+/**
+ * How many of this product are already in the cart. 0 when it isn't.
+ *
+ * Pass a `variantId` for one shelf's worth; leave it off for the product as a
+ * whole, which is what the tile shows — "2 in this sale" across a Small and a
+ * Large is the answer a trainer glancing at the grid wants.
+ */
+export function quantityInCart(
+  lines: SaleLine[],
+  productId: string,
+  variantId?: string | null,
+): number {
+  if (variantId !== undefined) {
+    return lines.find((l) => l.key === productLineKey(productId, variantId))?.quantity ?? 0
+  }
+  return lines
+    .filter((l) => l.productId === productId)
+    .reduce((n, l) => n + l.quantity, 0)
+}
+
+/**
+ * The catalogue lines of a sale, as the wire carries them — the trainer's own
+ * one-off lines are dropped, because there is no product behind them to count
+ * off a shelf or to list on a product's screen.
+ */
+export function catalogueLines(
+  lines: SaleLine[],
+): { productId: string; variantId: string | null; quantity: number; description: string }[] {
+  return lines
+    .filter((l): l is SaleLine & { productId: string } => !!l.productId)
+    .map((l) => ({
+      productId: l.productId,
+      variantId: l.variantId ?? null,
+      quantity: l.quantity,
+      description: l.description,
+    }))
 }
 
 /**

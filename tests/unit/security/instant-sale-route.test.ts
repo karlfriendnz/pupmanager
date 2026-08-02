@@ -6,7 +6,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 //   - unauthenticated / missing billing.view → rejected before anything is read
 //   - the `pos` add-on off → 403 ADDON_REQUIRED
 //   - a client belonging to ANOTHER trainer → refused (id alone is not enough)
+//   - a PRODUCT belonging to another trainer → refused, and no stock moved
 //   - malformed / out-of-bounds lines → 400, no write
+//
+// Since a catalogue line now moves real stock, the guards cover the shelf too:
+// a sale the shelf can't fill is refused BEFORE the invoice exists, and a
+// replayed idempotency key must never take the units twice.
 const h = vi.hoisted(() => ({
   guardPermission: vi.fn(),
   hasAddon: vi.fn(),
@@ -14,15 +19,25 @@ const h = vi.hoisted(() => ({
   invoiceFindFirst: vi.fn(),
   invoiceCreate: vi.fn(),
   trainerFindUnique: vi.fn(),
+  productFindMany: vi.fn(),
+  requestCreate: vi.fn(),
+  takeStock: vi.fn(),
 }))
 
 vi.mock('@/lib/membership', () => ({ guardPermission: h.guardPermission }))
 vi.mock('@/lib/billing', () => ({ hasAddon: h.hasAddon }))
+vi.mock('@/lib/stock', () => ({ takeStock: h.takeStock }))
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     clientProfile: { findFirst: h.clientFindFirst },
     invoice: { findFirst: h.invoiceFindFirst, create: h.invoiceCreate },
     trainerProfile: { findUnique: h.trainerFindUnique },
+    product: { findMany: h.productFindMany },
+    productRequest: { create: h.requestCreate },
+    // The fulfilment runs in one transaction so the units and the hand-overs
+    // land together; the interactive form hands the callback a client.
+    $transaction: (fn: (tx: unknown) => unknown) =>
+      Promise.resolve(fn({ productRequest: { create: h.requestCreate } })),
   },
 }))
 // `after()` defers the email/Xero side effects; run nothing in tests. Keep the
@@ -70,7 +85,19 @@ beforeEach(() => {
     xeroConnection: null,
   })
   h.invoiceCreate.mockResolvedValue({ id: 'inv_1', payToken: 'tok_1', amountCents: 2500 })
+  h.productFindMany.mockResolvedValue([
+    { id: 'p_1', name: 'Ball thrower', stockCount: 5, variants: [] },
+  ])
+  h.takeStock.mockResolvedValue(true)
+  h.requestCreate.mockResolvedValue({})
 })
+
+/** The same sale, but rung up off the catalogue rather than typed. */
+const catalogueBody = (over: Record<string, unknown> = {}) =>
+  validBody({
+    lines: [{ description: 'Ball thrower', quantity: 1, unitAmountCents: 2500, productId: 'p_1' }],
+    ...over,
+  })
 
 describe('POST /api/trainer/finances/receivables — guards', () => {
   it('rejects when the permission guard fails, without touching the DB', async () => {
@@ -148,6 +175,15 @@ describe('POST /api/trainer/finances/receivables — input validation', () => {
     expect(h.invoiceCreate).not.toHaveBeenCalled()
   })
 
+  it('accepts a line with no product — a one-off "Something else" charge', async () => {
+    const res = await POST(req(validBody()))
+
+    expect(res.status).toBe(200)
+    // Nothing to look up, nothing to de-stock.
+    expect(h.productFindMany).not.toHaveBeenCalled()
+    expect(h.takeStock).not.toHaveBeenCalled()
+  })
+
   it('400s on a non-JSON body rather than throwing', async () => {
     const bad = new Request('https://app.pupmanager.com/api/trainer/finances/receivables', {
       method: 'POST',
@@ -164,5 +200,82 @@ describe('POST /api/trainer/finances/receivables — input validation', () => {
 
     expect(res.status).toBe(500)
     expect(h.invoiceCreate).not.toHaveBeenCalled()
+  })
+})
+
+// A catalogue line moves real stock, so it gets the same treatment as the
+// client id: an id is a claim, not a permission.
+describe('POST /api/trainer/finances/receivables — the catalogue and the shelf', () => {
+  it('looks products up scoped to the caller’s own company', async () => {
+    await POST(req(catalogueBody()))
+
+    expect(h.productFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: { in: ['p_1'] }, trainerId: 'co_1' } }),
+    )
+  })
+
+  it('refuses a product that belongs to another trainer, before any invoice', async () => {
+    h.productFindMany.mockResolvedValue([]) // the scoped read finds nothing
+
+    const res = await POST(req(catalogueBody({
+      lines: [{ description: 'Ball thrower', quantity: 1, unitAmountCents: 2500, productId: 'p_someone_elses' }],
+    })))
+
+    expect(res.status).toBe(409)
+    expect(h.invoiceCreate).not.toHaveBeenCalled()
+    expect(h.takeStock).not.toHaveBeenCalled()
+  })
+
+  it('refuses a sale the shelf can’t fill, and raises no invoice for it', async () => {
+    h.productFindMany.mockResolvedValue([{ id: 'p_1', name: 'Ball thrower', stockCount: 1, variants: [] }])
+
+    const res = await POST(req(catalogueBody({
+      lines: [{ description: 'Ball thrower', quantity: 4, unitAmountCents: 2500, productId: 'p_1' }],
+    })))
+
+    expect(res.status).toBe(409)
+    await expect(res.json()).resolves.toEqual({ error: expect.stringMatching(/only 1/i) })
+    expect(h.invoiceCreate).not.toHaveBeenCalled()
+  })
+
+  it('takes the stock and records the hand-over against the client', async () => {
+    const res = await POST(req(catalogueBody()))
+
+    expect(res.status).toBe(200)
+    expect(h.takeStock).toHaveBeenCalledWith(
+      expect.anything(),
+      'p_1',
+      expect.objectContaining({ clientId: 'cl_1', variantId: null }),
+    )
+    expect(h.requestCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ clientId: 'cl_1', productId: 'p_1', status: 'FULFILLED' }) }),
+    )
+  })
+
+  // A double-tap at the till resolves to the SAME sale. The units came off the
+  // shelf the first time; taking them again would show two sold where one went.
+  it('moves no stock when the idempotency key replays an existing sale', async () => {
+    h.invoiceFindFirst.mockResolvedValue({ id: 'inv_1', payToken: 'tok_1', amountCents: 2500 })
+
+    const res = await POST(req(catalogueBody()))
+
+    expect(res.status).toBe(200)
+    expect(h.takeStock).not.toHaveBeenCalled()
+    expect(h.requestCreate).not.toHaveBeenCalled()
+  })
+
+  // A service or a digital download has no count. It must sell without being
+  // refused and without inventing a ledger line for a shelf that doesn't exist.
+  it('sells an untracked product without touching a count', async () => {
+    h.productFindMany.mockResolvedValue([{ id: 'p_1', name: 'Puppy guide (PDF)', stockCount: null, variants: [] }])
+
+    const res = await POST(req(catalogueBody({
+      lines: [{ description: 'Puppy guide (PDF)', quantity: 9, unitAmountCents: 2500, productId: 'p_1' }],
+    })))
+
+    expect(res.status).toBe(200)
+    // takeStock is still called — it is the one place that decides an untracked
+    // product writes no movement — and it never refuses one.
+    expect(h.takeStock).toHaveBeenCalledTimes(9)
   })
 })

@@ -93,6 +93,16 @@ export async function POST(req: Request) {
     // paid. Omitting it skips that branch: the line stays a priced snapshot for
     // the earnings ledger, and there's correctly nothing to fulfil — a guest has
     // no account to deliver anything to. See tests/unit/security/guest-sale-route.
+    //
+    // STOCK IS THE KNOWN COST OF THAT, and it is deliberate rather than an
+    // oversight. A client sale de-stocks the moment it's rung up, because the
+    // invoice exists whether or not it's ever paid. A guest sale has no invoice
+    // at all — nothing exists until Stripe says the card cleared — so taking a
+    // unit here would decrement the shelf for every QR a stranger walked away
+    // from, with no record to reverse it against. A guest walking off with a
+    // harness is a count the trainer corrects on the product (Stock →
+    // Correction). Moving it properly means de-stocking in the Connect webhook,
+    // which today skips every clientless payment outright.
     lines: lines.map((l) => ({
       kind: 'PRODUCT' as const,
       description: l.description,

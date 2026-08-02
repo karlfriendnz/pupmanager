@@ -11,8 +11,18 @@ export interface Purchase {
   clientId: string | null
   clientName: string
   dogName: string | null
-  /** PAID = money taken, OWING = invoiced/pay-later, REQUESTED = asked for it. */
-  state: 'PAID' | 'OWING' | 'REQUESTED'
+  /**
+   * PAID = money taken, OWING = invoiced/pay-later, REQUESTED = asked for it,
+   * COUNTER = handed over in person at the till.
+   *
+   * COUNTER is deliberately not folded into OWING. An in-person sale raises an
+   * invoice that the client may settle by QR thirty seconds later or by cash
+   * next week, and the hand-over record genuinely doesn't know which — calling
+   * it "Pay later" would state something we haven't checked. What it DOES know
+   * is that the item left the shelf, which is the fact the trainer is on this
+   * screen for.
+   */
+  state: 'PAID' | 'OWING' | 'REQUESTED' | 'COUNTER'
   amountCents: number | null
   /**
    * Which option they took — "Large". Null for a product with no options.
@@ -27,6 +37,7 @@ const STATE_LABEL: Record<Purchase['state'], string> = {
   PAID: 'Paid',
   OWING: 'Pay later',
   REQUESTED: 'Requested',
+  COUNTER: 'Sold in person',
 }
 
 function formatWhen(iso: string) {
@@ -49,7 +60,8 @@ export function ProductPurchases({ purchases }: { purchases: Purchase[] }) {
         <ShoppingBag className="mx-auto h-7 w-7 text-slate-300" strokeWidth={1.75} />
         <p className="mt-3 text-sm font-medium text-slate-600">Nobody has bought this yet</p>
         <p className="mt-1 text-xs text-slate-400">
-          Purchases, pay-later orders and standing requests all show up here.
+          Card purchases, pay-later orders, standing requests and anything sold in
+          person all show up here.
         </p>
       </div>
     )

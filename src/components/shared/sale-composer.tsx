@@ -10,11 +10,13 @@ import { Button } from '@/components/ui/button'
 import { ModalPortal } from '@/components/shared/modal-portal'
 import { FlatBlock, FlatRow, FlatTileGrid, SectionLabel } from '@/components/shared/flat-list'
 import { currencySymbol, formatMoney } from '@/lib/money'
-import { effectivePriceCents, isOnSale } from '@/lib/product-price'
+import { effectivePriceCents, isOnSale, resolveVariantPricing } from '@/lib/product-price'
+import { stockLabel } from '@/lib/stock'
 import {
-  addProductToLines, cartTotalCents, filterProducts, lineTotalCents, parseAmountToCents,
-  quantityInCart, removeLine, sellableProducts, setLineQuantity, shouldOfferProductSearch,
-  type SaleLine, type SaleProduct,
+  addProductToLines, canAddToCart, cartTotalCents, filterProducts, hasOptions, lineTotalCents,
+  parseAmountToCents, quantityInCart, removeLine, saleUnitPriceCents, sellableProducts,
+  sellableVariants, setLineQuantity, shelfInStock, shelfStockCount, shouldOfferProductSearch,
+  type SaleLine, type SaleProduct, type SaleVariant,
 } from '@/lib/sale-cart'
 
 // The "instant sale" (POS) composer — ring up a sale standing in front of a
@@ -23,6 +25,11 @@ import {
 //   1. Who's it for   — search clients, add one on the spot, or sell to a guest
 //   2. What are they buying — a picture grid of the catalogue, plus a search
 //   3. How are they paying  — QR now, or record it and settle later
+//
+// A catalogue tap is a real SALE, not a line of words: the line carries the
+// product it came from (and the option, when the product has sizes), so the
+// server takes a unit off the shelf and records the hand-over on the product's
+// own screen. See src/lib/in-person-sale.ts.
 //
 // Every step is steppable-back and nothing is lost doing it: the cart, both
 // search boxes, the client list and the half-typed custom line all live HERE,
@@ -109,6 +116,10 @@ export function SaleComposer({
   const [productsLoading, setProductsLoading] = useState(true)
   const [productQuery, setProductQuery] = useState('')
   const [customDraft, setCustomDraft] = useState<CustomDraft>(EMPTY_DRAFT)
+  // Which product's options are open, by id — a full-screen list rather than a
+  // dropdown, per the house rule, and parent-owned like everything else here so
+  // stepping back and forth doesn't lose it.
+  const [optionsProductId, setOptionsProductId] = useState<string | null>(null)
 
   // One key per composer session. Regenerated only on a fresh open, so a
   // double-tap (or a retry on a flaky connection) resolves to the same sale
@@ -155,6 +166,7 @@ export function SaleComposer({
     setAddClientOpen(false)
     setProductQuery('')
     setCustomDraft(EMPTY_DRAFT)
+    setOptionsProductId(null)
     // One key per composer session, so a double-tap (or a retry on a flaky
     // connection) resolves to the same sale instead of ringing it up twice.
     idempotencyKey.current = `sale_${crypto.randomUUID().replace(/-/g, '')}`
@@ -216,11 +228,15 @@ export function SaleComposer({
     [prefill],
   )
   const stepIndex = stepOrder.indexOf(step)
-  const canGoBack = step === 'payment' || (step === 'items' && !prefill)
+  // The options list sits INSIDE the items step, so back always has somewhere
+  // to go while it's open — even on a prefilled composer with no client step.
+  const pickingOptions = step === 'items' && !!optionsProductId
+  const canGoBack = step === 'payment' || pickingOptions || (step === 'items' && !prefill)
 
   function goBack() {
     if (saving) return
     if (step === 'payment') setStep('items')
+    else if (pickingOptions) setOptionsProductId(null)
     else if (step === 'items') setStep('client')
   }
 
@@ -327,14 +343,24 @@ export function SaleComposer({
           quantity: l.quantity,
           unitAmountCents: l.unitAmountCents,
           xeroAccountCode: l.xeroAccountCode ?? null,
+          // What makes it a sale of a THING: the server takes these off the
+          // shelf and records the hand-over against the product.
+          productId: l.productId ?? null,
+          variantId: l.variantId ?? null,
         })),
       }),
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
+      // A 409 is the shelf talking — "Only 2 of Harness · Large left". Show
+      // exactly what the server said; a generic "didn't go through" would hide
+      // the one fact the trainer can act on with the client still in front of
+      // them.
       setError(body?.error === 'ADDON_REQUIRED'
         ? 'Instant sale is switched off. Turn it on in Settings → Add-ons.'
-        : 'That didn’t go through. Nothing was charged — try again.')
+        : res.status === 409 && typeof body?.error === 'string' && body.error
+          ? body.error
+          : 'That didn’t go through. Nothing was charged — try again.')
       return
     }
     const made: Created = await res.json()
@@ -375,8 +401,9 @@ export function SaleComposer({
   const title = step === 'done'
     ? showQr ? 'Take payment' : prefill?.settle ? 'Invoice updated' : 'Sale recorded'
     : step === 'client' ? 'Who’s it for?'
-      : step === 'items' ? 'What are they buying?'
-        : 'How are they paying?'
+      : pickingOptions ? 'Which one?'
+        : step === 'items' ? 'What are they buying?'
+          : 'How are they paying?'
 
   const who = client
     ? isGuest(client)
@@ -464,7 +491,9 @@ export function SaleComposer({
               onDraft={setCustomDraft}
               currency={currency}
               total={total}
-              onAddProduct={(p) => setLines((prev) => addProductToLines(prev, p))}
+              optionsProductId={optionsProductId}
+              onOpenOptions={setOptionsProductId}
+              onAddProduct={(p, v) => setLines((prev) => addProductToLines(prev, p, v))}
               onQuantity={(key, next) => setLines((prev) => setLineQuantity(prev, key, next))}
               onRemove={(key) => setLines((prev) => removeLine(prev, key))}
               onAddCustom={(line) => setLines((prev) => [...prev, line])}
@@ -782,7 +811,7 @@ function Avatar({ url, name }: { url: string | null; name: string | null }) {
 // free-text line, so nobody is blocked by a product they never set up.
 function ItemsStep({
   lines, products, loading, query, onQuery, draft, onDraft, currency, total,
-  onAddProduct, onQuantity, onRemove, onAddCustom, onNext,
+  optionsProductId, onOpenOptions, onAddProduct, onQuantity, onRemove, onAddCustom, onNext,
 }: {
   lines: Line[]
   products: ProductRow[]
@@ -793,13 +822,19 @@ function ItemsStep({
   onDraft: (d: CustomDraft) => void
   currency: string
   total: number
-  onAddProduct: (p: ProductRow) => void
+  optionsProductId: string | null
+  onOpenOptions: (productId: string | null) => void
+  onAddProduct: (p: ProductRow, variant?: SaleVariant | null) => void
   onQuantity: (key: string, next: number) => void
   onRemove: (key: string) => void
   onAddCustom: (l: Line) => void
   onNext: () => void
 }) {
   const sellable = useMemo(() => sellableProducts(products), [products])
+  const optionsProduct = useMemo(
+    () => sellable.find((p) => p.id === optionsProductId) ?? null,
+    [sellable, optionsProductId],
+  )
   // Search earns its space only once the grid stops being scannable. Below the
   // threshold the tiles ARE the search, and an empty box would be chrome.
   const searchable = shouldOfferProductSearch(sellable.length)
@@ -807,6 +842,20 @@ function ItemsStep({
     () => (searchable ? filterProducts(sellable, query) : sellable),
     [searchable, sellable, query],
   )
+
+  // Picking a size takes the whole step, not a menu hanging off the tile: it's
+  // a real choice with a price and a count against each option, and the house
+  // rule is a full screen for anything past about three of them.
+  if (optionsProduct) {
+    return (
+      <OptionsStep
+        product={optionsProduct}
+        lines={lines}
+        currency={currency}
+        onPick={(v) => { onAddProduct(optionsProduct, v); onOpenOptions(null) }}
+      />
+    )
+  }
 
   return (
     <>
@@ -871,9 +920,12 @@ function ItemsStep({
               <ProductTile
                 key={p.id}
                 product={p}
+                lines={lines}
                 currency={currency}
                 inCart={quantityInCart(lines, p.id)}
-                onAdd={() => onAddProduct(p)}
+                // A product with sizes can't be rung up as itself — the counts
+                // live on the options, so tapping opens them.
+                onAdd={() => (hasOptions(p) ? onOpenOptions(p.id) : onAddProduct(p))}
               />
             ))}
           </FlatTileGrid>
@@ -976,21 +1028,62 @@ function CartRow({
   )
 }
 
+/**
+ * What a product costs on the grid, and whether it can be tapped.
+ *
+ * With sizes the tile shows a RANGE and never a single number — three variants
+ * at three prices have no one price, and printing the product's own (often
+ * NULL) would be a made-up figure. The range comes from product-price.ts, the
+ * same module the shop and the invoice use.
+ */
+function tileState(product: ProductRow, lines: Line[]) {
+  const options = sellableVariants(product)
+  if (options.length === 0) {
+    return {
+      priced: effectivePriceCents(product),
+      struck: isOnSale(product) ? product.priceCents ?? null : null,
+      // Out of stock, or every unit already in this sale.
+      addable: shelfInStock(product) && canAddToCart(lines, product),
+      stock: stockLabel(shelfStockCount(product)),
+      optionCount: 0,
+      varies: false,
+    }
+  }
+  const prices = options
+    .map((v) => saleUnitPriceCents(product, v))
+    .filter((n): n is number => n != null)
+  const from = prices.length > 0 ? Math.min(...prices) : null
+  const varies = prices.length > 0 && Math.max(...prices) !== from
+  return {
+    priced: from,
+    struck: null,
+    // A varianted product is tappable while ANY option can still be added —
+    // the option screen is where a sold-out size gets refused.
+    addable: options.some((v) => shelfInStock(product, v) && canAddToCart(lines, product, v)),
+    stock: null,
+    optionCount: options.length,
+    varies,
+  }
+}
+
 /** A catalogue product: picture on top, name and price under it. */
 function ProductTile({
-  product, currency, inCart, onAdd,
+  product, lines, currency, inCart, onAdd,
 }: {
   product: ProductRow
+  lines: Line[]
   currency: string
   inCart: number
   onAdd: () => void
 }) {
+  const state = tileState(product, lines)
   return (
     <button
       type="button"
       onClick={onAdd}
-      aria-label={`Add ${product.name}`}
-      className="flex min-w-0 flex-col text-left active:bg-slate-50"
+      disabled={!state.addable}
+      aria-label={hasOptions(product) ? `Choose an option for ${product.name}` : `Add ${product.name}`}
+      className="flex min-w-0 flex-col text-left active:bg-slate-50 disabled:opacity-45"
     >
       {/* 4:3 rather than square: on a phone it keeps two-and-a-bit rows of the
           catalogue in view, and in the 512px desktop card it stops one tin of
@@ -1004,14 +1097,91 @@ function ProductTile({
       <span className="block w-full min-w-0 px-3 py-2.5">
         <span className="block truncate text-sm font-medium text-slate-900">{product.name}</span>
         <span className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 text-xs tabular-nums">
-          <span className="text-slate-500">{formatMoney(effectivePriceCents(product) ?? 0, currency)}</span>
-          {isOnSale(product) && <s className="text-slate-300">{formatMoney(product.priceCents ?? 0, currency)}</s>}
+          <span className="text-slate-500">
+            {state.varies ? 'from ' : ''}{formatMoney(state.priced ?? 0, currency)}
+          </span>
+          {state.struck != null && <s className="text-slate-300">{formatMoney(state.struck, currency)}</s>}
         </span>
-        {inCart > 0 && (
+        {/* One line under the price, in priority order: what's in this sale
+            beats how many are left beats how many sizes there are. Three
+            stacked labels on a 4:3 tile is a spreadsheet, not a till. */}
+        {inCart > 0 ? (
           <span className="mt-1 block text-[11px] font-medium text-slate-500">{inCart} in this sale</span>
-        )}
+        ) : state.stock ? (
+          <span className="mt-1 block text-[11px] font-medium text-slate-500">{state.stock}</span>
+        ) : state.optionCount > 0 ? (
+          <span className="mt-1 block text-[11px] font-medium text-slate-500">
+            {state.optionCount} options
+          </span>
+        ) : null}
       </span>
     </button>
+  )
+}
+
+/**
+ * Which one — the Small or the Large.
+ *
+ * It exists because a varianted product's stock lives on the OPTIONS and
+ * `Product.stockCount` is ignored (stock.ts). Selling "a harness" would take a
+ * unit off a shelf nobody counts and leave every size untouched, so the
+ * composer makes the choice before it will ring anything up.
+ *
+ * Each row carries its own price and its own count, because both genuinely
+ * differ per option — and the price shown is the one that will be charged,
+ * resolved by product-price.ts rather than worked out again here.
+ */
+function OptionsStep({
+  product, lines, currency, onPick,
+}: {
+  product: ProductRow
+  lines: Line[]
+  currency: string
+  onPick: (v: SaleVariant) => void
+}) {
+  const options = sellableVariants(product)
+
+  return (
+    <>
+      <div className="no-scrollbar flex-1 overflow-y-auto px-4 pb-6">
+        <SectionLabel>{product.name}</SectionLabel>
+        <FlatBlock>
+          {options.map((v) => {
+            const price = saleUnitPriceCents(product, v)
+            const resolved = resolveVariantPricing(product, v)
+            const onSale = isOnSale(resolved)
+            const inCart = quantityInCart(lines, product.id, v.id)
+            const label = stockLabel(shelfStockCount(product, v))
+            const addable = shelfInStock(product, v) && canAddToCart(lines, product, v)
+            return (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => onPick(v)}
+                disabled={!addable}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-slate-50 disabled:opacity-45"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-slate-900">{v.name}</span>
+                  <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                    {[
+                      inCart > 0 ? `${inCart} in this sale` : null,
+                      // "Out of stock" earns its place here even though the row
+                      // is greyed: greyed alone doesn't say why.
+                      label,
+                    ].filter(Boolean).join(' · ') || 'Tap to add'}
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-baseline gap-1.5 text-sm tabular-nums">
+                  <span className="font-medium text-slate-900">{formatMoney(price ?? 0, currency)}</span>
+                  {onSale && <s className="text-xs text-slate-300">{formatMoney(resolved.priceCents ?? 0, currency)}</s>}
+                </span>
+              </button>
+            )
+          })}
+        </FlatBlock>
+      </div>
+    </>
   )
 }
 
