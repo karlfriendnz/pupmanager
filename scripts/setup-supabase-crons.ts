@@ -74,6 +74,12 @@ const JOBS: Array<{ name: string; schedule: string; path: string }> = [
   // customer, both charging, invisible to us because the billing webhook
   // overwrites our stored id with whichever subscription it heard about last.
   { name: 'pm-billing-reconcile', schedule: '10 4 * * *', path: 'billing-reconcile' },
+  // Nightly at 04:40: keep open-ended slot-scheduled runs (doggy daycare, casual
+  // drop-in classes) stocked with sessions a year ahead. Without it a daycare's
+  // sessions stopped dead ~12 weeks after setup — the slots are open-ended but
+  // were only ever expanded once, at creation. Listed here for the rotation
+  // reason above: a job outside this list 401s forever after the next rotation.
+  { name: 'pm-extend-slot-runs', schedule: '40 4 * * *', path: 'extend-slot-runs' },
 ]
 
 // Every scheduled job that sends a bearer token is in this list. That is the

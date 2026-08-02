@@ -12,6 +12,7 @@ import {
 } from '@/lib/package-slots'
 import { isValidSpecialPrice, SPECIAL_PRICE_TOO_HIGH } from '@/lib/special-price'
 import { resolvePackagePricing } from '@/lib/session-pricing'
+import { offeringListHref, offeringKindLabel } from '@/lib/run-kind'
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -308,10 +309,112 @@ export async function DELETE(
   if (!trainerId) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
 
   const { packageId } = await params
-  if (!(await ownPackage(packageId, trainerId))) {
+  const pkg = await ownPackage(packageId, trainerId)
+  if (!pkg) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  await prisma.package.delete({ where: { id: packageId } })
-  return NextResponse.json({ ok: true })
+  // Where the trainer lands afterwards. NOT always /packages — that's the 1:1
+  // Sessions list, and a daycare-only trainer doesn't have it in their nav.
+  const redirectTo = offeringListHref(pkg)
+  const kind = offeringKindLabel(pkg)
+
+  // ── What is actually standing in the way ────────────────────────────────────
+  //
+  // ClassRun.package is `onDelete: Restrict` in the schema. This route used to
+  // call prisma.package.delete blind, with no pre-check and no catch: Postgres
+  // refused, the route 500'd, and the form printed its generic "Could not delete
+  // this offering." A DAYCARE hit it every single time, because POST
+  // /api/packages schedules the run inside the same transaction that creates the
+  // programme — a daycare offering always has one. Classes and events only
+  // escaped it because trainers habitually delete the run first.
+  const runs = await prisma.classRun.findMany({
+    where: { packageId, trainerId },
+    select: { id: true, sessions: { select: { googleCalendarEventId: true } } },
+  })
+  const runIds = runs.map((r) => r.id)
+
+  // Deleting a run cascades its enrolments AND its sessions away, and the
+  // receivable raised for an enrolment is only a SOFT link (Invoice.sourceType
+  // 'CLASS_ENROLLMENT' + sourceId, deliberately no FK) — so cascading would
+  // leave invoices pointing at rows that no longer exist, with no way back.
+  // Money and bookings are precisely what a trainer cannot re-enter from memory,
+  // so anything with people or money on it REFUSES with a reason they can act
+  // on. Only a run nobody has booked and nobody has been billed for is cleared
+  // out of the way, because that one is just scaffolding the create step built.
+  if (runIds.length > 0) {
+    const [booked, attended] = await Promise.all([
+      prisma.classEnrollment.count({ where: { classRunId: { in: runIds } } }),
+      prisma.sessionAttendance.count({ where: { session: { classRunId: { in: runIds } } } }),
+    ])
+    if (booked > 0) {
+      return NextResponse.json(
+        {
+          error: `${booked} booking${booked === 1 ? '' : 's'} on this ${kind}. Remove ${booked === 1 ? 'it' : 'them'} first, then delete it.`,
+        },
+        { status: 409 },
+      )
+    }
+    if (attended > 0) {
+      return NextResponse.json(
+        { error: `This ${kind} has attendance recorded. Delete the sessions first, then delete it.` },
+        { status: 409 },
+      )
+    }
+  }
+
+  // The 1:1 side has no Restrict to stop it, which is worse rather than better:
+  // ClientPackage cascades off the package, so deleting a 1:1 offering silently
+  // took its assignments with it and orphaned every invoice raised against them
+  // (same soft sourceType/sourceId link). Same rule as above — money refuses.
+  const assignments = await prisma.clientPackage.findMany({
+    where: { packageId },
+    select: { id: true },
+  })
+  if (assignments.length > 0) {
+    const assignmentIds = assignments.map((a) => a.id)
+    const [invoiced, paid] = await Promise.all([
+      prisma.invoice.count({
+        where: { trainerId, sourceType: 'PACKAGE', sourceId: { in: assignmentIds } },
+      }),
+      prisma.paymentItem.count({ where: { clientPackageId: { in: assignmentIds } } }),
+    ])
+    if (invoiced > 0 || paid > 0) {
+      return NextResponse.json(
+        { error: `This ${kind} has been billed for. Deleting it would orphan those invoices — cancel them first.` },
+        { status: 409 },
+      )
+    }
+  }
+
+  // Capture the mirrored Google event ids BEFORE the cascade wipes them, so the
+  // trainer's calendar can be cleaned up after the local delete (same shape as
+  // the class DELETE route).
+  const deletedEventIds = runs
+    .flatMap((r) => r.sessions.map((s) => s.googleCalendarEventId))
+    .filter((id): id is string => !!id)
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      if (runIds.length > 0) {
+        // Sessions cascade off the run at the FK level, but delete them
+        // explicitly and tenant-scoped so the intent is enforced here too.
+        await tx.trainingSession.deleteMany({ where: { classRunId: { in: runIds }, trainerId } })
+        await tx.classRun.deleteMany({ where: { id: { in: runIds }, trainerId } })
+      }
+      await tx.package.delete({ where: { id: packageId } })
+    })
+  } catch (err) {
+    // A delete the DB refuses is still an answer the trainer should see, not a
+    // blank 500 — this is the catch whose absence caused the reported bug.
+    console.error('[packages] delete failed', err)
+    return NextResponse.json(
+      { error: 'Could not delete this offering. Please try again.' },
+      { status: 500 },
+    )
+  }
+
+  if (deletedEventIds.length) await removeClassEvents(trainerId, deletedEventIds)
+
+  return NextResponse.json({ ok: true, redirectTo })
 }

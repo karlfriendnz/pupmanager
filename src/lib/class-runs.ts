@@ -72,6 +72,39 @@ export type ScheduleSlot = {
   assignedMembershipIds: string[]
 }
 
+/**
+ * How far ahead a slot-scheduled run keeps sessions on the books.
+ *
+ * `OPEN_ENDED_OCCURRENCES` (12) is a COUNT, and a count is the wrong unit for a
+ * thing that is meant to run forever. A daycare's slots are written with a bare
+ * `FREQ=WEEKLY` (see PuppySchoolSetup), so each one stopped dead after 12
+ * occurrences — twelve weeks — and `planSlotSessions` only ever ran once, at
+ * creation. Nothing topped it up: `extendOngoingPackages` only walks 1:1
+ * `ClientPackage` assignments. So a daycare's board and the client booking
+ * wizard simply emptied about three months after it was set up, with nothing on
+ * screen to explain it.
+ *
+ * The horizon is therefore stated as a DATE — "keep 12 months of sessions
+ * ahead" — not a number of occurrences: a parent has to be able to book a year
+ * out whether the timetable is one evening a week or fifteen day-parts a week.
+ * `OPEN_ENDED_OCCURRENCES` keeps its old meaning everywhere else it's used.
+ */
+export const SLOT_HORIZON_MONTHS = 12
+
+/**
+ * Hard per-slot ceiling on expansion, so a rule nobody expected (FREQ=DAILY, or
+ * a multi-day weekly one) can't turn a date horizon into an unbounded write.
+ * 400 comfortably covers a year of daily occurrences.
+ */
+const SLOT_HORIZON_MAX_PER_SLOT = 400
+
+/** The far edge of the rolling horizon, `SLOT_HORIZON_MONTHS` past `from`. */
+export function slotHorizonEnd(from: Date = new Date()): Date {
+  const out = new Date(from)
+  out.setMonth(out.getMonth() + SLOT_HORIZON_MONTHS)
+  return out
+}
+
 /** One session a slot will produce, ready to be written as a TrainingSession. */
 export type PlannedSession = {
   slotId: string
@@ -106,9 +139,19 @@ export function slotDurationMins(startTime: string, endTime: string): number {
  */
 export function planSlotSessions(
   slots: ScheduleSlot[],
-  opts: { runStart: Date; tz: string; maxPerSlot?: number },
+  opts: {
+    runStart: Date
+    tz: string
+    maxPerSlot?: number
+    /**
+     * Stop each slot's series at this DATE rather than after a fixed number of
+     * occurrences — the rolling horizon (see SLOT_HORIZON_MONTHS). A slot whose
+     * own rule ends sooner (COUNT / UNTIL) still ends where it says.
+     */
+    through?: Date
+  },
 ): PlannedSession[] {
-  const max = opts.maxPerSlot ?? OPEN_ENDED_OCCURRENCES
+  const max = opts.maxPerSlot ?? (opts.through ? SLOT_HORIZON_MAX_PER_SLOT : OPEN_ENDED_OCCURRENCES)
   const out: PlannedSession[] = []
 
   for (const slot of [...slots].sort((a, b) => a.order - b.order)) {
@@ -116,6 +159,9 @@ export function planSlotSessions(
     const duration = slotDurationMins(slot.startTime, slot.endTime)
     const [h, m] = (slot.startTime || '00:00').split(':').map(Number)
     for (const d of expandRule(slot.recurrenceRule ?? '', anchor, max)) {
+      // expandRule emits ascending dates, so the first one past the horizon ends
+      // this slot's series.
+      if (opts.through && d.getTime() > opts.through.getTime()) break
       out.push({
         slotId: slot.id,
         scheduledAt: zonedToUtc(
@@ -541,8 +587,14 @@ export async function createClassRunIn(
   // time, venue and gap); everything else uses the flat N-sessions-every-W-weeks
   // cadence. Both end up as one chronological series on the run.
   const tz = pkg.trainer.user?.timezone || 'Pacific/Auckland'
+  // Lay the full rolling horizon down at creation, not 12 occurrences: a daycare
+  // set up today has to be bookable a year out from the moment it exists, and a
+  // horizon the cron fills in later would still LOOK like it stops until the
+  // cron next ran. Measured from the run's start when that's in the future, so
+  // a programme scheduled for next March still gets its whole first year.
+  const horizonFrom = args.startDate.getTime() > Date.now() ? args.startDate : new Date()
   const planned = pkg.sessionSlots.length
-    ? planSlotSessions(pkg.sessionSlots, { runStart: args.startDate, tz })
+    ? planSlotSessions(pkg.sessionSlots, { runStart: args.startDate, tz, through: slotHorizonEnd(horizonFrom) })
     : null
   const rows = planned
     ? planned.map((s) => {
@@ -585,10 +637,14 @@ export async function createClassRunIn(
       trainerId: args.trainerId,
       classRunId: run.id,
       sessionIndex: i + 1,
+      // "Session 3/6" is the right label for a six-week course. It is nonsense
+      // on a slot-scheduled run, which has no end to count towards and now holds
+      // a year of dates — "session 187/780" is noise, and the denominator would
+      // be a lie the moment the horizon is topped up.
       title:
-        rows.length > 1
-          ? `${args.name} — session ${i + 1}/${rows.length}`
-          : args.name,
+        planned || rows.length <= 1
+          ? args.name
+          : `${args.name} — session ${i + 1}/${rows.length}`,
       sessionType: pkg.sessionType,
       ...r,
     })),
