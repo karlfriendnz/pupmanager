@@ -309,11 +309,54 @@ describe('POST /api/clients — the invite email does not block the response', (
     // The achievement pass still runs — it isn't conditional on the invite.
     expect(h.safeEvaluate).toHaveBeenCalledWith('profile-1')
   })
+})
+
+// Quick add used to be barred from inviting outright — the gate read
+// `!isQuick && …`, because quick add had no UI for it, not because a walk-in
+// shouldn't be invited. Karl asked for the option, so the bar came off and the
+// rule is now the same for both: they asked, and there is an address.
+describe('POST /api/clients — quick add can invite, but only when asked', () => {
+  const quick = { mode: 'quick', name: 'Jess', email: 'jess@x.test' }
+
+  it('sends when the trainer ticked the box', async () => {
+    grant()
+    h.ensureTrainerSlug.mockResolvedValue('a-slug')
+    h.sendEmail.mockResolvedValue({ error: null })
+
+    const res = await POST(req({ ...quick, sendInvite: true }))
+    expect(res.status).toBe(201)
+    for (const fn of h.deferred) await fn()
+
+    expect(h.sendEmail).toHaveBeenCalledTimes(1)
+    expect(h.sendEmail.mock.calls[0][0]).toMatchObject({ to: 'jess@x.test' })
+  })
+
+  it('sends nothing by default — quick add is for capturing someone in ten seconds', async () => {
+    grant()
+    const res = await POST(req(quick))
+    expect(res.status).toBe(201)
+    for (const fn of h.deferred) await fn()
+    expect(h.sendEmail).not.toHaveBeenCalled()
+  })
+
+  it('cannot invite someone with no email, however hard it is asked', async () => {
+    // The whole point of quick add is jotting down a walk-in whose address you
+    // do not have. Asking to invite them is not an error — there is simply
+    // nowhere to send it, and no placeholder address may ever be mailed.
+    grant()
+    const res = await POST(req({ mode: 'quick', name: 'Jess', sendInvite: true }))
+    expect(res.status).toBe(201)
+    for (const fn of h.deferred) await fn()
+    expect(h.sendEmail).not.toHaveBeenCalled()
+  })
 
   it('a failed send is swallowed, not thrown at the (already sent) response', async () => {
     grant()
     h.ensureTrainerSlug.mockRejectedValue(new Error('Resend is down'))
-    const res = await POST(req(fullWithInvite))
+    const res = await POST(req({
+      mode: 'full', name: 'Jess', email: 'jess@x.test', sendInvite: true, emailBody: 'hi',
+      dogs: [{ name: 'Rex' }],
+    }))
     expect(res.status).toBe(201)
     await expect(Promise.all(h.deferred.map(fn => fn()))).resolves.toBeDefined()
   })

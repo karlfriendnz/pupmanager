@@ -208,7 +208,12 @@ export async function POST(req: Request) {
   // equal, so uniqueness still holds for everyone who has an address, and any
   // number of clients can have none.
   const email = realEmail
-  const sendInvite = !isQuick && data.sendInvite && !!realEmail
+  // Quick-add used to be barred from inviting outright (`!isQuick`), because it
+  // had no UI for it — not because a walk-in shouldn't be invited. It now offers
+  // the choice, so the gate is what it always should have been: they asked, and
+  // there is an address to send to. Still off by default there, because quick
+  // add exists to capture someone in ten seconds.
+  const sendInvite = data.sendInvite && !!realEmail
   const inviteToken = crypto.randomBytes(32).toString('hex')
 
   // Only the named dogs get created (quick-add usually has none).

@@ -60,6 +60,12 @@ export function QuickAddModal() {
   const [values, setValues] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Optional: email them a login link, and optionally an intake form to fill in
+  // before they arrive. OFF by default — quick add exists to capture a walk-in
+  // in ten seconds, and anything ticked by default is a decision made for you.
+  const [sendInvite, setSendInvite] = useState(false)
+  const [formId, setFormId] = useState('')
+  const [intakeForms, setIntakeForms] = useState<{ id: string; name: string }[]>([])
 
   // Open when ?new=1 arrives via client navigation (top bar / FAB / the button),
   // not only on first mount.
@@ -70,11 +76,29 @@ export function QuickAddModal() {
   useEffect(() => {
     if (open && !cfg) {
       fetch('/api/clients/field-config').then(r => r.json()).then(setCfg).catch(() => setError('Could not load form.'))
+      // Same filter the full client form uses: a live form that can serve as an
+      // intake. A draft would send someone a form nobody finished writing.
+      fetch('/api/forms')
+        .then(r => r.json())
+        .then((all: { id: string; name: string; usableAsIntake: boolean; isActive: boolean }[]) => {
+          setIntakeForms(
+            (Array.isArray(all) ? all : [])
+              .filter(f => f.usableAsIntake && f.isActive)
+              .map(f => ({ id: f.id, name: f.name })),
+          )
+        })
+        .catch(() => { /* the invite still works without a form attached */ })
     }
   }, [open, cfg])
 
+  // An invite needs somewhere to go. Quick add's whole point is that the email
+  // is optional, so the choice stays available but inert until there is one.
+  const hasEmail = !!values.email?.trim()
+  const willInvite = sendInvite && hasEmail
+
   function close() {
     setOpen(false); setValues({}); setError(null)
+    setSendInvite(false); setFormId('')
     // Drop ?new=1 so the form doesn't spring back open on a later remount / nav.
     if (typeof window !== 'undefined' && searchParams.get('new')) {
       const url = new URL(window.location.href)
@@ -108,6 +132,9 @@ export function QuickAddModal() {
           mode: 'quick',
           name: values.name, phone: values.phone, email: values.email?.trim() || undefined,
           address: values.address?.trim() ? { line: values.address } : null,
+          // Only when they asked AND there is somewhere to send it.
+          sendInvite: willInvite,
+          formId: willInvite && formId ? formId : null,
           dogs: hasDog ? [dog] : [],
           customValues: customShown.map(f => ({ fieldId: f.id, value: values[`cf_${f.id}`] ?? '', dogIndex: f.appliesTo === 'DOG' ? 0 : null })).filter(v => v.value.trim()),
         }),
@@ -171,6 +198,47 @@ export function QuickAddModal() {
                 {builtinShown.length === 0 && customShown.length === 0 && (
                   <p className="text-sm text-slate-500">No quick-add fields configured. Set them in Settings → Forms.</p>
                 )}
+                {/* Optional invite. Sits below the fields, above the footnote,
+                    so it reads as "and one more thing if you want it" rather
+                    than another field to fill in. */}
+                <div className="rounded-xl border border-slate-200 bg-white">
+                  <label className="flex items-start gap-3 px-3 py-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sendInvite}
+                      onChange={e => setSendInvite(e.target.checked)}
+                      disabled={!hasEmail}
+                      className="mt-0.5 h-5 w-5 rounded accent-[var(--accent)] disabled:opacity-40"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-slate-700">Email them a login link</span>
+                      <span className="block text-xs text-slate-400">
+                        {hasEmail
+                          ? 'They can set up their diary and fill in anything you ask for.'
+                          : 'Add an email above to turn this on.'}
+                      </span>
+                    </span>
+                  </label>
+
+                  {willInvite && intakeForms.length > 0 && (
+                    <div className="border-t border-slate-100 px-3 py-3">
+                      <label htmlFor="quick-intake-form" className="text-sm font-medium text-slate-700 block mb-1.5">
+                        Ask them to fill in
+                      </label>
+                      <select
+                        id="quick-intake-form"
+                        value={formId}
+                        onChange={e => setFormId(e.target.value)}
+                        className={inputCls}
+                      >
+                        <option value="">Nothing — just the login link</option>
+                        {intakeForms.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                      </select>
+                      <p className="mt-1.5 text-xs text-slate-400">They answer it before they reach their diary.</p>
+                    </div>
+                  )}
+                </div>
+
                 <p className="text-xs text-slate-400">Saved as a follow-up — complete the rest of their details later.</p>
               </>
             )}
