@@ -182,6 +182,10 @@ export const ADDONS: AddonDef[] = [
     name: 'To-do & brain dump',
     description: 'A quick scratchpad on your dashboard — jot to-dos and brain-dump notes so nothing slips between sessions.',
     free: true,
+    // On by default (Karl, 2026-08-04). Same reasoning as Instagram: it is free
+    // and it is a scratchpad. Its whole value is being already there when a
+    // thought turns up, which a switch defeats.
+    defaultOn: true,
     price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
   },
   {
@@ -288,6 +292,10 @@ export const ADDONS: AddonDef[] = [
     name: 'Instagram',
     description: 'A shareable link-in-bio page for Instagram — your logo, a Book button and custom links.',
     free: true,
+    // On by default (Karl, 2026-08-04). Free, and a link-in-bio page is worth
+    // nothing sitting behind a switch nobody knows to look for — the trainers
+    // who need it are the ones least likely to go hunting through Configure.
+    defaultOn: true,
     price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
   },
   {

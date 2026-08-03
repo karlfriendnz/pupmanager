@@ -38,12 +38,13 @@ describe('addon nudge registry', () => {
     expect([...PROMOTABLE_ADDON_IDS].sort()).toEqual([...needsNudge].sort())
   })
 
-  it('promotes the free-but-opt-in add-ons (todos, instagram)', () => {
-    expect(PROMOTABLE_ADDON_IDS).toContain('todos')
-    expect(PROMOTABLE_ADDON_IDS).toContain('instagram')
-    // Toggle-based, so the CTA lands on the Add-ons page rather than a tab.
-    expect(nudgeCtaHref('todos')).toBe('/add-ons')
-    expect(nudgeCtaHref('instagram')).toBe('/add-ons')
+  it('does NOT promote to-dos or Instagram — they are on by default now', () => {
+    // Both were free-but-opt-in, so they needed a nudge or nobody would ever
+    // find them. Karl switched them on for everyone (2026-08-04), and you
+    // cannot ask someone to turn on a thing they already have — a nudge for a
+    // live feature reads as the app not knowing its own state.
+    expect(PROMOTABLE_ADDON_IDS).not.toContain('todos')
+    expect(PROMOTABLE_ADDON_IDS).not.toContain('instagram')
   })
 
   it('has complete copy (title, body, cta) for every promotable id', () => {
