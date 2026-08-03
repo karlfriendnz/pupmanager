@@ -138,6 +138,11 @@ export function OnboardingFab({ nextStep, steps, totalSteps }: Props) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const tab = searchParams?.get('tab') ?? ''
+  // Settings and the form editors it owns bring their own left rail — see the
+  // className below. Same test the app shell uses to hide its own menu.
+  const inSettings =
+    pathname === '/settings' || pathname.startsWith('/settings/') ||
+    pathname === '/forms' || pathname.startsWith('/forms/')
   const [mounted, setMounted] = useState(false)
   const [celebrating, setCelebrating] = useState(false)
   // usePathname / useSearchParams handle the path + query, but the hash
@@ -218,7 +223,15 @@ export function OnboardingFab({ nextStep, steps, totalSteps }: Props) {
       href={href}
       aria-label={leftStep.title}
       style={{ backgroundImage: 'linear-gradient(135deg, var(--pm-brand-500), var(--pm-brand-700))' }}
-      className="group relative overflow-hidden sticky top-2.5 z-30 mx-2.5 mt-2.5 mb-2 flex items-center gap-3 px-4 sm:px-5 py-3 text-white rounded-2xl shadow-[0_10px_30px_-8px_rgba(42,157,169,0.55)] hover:shadow-[0_16px_40px_-8px_rgba(42,157,169,0.7)] transition-shadow animate-pm-fab-slide"
+      // Settings hides the app's own rail and renders its OWN — fixed, left-0,
+      // md:w-64, and at the same z-30 as this banner. The banner is full width
+      // and rendered before the page content, so the rail painted straight over
+      // its left end: the sentence started underneath the menu and you read it
+      // from the middle. Settings offsets its content with md:ml-64 for exactly
+      // this reason; the banner has to do the same, and only there.
+      className={`group relative overflow-hidden sticky top-2.5 z-30 mx-2.5 mt-2.5 mb-2 flex items-center gap-3 px-4 sm:px-5 py-3 text-white rounded-2xl shadow-[0_10px_30px_-8px_rgba(42,157,169,0.55)] hover:shadow-[0_16px_40px_-8px_rgba(42,157,169,0.7)] transition-shadow animate-pm-fab-slide${
+        inSettings ? ' md:ml-[calc(16rem+0.625rem)]' : ''
+      }`}
     >
       {/* Soft paw-print texture + sheen, matching the dashboard header. */}
       <div aria-hidden className="pointer-events-none absolute inset-0 opacity-[0.10] flex items-center justify-end gap-5 pr-2">
