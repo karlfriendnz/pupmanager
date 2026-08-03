@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { sendPush } from '@/lib/push'
 import { sendEmail } from '@/lib/email'
 import { renderTemplate, NOTIFICATION_TYPES } from '@/lib/notification-types'
-import { startOfDayInTz, endOfDayInTz, todayInTz } from '@/lib/timezone'
+import { startOfDayInTz, endOfDayInTz, todayInTz, dateOnlyUtc } from '@/lib/timezone'
 import { renderWeeklySummaryEmail, type SessionRow, type TaskRow } from '@/lib/weekly-summary-email'
 import { currencySymbol } from '@/lib/money'
 
@@ -94,6 +94,17 @@ export async function GET(req: Request) {
     const weekEnd   = endOfDayInTz(today, u.timezone)
     const nextStart = startOfDayInTz(fmtYmd(nextStartDate), u.timezone)
     const nextEnd   = endOfDayInTz(fmtYmd(nextEndDate), u.timezone)
+    // TrainingTask.date is `@db.Date` — a calendar day, not a moment. Prisma
+    // renders a JS Date into DATE using its UTC components, so the instants
+    // above land on the WRONG DAY for anyone ahead of UTC: an Auckland
+    // midnight is 11am the previous day in UTC, and the homework window
+    // shifted a day earlier for every NZ trainer.
+    //
+    // This is the same bug as 35bcea5 (homework landed a day early on the
+    // client's home screen), which is what dateOnlyUtc() was written for. The
+    // instants stay for scheduledAt below — that IS a moment in time.
+    const nextStartDay = dateOnlyUtc(fmtYmd(nextStartDate))
+    const nextEndDay   = dateOnlyUtc(fmtYmd(nextEndDate))
 
     const sessionInclude = {
       dog: { select: { name: true } },
@@ -129,7 +140,7 @@ export async function GET(req: Request) {
         include: sessionInclude,
       }),
       prisma.trainingTask.findMany({
-        where: { client: { trainerId, isSample: false }, date: { gte: nextStart, lte: nextEnd } },
+        where: { client: { trainerId, isSample: false }, date: { gte: nextStartDay, lte: nextEndDay } },
         orderBy: { date: 'asc' },
         include: {
           client: { select: { user: { select: { name: true } } } },
