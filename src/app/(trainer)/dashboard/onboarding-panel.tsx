@@ -171,11 +171,17 @@ export function OnboardingPanel({ state, branding, impersonating = false }: { st
             fetch('/api/onboarding/tour/start', { method: 'POST' }),
             fetch('/api/onboarding/welcome/dismiss', { method: 'POST' }),
           ])
-          // Straight from "who are you" into "what do you capture about your
-          // clients" — the starter-field step opens on arrival, so they never
-          // meet an empty field list. It's skippable, and only auto-opens when
-          // they have no fields yet.
-          router.push('/settings?tab=forms&setup=fields')
+          // Stay put. Finishing the wizard used to push straight on to
+          // /settings?tab=forms&setup=fields — "who are you" into "what do you
+          // capture about your clients" — so the dashboard appeared and then
+          // threw you somewhere else a moment later. Karl: "I should land on
+          // the dashboard, not the dashboard then jump to the forms screen —
+          // that's nasty."
+          //
+          // He is right, and it is not only jarring: being moved somewhere you
+          // did not ask to go is the moment you stop trusting where you are.
+          // The intake questions are being reworked into a form per line of
+          // work, which is a better answer to the same problem than a redirect.
           router.refresh()
         }}
       />
