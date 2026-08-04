@@ -296,7 +296,29 @@ the day it lands.
 
 ---
 
-### F6 — Outbound email interpolates `logoUrl` into an `<img src>` unescaped — LOW
+### F6 — Four of the seven app cookies are set without `secure` — LOW
+
+| Cookie | Set in | `httpOnly` | `sameSite` | `secure` |
+|---|---|---|---|---|
+| `pm-preview-client` | `preview-as/[clientId]/route.ts` | ✅ | lax | **missing** |
+| `pm-preview-client` | `(trainer)/products/[productId]/preview/route.ts` | ✅ | lax | **missing** |
+| `pm-active-trainer` | `switch-trainer/[clientId]/route.ts` | ✅ | lax | **missing** |
+| `pm-active-trainer` | `api/form/[formId]/continue/route.ts` | ✅ | lax | **missing** |
+| `pm-profile-side` | `api/profile/switch`, `api/profile/choose` | ✅ | lax | ✅ |
+| (session cookie) | `lib/session-cookie.ts` | ✅ | lax | ✅ |
+
+Severity is low because none of these is a credential — every one is
+re-verified server-side against the signed-in user on each request
+(`getActiveClient()` re-filters by `userId`; the preview cookie is re-filtered by
+`trainerId`), and the app is HTTPS-only in production. But `secure` costs
+nothing and two of the four grant a *view* (`pm-preview-client` is the trainer
+looking at a client's app), so they should not travel over plain HTTP on a
+misconfigured host or a stray `http://` link. `PROFILE_COOKIE` already does it
+right — copy that line.
+
+---
+
+### F7 — Outbound email interpolates `logoUrl` into an `<img src>` unescaped — LOW
 
 `src/app/api/enquiries/[id]/reply/route.ts` (and the same shape in several other
 email builders):
