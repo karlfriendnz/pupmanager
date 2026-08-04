@@ -204,3 +204,69 @@ reason. An allow list you can shrug into is where bugs go to be forgotten.
 - **Not yet audited:** the schedule and sessions, finances beyond enrolment,
   staff permission boundaries, forms, marketing, timesheets, library,
   achievements, comms flows. Roughly three quarters of the trainer's surface.
+
+---
+
+## T-17 · You cannot change a session's date from the session screen — *confusing*
+
+Karl, 2026-08-05: *"did you realise you couldn't edit a session date or cancel a
+session?"*
+
+**Cancelling works.** `/sessions/[id]` offers Complete, Invoice, Payment and
+Delete session.
+
+**Changing the date is not there.** No date field, no Edit, no Reschedule. The
+date/time editor lives in the **Schedule** screen's session modal — where it also
+offers "this session" vs "this and every later one" — and a session can be
+dragged to a new slot there. So the job is doable; it is just not on the screen
+called "session", which is where you look for it.
+
+Not a bug in the sense of something broken, and worth deciding rather than
+patching: either put a date control on the session screen, or give it a
+"Reschedule" button that opens the schedule modal for that session.
+
+---
+
+## The everyday jobs — the gap the audits left
+
+Every audit above tested the plumbing: leaks, field round-trips, money through
+undo paths, invariants over the whole codebase. **Not one of them made a thing,
+changed it, and deleted it through the screen.** T-17 was found by Karl, not by
+any of it — which is the honest measure of that gap.
+
+`tests/e2e/audit-everyday-trainer.spec.ts` is the start of the fix, and the rule
+in it is that there is no `page.request`: click what a trainer clicks. A screen
+whose Save is disabled, whose modal never opens, or whose list never refreshes
+passes every API test ever written and is broken for everybody.
+
+It carries ONE job so far. Two more were written and pulled because their
+selectors were guesses that did not match the real screens — a red test in a
+suite that gates a push is worse than an honest gap. The rest go in one at a
+time, each verified against the screen.
+
+**Still to write, in the order they matter:**
+
+| # | Trainer | Dog owner |
+|---|---|---|
+| 1 | Add a client and their dog | See when my next session is |
+| 2 | Book a session | Do my homework and log it |
+| 3 | Move a session to another day | Book or cancel a session |
+| 4 | Write up a session and send it | Pay an invoice |
+| 5 | Set homework | Message my trainer |
+| 6 | Send an invoice / take a payment | Watch a video I was given |
+| 7 | Enrol someone in a class | |
+| 8 | Add a product and sell it | |
+| 9 | Message a client | |
+| 10 | Reply to an enquiry | |
+
+Plus the per-persona days, each invisible to the others: a **walker's** route and
+who is on the walk, a **daycare's** check-in and check-out, a **groomer's**
+appointment with before-and-after photos.
+
+They run in the 1am nightly sweep the moment they exist —
+`scripts/nightly-tests.sh` runs the whole e2e suite, so a spec in `tests/e2e/`
+needs no wiring.
+
+**Two smaller things found while writing this:** "Add product" is a link styled
+as a button, and the add-client fields carry placeholders instead of `<label>`s —
+which AGENTS.md asks for so the review widget can name a field.
