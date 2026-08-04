@@ -260,8 +260,31 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ runI
     console.error('[class-runs] delete: notifying clients failed', err)
   }
 
+  // Everyone on this class is about to be told it is cancelled, so nobody may
+  // be left owing for it. The enrolment rows cascade off the run at the FK
+  // level, taking with them the only link back to the invoices they raised —
+  // so the receivables have to be settled BEFORE the delete, while the ids
+  // still exist (audit T-6, the same shape as T-3 and C-3 at class scale).
+  //
+  // UNPAID only. Somebody who has already paid for a class the trainer then
+  // cancelled is owed a refund, and that is a decision with a human in it.
+  const enrolmentIds = (
+    await prisma.classEnrollment.findMany({ where: { classRunId: runId }, select: { id: true } })
+  ).map(e => e.id)
+
   try {
     await prisma.$transaction([
+      ...(enrolmentIds.length
+        ? [prisma.invoice.updateMany({
+            where: {
+              trainerId,
+              sourceType: 'CLASS_ENROLLMENT',
+              sourceId: { in: enrolmentIds },
+              status: 'UNPAID',
+            },
+            data: { status: 'CANCELLED' },
+          })]
+        : []),
       // Sessions/enrolments cascade off the run at the FK level, but delete
       // the sessions explicitly (scoped to the tenant) so the intent is
       // enforced here, not just by the DB.

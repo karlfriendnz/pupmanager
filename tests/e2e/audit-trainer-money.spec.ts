@@ -194,3 +194,64 @@ test('deleting a membership cannot quietly take away what people already bought'
     await prisma.$disconnect()
   }
 })
+
+test('cancelling a whole class does not leave everyone on it still owing', async ({ page }) => {
+  // Deleting a run tells every client "This class has been cancelled" and
+  // cascades their enrolments away — taking with them the only link back to the
+  // invoices those enrolments raised. The bill stayed (audit T-6).
+  test.setTimeout(180_000)
+  const prisma = await makePrisma()
+  const tag = Date.now().toString(36)
+  let packageId = ''
+  let client: { userId: string; dogId: string; clientId: string } | null = null
+  try {
+    await login(page)
+    const trainer = await prisma.trainerProfile.findFirstOrThrow({
+      where: { user: { email: SEED.owner.email } },
+    })
+    client = await makeClient(prisma, trainer.id, `${tag}c`)
+
+    const created = await page.request.post('/api/packages', {
+      data: {
+        name: `Money audit cancel ${tag}`, sessionCount: 3, weeksBetween: 1, durationMins: 60,
+        isGroup: true, capacity: 6, priceCents: 18000,
+        startAt: new Date(Date.now() + 28 * 864e5).toISOString(),
+      },
+    })
+    expect(created.status(), await created.text()).toBeLessThan(300)
+    packageId = (await created.json()).id
+    const run = await prisma.classRun.findFirstOrThrow({ where: { packageId } })
+
+    const enrol = await page.request.post(`/api/class-runs/${run.id}/enrollments`, {
+      data: { clientId: client.clientId, dogId: client.dogId },
+    })
+    expect(enrol.status(), await enrol.text()).toBeLessThan(300)
+    expect(
+      await prisma.invoice.count({ where: { clientId: client.clientId, status: 'UNPAID' } }),
+      'enrolling bills them',
+    ).toBe(1)
+
+    const killed = await page.request.delete(`/api/class-runs/${run.id}`)
+    expect(killed.status(), await killed.text()).toBe(200)
+
+    const stillOwed = await prisma.invoice.count({
+      where: { clientId: client.clientId, sourceType: 'CLASS_ENROLLMENT', status: { not: 'CANCELLED' } },
+    })
+    expect(stillOwed, 'the class was cancelled, so nobody may still owe for it').toBe(0)
+  } finally {
+    if (client) {
+      await prisma.invoiceLineItem.deleteMany({ where: { invoice: { clientId: client.clientId } } }).catch(() => {})
+      await prisma.invoice.deleteMany({ where: { clientId: client.clientId } }).catch(() => {})
+      await prisma.clientProfile.updateMany({ where: { id: client.clientId }, data: { dogId: null } }).catch(() => {})
+      await prisma.clientProfile.deleteMany({ where: { id: client.clientId } }).catch(() => {})
+      await prisma.dog.deleteMany({ where: { id: client.dogId } }).catch(() => {})
+      await prisma.account.deleteMany({ where: { userId: client.userId } }).catch(() => {})
+      await prisma.user.deleteMany({ where: { id: client.userId } }).catch(() => {})
+    }
+    if (packageId) {
+      await prisma.classRun.deleteMany({ where: { packageId } }).catch(() => {})
+      await prisma.package.delete({ where: { id: packageId } }).catch(() => {})
+    }
+    await prisma.$disconnect()
+  }
+})
