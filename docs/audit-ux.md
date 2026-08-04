@@ -387,16 +387,25 @@ a pin dropped on either screen records no section name.
 
 ---
 
-### 12c. `/my-homework` and `/basket` serve a bare Next.js 404
-**Screen:** `/my-homework`, `/basket` · **Width:** 390 ·
-**Severity: unusable** if either is reachable from the client's nav
+### 12c. There is no `not-found` or `error` screen anywhere in the app
+**Screen:** any 404 or thrown error, both apps · **Width:** all ·
+**Severity: hard to use**
 
-Both return the framework's default 404 — `<h1>404</h1>`, "This page could not
-be found.", **no app shell, no bottom tabs, no way back**. A dog owner who lands
-there is stranded and has to use the browser's back button, which a Capacitor
-shell does not always give them. Whether the routes are still linked is the
-function audit's call; the look of the dead end is mine, and a bare white 404 is
-the wrong answer inside a white-labelled app.
+`find src/app -name not-found.tsx -o -name error.tsx` returns **nothing** — not
+at the root, not in `(client)`, not in `(trainer)`. So every 404 and every
+render error serves Next's stock page: `<h1>404</h1>`, "This page could not be
+found.", on bare white, with **no shell, no bottom tabs and no way back**.
+
+Verified live: `/my-homework` and `/basket` return `status=404` at 390, 760 and
+1440 with exactly that page. (Those two are not product bugs — `/my-homework`
+only ever exists as `/my-homework/[taskId]`, and `basket` is a component folder,
+not a route. They are simply the easiest way to see what any 404 looks like.)
+
+It matters most in the **client app inside a Capacitor shell**, where a dog
+owner has no browser chrome to go back with — a stale push-notification deep
+link to a deleted homework task strands them on a white page with the trainer's
+branding nowhere in sight. One `not-found.tsx` per route group, rendering inside
+the shell, fixes the whole class.
 
 ---
 
