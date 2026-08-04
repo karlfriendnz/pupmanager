@@ -96,10 +96,16 @@ async function victimFixtures(prisma: PrismaClient): Promise<Victim> {
     data: { companyId: profile.id, userId: user.id, role: 'OWNER', acceptedAt: new Date() },
   })
 
+  // Its OWN hash. `Account` is unique on (provider, providerAccountId), and the
+  // credentials provider stores the password hash there — so reusing the owner's
+  // hash for the client made the second create fail the unique index and took
+  // the whole cross-tenant matrix down with it. A separate bcrypt call salts
+  // differently, which is the point.
+  const clientHash = await bcrypt.hash(PW, 10)
   const clientUser = await prisma.user.create({
     data: {
       email: `${MARK}-victim-client@e2e.test`, name: 'Vera Victim', role: 'CLIENT', emailVerified: new Date(),
-      accounts: { create: { type: 'credentials', provider: 'credentials', providerAccountId: hash } },
+      accounts: { create: { type: 'credentials', provider: 'credentials', providerAccountId: clientHash } },
     },
   })
   const dog = await prisma.dog.create({ data: { name: `${MARK}-VictimDog`, breed: 'Collie' } })
@@ -737,8 +743,13 @@ test.describe('security audit — client sharing', () => {
   // There is no trainer-facing route or UI to withdraw it — the only deleteMany
   // in the codebase is inside admin account deletion. Access grants must be
   // revocable. Expects the correct behaviour, so it goes green on the fix.
-  test.fail(true, 'known finding — no route exists to withdraw a client share')
   test('a client share can be withdrawn again', async ({ page }) => {
+    // Marked INSIDE the test, deliberately. `test.fail(true, …)` at the describe
+    // level applies to every test in the block, so it was also marking the
+    // ownership test above as expected-to-fail — and that one passes, which
+    // Playwright then reports as a failure. It looked for weeks like the
+    // security suite had two red tests; one of them was this.
+    test.fail(true, 'known finding — no route exists to withdraw a client share')
     await login(page, SEED.owner.email, SEED.owner.password)
 
     // Owner A shares their own assigned client with the victim business.
