@@ -354,13 +354,9 @@ test('signing out deregisters this device and leaves the account s other devices
 })
 
 test('one account cannot deregister another account s device', async ({ page }) => {
-  test.fail(
-    true,
-    'BUG: DELETE /api/devices/register does prisma.deviceToken.deleteMany({ where: { token } }) ' +
-    'with no userId scope, so ANY signed-in user who holds someone else s APNs/FCM token can ' +
-    'silently switch off that person s push notifications. The POST binds the token to the ' +
-    'caller; the DELETE should be scoped the same way.',
-  )
+  // T-13, fixed 2026-08-05. The deleteMany had no userId scope, so any signed-in
+  // user holding someone else's device token could silence every push they get.
+  // The POST binds a token to its caller; the DELETE is scoped the same way now.
   const prisma = await makePrisma()
   const tag = tagFor('devx')
   const token = `undo-victim-${tag}`
@@ -609,14 +605,10 @@ test('taking a dog off a walk removes that buddy row and nothing else', async ({
 })
 
 test('a dog added to a whole walk series can be taken off the whole series', async ({ page }) => {
-  test.fail(
-    true,
-    'BUG: POST /api/schedule/[sessionId]/buddies takes scope this|following|series and the picker ' +
-    'DEFAULTS to "series", so one tap puts a dog on every walk in the run. The DELETE has no scope ' +
-    'at all — it removes one row and ignores ?scope — so the undo is one walk while the do was all ' +
-    'of them, and the trainer is left with a dog still booked onto walks they believe they cancelled. ' +
-    'The sibling route DELETE /api/schedule/[id] already honours ?scope=following.',
-  )
+  // T-14, fixed 2026-08-05. Adding reaches the whole run (the picker defaults to
+  // "series"); removing reached one walk, so a dog taken off stayed booked onto
+  // every later one. DELETE reads ?scope the way its sibling route already did,
+  // and the screen sends the same scope it added with.
   const prisma = await makePrisma()
   const tag = tagFor('bseries')
   let sessionIds: string[] = []

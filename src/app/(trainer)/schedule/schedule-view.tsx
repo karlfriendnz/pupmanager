@@ -2220,7 +2220,16 @@ function SessionModal({
     const nextBuddies = session.buddies.filter(b => b.id !== buddyId)
     setSession(prev => ({ ...prev, buddies: nextBuddies }))
     onSessionsUpdate(session.id, { buddies: nextBuddies })
-    const res = await fetch(`/api/schedule/${session.id}/buddies/${buddyId}`, { method: 'DELETE' })
+    // Take them off the same walks they were put on. Adding uses the scope
+    // chosen just above (defaulting to the whole run), and removing used to
+    // undo one walk of it — so a dog taken off stayed booked onto every later
+    // walk, and turned up (audit T-14). Same scope in, same scope out.
+    const scope = session.walkSeriesId ? buddyScope : 'this'
+    const res = await fetch(
+      `/api/schedule/${session.id}/buddies/${buddyId}?scope=${scope}`,
+      { method: 'DELETE' },
+    )
+    if (session.walkSeriesId && scope !== 'this') router.refresh()
     if (!res.ok) {
       // Roll back on failure
       setSession(prev => ({ ...prev, buddies: session.buddies }))
@@ -2495,7 +2504,13 @@ function SessionModal({
                       <button
                         onClick={() => handleRemoveBuddy(a.buddyId!)}
                         className="p-1 text-slate-300 hover:text-red-500 transition-colors flex-shrink-0"
-                        title="Remove from session"
+                        // Says which walks it reaches, because it reaches the
+                        // same ones the picker above is set to.
+                        title={
+                          session.walkSeriesId && buddyScope === 'series' ? 'Remove from every walk in this run'
+                          : session.walkSeriesId && buddyScope === 'following' ? 'Remove from this walk and later ones'
+                          : 'Remove from this walk'
+                        }
                       >
                         <X className="h-4 w-4" />
                       </button>

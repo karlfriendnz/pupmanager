@@ -41,6 +41,14 @@ export async function DELETE(req: Request) {
   const token = body?.token?.trim()
   if (!token) return NextResponse.json({ error: 'Missing token' }, { status: 400 })
 
-  await prisma.deviceToken.deleteMany({ where: { token } })
+  // Scoped to the caller's own device. Unscoped, this deleted ANY row with that
+  // token — so a signed-in stranger could unregister someone else's phone and
+  // silence every push they get: session reminders, a class cancelled, a new
+  // message, with nothing on screen to say why (audit T-13).
+  //
+  // The token is the device's, not a secret anyone hands out, so this was an
+  // ownership hole rather than a live incident. Scoping it costs the sign-out
+  // flow nothing — that call is always about the caller's own device.
+  await prisma.deviceToken.deleteMany({ where: { token, userId: session.user.id } })
   return NextResponse.json({ ok: true })
 }
