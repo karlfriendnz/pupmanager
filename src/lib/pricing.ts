@@ -175,6 +175,13 @@ export const ADDONS: AddonDef[] = [
     name: 'Timesheets',
     description: 'Track the hours your team works across sessions, classes and admin, then turn them into payroll-ready totals.',
     free: true,
+    // Off the menu and out of Settings (Karl, 2026-08-05): nobody is using it,
+    // so it was a row of chrome on every trainer's screen earning nothing. The
+    // feature itself is untouched and every timesheet already recorded is still
+    // there — this only stops it being offered. A trainer who somehow has it on
+    // still sees the switch in Settings → Configure (the standing rule for a
+    // hidden add-on), which is the way back out rather than a loose end.
+    hidden: true,
     price: { AUD: 0, NZD: 0, GBP: 0, CAD: 0, USD: 0, ZAR: 0 },
   },
   {

@@ -14,9 +14,17 @@ import { resolve } from 'node:path'
 describe('the Configure / Add-ons split', () => {
   it('puts free features on Configure', () => {
     const ids = configurableFeatures().map(f => f.id)
-    expect(ids).toContain('timesheets')
     expect(ids).toContain('googlecalendar')
     expect(ids).toContain('todos')
+  })
+
+  it('leaves a withdrawn feature off Configure, but not stranded', () => {
+    // Timesheets was withdrawn on 2026-08-05 — nobody was using it, so it was a
+    // row of chrome on every trainer's screen. Hidden means not OFFERED; a
+    // trainer who already has it on still gets the switch, which is how they
+    // turn it off rather than a loose end.
+    expect(configurableFeatures().map(f => f.id)).not.toContain('timesheets')
+    expect(configurableFeatures(new Set(['timesheets'])).map(f => f.id)).toContain('timesheets')
   })
 
   it('keeps paid add-ons off Configure', () => {

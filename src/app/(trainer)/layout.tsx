@@ -152,6 +152,12 @@ export default async function TrainerLayout({ children }: { children: React.Reac
   // only runs classes or daycare had a menu item they could never use.
   if (!enabledAddons.has('onetoone')) hiddenNavHrefs.push('/packages')
   if (!enabledAddons.has('classes')) hiddenNavHrefs.push('/classes')
+  // Timesheets is off the menu for everyone (Karl, 2026-08-05) — nobody uses it,
+  // so it was a row of chrome earning nothing on every trainer's screen. Not
+  // gated on the add-on, because the point is that it goes away rather than
+  // becoming another switch to find. The pages and the data are untouched, so
+  // anything already recorded is still reachable by URL and nothing was lost.
+  hiddenNavHrefs.push('/timesheets')
   // Casual classes are their own offering type now — gated only by the dropins
   // add-on, independent of Group Classes (a trainer can run casual classes
   // without turning group classes on).

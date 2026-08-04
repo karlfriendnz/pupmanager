@@ -280,24 +280,27 @@ test.describe('Settings → Configure', () => {
     await login(page)
     await settingsTab(page, 'configure')
 
-    const sw = page.locator('[aria-label^="Timesheets — "]')
+    // Google Calendar, not Timesheets: Timesheets was withdrawn on 2026-08-05
+    // and is no longer offered on this page. Any free switch exercises the same
+    // write path, which is the point of only doing one of them properly.
+    const sw = page.locator('[aria-label^="Google Calendar — "]')
     await expect(sw).toBeVisible({ timeout: 20_000 })
     const before = (await sw.getAttribute('aria-label'))!.endsWith('on')
 
     await sw.click()
-    await expect(page.locator('[aria-label^="Timesheets — "]')).toHaveAttribute(
-      'aria-label', `Timesheets — ${before ? 'off' : 'on'}`, { timeout: 15_000 },
+    await expect(page.locator('[aria-label^="Google Calendar — "]')).toHaveAttribute(
+      'aria-label', `Google Calendar — ${before ? 'off' : 'on'}`, { timeout: 15_000 },
     )
     await settingsTab(page, 'configure')
-    await expect(page.locator('[aria-label^="Timesheets — "]')).toHaveAttribute(
-      'aria-label', `Timesheets — ${before ? 'off' : 'on'}`, { timeout: 20_000 },
+    await expect(page.locator('[aria-label^="Google Calendar — "]')).toHaveAttribute(
+      'aria-label', `Google Calendar — ${before ? 'off' : 'on'}`, { timeout: 20_000 },
     )
 
-    await page.locator('[aria-label^="Timesheets — "]').click()
+    await page.locator('[aria-label^="Google Calendar — "]').click()
     await page.waitForTimeout(1500)
     await settingsTab(page, 'configure')
-    await expect(page.locator('[aria-label^="Timesheets — "]')).toHaveAttribute(
-      'aria-label', `Timesheets — ${before ? 'on' : 'off'}`, { timeout: 20_000 },
+    await expect(page.locator('[aria-label^="Google Calendar — "]')).toHaveAttribute(
+      'aria-label', `Google Calendar — ${before ? 'on' : 'off'}`, { timeout: 20_000 },
     )
   })
 
