@@ -99,4 +99,60 @@ test.describe('the jobs a trainer does every day', () => {
       await prisma.$disconnect()
     }
   })
+
+  test('add a product, change its price, delete it — all from the screen', async ({ page }) => {
+    // Written from the component rather than guessed at. Three earlier attempts
+    // failed on invented button names; the real ones are an "Add product" LINK,
+    // a "Name" field, "Create product" / "Save changes", and Delete behind the
+    // ⋯ menu ("More actions for this product").
+    test.setTimeout(180_000)
+    const prisma = await makePrisma()
+    const name = `Everyday product ${stamp()}`
+    try {
+      await signIn(page)
+
+      // ── Create ──────────────────────────────────────────────────────────────
+      await page.goto('/products')
+      await page.getByRole('link', { name: /add product/i }).first().click()
+      await page.getByLabel('Name', { exact: true }).fill(name)
+      await page.getByRole('button', { name: 'Create product' }).click()
+
+      // Did it save at all? Asked FIRST, because "not saved" and "saved but the
+      // shelf does not show it" are different bugs and the screen alone cannot
+      // tell them apart.
+      const made = await prisma.product.findFirstOrThrow({ where: { name } })
+
+      // And then: can the trainer see it where they would look?
+      await page.goto('/products')
+      await expect(
+        page.getByText(name).first(),
+        'the product saved, but it is not on the products screen',
+      ).toBeVisible({ timeout: 20_000 })
+
+      // ── Edit ────────────────────────────────────────────────────────────────
+      await page.goto(`/products/${made.id}`)
+      const renamed = `${name} renamed`
+      await page.getByLabel('Name', { exact: true }).fill(renamed)
+      await page.getByRole('button', { name: 'Save changes' }).click()
+
+      await expect
+        .poll(async () => (await prisma.product.findUnique({ where: { id: made.id } }))?.name, { timeout: 20_000 })
+        .toBe(renamed)
+
+      // ── Delete ──────────────────────────────────────────────────────────────
+      await page.goto(`/products/${made.id}`)
+      await page.getByRole('button', { name: /more actions for this product/i }).click()
+      await page.getByRole('button', { name: /delete this product/i }).click()
+      // A custom confirm, not window.confirm — so a dialog handler does nothing
+      // and the product quietly survives. The kind of thing only clicking finds.
+      await page.getByRole('button', { name: 'Delete', exact: true }).click()
+
+      await expect
+        .poll(async () => await prisma.product.count({ where: { id: made.id } }), { timeout: 20_000 })
+        .toBe(0)
+    } finally {
+      await prisma.product.deleteMany({ where: { name: { startsWith: name.slice(0, 24) } } }).catch(() => {})
+      await prisma.$disconnect()
+    }
+  })
 })
