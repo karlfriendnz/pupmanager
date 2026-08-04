@@ -1017,6 +1017,20 @@ export function PackageForm({
               // 0 here meant every session on the same day and time — the
               // generator now floors it at 1, so don't offer 0 either.
               min={1}
+              // DISABLED when there is only one session, and that is load-bearing.
+              //
+              // A single-session offering is SAVED with weeksBetween = 0 (submit
+              // zeroes the cadence for a one-off). Reopen its edit screen and
+              // that 0 sits in a field whose min is 1 — and `invisible` is
+              // visibility:hidden, so the control still takes part in constraint
+              // validation while being impossible to focus. The browser refuses
+              // the submit and cannot show you why: Save changes did nothing, no
+              // request, no error, no message. One session is the wizard's
+              // default, so this was the likeliest offering in the app to hit.
+              //
+              // A disabled control is skipped by validation entirely. The value
+              // is not lost — submit recomputes it from the session count.
+              disabled={oneOff}
               error={errors.weeksBetween?.message}
               {...register('weeksBetween', { valueAsNumber: true })}
             />

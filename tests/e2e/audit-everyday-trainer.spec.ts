@@ -754,3 +754,41 @@ test.describe('the jobs a trainer does every day', () => {
     }
   })
 })
+
+test('a SINGLE-session offering can be saved from its edit screen', async ({ page }) => {
+  // T-18. A one-session offering is stored with weeksBetween = 0, and its edit
+  // screen rendered that 0 in a field with min={1} inside a container that was
+  // only `invisible` — visibility:hidden, so the control still took part in
+  // constraint validation while being impossible to focus. The browser refused
+  // the submit and could not say why: Save changes did nothing at all. No
+  // request, no error, no message. One session is the wizard's default, so this
+  // was the likeliest offering in the app to hit.
+  test.setTimeout(180_000)
+  const prisma = await makePrisma()
+  const name = `One session ${stamp()}`
+  let id = ''
+  try {
+    await signIn(page)
+    const trainer = await prisma.trainerProfile.findFirstOrThrow({
+      where: { user: { email: SEED.owner.email } },
+    })
+    const pkg = await prisma.package.create({
+      data: { trainerId: trainer.id, name, sessionCount: 1, weeksBetween: 0, durationMins: 60 },
+    })
+    id = pkg.id
+
+    await page.goto(`/packages/${id}/edit`)
+    const renamed = `${name} renamed`
+    await page.getByLabel('Name', { exact: true }).first().fill(renamed)
+    await page.getByRole('button', { name: /save/i }).first().click()
+
+    // The proof is the database, because the symptom was a button that looked
+    // like it worked and sent nothing.
+    await expect
+      .poll(async () => (await prisma.package.findUnique({ where: { id } }))?.name, { timeout: 20_000 })
+      .toBe(renamed)
+  } finally {
+    if (id) await prisma.package.delete({ where: { id } }).catch(() => {})
+    await prisma.$disconnect()
+  }
+})
