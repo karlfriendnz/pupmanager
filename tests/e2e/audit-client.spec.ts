@@ -405,9 +405,9 @@ test.describe('client audit — leak guards', () => {
 test.describe('client audit — known bugs (docs/audit-client.md)', () => {
   // ── C-1 ────────────────────────────────────────────────────────────────────
   test('C-1 · an intake form that asks for an Address can be submitted', async ({ page }) => {
-    // ClientProfile has addressLine, not address — the write throws and the
-    // client is stuck behind the gate. Expected to fail until C-1 is fixed.
-    test.fail()
+    // ClientProfile has addressLine, not address. Mapping the answer to `address`
+    // threw at Prisma, 500d the submit and left the client stuck behind the gate
+    // with no way past it. Fixed 2026-08-04.
     const prisma = await makePrisma()
     let fx: Fixture | null = null
     try {
@@ -424,6 +424,14 @@ test.describe('client audit — known bugs (docs/audit-client.md)', () => {
         },
       })
       expect(res.status(), await res.text()).toBe(200)
+
+      // And the answer has to BE their address, not just a row in the answer blob.
+      const after = await prisma.clientProfile.findUnique({
+        where: { id: fx.clientId },
+        select: { addressLine: true, intakeCompletedAt: true },
+      })
+      expect(after?.addressLine).toBe('12 Queen Street, Auckland')
+      expect(after?.intakeCompletedAt).not.toBeNull()
     } finally {
       await fx?.cleanup()
       await prisma.$disconnect()

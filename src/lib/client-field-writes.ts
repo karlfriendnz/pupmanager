@@ -12,7 +12,7 @@ import type { Question } from '@/lib/session-form-builder'
  *
  * Three destinations, because that's where the columns live:
  *   • User        — name, email
- *   • ClientProfile — phone, address
+ *   • ClientProfile — phone, addressLine
  *   • Dog         — everything about the dog
  *
  * Deliberately conservative: a blank answer writes NOTHING. A client who skips an
@@ -31,7 +31,10 @@ const COLUMN: Record<ClientFieldKey, { on: 'user' | 'profile' | 'dog'; column: s
   name: { on: 'user', column: 'name' },
   email: { on: 'user', column: 'email' },
   phone: { on: 'profile', column: 'phone' },
-  address: { on: 'profile', column: 'address' },
+  // `addressLine`, not `address` — ClientProfile stores the typed line alongside
+  // the Google lat/lng/placeId it was resolved from. Writing `address` throws at
+  // Prisma, which 500s the intake submit and leaves the client stuck on the gate.
+  address: { on: 'profile', column: 'addressLine' },
   dogName: { on: 'dog', column: 'name' },
   dogBreed: { on: 'dog', column: 'breed' },
   dogWeight: { on: 'dog', column: 'weight' },

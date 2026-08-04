@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { collectClientFieldWrites, hasClientFieldWrites } from '@/lib/client-field-writes'
 import { createClientFieldQuestion, type Question } from '@/lib/session-form-builder'
+import { CLIENT_FIELDS } from '@/lib/client-fields'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 // "The system fields are just a result of the forms" (Karl, 2026-07-30). So a form
 // can ask for the built-in details as questions — and those answers have to land on
@@ -10,6 +13,23 @@ import { createClientFieldQuestion, type Question } from '@/lib/session-form-bui
 
 const q = (key: string, id: string) => createClientFieldQuestion(key, id) as Question
 
+// A value each detail will actually accept — a weight that isn't a number and a
+// birthday that isn't a date are dropped, and would skip the column check.
+const sampleFor = (key: string) =>
+  key === 'dogWeight' ? '18.5' : key === 'dogDob' ? '2024-03-01' : 'something'
+
+// Read the columns straight out of schema.prisma rather than the generated client:
+// no runtime to load, and it fails the moment a column is renamed in the schema.
+const SCHEMA = readFileSync(join(process.cwd(), 'prisma/schema.prisma'), 'utf8')
+function columnsOf(model: string): string[] {
+  const block = new RegExp(`^model ${model} \\{$([\\s\\S]*?)^\\}$`, 'm').exec(SCHEMA)
+  if (!block) throw new Error(`model ${model} not found in schema.prisma`)
+  return block[1]
+    .split('\n')
+    .map(l => /^\s{2}(\w+)\s+\S/.exec(l)?.[1])
+    .filter((n): n is string => !!n)
+}
+
 describe('where each detail is written', () => {
   it('sends each one to the record it belongs to', () => {
     const questions = [q('name', 'a'), q('phone', 'b'), q('dogBreed', 'c')]
@@ -17,6 +37,25 @@ describe('where each detail is written', () => {
     expect(w.user).toEqual({ name: 'Sarah Scott' })
     expect(w.profile).toEqual({ phone: '021 555 0101' })
     expect(w.dog).toEqual({ breed: 'Groodle' })
+  })
+
+  it('writes an address to addressLine, the column that actually exists', () => {
+    // ClientProfile has addressLine (+ lat/lng/placeId), never `address`. Sending
+    // `address` throws at Prisma, so the intake submit 500s and the client is
+    // returned to the same gate with no way past it.
+    const w = collectClientFieldWrites([q('address', 'a')], { a: '12 Queen St' })
+    expect(w.profile).toEqual({ addressLine: '12 Queen St' })
+  })
+
+  it('every column it writes to is a real column on that model', () => {
+    // The guard that would have caught the address bug: ask each built-in detail
+    // for a write, then check the column against the schema itself.
+    for (const field of CLIENT_FIELDS) {
+      const w = collectClientFieldWrites([q(field.key, 'a')], { a: sampleFor(field.key) })
+      for (const column of Object.keys(w.user)) expect(columnsOf('User')).toContain(column)
+      for (const column of Object.keys(w.profile)) expect(columnsOf('ClientProfile')).toContain(column)
+      for (const column of Object.keys(w.dog)) expect(columnsOf('Dog')).toContain(column)
+    }
   })
 
   it('ignores ordinary questions entirely', () => {

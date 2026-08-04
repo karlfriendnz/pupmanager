@@ -38,7 +38,7 @@ client before they buy it.
 
 | # | Finding | Severity |
 |---|---------|----------|
-| C-1 | An intake form with an **Address** question 500s — the client can never get past the gate | breaks the journey |
+| C-1 | An intake form with an **Address** question 500s — the client can never get past the gate — **FIXED** | breaks the journey |
 | C-2 | The intake submit route **never checks `required`** — a blank form is accepted and the gate lifts | breaks the journey |
 | C-3 | Cancelling a shop order leaves the **invoice standing and the stock spent** | loses money |
 | C-4 | A paid **digital download's URL is in the page source** before purchase | loses money |
@@ -52,6 +52,12 @@ client before they buy it.
 ## Findings
 
 ### C-1 · An intake form that asks for an Address can never be submitted — *breaks the journey*
+
+> **FIXED 2026-08-04.** `client-field-writes.ts` now maps the answer to
+> `addressLine`. The e2e test no longer `test.fail()`s: it submits the form,
+> gets a 200, and asserts the address landed on the profile and the gate lifted.
+> A unit test walks every built-in detail and checks its column against
+> `schema.prisma`, so the next rename fails a test instead of a client's intake.
 
 **What I did.** Built a client form with a built-in **Address** question (the
 `CLIENT_FIELD` / `fieldKey: 'address'` type the forms builder offers), assigned
