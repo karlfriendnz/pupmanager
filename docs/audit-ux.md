@@ -331,10 +331,51 @@ column floating in ~200px of white on each side. It is not broken, but it reads
 as "the phone screen, on a monitor" rather than a designed desktop view — and
 a dog owner opening the app on a laptop is a normal case.
 
+Measured at 390, the client app repeats the trainer app's two style problems and
+adds a third:
+
+| Screen | tinted icon tiles | own-shadow sibling cards | icons at 2 vs 1.75 |
+|---|---|---|---|
+| `/home` | 5 | 3 | 25 vs 1 |
+| `/my-help` | 1 | 4 | 16 vs 1 |
+| `/my-dogs` | 1 | 3 | 19 vs 1 |
+| `/my-profile` | 1 | 2 | 16 vs 1 |
+
+The stroke-weight ratio is *worse* here than on the trainer side — essentially
+every icon in the client app renders at lucide's default 2. `/home` also opens
+with an emoji as a heading glyph ("🎉 You're all set!").
+
 Related: the client shell's nav hint dot is
 `bg-indigo-500 animate-pm-menu-dot` (`app-shell.tsx:499`, `:576`, `:1385`) —
 a pulsing indigo dot in a shell that is white-labelled to the trainer's brand.
 Rule 3: that dot should be the trainer's accent or neutral.
+
+---
+
+### 12b. Two client screens have no heading at all
+**Screen:** `/my-messages`, `/my-availability` · **Width:** 390 ·
+**Severity: hard to use** on a screen reader · **Rule broken:** a11y heading
+order, and AGENTS.md's *"Name your sections and fields"*
+
+Both screens render **zero headings** — no `<h1>`, no `<h2>`, nothing. A dog
+owner using VoiceOver lands on "Messages" and is told nothing about where they
+are. It also costs Karl directly: the review widget's capture reads headings, so
+a pin dropped on either screen records no section name.
+
+`/my-invoices` has the opposite problem — two `<h1>`s, both "Invoices".
+
+---
+
+### 12c. `/my-homework` and `/basket` serve a bare Next.js 404
+**Screen:** `/my-homework`, `/basket` · **Width:** 390 ·
+**Severity: unusable** if either is reachable from the client's nav
+
+Both return the framework's default 404 — `<h1>404</h1>`, "This page could not
+be found.", **no app shell, no bottom tabs, no way back**. A dog owner who lands
+there is stranded and has to use the browser's back button, which a Capacitor
+shell does not always give them. Whether the routes are still linked is the
+function audit's call; the look of the dead end is mine, and a bare white 404 is
+the wrong answer inside a white-labelled app.
 
 ---
 
