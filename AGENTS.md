@@ -152,6 +152,64 @@ Every new feature ships with automated tests in the same change. This is not opt
 - New data a spec needs → extend `global-setup.ts` carefully (specs share one seeded DB; don't break existing counts).
 - **CI gates both** — the `Tests` workflow (`.github/workflows/tests.yml`) runs unit + full e2e on every push to `main` and on PRs. Don't merge red. The e2e job runs `next build`, so never force `NODE_ENV=development` in CI (it breaks the `/_global-error` prerender).
 
+## Bugs this codebase has already written once
+
+Every rule below is a real bug found in an audit here, not a general principle.
+They keep coming back because each one *looks* right while you're writing it —
+the save returns 200, the button is hidden, the form validates on screen. Check
+these before writing the code, not after. Findings are in `docs/audit-*.md`.
+
+**1 · A field the user typed must survive a reload.** The only proof is
+save → reload → assert. Three separate bugs were "it saved fine" and it hadn't:
+an offering's cover image (any patch that omitted the key wiped it), its venue
+(written only to the class run, so an offering with no run lost it), and its
+schedule note (same, still open). When you add a field to a form, add the
+round-trip test in the same change.
+
+**2 · Never write a column name you haven't looked up.** `ClientProfile` has
+`addressLine`, not `address`. The intake form mapped to `address`, Prisma threw,
+the route 500d and the client was stuck behind the gate with no way out. Any
+answer-to-column map gets a test that checks it against `schema.prisma`.
+
+**3 · Validation in the browser is not validation.** `required` was enforced
+only in `FormRunner`, so an empty intake stamped itself complete and lifted the
+gate. The business email was `type="email"` on screen and *any string* in the
+API. Whatever the form refuses, the route must refuse — `missingRequiredQuestions()`
+exists for the forms case.
+
+**4 · Undoing must undo all of it.** Ordering a product took stock, made a
+request and raised an invoice; cancelling deleted the request and nothing else,
+so the client still owed for a thing they'd never get. Count what the action did
+and make the undo do the same number of things. Money already taken is a refund
+decision — leave PAID/PARTIAL alone.
+
+**5 · Props on a `'use client'` component are page source.** A paid download's
+URL was passed in "just to render with" and the button hidden. The URL *was* the
+paywall, and it was published to every client. Resolve entitlement on the SERVER
+and send `null`. Check the JSON APIs too — `/api/my/products` was leaking the
+same URL nobody had thought about.
+
+**6 · Gate on the fact, not a proxy for it.** "Is this a paid download" was read
+off *can this trainer take cards*, so every trainer without Stripe gave their
+paid PDFs away. Payments being off changes HOW someone pays, never WHETHER.
+
+**7 · An idempotency check must ignore cancelled rows.** "One invoice per thing
+bought" found the CANCELLED invoice and raised nothing, so the re-order was
+free.
+
+**8 · A required question must be answerable.** A required "Dog's name" was
+discarded when the client had no dog record — the answer went nowhere and the
+trainer's list still said no dog. If a required answer needs a record that
+doesn't exist yet, create it.
+
+**9 · State that changes what you can do belongs where you choose.** "Out of
+stock" only appeared inside the product sheet, so clients picked a thing, tapped
+it, and only then found it gone.
+
+**10 · Hard-coded help text rots.** The client Help FAQ described "My Diary" and
+an "Email reminders" toggle years after both were gone. Derive screen names from
+the same source the nav uses (`clientLabelFor`) — trainers rename them anyway.
+
 ## Ruflo coordination
 
 Use ruflo selectively, not by default:
