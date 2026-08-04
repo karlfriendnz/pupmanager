@@ -30,6 +30,9 @@ confusing / cosmetic*.
 | T-2 | An offering **loses its cadence note** when saved before it has been scheduled — **FIXED** | confusing |
 | T-3 | **Withdrawing a client leaves them owing** for the class — **FIXED** | loses money |
 | T-4 | A client **promoted off the waitlist is never billed** — **FIXED** | loses money |
+| T-5 | Deleting a package **deletes the purchases of everyone on it**, live Stripe subscriptions and all — **FIXED** | loses money |
+| T-6 | Cancelling a whole class **leaves everyone on it still owing** for it — **FIXED** | loses money |
+| T-7 | Deleting a product **deletes the orders behind it** and orphans their invoices — **FIXED** | loses money |
 
 **What came back clean.** The field question Karl asked is answered: a 1:1
 offering's twenty fields, a product's eleven, a client's four, the hand-typed
@@ -95,6 +98,65 @@ a full class and no receivable to chase.
 **Fixed.** Promotion bills like the enrolment it is, in the shared
 `withdrawEnrollmentAndNotify` so the trainer-side withdraw and the client
 self-cancel behave the same.
+
+### T-5 · Deleting a package deletes what everyone on it bought — *loses money*
+
+`MembershipPurchase.membership` is `onDelete: Cascade`, so deleting a package
+took every purchase row with it — including ACTIVE ones carrying a live Stripe
+subscription on the trainer's connected account. **Stripe carries on charging
+that client every week and PupManager no longer has a record that they exist:**
+no access, no renewal, and nothing left to cancel it with.
+
+The confirm dialog meanwhile promised *"Anyone who already bought it keeps what
+it gave them"* — the exact opposite of what happened.
+
+**Fixed.** Refused with a 409 that names the way out (unpublish). Any purchase
+counts, not just live ones: a settled one-off is the record of what somebody
+paid for.
+
+### T-6 · Cancelling a class leaves everyone on it owing — *loses money*
+
+Deleting a run tells every client "This class has been cancelled" and cascades
+their enrolments away, taking with them the only link back to the invoices those
+enrolments raised. The bill stayed.
+
+**Fixed.** Receivables are settled before the delete, while the enrolment ids
+still exist. UNPAID only.
+
+### T-7 · Deleting a product deletes the orders behind it — *loses money*
+
+`ProductRequest.product` is `onDelete: Cascade`. Deleting a product took every
+order with it — the ones clients were waiting on and the fulfilled ones that are
+the purchase record — while their invoices survived, still owed, pointing at
+rows that no longer existed.
+
+**Fixed** with the rule the offering DELETE had already settled on: **money
+refuses**. On order → 409. Billed or paid → 409, hide it instead.
+
+---
+
+## The shape underneath T-3, T-5, T-6, T-7 (and C-3)
+
+Five instances of one bug: **an undo that undid less than the action did.**
+
+| Where | What was left behind |
+|---|---|
+| C-3 · cancel a shop order | invoice standing, stock spent |
+| T-3 · withdraw one client | invoice standing |
+| T-5 · delete a package | purchases and live subscriptions destroyed |
+| T-6 · cancel a whole class | every client's invoice standing |
+| T-7 · delete a product | orders destroyed, invoices orphaned |
+
+Two rules came out of it and are applied consistently now:
+
+- **Money refuses.** You cannot delete something that has been billed or bought.
+  Unpublish or hide it instead.
+- **UNPAID only.** Cancelling a receivable is automatic; refunding a paid one is
+  a decision with a human in it.
+
+`tests/unit/undo-paths-have-tests.test.ts` is the ratchet that stops the next one
+arriving unnoticed: it fails when a new DELETE route appears with no test naming
+it, and its backlog list can only shrink.
 
 ---
 

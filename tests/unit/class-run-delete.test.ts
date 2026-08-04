@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   runUpdate: vi.fn(),
   sessionDeleteMany: vi.fn(),
   enrollmentFindMany: vi.fn(),
+  invoiceUpdateMany: vi.fn(),
   transaction: vi.fn(),
 }))
 
@@ -25,6 +26,9 @@ vi.mock('@/lib/prisma', () => ({
     classRun: { findFirst: h.runFindFirst, delete: h.runDelete, update: h.runUpdate, findUnique: vi.fn() },
     trainingSession: { deleteMany: h.sessionDeleteMany },
     classEnrollment: { findMany: h.enrollmentFindMany },
+    // Cancelling a class settles the receivables for it first (audit T-6), so
+    // the mock needs the call the route now makes inside the transaction.
+    invoice: { updateMany: h.invoiceUpdateMany },
     $transaction: h.transaction,
   },
 }))

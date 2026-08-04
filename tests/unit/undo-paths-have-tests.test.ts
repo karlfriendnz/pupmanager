@@ -100,7 +100,7 @@ const KNOWN_UNTESTED = new Set([
   '/trainer/discounts/[id]',
   '/trainer/lead-magnets/[id]',
   '/trainer/locations/[id]',
-  '/trainer/memberships/[id]',
+  // '/trainer/memberships/[id]' — covered 2026-08-04 by audit-trainer-money.spec (T-5)
   '/trainer/memberships/[id]/comms-flow/[stepId]',
   '/trainer/memberships/[id]/invites',
 ])
