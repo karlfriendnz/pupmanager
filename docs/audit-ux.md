@@ -26,7 +26,8 @@ Severity: **unusable** · **hard to use** · **off-style** · **nitpick**.
 
 **Good news first, because it is real:**
 
-1. **Nothing overflows horizontally.** 42 trainer routes at 1440 and 31 at 390 —
+1. **Nothing overflows horizontally.** 42 trainer routes at 1440, 31 at 390 and
+   34 at 760×560, plus the whole client app at all three —
    every `document.scrollWidth` matched the viewport, on every one. The
    60-character business name, the 40-session class and the long invoice titles
    all truncate rather than shove. This is the rule that usually rots first and
