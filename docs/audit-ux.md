@@ -333,8 +333,14 @@ Repo-wide the ratio tells the story: **8 container-query variants** (`@sm:`,
 `@xl:`, `@2xl:`, `@3xl:`) against **~950 viewport variants** (431 `sm:`,
 392 `md:`, 125 `lg:`). Only four files use `@container` at all —
 `clients-list.tsx`, `booking-wizard.tsx`, `offering-card.tsx`,
-`browse-shell.tsx`. Every page that renders inside the 17rem rail and uses a
+`browse-shell.tsx`. Every page that renders inside the rail and uses a
 `md:`/`lg:` grid is measuring the wrong box.
+
+(For the record, the rail in code is `md:w-64` — 16rem/256px — not the 17rem
+`AGENTS.md` quotes, and it collapses to `md:w-16` when the trainer folds it.
+That third width is a second reason a viewport query cannot be right here: the
+same viewport gives the content column two different widths depending on a
+setting the stylesheet cannot see.)
 
 *Fix shape:* make the trainer `<main>` a query container once, then the
 `columns === 4` branch's `@sm/@xl/@3xl` pattern becomes usable everywhere and
