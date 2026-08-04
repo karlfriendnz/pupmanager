@@ -74,6 +74,24 @@ export async function DELETE(
   if (!task || !access) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (!access.canEdit) return NextResponse.json({ error: 'Read-only access' }, { status: 403 })
 
+  // `TrainingLog.task` is onDelete: Cascade, so deleting homework took the
+  // owner's record of having DONE it — every log, note, time and photo they
+  // recorded against it. That is their side of the work, not the trainer's, and
+  // it disappeared without a word (audit T-9, found by the cascade guard test).
+  //
+  // Homework nobody has logged against still deletes, which is the case that
+  // matters: a task set by mistake.
+  const logged = await prisma.trainingLog.count({ where: { taskId } })
+  if (logged > 0) {
+    return NextResponse.json(
+      {
+        error: `This has been logged ${logged} ${logged === 1 ? 'time' : 'times'}. Deleting it would take those records with it — mark it complete instead.`,
+        logged,
+      },
+      { status: 409 },
+    )
+  }
+
   await prisma.trainingTask.delete({ where: { id: taskId } })
   return NextResponse.json({ ok: true })
 }

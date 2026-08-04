@@ -95,6 +95,24 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const { id } = await params
   const r = await own(id)
   if ('error' in r) return r.error
+
+  // A DRAFT is a working document and deleting it takes its entries, which is
+  // the point. A FINALISED one is a pay record — the hours somebody is owed for
+  // — and `TimeEntry.timesheet` is onDelete: Cascade, so deleting it wiped them
+  // with no trace (audit T-10, found by the cascade guard test).
+  const sheet = await prisma.timesheet.findUnique({
+    where: { id },
+    select: { status: true, _count: { select: { entries: true } } },
+  })
+  if (sheet?.status === 'FINALISED') {
+    return NextResponse.json(
+      {
+        error: `This timesheet has been finalised, with ${sheet._count.entries} ${sheet._count.entries === 1 ? 'entry' : 'entries'} on it. It is the record of hours owed, so it can't be deleted.`,
+      },
+      { status: 409 },
+    )
+  }
+
   await prisma.timesheet.delete({ where: { id } })
   return NextResponse.json({ ok: true })
 }
