@@ -5,6 +5,7 @@ import { clientLabelFor, sanitizeNavLabels } from '@/lib/nav-labels'
 import { getEnabledAddons } from '@/lib/billing'
 import { listShopProducts, loadPreviewOnlyProduct } from '@/lib/shop-catalog'
 import { listShopTags, resolveShopTag } from '@/lib/shop-tags'
+import { mayDownloadProduct } from '@/lib/product-price'
 import { ShopGrid } from './shop-grid'
 import type { Metadata } from 'next'
 
@@ -122,7 +123,12 @@ export default async function MyShopPage({
               salePriceCents: p.salePriceCents,
               stockCount: p.stockCount,
               imageUrl: p.imageUrl,
-              downloadUrl: p.downloadUrl,
+              // Resolved per client, server-side. The button being hidden is
+              // not a paywall: these props are serialised into the page, so a
+              // URL sent "just to render with" is a URL every client has.
+              downloadUrl: mayDownloadProduct(p, p.variants ?? [], purchasedIds.has(p.id))
+                ? p.downloadUrl
+                : null,
               category: p.category,
               featured: p.featured,
               variants: p.variants,
@@ -143,7 +149,11 @@ export default async function MyShopPage({
                   salePriceCents: hiddenPreview.salePriceCents,
                   stockCount: hiddenPreview.stockCount,
                   imageUrl: hiddenPreview.imageUrl,
-                  downloadUrl: hiddenPreview.downloadUrl,
+                  // Preview is a trainer looking at their own product, and the
+                  // same rule applies — an unbought paid download stays shut.
+                  downloadUrl: mayDownloadProduct(hiddenPreview, hiddenPreview.variants ?? [], false)
+                    ? hiddenPreview.downloadUrl
+                    : null,
                   category: hiddenPreview.category,
                   featured: hiddenPreview.featured,
                   variants: hiddenPreview.variants,

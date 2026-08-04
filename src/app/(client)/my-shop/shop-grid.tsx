@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils'
 import { formatMoney } from '@/lib/money'
 import {
   effectivePriceCents,
+  isPaidDigitalProduct,
   productPriceSummary,
   resolveVariantPresentation,
   resolveVariantPricing,
@@ -776,13 +777,18 @@ function ProductModal({
     ? inStock(picked.stockCount)
     : productInStock(product, variants)
 
-  // Digital downloads: free ones (no price / payments off) download immediately;
-  // a PRICED digital product must be purchased first, then the download unlocks.
-  const isPaidDigital = product.kind === 'DIGITAL' && payable
+  // Digital downloads: a free one downloads immediately; a PRICED one must be
+  // bought first. Priced is priced — whether this trainer can take cards
+  // decides HOW they pay, never whether they have to (audit C-8).
+  const isPaidDigital = isPaidDigitalProduct(product, variants)
+  // The server has already withheld downloadUrl from anyone who hasn't earned
+  // it, so this is the button's rule, not the paywall.
   const canDownload =
     product.kind === 'DIGITAL' && !!product.downloadUrl && (!isPaidDigital || !!product.purchased)
   // Apple Guideline 3.1.1: don't offer digital goods for purchase in the app.
-  const digitalBlockedNative = isPaidDigital && !product.purchased && native
+  // Tied to `payable`, because it's the card checkout Apple objects to — a
+  // trainer who can't take cards isn't selling anything in here to block.
+  const digitalBlockedNative = isPaidDigital && payable && !product.purchased && native
 
   // Lock the page behind the sheet. Without this the page scrolls underneath
   // it — two scrollbars on screen, which is a standing rule against.
@@ -958,7 +964,9 @@ function ProductModal({
 
           {!canDownload && !payable && !previewNote && (
             <p className="text-[11px] text-slate-400 text-center">
-              You&apos;ll get this at your next session.
+              {isPaidDigital
+                ? 'Your trainer will unlock this download once you’ve paid.'
+                : 'You’ll get this at your next session.'}
             </p>
           )}
           {payable && !digitalBlockedNative && (

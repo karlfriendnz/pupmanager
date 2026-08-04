@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
+import { mayDownloadProduct } from '@/lib/product-price'
 
 export async function GET() {
   const session = await auth()
@@ -34,13 +35,26 @@ export async function GET() {
       },
     }),
     prisma.productRequest.findMany({
-      where: { clientId: profile.id, status: 'PENDING' },
-      select: { productId: true },
+      where: { clientId: profile.id, status: { in: ['PENDING', 'FULFILLED'] } },
+      select: { productId: true, status: true },
     }),
   ])
 
-  const requestedIds = new Set(pendingRequests.map(r => r.productId))
+  const requestedIds = new Set(
+    pendingRequests.filter(r => r.status === 'PENDING').map(r => r.productId),
+  )
+  const purchasedIds = new Set(
+    pendingRequests.filter(r => r.status === 'FULFILLED').map(r => r.productId),
+  )
   return NextResponse.json(
-    products.map(p => ({ ...p, requested: requestedIds.has(p.id) }))
+    products.map(p => ({
+      ...p,
+      // Never hand out the file of a paid download this client hasn't bought.
+      // These Blob URLs are unguessable but public and permanent — the URL IS
+      // the paywall (audit C-4).
+      downloadUrl: mayDownloadProduct(p, p.variants, purchasedIds.has(p.id)) ? p.downloadUrl : null,
+      requested: requestedIds.has(p.id),
+      purchased: purchasedIds.has(p.id),
+    }))
   )
 }

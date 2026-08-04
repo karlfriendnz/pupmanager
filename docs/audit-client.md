@@ -41,11 +41,11 @@ client before they buy it.
 | C-1 | An intake form with an **Address** question 500s — the client can never get past the gate — **FIXED** | breaks the journey |
 | C-2 | The intake submit route **never checks `required`** — a blank form is accepted and the gate lifts — **FIXED** | breaks the journey |
 | C-3 | Cancelling a shop order leaves the **invoice standing and the stock spent** — **FIXED** | loses money |
-| C-4 | A paid **digital download's URL is in the page source** before purchase | loses money |
+| C-4 | A paid **digital download’s URL is in the page source** before purchase — **FIXED** | loses money |
 | C-5 | The shop grid gives **no sign that something is sold out** until you tap it | confusing |
 | C-6 | The client **Help page's FAQ describes an app that no longer exists** | confusing |
 | C-7 | A required **"Dog's name"** intake answer is silently discarded when the client has no dog record yet | confusing |
-| C-8 | With payments off, a **priced digital product downloads free** and raises nothing | loses money |
+| C-8 | With payments off, a **priced digital product downloads free** and raises nothing — **FIXED** | loses money |
 
 ---
 
@@ -184,6 +184,13 @@ and put the unit back on the shelf.
 
 ### C-4 · A paid digital download's URL is in the page source before purchase — *loses money*
 
+> **FIXED 2026-08-04.** `mayDownloadProduct()` (`src/lib/product-price.ts`) is
+> asked on the SERVER, and `downloadUrl` is nulled for anyone who hasn't earned
+> it — in `my-shop/page.tsx` and in `/api/my/products`, which was handing the
+> same URL out as JSON and isn't mentioned above because I found it while
+> fixing this. The client component's rule is unchanged; it's now the button's
+> rule rather than the paywall.
+
 **What I did.** Opened `/my-shop` as a client and read the page source.
 
 **What happened.** `listShopProducts()` (`src/lib/shop-catalog.ts`) selects
@@ -256,6 +263,15 @@ an *optional* question and the wrong one for a required one.
 ---
 
 ### C-8 · With payments off, a priced digital product downloads free — *loses money*
+
+> **FIXED 2026-08-04.** "Paid" is now read off the PRICE, not off whether the
+> trainer can take cards: `isPaidDigitalProduct()` in `product-price.ts`.
+> Payments being off decides *how* a client pays — card now, or on the trainer's
+> invoice via the existing request path — never *whether* they have to. The
+> Apple 3.1.1 native block stays tied to `payable`, because it's the card
+> checkout Apple objects to, and the sheet now says "Your trainer will unlock
+> this download once you've paid" rather than "You'll get this at your next
+> session".
 
 `isPaidDigital = product.kind === 'DIGITAL' && payable`, where `payable` is
 "this trainer can take cards". A trainer who hasn't finished Stripe Connect —

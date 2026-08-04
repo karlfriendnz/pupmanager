@@ -135,6 +135,44 @@ export function productPriceSummary(
   return { count: sellable.length, from, to, varies: from !== to || prices.length !== sellable.length }
 }
 
+// ─── Digital downloads: who has earned the file ──────────────────────────────
+
+/**
+ * A digital product that has to be paid for before its file is handed over.
+ *
+ * Priced is priced. Whether the trainer can take cards decides HOW a client
+ * pays — card now, or on the trainer's invoice — never WHETHER they have to.
+ * Reading this off "can this trainer take payments" meant a trainer who hadn't
+ * finished Stripe Connect, which is most trainers on day one, gave away every
+ * priced PDF they sold (audit C-8).
+ */
+export function isPaidDigitalProduct(
+  product: ProductPricing & { kind?: string | null },
+  variants: (VariantPricing & { active?: boolean })[] = [],
+): boolean {
+  if (product.kind !== 'DIGITAL') return false
+  const from = productPriceSummary(product, variants).from
+  return from != null && from > 0
+}
+
+/**
+ * May this client be handed the file? A free download opens straight away; a
+ * priced one only once they've actually bought it.
+ *
+ * The server asks this before it sends `downloadUrl` anywhere near the browser.
+ * Hiding the BUTTON is not a paywall — client-component props are serialised
+ * into the page, so a URL passed "just to render with" is a published URL
+ * (audit C-4).
+ */
+export function mayDownloadProduct(
+  product: ProductPricing & { kind?: string | null },
+  variants: (VariantPricing & { active?: boolean })[],
+  purchased: boolean,
+): boolean {
+  if (product.kind !== 'DIGITAL') return false
+  return !isPaidDigitalProduct(product, variants) || purchased
+}
+
 // ─── What a variant LOOKS like ───────────────────────────────────────────────
 
 /** The photo and the words. NULL/blank on either = inherit the product's. */

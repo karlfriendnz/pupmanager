@@ -750,9 +750,8 @@ test.describe('client audit — known bugs, part two', () => {
   test('C-4 · a paid digital product’s download URL is not sent to a client who hasn’t bought it', async ({ page }) => {
     // listShopProducts selects downloadUrl for every product and my-shop/page
     // hands it to <ShopGrid>, a 'use client' component — so the URL is
-    // serialised into the page for everyone. The button is hidden; the link
-    // is not. Expected to fail until C-4 is fixed.
-    test.fail()
+    // serialised into the page for everyone. The button was hidden; the link
+    // was not. Fixed 2026-08-04 — the server resolves it per client.
     const prisma = await makePrisma()
     const secret = `https://blob.example.test/audit-${Date.now().toString(36)}-paid-guide.pdf`
     let productId: string | null = null
@@ -775,9 +774,30 @@ test.describe('client audit — known bugs, part two', () => {
       const html = await page.content()
       expect(html, 'the product should be on the shelf').toContain('Audit paid download')
       expect(html, 'its download URL must not be handed out before purchase').not.toContain(secret)
+
+      // The JSON door has to be shut too, not just the page.
+      const api = await page.request.get('/api/my/products')
+      expect(await api.text(), 'the products API must not hand it out either').not.toContain(secret)
+
+      // C-8 · and it stays shut when the trainer can't take cards. Priced is
+      // priced — payments being off decides HOW they pay, not whether they must.
+      const list = (await api.json()) as { id: string; downloadUrl: string | null }[]
+      expect(list.find(x => x.id === p.id)?.downloadUrl, 'a priced download is not free').toBeNull()
+
+      // Once they've actually got it, the file opens.
+      const fulfilled = await prisma.productRequest.create({
+        data: { clientId, productId: p.id, status: 'FULFILLED', fulfilledAt: new Date() },
+      })
+      const after = await page.request.get('/api/my/products')
+      const owned = (await after.json()) as { id: string; downloadUrl: string | null }[]
+      expect(owned.find(x => x.id === p.id)?.downloadUrl, 'a bought download opens').toBe(secret)
+      await prisma.productRequest.delete({ where: { id: fulfilled.id } }).catch(() => {})
     } finally {
       await dropClient?.().catch(() => {})
-      if (productId) await prisma.product.delete({ where: { id: productId } }).catch(() => {})
+      if (productId) {
+        await prisma.productRequest.deleteMany({ where: { productId } }).catch(() => {})
+        await prisma.product.delete({ where: { id: productId } }).catch(() => {})
+      }
       await prisma.$disconnect()
     }
   })
