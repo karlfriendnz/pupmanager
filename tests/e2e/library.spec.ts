@@ -718,7 +718,9 @@ test('another business’s library is unreachable', async ({ page }) => {
   ]) {
     await page.goto(url)
     await expect(page.getByText('Rival', { exact: false })).toHaveCount(0)
-    await expect(page.getByText(/404|not found|page could not be found/i).first()).toBeVisible()
+    // The app's own not-found page, by its test id rather than its words — the
+    // copy is "That page isn't here" and says nothing about a 404 on purpose.
+    await expect(page.getByTestId('not-found')).toBeVisible()
   }
 
   // And the API refuses to mutate them.

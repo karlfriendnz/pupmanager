@@ -154,6 +154,10 @@ test.describe('Settings → Details', () => {
     await settingsTab(page, 'profile')
 
     const businessName = page.locator('input[name=businessName]')
+    // Read it only once the form has actually been filled in. Reading straight
+    // after navigation caught the input still empty, so `original` was "" and
+    // the reload check at the bottom then failed against the real name.
+    await expect(businessName).not.toHaveValue('')
     const original = await businessName.inputValue()
 
     await page.locator('input[name=name]').fill('')
@@ -176,8 +180,19 @@ test.describe('Settings → Details', () => {
 
     await page.locator('input[name=publicEmail]').fill('not-an-email')
     await page.getByRole('button', { name: 'Save business details' }).click()
-    await expect(page.getByText('Enter a valid email')).toBeVisible()
+    // The field is type=email, so the BROWSER refuses it before the form's own
+    // message can render — asserting that message was asserting something the
+    // trainer never sees. What matters is that nothing was saved.
     await expect(page.getByText('Saved!')).toHaveCount(0)
+
+    // And the door behind the browser is shut too. This is the client-facing
+    // contact address — a mailto: on their Help page, the reply-to on enquiry
+    // auto-replies — and the API used to take any string up to 200 characters,
+    // so anything that wasn't this form put junk straight in.
+    const refused = await page.request.patch('/api/trainer/profile', {
+      data: { publicEmail: 'not-an-email' },
+    })
+    expect(refused.status(), 'the API must refuse a junk business email').toBe(400)
 
     await page.locator('input[name=publicEmail]').fill('')
     await page.getByRole('button', { name: 'Save business details' }).click()
@@ -390,7 +405,9 @@ test.describe('Settings → Design', () => {
 
     const swatch = page.locator('input[type=color]')
     await expect(swatch).toBeVisible({ timeout: 20_000 })
-    const hex = page.locator('input[type=color]').locator('xpath=following-sibling::input[1]')
+    // The hex box is a wrapped <Input>, not a sibling of the swatch — the
+    // xpath sibling locator matched nothing and the fill just timed out.
+    const hex = page.getByPlaceholder(/^#[0-9a-fA-F]{6}$/)
     const before = await swatch.inputValue()
 
     await hex.fill('#ff8800')
@@ -400,7 +417,7 @@ test.describe('Settings → Design', () => {
     await settingsTab(page, 'design')
     await expect(page.locator('input[type=color]')).toHaveValue('#ff8800')
 
-    await page.locator('input[type=color]').locator('xpath=following-sibling::input[1]').fill(before)
+    await page.getByPlaceholder(/^#[0-9a-fA-F]{6}$/).fill(before)
     await page.getByRole('button', { name: 'Save design' }).click()
     await expect(page.getByText('Saved!')).toBeVisible({ timeout: 15_000 })
   })

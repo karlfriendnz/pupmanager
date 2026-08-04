@@ -57,7 +57,13 @@ const patchSchema = z.object({
   homeHeroShowLockup: z.boolean().optional(),
   iconUrl: z.string().url().optional().or(z.literal('')),
   website: z.string().max(200).optional().or(z.literal('')),
-  publicEmail: z.string().max(200).optional().or(z.literal('')),
+  // The CLIENT-FACING contact address, so it has to be a real one: it becomes a
+  // mailto: on the client Help page, the reply-to on enquiry auto-replies, and
+  // the address on the public link page. Both signup routes have always checked
+  // it; this one — the screen a trainer actually edits it on — only capped the
+  // length, so anything typed past the browser's own type=email check (a script,
+  // a stale tab, an import) was stored and quietly broke every one of those.
+  publicEmail: z.union([z.string().email('Enter a valid email').max(200), z.literal('')]).optional(),
   inviteTemplate: z.string().optional(),
   // Brand colour — 3- or 6-digit hex (with leading #), or empty string to clear.
   // Drives the client-app accent AND the accent strip on outbound emails.

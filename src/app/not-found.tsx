@@ -20,7 +20,10 @@ import { Compass } from 'lucide-react'
  */
 export default function NotFound() {
   return (
-    <main className="min-h-[100dvh] bg-slate-50 flex items-center justify-center p-4">
+    // Tagged so a test can assert "this is the not-found page" without pinning
+    // the wording — the copy says "That page isn't here" and deliberately never
+    // says "404", which is what a spec matching /404|not found/ was relying on.
+    <main data-testid="not-found" className="min-h-[100dvh] bg-slate-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white">
         <div className="px-5 py-6 text-center">
           <span className="mx-auto grid h-11 w-11 place-items-center rounded-xl bg-slate-50 text-slate-700">
