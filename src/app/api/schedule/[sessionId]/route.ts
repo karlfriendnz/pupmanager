@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { settleAssignmentIfEmptied } from '@/lib/assignment-settle'
 import { getTrainerContext } from '@/lib/membership'
 import { accessibleSessionWhere } from '@/lib/session-access'
 import { safeEvaluate } from '@/lib/achievements'
@@ -359,6 +360,12 @@ export async function DELETE(
       data: { extendIndefinitely: false },
     })
   }
+
+  // Same rule as the client's own cancel: a booking with no sessions left is a
+  // booking nobody owes for. Self-booking raises ONE receivable for the whole
+  // assignment, and deleting its last session used to leave that standing
+  // (audit T-12). Only when the last one goes.
+  await settleAssignmentIfEmptied(trainingSession.clientPackageId, trainerProfile.id)
 
   return NextResponse.json({ ok: true, deletedIds: idsToDelete })
 }

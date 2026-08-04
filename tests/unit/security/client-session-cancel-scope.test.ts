@@ -13,6 +13,8 @@ const h = vi.hoisted(() => ({
   getActiveClient: vi.fn(),
   sessionFindFirst: vi.fn(),
   sessionDeleteMany: vi.fn(),
+  sessionCount: vi.fn(),
+  invoiceUpdateMany: vi.fn(),
   clientProfileFindUnique: vi.fn(),
   trainerProfileFindUnique: vi.fn(),
   clientPackageUpdateMany: vi.fn(),
@@ -23,7 +25,10 @@ const h = vi.hoisted(() => ({
 vi.mock('@/lib/client-context', () => ({ getActiveClient: h.getActiveClient }))
 vi.mock('@/lib/prisma', () => ({
   prisma: {
-    trainingSession: { findFirst: h.sessionFindFirst, deleteMany: h.sessionDeleteMany },
+    // count + invoice.updateMany: cancelling the LAST session of a self-booked
+    // assignment now settles the receivable it raised (audit T-12).
+    trainingSession: { findFirst: h.sessionFindFirst, deleteMany: h.sessionDeleteMany, count: h.sessionCount },
+    invoice: { updateMany: h.invoiceUpdateMany },
     clientProfile: { findUnique: h.clientProfileFindUnique },
     trainerProfile: { findUnique: h.trainerProfileFindUnique },
     clientPackage: { updateMany: h.clientPackageUpdateMany },
@@ -42,6 +47,9 @@ const future = () => new Date(Date.now() + 48 * 3_600_000)
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Sessions still on the assignment, so the receivable stands.
+  h.sessionCount.mockResolvedValue(1)
+  h.invoiceUpdateMany.mockResolvedValue({ count: 0 })
   h.getActiveClient.mockResolvedValue({ clientId: 'cp-1', userId: 'u-client', isPreview: false, actualUserId: 'u-client' })
   h.sessionFindFirst.mockResolvedValue({
     id: 's1', title: 'Loose-lead walk', scheduledAt: future(), clientPackageId: 'pkg-1', trainerId: 'trainer-1',

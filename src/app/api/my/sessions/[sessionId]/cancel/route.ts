@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { resolveCancellationFeeCents } from '@/lib/cancellation'
 import { createCancellationFeeInvoice } from '@/lib/invoicing'
+import { settleAssignmentIfEmptied } from '@/lib/assignment-settle'
 import { notifyTrainer } from '@/lib/trainer-notify'
 import { formatMoney } from '@/lib/money'
 
@@ -93,6 +94,14 @@ export async function POST(_req: Request, { params }: { params: Promise<{ sessio
       data: { extendIndefinitely: false },
     })
   }
+
+  // Nothing left to attend, nothing left to pay for. Self-booking raises ONE
+  // receivable for the whole assignment, and cancelling the last session used to
+  // leave it standing — so a client who booked and changed their mind was billed
+  // for a package with no sessions in it, with the cancellation fee below landing
+  // on top (audit T-12). Only when the LAST session goes; a six-session package
+  // with five left is still owed for.
+  await settleAssignmentIfEmptied(session.clientPackageId, session.trainerId)
 
   // Raise the cancellation fee as a normal receivable, payable via /pay/<token>.
   let feeCharged = 0
