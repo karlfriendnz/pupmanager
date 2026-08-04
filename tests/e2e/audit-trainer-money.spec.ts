@@ -1,0 +1,137 @@
+/**
+ * TRAINER-SIDE MONEY AUDIT — what happens to the receivable when the booking
+ * changes.
+ *
+ * The client audit's worst finding (C-3) was an undo that undid one of the three
+ * things the action did: cancelling a shop order deleted the request and left
+ * the invoice standing and the stock spent. Class enrolment is the same shape on
+ * a much bigger number, so this asks the same two questions of it:
+ *
+ *   1. withdraw someone — does the money they owe go away with them?
+ *   2. promote someone off the waitlist — does anyone bill them?
+ */
+import { test, expect, type Page } from '@playwright/test'
+import { PrismaPg } from '@prisma/adapter-pg'
+import bcrypt from 'bcryptjs'
+import { SEED, TEST_DATABASE_URL } from './test-db'
+
+const PASSWORD = 'AuditPass123!'
+
+async function makePrisma() {
+  const { PrismaClient } = await import('../../src/generated/prisma/index.js')
+  return new PrismaClient({ adapter: new PrismaPg({ connectionString: TEST_DATABASE_URL }) })
+}
+
+async function login(page: Page) {
+  await page.goto('/login')
+  await page.getByLabel('Email address').fill(SEED.owner.email)
+  await page.getByLabel('Password').fill(SEED.owner.password)
+  await page.getByRole('button', { name: 'Sign in' }).click()
+  await page.waitForURL('**/dashboard', { timeout: 30_000 })
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+async function makeClient(prisma: any, trainerId: string, tag: string) {
+  const hash = await bcrypt.hash(PASSWORD, 12)
+  const user = await prisma.user.create({
+    data: {
+      email: `money-audit-${tag}@e2e.test`, name: `Money Audit ${tag}`, role: 'CLIENT',
+      emailVerified: new Date(),
+      accounts: { create: { type: 'credentials', provider: 'credentials', providerAccountId: hash } },
+    },
+  })
+  const dog = await prisma.dog.create({ data: { name: `Money Dog ${tag}` } })
+  const client = await prisma.clientProfile.create({
+    data: { userId: user.id, trainerId, dogId: dog.id, status: 'ACTIVE', phone: '+6421000999' },
+  })
+  return { userId: user.id, dogId: dog.id, clientId: client.id }
+}
+
+test('a withdrawn enrolment does not leave the client owing, and a promoted one gets billed', async ({ page }) => {
+  test.setTimeout(180_000)
+  const prisma = await makePrisma()
+  const tag = Date.now().toString(36)
+  const made: { userId: string; dogId: string; clientId: string }[] = []
+  let packageId = ''
+  try {
+    await login(page)
+    const trainer = await prisma.trainerProfile.findFirstOrThrow({
+      where: { user: { email: SEED.owner.email } },
+    })
+
+    // A priced class with exactly one seat, so the second booking waits.
+    const created = await page.request.post('/api/packages', {
+      data: {
+        name: `Money audit class ${tag}`, sessionCount: 4, weeksBetween: 1, durationMins: 60,
+        isGroup: true, capacity: 1, allowWaitlist: true, priceCents: 12000,
+        startAt: new Date(Date.now() + 21 * 864e5).toISOString(),
+      },
+    })
+    expect(created.status(), await created.text()).toBeLessThan(300)
+    packageId = (await created.json()).id
+    const run = await prisma.classRun.findFirstOrThrow({ where: { packageId } })
+
+    const a = await makeClient(prisma, trainer.id, `${tag}a`)
+    const b = await makeClient(prisma, trainer.id, `${tag}b`)
+    made.push(a, b)
+
+    // A takes the seat, B goes on the waitlist.
+    const enrolA = await page.request.post(`/api/class-runs/${run.id}/enrollments`, {
+      data: { clientId: a.clientId, dogId: a.dogId },
+    })
+    expect(enrolA.status(), await enrolA.text()).toBeLessThan(300)
+    const enrolB = await page.request.post(`/api/class-runs/${run.id}/enrollments`, {
+      data: { clientId: b.clientId, dogId: b.dogId },
+    })
+    expect(enrolB.status(), await enrolB.text()).toBeLessThan(300)
+
+    const rowA = await prisma.classEnrollment.findFirstOrThrow({
+      where: { classRunId: run.id, clientId: a.clientId },
+    })
+    const rowB = await prisma.classEnrollment.findFirstOrThrow({
+      where: { classRunId: run.id, clientId: b.clientId },
+    })
+    expect(rowA.status, 'A takes the only seat').toBe('ENROLLED')
+    expect(rowB.status, 'B waits').toBe('WAITLISTED')
+
+    // Enrolling raised A's receivable.
+    const owedByA = await prisma.invoice.count({
+      where: { clientId: a.clientId, sourceType: 'CLASS_ENROLLMENT', status: 'UNPAID' },
+    })
+    expect(owedByA, 'enrolling bills them').toBe(1)
+
+    // ── The question ─────────────────────────────────────────────────────────
+    const withdrawn = await page.request.delete(`/api/class-runs/${run.id}/enrollments/${rowA.id}`)
+    expect(withdrawn.status(), await withdrawn.text()).toBe(200)
+
+    // 1. A is out, so A must not still owe for the seat.
+    const stillOwedByA = await prisma.invoice.count({
+      where: { clientId: a.clientId, sourceType: 'CLASS_ENROLLMENT', status: { not: 'CANCELLED' } },
+    })
+    expect(stillOwedByA, 'a withdrawn client must not still owe for the class').toBe(0)
+
+    // 2. B has the seat now, so B must owe for it.
+    const promoted = await prisma.classEnrollment.findFirstOrThrow({ where: { id: rowB.id } })
+    expect(promoted.status, 'B is promoted into the free seat').toBe('ENROLLED')
+    const owedByB = await prisma.invoice.count({
+      where: { clientId: b.clientId, sourceType: 'CLASS_ENROLLMENT', status: 'UNPAID' },
+    })
+    expect(owedByB, 'a client promoted off the waitlist has to be billed').toBe(1)
+  } finally {
+    for (const m of made) {
+      await prisma.invoiceLineItem.deleteMany({ where: { invoice: { clientId: m.clientId } } }).catch(() => {})
+      await prisma.invoice.deleteMany({ where: { clientId: m.clientId } }).catch(() => {})
+      await prisma.classEnrollment.deleteMany({ where: { clientId: m.clientId } }).catch(() => {})
+      await prisma.clientProfile.updateMany({ where: { id: m.clientId }, data: { dogId: null } }).catch(() => {})
+      await prisma.clientProfile.deleteMany({ where: { id: m.clientId } }).catch(() => {})
+      await prisma.dog.deleteMany({ where: { id: m.dogId } }).catch(() => {})
+      await prisma.account.deleteMany({ where: { userId: m.userId } }).catch(() => {})
+      await prisma.user.deleteMany({ where: { id: m.userId } }).catch(() => {})
+    }
+    if (packageId) {
+      await prisma.classRun.deleteMany({ where: { packageId } }).catch(() => {})
+      await prisma.package.delete({ where: { id: packageId } }).catch(() => {})
+    }
+    await prisma.$disconnect()
+  }
+})

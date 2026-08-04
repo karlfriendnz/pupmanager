@@ -1658,6 +1658,50 @@ export async function enrollInRunTickets(args: {
  * package allows a waitlist, promote the lowest-position WAITLISTED
  * enrolment. Returns the promoted enrolment id (for notification) if any.
  */
+/**
+ * Take back the receivable a withdrawn enrolment raised.
+ *
+ * Enrolling calls `createInvoiceForAssignment`; withdrawing used to mark the row
+ * WITHDRAWN and nothing else, so the client kept owing for a class they were no
+ * longer in and it sat in the trainer's Owed column looking real (audit T-3).
+ *
+ * Two rules, both deliberate:
+ *   • UNPAID only. A PARTIAL or PAID invoice means money has moved, and giving
+ *     it back is a refund decision that belongs to the trainer.
+ *   • A ticketed event is several enrolment rows covered by ONE invoice, so the
+ *     invoice only goes once the last of those rows has gone.
+ */
+async function cancelReceivableForEnrollment(tx: Tx, enrollmentId: string): Promise<void> {
+  const enr = await tx.classEnrollment.findUnique({
+    where: { id: enrollmentId },
+    select: { id: true, clientId: true, ticketGroupId: true },
+  })
+  if (!enr) return
+
+  // The rows this invoice could be hanging off. A basket shares a ticketGroupId
+  // and the invoice is keyed on the earliest of them, so any of the group's ids
+  // may be its sourceId.
+  const siblings = enr.ticketGroupId
+    ? await tx.classEnrollment.findMany({
+        where: { ticketGroupId: enr.ticketGroupId },
+        select: { id: true, status: true },
+      })
+    : [{ id: enr.id, status: 'WITHDRAWN' }]
+
+  // Still someone on this invoice who hasn't withdrawn — it stays.
+  if (siblings.some(s => s.id !== enrollmentId && s.status !== 'WITHDRAWN')) return
+
+  await tx.invoice.updateMany({
+    where: {
+      sourceType: 'CLASS_ENROLLMENT',
+      sourceId: { in: siblings.map(s => s.id) },
+      clientId: enr.clientId,
+      status: 'UNPAID',
+    },
+    data: { status: 'CANCELLED' },
+  })
+}
+
 export async function withdrawEnrollment(
   enrollmentId: string,
 ): Promise<{ promotedEnrollmentId: string | null }> {
@@ -1672,6 +1716,15 @@ export async function withdrawEnrollment(
       where: { id: enrollmentId },
       data: { status: 'WITHDRAWN', withdrawnAt: new Date(), waitlistPosition: null },
     })
+
+    // Enrolling raises a receivable, so withdrawing has to take it back off —
+    // otherwise the client owes for a class they are no longer in, and it sits
+    // in the trainer's Owed column looking real. Only an UNPAID one: money that
+    // has already moved is a refund decision, and that is the trainer's to make.
+    //
+    // A ticketed event is several enrolment rows sharing ONE invoice, so the
+    // invoice only goes when the last of them has gone.
+    await cancelReceivableForEnrollment(tx, enrollmentId)
 
     if (enr.status !== 'ENROLLED') return { promotedEnrollmentId: null }
 
@@ -1709,6 +1762,25 @@ export async function withdrawEnrollmentAndNotify(
       select: { clientId: true, classRun: { select: { name: true } } },
     })
     if (promoted) {
+      // Being promoted is being enrolled, so it has to be billed like an
+      // enrolment. Waiting is free — nobody is invoiced for a waitlist place —
+      // and the promotion raised no invoice at all, so the seat that opened up
+      // was handed over for nothing (audit T-4).
+      //
+      // Imported lazily: invoicing.ts imports from this file, so a static
+      // import here would be a cycle. Idempotent, like every other call to it.
+      try {
+        const { createInvoiceForAssignment } = await import('./invoicing')
+        await createInvoiceForAssignment({
+          trainerId,
+          clientId: promoted.clientId,
+          sourceType: 'CLASS_ENROLLMENT',
+          classEnrollmentId: promotedEnrollmentId,
+        })
+      } catch (e) {
+        console.error('[class withdraw] promote invoice failed', e)
+      }
+
       await prisma.clientNotification
         .create({
           data: {
