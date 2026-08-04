@@ -400,6 +400,38 @@ the wrong answer inside a white-labelled app.
 
 ---
 
+### 12d. A brand-new account: the empty states read as designed — with two exceptions
+**Screen:** `/dashboard`, `/schedule`, `/clients`, `/messages`, `/packages`,
+`/sessions/*` on a **brand-new trainer** · **Width:** 390
+
+Measured on a second, genuinely empty trainer (`audit.ux.empty@pupaudit.test`,
+no clients, no offerings, no sessions). The good news is real: every empty state
+carries an explanatory sentence rather than a blank panel — *"Marking a session
+complete shows its notes to the client"*, *"This fills up on its own once a
+class with a session…"*. They read as written by a person.
+
+Two do not:
+
+**a. `/packages` defines a word with itself.** **Severity: off-style**
+> "No 1:1 sessions yet — **A 1:1 session is a bundle of 1:1 sessions** you
+> assign to a client in one go."
+
+The sentence was written about *packages*; the nav-rename substitution
+(`pageTitleLabel` / `NAV_LABEL_CATALOG`) has replaced the word inside the
+explanation as well as in the heading, so the one sentence a brand-new trainer
+reads to learn what the screen is for is circular. This is the first offering
+screen a trainer opens.
+
+**b. `/schedule` tells a phone user to use the mouse.** **Severity: off-style**
+> "No sessions scheduled for this day — **Click a time slot in week view**, or
+> use the 'Assign 1:1 session' button"
+
+At 390 there is no week view and nothing to click. The empty state's only
+instruction is for a layout the reader cannot see. Rule: mobile is the primary
+layout, not a squeezed desktop.
+
+---
+
 ### 13. Empty states are hand-rolled 30+ times over
 **Screen:** everywhere · **Severity: off-style**
 
