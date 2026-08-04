@@ -492,9 +492,8 @@ test.describe('client audit — known bugs (docs/audit-client.md)', () => {
 
   // ── C-3 ────────────────────────────────────────────────────────────────────
   test('C-3 · cancelling a product request cancels the money and puts the stock back', async ({ page }) => {
-    // Cancelling deletes the request row and nothing else — the receivable
-    // stands and the stock stays spent. Expected to fail until C-3 is fixed.
-    test.fail()
+    // Cancelling used to delete the request row and nothing else — the
+    // receivable stood and the stock stayed spent. Fixed 2026-08-04.
     const prisma = await makePrisma()
     const tag = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`
     let productId: string | null = null
@@ -524,6 +523,15 @@ test.describe('client audit — known bugs (docs/audit-client.md)', () => {
 
       const after = await prisma.product.findUniqueOrThrow({ where: { id: product.id } })
       expect(after.stockCount, 'the item should be back on the shelf').toBe(4)
+
+      // And ordering it again has to bill again — the cancelled invoice must not
+      // stand in for a live one, or the second order is free.
+      const again = await page.request.post(`/api/my/products/${product.id}/request`, { data: {} })
+      expect(again.status()).toBe(201)
+      const owedNow = await prisma.invoice.count({
+        where: { clientId, sourceType: 'PRODUCT', sourceId: product.id, status: 'UNPAID' },
+      })
+      expect(owedNow, 'a re-order raises a fresh receivable').toBe(1)
     } finally {
       await dropClient?.().catch(() => {})
       if (productId) {

@@ -392,6 +392,11 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
         clientId: input.clientId,
         sourceType: input.sourceType,
         sourceId: idempotencySourceIds.length > 1 ? { in: idempotencySourceIds } : sourceId,
+        // A CANCELLED invoice is not a live receivable, so it must not stand in
+        // for one. Without this, a client who cancels a shop order and then
+        // orders the same thing again is handed it for nothing: the idempotency
+        // check finds the cancelled invoice and no new one is raised.
+        status: { not: 'CANCELLED' },
       },
       select: { id: true },
     })

@@ -3,6 +3,7 @@ import { takeStock } from '@/lib/stock'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { createInvoiceForAssignment } from '@/lib/invoicing'
+import { releaseCancelledRequest } from '@/lib/product-requests'
 import { notifyTrainer } from '@/lib/trainer-notify'
 import { z } from 'zod'
 
@@ -152,11 +153,28 @@ export async function DELETE(
   // product, which is what a product without variants has always done.
   const variantId = new URL(req.url).searchParams.get('variantId')
 
+  // Read the rows first: once they're gone there's nothing left to say which
+  // variant to put back or which receivable to cancel.
+  const pending = await prisma.productRequest.findMany({
+    where: { clientId: profile.id, productId, status: 'PENDING', ...(variantId ? { variantId } : {}) },
+    select: { id: true, variantId: true },
+  })
+
   // Hard delete the PENDING row. Keeps the (clientId, productId, variant) pair
   // available for fresh re-requests later. FULFILLED rows are preserved.
-  await prisma.productRequest.deleteMany({
-    where: { clientId: profile.id, productId, status: 'PENDING', ...(variantId ? { variantId } : {}) },
-  })
+  await prisma.productRequest.deleteMany({ where: { id: { in: pending.map(r => r.id) } } })
+
+  // Then undo the other two things ordering did — the unit off the shelf and
+  // the receivable. Cancelling only the request row left the client owing for
+  // something they cancelled and the stock count short by one (audit C-3).
+  for (const row of pending) {
+    await releaseCancelledRequest({
+      trainerId: profile.trainerId,
+      clientId: profile.id,
+      productId,
+      variantId: row.variantId,
+    })
+  }
 
   return NextResponse.json({ ok: true })
 }

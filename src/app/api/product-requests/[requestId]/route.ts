@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { safeEvaluate } from '@/lib/achievements'
+import { releaseCancelledRequest } from '@/lib/product-requests'
 import { z } from 'zod'
 
 const patchSchema = z.object({
@@ -52,6 +53,19 @@ export async function PATCH(
 
   if (parsed.data.status === 'FULFILLED') {
     await safeEvaluate(updated.clientId)
+  }
+
+  // Dismissing an order is the trainer's half of the client's cancel, and it has
+  // the same two things to undo: the unit off the shelf and the receivable.
+  // Only on the way INTO cancelled — re-sending the same PATCH must not keep
+  // handing back stock for one order (audit C-3).
+  if (parsed.data.status === 'CANCELLED' && request.status === 'PENDING') {
+    await releaseCancelledRequest({
+      trainerId,
+      clientId: updated.clientId,
+      productId: updated.productId,
+      variantId: updated.variantId,
+    })
   }
 
   return NextResponse.json(updated)

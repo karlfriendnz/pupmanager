@@ -40,7 +40,7 @@ client before they buy it.
 |---|---------|----------|
 | C-1 | An intake form with an **Address** question 500s — the client can never get past the gate — **FIXED** | breaks the journey |
 | C-2 | The intake submit route **never checks `required`** — a blank form is accepted and the gate lifts — **FIXED** | breaks the journey |
-| C-3 | Cancelling a shop order leaves the **invoice standing and the stock spent** | loses money |
+| C-3 | Cancelling a shop order leaves the **invoice standing and the stock spent** — **FIXED** | loses money |
 | C-4 | A paid **digital download's URL is in the page source** before purchase | loses money |
 | C-5 | The shop grid gives **no sign that something is sold out** until you tap it | confusing |
 | C-6 | The client **Help page's FAQ describes an app that no longer exists** | confusing |
@@ -134,6 +134,23 @@ and `ClientProfile.intakeCompletedAt` is set.
 
 ### C-3 · Cancelling a shop order leaves the invoice standing and the stock spent — *loses money*
 
+> **FIXED 2026-08-04.** `releaseCancelledRequest()` (`src/lib/product-requests.ts`)
+> undoes the other two things ordering did — the unit goes back on the shelf as a
+> `RETURNED` movement and the UNPAID receivable is cancelled. A PARTIAL or PAID
+> invoice is left alone: money that has moved is a refund decision and that's the
+> trainer's, not a tap's.
+>
+> Two things came with it. **The trainer's dismiss had the same bug** — the PATCH
+> on `/api/product-requests/[requestId]` marked the row CANCELLED and undid
+> nothing — so both paths now go through the one helper. And the invoice
+> idempotency check in `createInvoiceForAssignment` now ignores CANCELLED
+> invoices; without that, a client who cancelled and re-ordered got the second
+> one for nothing, because the cancelled invoice stood in for a live one.
+>
+> **Still open:** an invoice already mirrored to Xero is cancelled here but not
+> voided there. There is no void-in-Xero helper in the codebase yet, and the
+> existing "combine receivables" path cancels locally the same way.
+
 **What I did.** Requested a product from the client shop, then tapped the same
 button again — the UI labels it **"Requested · Tap to cancel"**, so this is the
 one-tap undo a client is invited to use.
@@ -161,7 +178,7 @@ and put the unit back on the shelf.
 `Invoice where sourceType='PRODUCT' and sourceId=<id>` (still UNPAID) and
 `Product.stockCount` (still decremented).
 
-**Test:** `audit-client.spec.ts` → *C-3 · cancelling a product request cancels the money and puts the stock back* (currently `test.fail`).
+**Test:** `audit-client.spec.ts` → *C-3 · cancelling a product request cancels the money and puts the stock back* — now green.
 
 ---
 
