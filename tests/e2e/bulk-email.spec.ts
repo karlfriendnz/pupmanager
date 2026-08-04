@@ -122,12 +122,21 @@ test.describe('marketing page', () => {
     await blocks.nth(1).getByRole('button', { name: /drag to reorder/i }).focus()
     await page.keyboard.press('Space')
     await expect(live).toContainText(/moved over droppable area/i)
+    // dnd-kit announces EVERY move, so the announcement changing is the real
+    // sync point. This used to be a flat 250ms wait, which was plenty on an idle
+    // machine and not enough with the rest of the suite running beside it: the
+    // ArrowUp had not registered when Space dropped, so the block landed back
+    // where it started and only the full-suite run ever saw it.
+    const afterLift = (await live.textContent()) ?? ''
     await page.keyboard.press('ArrowUp')
-    await page.waitForTimeout(250) // let the lifted block settle over the one above
+    await expect
+      .poll(async () => (await live.textContent()) ?? '', { timeout: 15_000 })
+      .not.toBe(afterLift)
+
     await page.keyboard.press('Space')
     await expect(live).toContainText(/was dropped/i)
-    await expect(blocks.nth(0)).toHaveAttribute('data-block-type', 'image')
-    await expect(blocks.nth(1)).toHaveAttribute('data-block-type', 'text')
+    await expect(blocks.nth(0)).toHaveAttribute('data-block-type', 'image', { timeout: 15_000 })
+    await expect(blocks.nth(1)).toHaveAttribute('data-block-type', 'text', { timeout: 15_000 })
   })
 
   test('the preview no longer tells clients to hit reply', async ({ page }) => {
