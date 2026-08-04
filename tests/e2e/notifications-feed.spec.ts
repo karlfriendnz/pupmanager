@@ -57,3 +57,54 @@ test.describe('trainer notifications feed', () => {
     }
   })
 })
+
+// ── The "What's new" tab ─────────────────────────────────────────────────────
+// A platform announcement used to arrive as one row in the feed and then scroll
+// away, so there was nowhere to GO and read what changed. The tab reads the
+// announcements that were already SENT rather than a list maintained in the
+// app — a hand-kept copy is how the client Help page ended up describing a
+// screen that had been deleted years earlier (audit C-6).
+test.describe("trainer notifications — What's new", () => {
+  test('shows sent trainer announcements, hides drafts and client-only ones', async ({ page }) => {
+    const prisma = await makePrisma()
+    const stamp = Date.now()
+    const sent = `Tap to Pay has landed [${stamp}]`
+    const draft = `Still being written [${stamp}]`
+    const clientOnly = `News for dog owners [${stamp}]`
+    const made: string[] = []
+    try {
+      for (const a of [
+        { title: sent, body: '<p>Take a card by tapping it on your phone.</p>', status: 'SENT', audience: 'ALL_TRAINERS', sentAt: new Date() },
+        { title: draft, body: '<p>Not finished.</p>', status: 'DRAFT', audience: 'ALL_TRAINERS' },
+        { title: clientOnly, body: '<p>For clients.</p>', status: 'SENT', audience: 'ALL_CLIENTS', sentAt: new Date() },
+      ]) {
+        const row = await prisma.announcement.create({ data: a as never })
+        made.push(row.id)
+      }
+
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.goto('/notifications?tab=whats-new')
+
+      await expect(page.getByText(sent)).toBeVisible({ timeout: 15_000 })
+      // The body is rich text and renders as words, not markup.
+      await expect(page.getByText('Take a card by tapping it on your phone.')).toBeVisible()
+
+      // A draft is something Karl is still writing; a client announcement is
+      // somebody else's news.
+      await expect(page.getByText(draft)).toHaveCount(0)
+      await expect(page.getByText(clientOnly)).toHaveCount(0)
+
+      // The tab is a URL, so it survives a reload and can be linked to.
+      await page.reload()
+      await expect(page.getByText(sent)).toBeVisible({ timeout: 15_000 })
+
+      // And the ordinary feed is still the default.
+      await page.goto('/notifications')
+      await expect(page.getByRole('heading', { name: 'Notifications' })).toBeVisible()
+      await expect(page.getByText(sent)).toHaveCount(0)
+    } finally {
+      await prisma.announcement.deleteMany({ where: { id: { in: made } } }).catch(() => {})
+      await prisma.$disconnect()
+    }
+  })
+})
