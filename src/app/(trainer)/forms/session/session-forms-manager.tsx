@@ -128,8 +128,17 @@ export function SessionFormEditor({
 
   async function onDelete() {
     if (!existing) return
+    setError(null)
     const res = await fetch(`/api/session-forms/${existing.id}`, { method: 'DELETE' })
-    if (!res.ok) return
+    if (!res.ok) {
+      // `if (!res.ok) return` swallowed every refusal, so the trainer tapped
+      // Delete and watched nothing happen. The server refuses a form that has
+      // been filled in and says how many sessions it's on — show that, because
+      // it names the alternative (turn it off).
+      const body = await res.json().catch(() => null) as { error?: unknown } | null
+      setError(typeof body?.error === 'string' ? body.error : 'Could not delete this form — try again.')
+      return
+    }
     router.push('/settings?tab=forms')
     router.refresh()
   }

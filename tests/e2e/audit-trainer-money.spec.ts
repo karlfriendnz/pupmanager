@@ -310,3 +310,72 @@ test('a product with orders or invoices behind it cannot be deleted away', async
     await prisma.$disconnect()
   }
 })
+
+test('a session form that has been filled in cannot be deleted away', async ({ page }) => {
+  // SessionFormResponse.form is onDelete: Cascade, so deleting a session form
+  // took every answer ever recorded on it — the trainer's record of what was
+  // captured at each session, and what was sent to the client (audit T-8).
+  test.setTimeout(120_000)
+  const prisma = await makePrisma()
+  const tag = Date.now().toString(36)
+  let formId = ''
+  let sessionId = ''
+  let client: { userId: string; dogId: string; clientId: string } | null = null
+  try {
+    await login(page)
+    const trainer = await prisma.trainerProfile.findFirstOrThrow({
+      where: { user: { email: SEED.owner.email } },
+    })
+    client = await makeClient(prisma, trainer.id, `${tag}f`)
+
+    const form = await prisma.sessionForm.create({
+      data: {
+        trainerId: trainer.id, name: `Audit session form ${tag}`, isActive: true,
+        questions: [{ id: 'q1', type: 'SHORT_TEXT', label: 'How did it go?', required: false }],
+      },
+    })
+    formId = form.id
+
+    // An empty one deletes, exactly as before.
+    const spare = await prisma.sessionForm.create({
+      data: { trainerId: trainer.id, name: `Audit spare form ${tag}`, isActive: true, questions: [] },
+    })
+    const emptyGone = await page.request.delete(`/api/session-forms/${spare.id}`)
+    expect(emptyGone.status(), 'a form nobody has filled in still deletes').toBe(200)
+
+    // Now record an answer against the real one.
+    const session = await prisma.trainingSession.create({
+      data: {
+        trainerId: trainer.id, clientId: client.clientId, dogId: client.dogId,
+        title: `Audit session ${tag}`,
+        scheduledAt: new Date(Date.now() - 864e5), durationMins: 60, status: 'COMPLETED',
+      },
+    })
+    sessionId = session.id
+    await prisma.sessionFormResponse.create({
+      data: { sessionId: session.id, formId: form.id, answers: { q1: 'Went really well' } },
+    })
+
+    const refused = await page.request.delete(`/api/session-forms/${form.id}`)
+    expect(refused.status(), 'a form with answers on it must not be deletable').toBe(409)
+    expect(
+      await prisma.sessionFormResponse.count({ where: { formId: form.id } }),
+      'and the answers must still be there',
+    ).toBe(1)
+  } finally {
+    if (sessionId) {
+      await prisma.sessionFormResponse.deleteMany({ where: { sessionId } }).catch(() => {})
+      await prisma.trainingSession.delete({ where: { id: sessionId } }).catch(() => {})
+    }
+    if (formId) await prisma.sessionForm.delete({ where: { id: formId } }).catch(() => {})
+    if (client) {
+      await prisma.trainingSession.deleteMany({ where: { clientId: client.clientId } }).catch(() => {})
+      await prisma.clientProfile.updateMany({ where: { id: client.clientId }, data: { dogId: null } }).catch(() => {})
+      await prisma.clientProfile.deleteMany({ where: { id: client.clientId } }).catch(() => {})
+      await prisma.dog.deleteMany({ where: { id: client.dogId } }).catch(() => {})
+      await prisma.account.deleteMany({ where: { userId: client.userId } }).catch(() => {})
+      await prisma.user.deleteMany({ where: { id: client.userId } }).catch(() => {})
+    }
+    await prisma.$disconnect()
+  }
+})

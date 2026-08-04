@@ -109,6 +109,26 @@ export async function DELETE(
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
+  // History refuses, the same rule the unified Form DELETE and the offering
+  // DELETE already settled on. `SessionFormResponse.form` is onDelete: Cascade,
+  // so deleting a form took every answer ever filled in on it — the trainer's
+  // record of what was captured at each session, and what was sent to the
+  // client afterwards. Silently, on a form that had been in use for a year
+  // (audit T-8).
+  //
+  // `isActive: false` is the way to retire one: it stops being offered on new
+  // sessions and everything already recorded stays readable.
+  const filledIn = await prisma.sessionFormResponse.count({ where: { formId } })
+  if (filledIn > 0) {
+    return NextResponse.json(
+      {
+        error: `This form has been filled in on ${filledIn} ${filledIn === 1 ? 'session' : 'sessions'}. Turn it off instead — deleting it would take those answers with it.`,
+        filledIn,
+      },
+      { status: 409 },
+    )
+  }
+
   await prisma.sessionForm.delete({ where: { id: formId } })
   return NextResponse.json({ ok: true })
 }
