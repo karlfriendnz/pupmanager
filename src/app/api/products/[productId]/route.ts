@@ -116,6 +116,33 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ prod
   const owned = await ownsProduct(productId, trainerId)
   if (!owned) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
+  // Money refuses — the same rule the offering DELETE settled on, for the same
+  // reason. `ProductRequest.product` is onDelete: Cascade, so deleting a product
+  // silently took every order with it: the ones clients are still waiting on,
+  // and the fulfilled ones that are the record of what somebody bought. The
+  // invoices raised against them survive, pointing at rows that no longer exist
+  // (Invoice's sourceType/sourceId link is soft, so nothing at the DB level
+  // stops it) — and they are still owed (audit T-7).
+  const [pending, invoiced, paid] = await Promise.all([
+    prisma.productRequest.count({ where: { productId, status: 'PENDING' } }),
+    prisma.invoice.count({ where: { trainerId, sourceType: 'PRODUCT', sourceId: productId } }),
+    prisma.paymentItem.count({ where: { productId } }),
+  ])
+  if (pending > 0) {
+    return NextResponse.json(
+      {
+        error: `${pending} ${pending === 1 ? 'client has' : 'clients have'} this on order. Hand ${pending === 1 ? 'it' : 'them'} over or cancel ${pending === 1 ? 'it' : 'them'} first, then delete it.`,
+      },
+      { status: 409 },
+    )
+  }
+  if (invoiced > 0 || paid > 0) {
+    return NextResponse.json(
+      { error: 'This product has been billed for. Deleting it would orphan those invoices — hide it instead, or cancel them first.' },
+      { status: 409 },
+    )
+  }
+
   await prisma.product.delete({ where: { id: productId } })
   return NextResponse.json({ ok: true })
 }

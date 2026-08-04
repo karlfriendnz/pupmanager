@@ -255,3 +255,58 @@ test('cancelling a whole class does not leave everyone on it still owing', async
     await prisma.$disconnect()
   }
 })
+
+test('a product with orders or invoices behind it cannot be deleted away', async ({ page }) => {
+  // ProductRequest.product is onDelete: Cascade, so deleting a product used to
+  // take every order with it — the ones clients were waiting on and the
+  // fulfilled ones that are the record of what somebody bought — while their
+  // invoices survived, owed, pointing at rows that no longer existed (T-7).
+  test.setTimeout(120_000)
+  const prisma = await makePrisma()
+  const tag = Date.now().toString(36)
+  let productId = ''
+  let client: { userId: string; dogId: string; clientId: string } | null = null
+  try {
+    await login(page)
+    const trainer = await prisma.trainerProfile.findFirstOrThrow({
+      where: { user: { email: SEED.owner.email } },
+    })
+    client = await makeClient(prisma, trainer.id, `${tag}p`)
+
+    const made = await page.request.post('/api/products', {
+      data: { name: `Money audit product ${tag}`, priceCents: 3500, stockCount: 5 },
+    })
+    expect(made.status(), await made.text()).toBeLessThan(300)
+    productId = (await made.json()).id
+
+    await prisma.productRequest.create({
+      data: { clientId: client.clientId, productId, status: 'PENDING' },
+    })
+
+    const refused = await page.request.delete(`/api/products/${productId}`)
+    expect(refused.status(), 'a product on order must not be deletable').toBe(409)
+    expect(
+      await prisma.productRequest.count({ where: { productId } }),
+      'and the order must still be there',
+    ).toBe(1)
+
+    // Once nobody is waiting on it and nothing was billed, it goes.
+    await prisma.productRequest.deleteMany({ where: { productId } })
+    const gone = await page.request.delete(`/api/products/${productId}`)
+    expect(gone.status(), await gone.text()).toBe(200)
+    productId = ''
+  } finally {
+    if (productId) await prisma.product.delete({ where: { id: productId } }).catch(() => {})
+    if (client) {
+      await prisma.productRequest.deleteMany({ where: { clientId: client.clientId } }).catch(() => {})
+      await prisma.invoiceLineItem.deleteMany({ where: { invoice: { clientId: client.clientId } } }).catch(() => {})
+      await prisma.invoice.deleteMany({ where: { clientId: client.clientId } }).catch(() => {})
+      await prisma.clientProfile.updateMany({ where: { id: client.clientId }, data: { dogId: null } }).catch(() => {})
+      await prisma.clientProfile.deleteMany({ where: { id: client.clientId } }).catch(() => {})
+      await prisma.dog.deleteMany({ where: { id: client.dogId } }).catch(() => {})
+      await prisma.account.deleteMany({ where: { userId: client.userId } }).catch(() => {})
+      await prisma.user.deleteMany({ where: { id: client.userId } }).catch(() => {})
+    }
+    await prisma.$disconnect()
+  }
+})
