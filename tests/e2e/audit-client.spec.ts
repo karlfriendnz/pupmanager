@@ -802,6 +802,35 @@ test.describe('client audit — known bugs, part two', () => {
     }
   })
 
+  // ── C-6 ────────────────────────────────────────────────────────────────────
+  test('C-6 · the Help page answers describe the app that exists', async ({ page }) => {
+    // Every answer on the one page a confused client is sent to named a screen
+    // that had been gone for a long time. Fixed 2026-08-04.
+    const prisma = await makePrisma()
+    const tag = Date.now().toString(36)
+    let dropClient: (() => Promise<void>) | null = null
+    try {
+      const trainer = await prisma.trainerProfile.findFirstOrThrow({ where: { user: { email: SEED.owner.email } } })
+      const { client, cleanupClient } = await makeAuditClient(prisma, trainer.id, tag)
+      dropClient = cleanupClient
+
+      await loginAsAuditClient(page, prisma, client.id)
+      await page.goto('/my-help')
+      const body = await page.locator('body').innerText()
+
+      // The screens that no longer exist.
+      for (const ghost of ['My Diary', 'Email reminders', 'My Profile']) {
+        expect(body, `Help still points at “${ghost}”`).not.toContain(ghost)
+      }
+      // And it still answers the question it's there for.
+      expect(body).toContain('Log a session')
+      expect(body).toContain('My details')
+    } finally {
+      await dropClient?.().catch(() => {})
+      await prisma.$disconnect()
+    }
+  })
+
   // ── C-7 ────────────────────────────────────────────────────────────────────
   test('C-7 · a required “Dog’s name” answer creates the dog when there isn’t one', async ({ page }) => {
     // Dog answers were only written when the profile already had a primary dog,

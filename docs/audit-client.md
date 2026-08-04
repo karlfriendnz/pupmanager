@@ -43,7 +43,7 @@ client before they buy it.
 | C-3 | Cancelling a shop order leaves the **invoice standing and the stock spent** — **FIXED** | loses money |
 | C-4 | A paid **digital download’s URL is in the page source** before purchase — **FIXED** | loses money |
 | C-5 | The shop grid gives **no sign that something is sold out** until you tap it — **FIXED** | confusing |
-| C-6 | The client **Help page's FAQ describes an app that no longer exists** | confusing |
+| C-6 | The client **Help page's FAQ describes an app that no longer exists** — **FIXED** | confusing |
 | C-7 | A required **"Dog’s name"** intake answer is silently discarded when the client has no dog record yet — **FIXED** | confusing |
 | C-8 | With payments off, a **priced digital product downloads free** and raises nothing — **FIXED** | loses money |
 
@@ -233,6 +233,14 @@ disabled") — the grid card just hasn't caught up.
 ---
 
 ### C-6 · The client Help page describes an app that no longer exists — *confusing*
+
+> **FIXED 2026-08-04.** Six answers written against the app as it is: logging
+> homework from Home ("Log a session"), why there might be no homework yet,
+> booking from Offerings, what's owed on Invoices, notifications and adding a
+> dog from the My details tabs. Screen names come from the trainer's OWN menu
+> labels via `clientLabelFor`, not hard-coded, since a trainer can rename any of
+> them. The e2e test asserts the three ghosts — "My Diary", "Email reminders",
+> "My Profile" — are gone.
 
 `src/app/(client)/my-help/page.tsx` hard-codes a four-item FAQ that refers to:
 

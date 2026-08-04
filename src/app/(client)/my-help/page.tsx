@@ -1,18 +1,55 @@
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
+import { clientLabelFor, sanitizeNavLabels } from '@/lib/nav-labels'
 import { Card, CardBody } from '@/components/ui/card'
 import { ClientSupportForm } from './client-support-form'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Help' }
 
-const FAQ = [
-  { q: 'How do I log my training?', a: 'Open "My Diary", find today\'s tasks, and tap the circle next to each task to mark it complete. You can also add a note or video link.' },
-  { q: 'Why can\'t I see my tasks?', a: 'Tasks are set for you each day. If nothing appears, check that you\'re viewing today\'s date, or get in touch using the contact details on this page.' },
-  { q: 'How do I upload a video of my dog?', a: 'After completing a task, tap "Add a note or video". You can paste a YouTube link or upload a video directly from your device.' },
-  { q: 'How do I change my notification settings?', a: 'Go to My Profile and toggle "Email reminders" on or off.' },
-]
+/**
+ * The answers a confused client is sent here for.
+ *
+ * Written against the app as it actually is. The old set described "My Diary",
+ * a circle you tapped to tick a task off, and an "Email reminders" toggle on a
+ * screen called My Profile — none of which had existed for a long time (audit
+ * C-6). Screen names come from the trainer's own menu labels rather than being
+ * hard-coded, because a trainer can rename any of them.
+ */
+function faqFor(label: (href: string, fallback: string) => string) {
+  const home = label('/home', 'Home')
+  const offerings = label('/my-availability', 'Offerings')
+  const invoices = label('/my-invoices', 'Invoices')
+  const details = label('/my-profile', 'My details')
+  const messages = label('/my-messages', 'Messages')
+  return [
+    {
+      q: 'How do I log my training at home?',
+      a: `Open ${home}. Your homework is listed there. Tap the one you did, then tap “Log a session” and say how it went. You can add photos.`,
+    },
+    {
+      q: 'Why is there no homework for me?',
+      a: `Your trainer sets homework after a session, so there may not be any yet. If you think something is missing, send them a message from ${messages}.`,
+    },
+    {
+      q: 'How do I book my next session?',
+      a: `Go to ${offerings}. It lists everything your trainer offers and what you can book right now.`,
+    },
+    {
+      q: 'Where do I see what I owe?',
+      a: `${invoices} shows every invoice, what has been paid, and what is still due.`,
+    },
+    {
+      q: 'How do I change what you email me?',
+      a: `Open ${details} and pick the Notifications tab. You can turn each kind of message on or off.`,
+    },
+    {
+      q: 'How do I add another dog?',
+      a: `Open ${details} and pick the Dogs tab. Add as many as you need — your trainer sees them all.`,
+    },
+  ]
+}
 
 export default async function ClientHelpPage() {
   const active = await getActiveClient()
@@ -29,6 +66,9 @@ export default async function ClientHelpPage() {
           businessName: true,
           phone: true,
           showPhoneToClients: true,
+          // The trainer's own menu wording, so the answers name the screens the
+          // client is actually looking at.
+          navLabels: true,
           // Company contact email shown to clients — NOT the trainer's private
           // sign-in email.
           publicEmail: true,
@@ -38,6 +78,8 @@ export default async function ClientHelpPage() {
   })
 
   const trainer = clientProfile?.trainer
+  const labels = sanitizeNavLabels(trainer?.navLabels)
+  const FAQ = faqFor((href, fallback) => clientLabelFor(href, fallback, labels))
 
   return (
     <div className="px-5 lg:px-8 py-6 max-w-3xl mx-auto w-full">
