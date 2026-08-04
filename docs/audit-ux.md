@@ -120,7 +120,8 @@ reports-view-data  twoScrollbars=TRUE
 The overlay's body is `<div className="overflow-y-auto">` (`:454`) with no
 `no-scrollbar`, the root carries none of the three markers, and the page keeps
 scrolling behind it — so the trainer gets the modal's rail *and* the page's.
-Screenshot: `ux-760-reports-view-data.png`. At 390 it is hidden only because
+Reproduce with `npx tsx tests/audit/ux-overlays.ts 760 560 reports`, which also
+writes the screenshot. At 390 it is hidden only because
 `globals.css`'s `@media (max-width: 767px)` blanket rule hides every rail — the
 bug is there at both widths, visible at one. That is exactly the trap the brief
 called out.
@@ -527,6 +528,21 @@ modal and it is a two-line change to add it here.
 Deliberately not pinned: colour, gradients, stroke weight, card stacking. Those
 are taste calls and belong in this document, not in a test that would fight the
 next redesign.
+
+**Suite result with these 10 added: 398 passed, 6 failed, 8 skipped (15.1m).**
+The baseline to beat was 367 passing, so the count went up by 31 and none of
+the 6 failures is `audit-ux.spec.ts` — they are in `audit-client.spec.ts`,
+`audit-security.spec.ts`, `audit-settings.spec.ts` and
+`products-browser.spec.ts`, which belong to the other audits running alongside
+this one.
+
+One environment note for whoever runs this next: the e2e harness reuses an
+existing server on port 3017 and its embedded Postgres refuses to start if
+`.test-db/data` is left behind. A killed run strands both, and the symptom is
+every test failing on a 30s login timeout against a database that no longer
+exists. `lsof -nP -iTCP:3017 -sTCP:LISTEN` and `rm -rf .test-db` before
+re-running — but only once nothing is listening on 54329, or you will pull the
+data directory out from under another agent's live run.
 
 ## How to reproduce
 

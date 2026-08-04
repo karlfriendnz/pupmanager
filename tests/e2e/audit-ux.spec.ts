@@ -124,6 +124,42 @@ test('the phone create sheet leaves one scrollbar, not two', async ({ page }) =>
     'body scroll must be locked while a full-screen overlay is open').toBe(true)
 })
 
+test('an open overlay still leaves one scrollbar in a NARROW DESKTOP window', async ({ page }) => {
+  // 760×560 is the trap: globals.css hides every scrollbar below md by
+  // VIEWPORT width, so a bug that is invisible at 390 shows its rail here.
+  await page.setViewportSize(NARROW)
+  await login(page, SEED.owner.email, SEED.owner.password)
+  await page.goto('/clients')
+  await page.waitForTimeout(600)
+  const opened = await page.evaluate(() => {
+    const btn = document.querySelector('button[aria-label="Create"]') as HTMLElement | null
+    if (!btn) return false
+    btn.click()
+    return true
+  })
+  expect(opened, 'the create button should exist at 760px').toBe(true)
+  await page.waitForTimeout(700)
+
+  const state = await page.evaluate(() => {
+    const root = document.querySelector('[role="dialog"][aria-modal="true"], .pm-overlay')
+    const bodyLocked = getComputedStyle(document.body).overflow === 'hidden'
+      || getComputedStyle(document.documentElement).overflow === 'hidden'
+    const pageWouldScroll = document.documentElement.scrollHeight > document.documentElement.clientHeight + 4
+    const rails = root
+      ? (Array.from(root.querySelectorAll('*')) as HTMLElement[])
+          .filter(e => ['auto', 'scroll'].includes(getComputedStyle(e).overflowY)
+            && e.scrollHeight > e.clientHeight + 4
+            && e.offsetWidth - e.clientWidth > 0)
+          .map(e => e.tagName.toLowerCase())
+      : []
+    return { marked: !!root, bodyLocked, pageWouldScroll, rails }
+  })
+  expect(state.marked, 'the overlay must be .pm-overlay or an aria-modal dialog').toBe(true)
+  expect(state.bodyLocked || !state.pageWouldScroll,
+    'the page must not scroll behind an open overlay').toBe(true)
+  expect(state.rails, `overlay showed its own scrollbar: ${state.rails.join(', ')}`).toEqual([])
+})
+
 test('every overlay that scrolls opts into the no-scrollbar net', async ({ page }) => {
   // A scrolling region inside an overlay must have its own bar hidden. The
   // stylesheet does this for `.pm-overlay` and `[role=dialog][aria-modal]`

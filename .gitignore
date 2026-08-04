@@ -94,3 +94,6 @@ __pycache__/
 # Screenshots dropped on in-app review comments — notes about a moment, not repo content.
 public/review-uploads/
 docs/review-tasks.md
+
+# UX-audit session state (tests/audit/ux-lib.ts) — throwaway logins, never committed
+tests/audit/.ux-*-state.json
