@@ -42,7 +42,7 @@ client before they buy it.
 | C-2 | The intake submit route **never checks `required`** — a blank form is accepted and the gate lifts — **FIXED** | breaks the journey |
 | C-3 | Cancelling a shop order leaves the **invoice standing and the stock spent** — **FIXED** | loses money |
 | C-4 | A paid **digital download’s URL is in the page source** before purchase — **FIXED** | loses money |
-| C-5 | The shop grid gives **no sign that something is sold out** until you tap it | confusing |
+| C-5 | The shop grid gives **no sign that something is sold out** until you tap it — **FIXED** | confusing |
 | C-6 | The client **Help page's FAQ describes an app that no longer exists** | confusing |
 | C-7 | A required **"Dog's name"** intake answer is silently discarded when the client has no dog record yet | confusing |
 | C-8 | With payments off, a **priced digital product downloads free** and raises nothing — **FIXED** | loses money |
@@ -214,6 +214,12 @@ product this client hasn't bought — resolve it server-side per client (as
 ---
 
 ### C-5 · The shop grid gives no sign that something is sold out — *confusing*
+
+> **FIXED 2026-08-04.** The card carries a **Sold out** chip and dims its
+> picture, and the name greys with it. The price stays — it's still what the
+> thing costs, and "when's it back?" is the next question; the chip already
+> says sold out and saying it twice is noise. Untracked stock (`null`) is
+> unaffected, so a digital product never reads as sold out.
 
 A product with `stockCount: 0` renders in the grid as name + price, identical to
 one with stock. `stockLabel()` / "Out of stock" only appear **inside** the

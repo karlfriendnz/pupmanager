@@ -341,7 +341,12 @@ export function ShopGrid({
       {/* Grid */}
       {!shopIsEmpty && (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {visible.map(p => (
+        {visible.map(p => {
+          // Sold out has to be visible from the SHELF. It was only ever said
+          // inside the sheet, so a client picked the thing they wanted, tapped
+          // it, and only then found out it was gone (audit C-5).
+          const soldOut = !productInStock(p, p.variants ?? [])
+          return (
           <button
             key={p.id}
             onClick={() => setOpen(p)}
@@ -350,11 +355,18 @@ export function ShopGrid({
             <div className="aspect-square bg-gradient-to-br from-amber-50 to-rose-50 relative flex items-center justify-center">
               {p.imageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={p.imageUrl} alt={p.name} className="absolute inset-0 h-full w-full object-cover" />
+                <img
+                  src={p.imageUrl}
+                  alt={p.name}
+                  className={cn(
+                    'absolute inset-0 h-full w-full object-cover',
+                    soldOut && 'opacity-40',
+                  )}
+                />
               ) : p.kind === 'DIGITAL' ? (
-                <FileDown className="h-7 w-7 text-violet-400" />
+                <FileDown className={cn('h-7 w-7 text-violet-400', soldOut && 'opacity-40')} />
               ) : (
-                <PackageIcon className="h-7 w-7 text-amber-400" />
+                <PackageIcon className={cn('h-7 w-7 text-amber-400', soldOut && 'opacity-40')} />
               )}
               <div className="absolute top-2 left-2 flex flex-wrap items-center gap-1">
                 <SaleTag product={p} />
@@ -364,20 +376,31 @@ export function ShopGrid({
                   </span>
                 )}
               </div>
-              {isRequested(p) && (
+              {soldOut ? (
+                <span className="absolute top-2 right-2 text-[10px] font-bold text-slate-600 bg-white/90 backdrop-blur px-2 py-0.5 rounded-full">
+                  Sold out
+                </span>
+              ) : isRequested(p) && (
                 <span className="absolute top-2 right-2 flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 backdrop-blur px-2 py-0.5 rounded-full">
                   <Check className="h-3 w-3" /> Requested
                 </span>
               )}
             </div>
             <div className="p-3">
-              <p className="text-sm font-semibold text-slate-900 line-clamp-2 leading-tight">{p.name}</p>
+              <p className={cn(
+                'text-sm font-semibold line-clamp-2 leading-tight',
+                soldOut ? 'text-slate-500' : 'text-slate-900',
+              )}>{p.name}</p>
               <div className="mt-1">
+                {/* The price stays on a sold-out card — it's still what the
+                    thing costs, and "when's it back?" is the next question.
+                    The chip above says sold out; saying it twice is noise. */}
                 <CardPrice product={p} currency={currency ?? 'nzd'} />
               </div>
             </div>
           </button>
-        ))}
+          )
+        })}
       </div>
       )}
 

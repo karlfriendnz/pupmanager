@@ -801,4 +801,46 @@ test.describe('client audit — known bugs, part two', () => {
       await prisma.$disconnect()
     }
   })
+
+  // ── C-5 ────────────────────────────────────────────────────────────────────
+  test('C-5 · a sold-out product says so on the shelf, not after you tap it', async ({ page }) => {
+    // "Out of stock" only ever appeared INSIDE the product sheet, so a client
+    // browsed, picked the thing they wanted, tapped it, and only then found out
+    // it was gone. Fixed 2026-08-04.
+    const prisma = await makePrisma()
+    const tag = Date.now().toString(36)
+    let goneId: string | null = null
+    let hereId: string | null = null
+    let dropClient: (() => Promise<void>) | null = null
+    try {
+      const trainer = await prisma.trainerProfile.findFirstOrThrow({ where: { user: { email: SEED.owner.email } } })
+      const { client, cleanupClient } = await makeAuditClient(prisma, trainer.id, tag)
+      dropClient = cleanupClient
+      const gone = await prisma.product.create({
+        data: { trainerId: trainer.id, name: `Audit sold out ${tag}`, priceCents: 1200, stockCount: 0, active: true },
+      })
+      goneId = gone.id
+      const here = await prisma.product.create({
+        data: { trainerId: trainer.id, name: `Audit in stock ${tag}`, priceCents: 1200, stockCount: 3, active: true },
+      })
+      hereId = here.id
+
+      await loginAsAuditClient(page, prisma, client.id)
+      await page.goto('/my-shop')
+
+      const soldOutCard = page.locator('button', { hasText: `Audit sold out ${tag}` }).first()
+      await expect(soldOutCard).toContainText('Sold out')
+
+      // And the one that IS in stock must not be labelled — a shelf where
+      // everything says sold out tells the client nothing.
+      const stockedCard = page.locator('button', { hasText: `Audit in stock ${tag}` }).first()
+      await expect(stockedCard).not.toContainText('Sold out')
+    } finally {
+      await dropClient?.().catch(() => {})
+      for (const id of [goneId, hereId]) {
+        if (id) await prisma.product.delete({ where: { id } }).catch(() => {})
+      }
+      await prisma.$disconnect()
+    }
+  })
 })
