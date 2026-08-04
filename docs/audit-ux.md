@@ -26,10 +26,11 @@ Severity: **unusable** · **hard to use** · **off-style** · **nitpick**.
 
 **Good news first, because it is real:**
 
-1. **Nothing overflows horizontally.** 42 trainer routes × 3 widths, and every
-   `document.scrollWidth` matched the viewport. The 60-character business name,
-   the 40-session class and the long invoice titles all truncate rather than
-   shove. This is the rule that usually rots first and it is clean.
+1. **Nothing overflows horizontally.** 42 trainer routes at 1440 and the first
+   14 at 390 — every `document.scrollWidth` matched the viewport. The
+   60-character business name, the 40-session class and the long invoice titles
+   all truncate rather than shove. This is the rule that usually rots first and
+   it is clean.
 2. **Safe areas are handled properly** — `env(safe-area-inset-*)` in the shell,
    the phone header, the bottom tabs and the create sheet, plus `--app-safe-top`
    on the desktop bar so an iPad on the desktop layout still clears the notch.
@@ -121,13 +122,18 @@ today.
 
 Measured stroke widths of every rendered `<svg>`:
 
-| Screen | at 2 (lucide default) | at 1.75 (house rule) |
-|---|---|---|
-| `/dashboard` | 48 | 9 |
-| `/schedule` | 39 | 2 |
-| `/clients` | 36 | 2 |
-| `/enquiries` | 33 | 2 |
-| `/messages` | 33 | 2 |
+| Screen | at 2 (lucide default) | at 1.75 (house rule) | width |
+|---|---|---|---|
+| `/dashboard` | 46 | 9 | 390 |
+| `/schedule` | 43 | 2 | 390 |
+| `/clients` | 39 | 2 | 390 |
+| `/packages` | 42 | 2 | 390 |
+| `/doggy-daycare` | 43 | 2 | 390 |
+| `/dashboard` | 48 | 9 | 1440 |
+| `/schedule` | 39 | 2 | 1440 |
+
+Measured on the phone layout *and* the desktop layout — it is the same ratio on
+both, so it is the call sites, not a shell that only loads heavy icons on one.
 
 The source has `strokeWidth={1.75}` in 403 places, so the rule is known — but
 the nav rail, the top bar, the list rows and most inline icons simply omit the
