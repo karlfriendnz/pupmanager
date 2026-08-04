@@ -24,7 +24,7 @@ const schema = z.object({
  * same rules as the Stripe and Xero paths — one definition of what "paid" is.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await guardPermission('billing.view')
+  const ctx = await guardPermission('billing.manage')
   if (ctx instanceof NextResponse) return ctx
 
   const parsed = schema.safeParse(await req.json().catch(() => null))

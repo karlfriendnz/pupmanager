@@ -21,7 +21,7 @@ export async function POST(
   _req: Request,
   { params }: { params: Promise<{ runId: string; enrollmentId: string }> },
 ) {
-  const guard = await guardPermission('billing.view')
+  const guard = await guardPermission('billing.manage')
   if (guard instanceof NextResponse) return guard
   const session = await auth()
   const trainerId = session?.user?.trainerId

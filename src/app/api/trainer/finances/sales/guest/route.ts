@@ -36,7 +36,7 @@ const postSchema = z.object({
 })
 
 export async function POST(req: Request) {
-  const ctx = await guardPermission('billing.view')
+  const ctx = await guardPermission('billing.manage')
   if (ctx instanceof NextResponse) return ctx
 
   if (!(await hasAddon(ctx.companyId, 'pos'))) {

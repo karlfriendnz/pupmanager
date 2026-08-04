@@ -33,6 +33,7 @@ export type PermissionKey =
   | 'settings.edit'
   | 'team.manage'
   | 'billing.view'
+  | 'billing.manage'
   | 'billing.seats'
 
 export type PermissionMap = Partial<Record<PermissionKey, boolean>>
@@ -71,6 +72,13 @@ export const PERMISSION_CATALOGUE: PermissionDef[] = [
   { key: 'settings.edit', label: 'Edit business settings', description: 'Business profile, availability, branding.', group: 'Business' },
   { key: 'team.manage', label: 'Manage the team', description: 'Invite team members, set roles and permissions.', group: 'Business' },
   { key: 'billing.view', label: 'View billing', description: 'See the subscription and billing pages.', group: 'Business' },
+  // Split out of billing.view on 2026-08-05 (audit T-15). Nine routes that MOVE
+  // money — record a payment, send an invoice, combine receivables, take a guest
+  // sale — were guarded by billing.view, whose label promises "See the
+  // subscription and billing pages". An owner ticking that box to let a manager
+  // LOOK at the finances was silently handing them the ability to change them,
+  // with nothing on the permissions screen to say so.
+  { key: 'billing.manage', label: 'Record payments and send invoices', description: 'Mark invoices paid, send and combine them, and take a sale at the counter. Implies seeing them.', group: 'Business' },
   { key: 'billing.seats', label: 'Add seats', description: 'Add paid team seats to the subscription (charges the card on file).', group: 'Business' },
 ]
 
@@ -120,6 +128,7 @@ export const ROLE_DEFAULTS: Record<CompanyRole, PermissionMap> = {
     'settings.edit': true,
     'team.manage': false,
     'billing.view': false,
+    'billing.manage': false,
     'billing.seats': false,
   },
 
@@ -141,6 +150,7 @@ export const ROLE_DEFAULTS: Record<CompanyRole, PermissionMap> = {
     'settings.edit': false,
     'team.manage': false,
     'billing.view': false,
+    'billing.manage': false,
     'billing.seats': false,
   },
 }

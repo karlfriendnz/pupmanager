@@ -6,7 +6,7 @@ import { sendReceivable } from '@/lib/invoicing'
 // billing.view (matching the invoice resend route); scoped to the company via
 // sendReceivable's trainerId check.
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await guardPermission('billing.view')
+  const ctx = await guardPermission('billing.manage')
   if (ctx instanceof NextResponse) return ctx
 
   const { id } = await params

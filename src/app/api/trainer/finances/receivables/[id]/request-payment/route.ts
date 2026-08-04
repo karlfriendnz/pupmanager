@@ -17,7 +17,7 @@ import { formatMoney } from '@/lib/money'
 // effect. Being its own route also means Finances can reuse it later as a
 // plain "chase this invoice" action.
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await guardPermission('billing.view')
+  const ctx = await guardPermission('billing.manage')
   if (ctx instanceof NextResponse) return ctx
 
   const { id } = await params

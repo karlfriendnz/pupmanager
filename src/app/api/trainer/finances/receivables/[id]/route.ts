@@ -106,7 +106,7 @@ const patchSchema = z.object({
 })
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await guardPermission('billing.view')
+  const ctx = await guardPermission('billing.manage')
   if (ctx instanceof NextResponse) return ctx
 
   const { id } = await params

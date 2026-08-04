@@ -89,6 +89,42 @@ describe('every route that changes something checks who is asking', () => {
   })
 })
 
+describe('a route that CHANGES money is not guarded by permission to LOOK at it', () => {
+  // Audit T-15. Nine routes that move money — record a payment, send an invoice,
+  // combine receivables, take a sale at the counter — were guarded by
+  // `billing.view`, whose label on the permissions screen reads "See the
+  // subscription and billing pages".
+  //
+  // So an owner ticking that box to let a manager LOOK at the finances was
+  // handing them the ability to change them, and nothing on screen said so. The
+  // capability is split now: billing.view to read, billing.manage to write.
+  //
+  // The general rule, which is what this asserts: a `.view` capability never
+  // guards a handler that writes. It reads per HANDLER, not per file — a route
+  // with a GET on .view and a POST on .manage is exactly right.
+  const routes = routeFiles()
+
+  it('no write is protected by a read permission', () => {
+    const wrong: string[] = []
+    for (const route of routes) {
+      let handler: string | null = null
+      for (const line of route.src.split('\n')) {
+        const declared = /export async function (\w+)/.exec(line)
+        if (declared) handler = declared[1]
+        if (!handler || !(MUTATING as readonly string[]).includes(handler)) continue
+        const cap = /(?:guardPermission|requirePermission)\([^)]*'([a-z]+\.view)'/.exec(line)
+        if (cap) wrong.push(`${route.path} · ${handler} guarded by ${cap[1]}`)
+      }
+    }
+    expect(
+      wrong,
+      `\nThis handler changes something but only asks for permission to SEE it.\n\n` +
+      `Someone given the read permission — because the label says "view" — can\n` +
+      `write. Use the .manage capability for the write, and leave .view on the GET.\n`,
+    ).toEqual([])
+  })
+})
+
 describe('every cron route checks the secret', () => {
   // The finding this encodes: 20 of 21 accepted "Bearer undefined". A cron that
   // silently accepts anyone is a way to make the app do work — send email, take

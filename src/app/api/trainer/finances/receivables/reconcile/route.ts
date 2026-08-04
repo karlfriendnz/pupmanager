@@ -6,7 +6,7 @@ import { reconcileTrainerXeroPayments } from '@/lib/invoicing'
 // latest payment state from Xero for every still-open synced invoice belonging
 // to the trainer. billing.view-guarded + company-scoped via reconcileTrainer…
 export async function POST() {
-  const ctx = await guardPermission('billing.view')
+  const ctx = await guardPermission('billing.manage')
   if (ctx instanceof NextResponse) return ctx
 
   const result = await reconcileTrainerXeroPayments(ctx.companyId)
