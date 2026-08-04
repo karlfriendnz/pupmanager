@@ -33,6 +33,10 @@ confusing / cosmetic*.
 | T-5 | Deleting a package **deletes the purchases of everyone on it**, live Stripe subscriptions and all — **FIXED** | loses money |
 | T-6 | Cancelling a whole class **leaves everyone on it still owing** for it — **FIXED** | loses money |
 | T-7 | Deleting a product **deletes the orders behind it** and orphans their invoices — **FIXED** | loses money |
+| T-8 | Deleting a session form **destroys every answer ever filled in on it** — **FIXED** | loses money |
+| T-9 | Deleting homework **destroys the owner's record of having done it** — **FIXED** | confusing |
+| T-10 | Deleting a **finalised** timesheet **wipes the hours somebody is owed for** — **FIXED** | loses money |
+| T-11 | Removing a staff member **takes their worked hours with them** — **OPEN, tracked** | loses money |
 
 **What came back clean.** The field question Karl asked is answered: a 1:1
 offering's twenty fields, a product's eleven, a client's four, the hand-typed
@@ -157,6 +161,38 @@ Two rules came out of it and are applied consistently now:
 `tests/unit/undo-paths-have-tests.test.ts` is the ratchet that stops the next one
 arriving unnoticed: it fails when a new DELETE route appears with no test naming
 it, and its backlog list can only shrink.
+
+---
+
+## Testing the whole surface at once, instead of one route at a time
+
+Karl, part way through: *"is there a better way to test?"* Yes, and the audit
+itself is the evidence. T-5, T-7 and T-8 were found by **reading
+`schema.prisma`** for `onDelete: Cascade` and asking what deleting the parent
+destroys — not by running anything.
+
+Reading like that is mechanical, so it now lives in tests rather than in whoever
+happens to look. Three of them, all static, all in milliseconds, all covering
+routes that do not exist yet:
+
+| Test | The question it asks of everything | Found |
+|---|---|---|
+| `cascade-guards.test.ts` | If deleting X destroys money or history, does X's route check first? | **T-9, T-10, T-11 on its first run** |
+| `route-guards.test.ts` | Does every mutating route check who is asking, and every cron its secret? | nothing — which is the answer |
+| `undo-paths-have-tests.test.ts` | Has a new DELETE route arrived with no test? | ratchet |
+
+The contrast is the point: five bugs in a day of hand-written probes, three more
+in 170 milliseconds. Example tests prove one path works. An invariant asks the
+same question of all of them, including the ones written next year.
+
+**Where an invariant can't reach:** whether a guard is the RIGHT one, whether an
+undo undoes the right amount, and anything about how it looks. Those still need
+a person or a browser — which is what the e2e specs are for.
+
+`cascade-guards.test.ts` also carries `KNOWN_GAPS`, deliberately separate from
+`ALLOWED`. `ALLOWED` means "deleting is meant to take it"; `KNOWN_GAPS` means
+"this is wrong and we know" — and a test asserts each entry carries a real
+reason. An allow list you can shrug into is where bugs go to be forgotten.
 
 ---
 
