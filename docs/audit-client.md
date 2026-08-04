@@ -39,7 +39,7 @@ client before they buy it.
 | # | Finding | Severity |
 |---|---------|----------|
 | C-1 | An intake form with an **Address** question 500s — the client can never get past the gate — **FIXED** | breaks the journey |
-| C-2 | The intake submit route **never checks `required`** — a blank form is accepted and the gate lifts | breaks the journey |
+| C-2 | The intake submit route **never checks `required`** — a blank form is accepted and the gate lifts — **FIXED** | breaks the journey |
 | C-3 | Cancelling a shop order leaves the **invoice standing and the stock spent** | loses money |
 | C-4 | A paid **digital download's URL is in the page source** before purchase | loses money |
 | C-5 | The shop grid gives **no sign that something is sold out** until you tap it | confusing |
@@ -90,11 +90,18 @@ const p = scriptPrisma()
 ```
 `src/lib/client-field-writes.ts` line ~33: `address: { on: 'profile', column: 'address' }`.
 
-**Test:** `audit-client.spec.ts` → *C-1 · an intake form that asks for an Address can be submitted* (currently `test.fail`).
+**Test:** `audit-client.spec.ts` → *C-1 · an intake form that asks for an Address can be submitted* — now green.
 
 ---
 
 ### C-2 · The intake submit route never checks `required` — *breaks the journey*
+
+> **FIXED 2026-08-04.** `missingRequiredQuestions()` in `session-form-builder.ts`
+> is the server's half of what `FormRunner` enforces on screen — visibility
+> first, so a required question hidden by its own condition can't trap anyone.
+> A blank required answer is now a 400 with the offending ids, and a client who
+> has already completed their intake gets a 409 instead of being allowed to
+> overwrite their answers with nothing.
 
 **What I did.** Read `src/app/api/my/intake-form/submit/route.ts`, then posted an
 intake with every required answer blank.
@@ -121,7 +128,7 @@ gate should stay down.
 `POST /api/my/intake-form/submit { formId, answers: { <requiredId>: "" } }` → 200,
 and `ClientProfile.intakeCompletedAt` is set.
 
-**Test:** `audit-client.spec.ts` → *C-2 · an intake with every required answer left blank is refused* (currently `test.fail`).
+**Test:** `audit-client.spec.ts` → *C-2 · an intake with every required answer left blank is refused* — now green.
 
 ---
 

@@ -266,6 +266,33 @@ export function isQuestionVisible(
   return v === q.showIf.equals
 }
 
+/** Did this question get an answer at all? A blank string and [] are not answers. */
+export function isQuestionAnswered(
+  q: Question,
+  answers: Record<string, string | string[] | undefined>,
+): boolean {
+  const v = answers[q.id]
+  if (Array.isArray(v)) return v.length > 0
+  return !!(v && String(v).trim())
+}
+
+/**
+ * The required questions that were left blank — the server's half of what
+ * `FormRunner` enforces in the browser. Required-ness checked only on screen is
+ * required-ness that a stale tab, a script or half-loaded JavaScript walks past.
+ *
+ * Visibility first, exactly as the browser does it: a required question hidden
+ * by its own condition can't be answered, so it must never block a submission.
+ */
+export function missingRequiredQuestions(
+  questions: Question[],
+  answers: Record<string, string | string[] | undefined>,
+): Question[] {
+  return questions.filter(
+    q => q.required && isQuestionVisible(q, answers) && !isQuestionAnswered(q, answers),
+  )
+}
+
 /**
  * Patch a question. Switching an authored question to a choice type seeds two
  * blank options; switching away drops them, so the saved shape stays valid.

@@ -11,6 +11,7 @@ import {
   updateQuestion,
   usedCustomFieldIds,
   validateForm,
+  missingRequiredQuestions,
   type ChoiceQuestion,
   type Question,
 } from '@/lib/session-form-builder'
@@ -204,5 +205,41 @@ describe('serializeQuestions', () => {
       { id: 'b', type: 'CHECKBOX', label: 'Skills', required: false, isPrivate: false, options: ['Sit', 'Stay'] },
       { id: 'c', type: 'CUSTOM_FIELD', customFieldId: 'cf1', required: false, isPrivate: true },
     ])
+  })
+})
+
+describe('required, checked on the server', () => {
+  // FormRunner enforces required-ness in the browser. Anything that isn't the
+  // browser — a stale tab, a script, half-loaded JavaScript — walked straight
+  // past it and stamped the intake complete with nothing in it.
+  const q = (over: Partial<Question> = {}): Question =>
+    ({ id: 'a', type: 'SHORT_TEXT', label: 'Biggest challenge', required: true, ...over }) as Question
+
+  it('names the required questions left blank, whitespace or absent', () => {
+    const questions = [q({ id: 'a' }), q({ id: 'b' }), q({ id: 'c' })]
+    const missing = missingRequiredQuestions(questions, { a: '', b: '   ' })
+    expect(missing.map(m => m.id)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('is happy once every required question is answered', () => {
+    const questions = [q({ id: 'a' }), q({ id: 'b', required: false })]
+    expect(missingRequiredQuestions(questions, { a: 'Pulls on the lead' })).toEqual([])
+  })
+
+  it('treats an empty multi-choice answer as unanswered, and a picked one as answered', () => {
+    const multi = q({ id: 'a', type: 'CHECKBOX', options: ['Sit', 'Stay'] })
+    expect(missingRequiredQuestions([multi], { a: [] })).toHaveLength(1)
+    expect(missingRequiredQuestions([multi], { a: ['Sit'] })).toHaveLength(0)
+  })
+
+  it('never blocks on a required question its own condition is hiding', () => {
+    // The one that would trap someone: a question they cannot see and therefore
+    // cannot answer must not stand between them and the rest of the app.
+    const questions = [
+      q({ id: 'a', type: 'RADIO', options: ['Yes', 'No'] }),
+      q({ id: 'b', showIf: { questionId: 'a', equals: 'Yes' } }),
+    ]
+    expect(missingRequiredQuestions(questions, { a: 'No' })).toEqual([])
+    expect(missingRequiredQuestions(questions, { a: 'Yes' }).map(m => m.id)).toEqual(['b'])
   })
 })

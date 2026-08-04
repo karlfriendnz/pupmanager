@@ -440,9 +440,9 @@ test.describe('client audit — known bugs (docs/audit-client.md)', () => {
 
   // ── C-2 ────────────────────────────────────────────────────────────────────
   test('C-2 · an intake with every required answer left blank is refused', async ({ page }) => {
-    // The submit route never checks `required` — an empty intake is accepted
-    // and the gate lifts. Expected to fail until C-2 is fixed.
-    test.fail()
+    // The submit route never checked `required` — an empty intake was accepted,
+    // the gate lifted, and the trainer's screen said the client had filled it in.
+    // Fixed 2026-08-04.
     const prisma = await makePrisma()
     let fx: Fixture | null = null
     let formId: string | null = null
@@ -469,6 +469,20 @@ test.describe('client audit — known bugs (docs/audit-client.md)', () => {
 
       const after = await prisma.clientProfile.findUniqueOrThrow({ where: { id: fx.clientId } })
       expect(after.intakeCompletedAt, 'an empty intake must not lift the gate').toBeNull()
+
+      // Answered properly it goes through, and the gate lifts.
+      const good = await page.request.post('/api/my/intake-form/submit', {
+        data: { formId: form.id, answers: { r_1: 'Pulls on the lead' } },
+      })
+      expect(good.status(), await good.text()).toBe(200)
+
+      // And a second post can't come back and wipe those answers.
+      const again = await page.request.post('/api/my/intake-form/submit', {
+        data: { formId: form.id, answers: {} },
+      })
+      expect(again.status(), 'a completed intake must not be re-submitted').toBe(409)
+      const kept = await prisma.clientProfile.findUniqueOrThrow({ where: { id: fx.clientId } })
+      expect(JSON.stringify(kept.intakeAnswers)).toContain('Pulls on the lead')
     } finally {
       await fx?.cleanup()
       if (formId) await prisma.form.delete({ where: { id: formId } }).catch(() => {})

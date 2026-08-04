@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { collectClientFieldWrites, hasClientFieldWrites } from '@/lib/client-field-writes'
-import type { Question } from '@/lib/session-form-builder'
+import { missingRequiredQuestions, type Question } from '@/lib/session-form-builder'
 
 const schema = z.object({
   formId: z.string().min(1),
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   const clientProfile = active
     ? await prisma.clientProfile.findUnique({
         where: { id: active.clientId },
-        select: { id: true, trainerId: true, intakeFormId: true },
+        select: { id: true, trainerId: true, intakeFormId: true, intakeCompletedAt: true },
       })
     : null
   if (!clientProfile) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -39,6 +39,13 @@ export async function POST(req: Request) {
   if (clientProfile.intakeFormId !== formId) {
     return NextResponse.json({ error: 'This is not the form you were sent.' }, { status: 403 })
   }
+  // Once it's done it's done. The gate is the only screen that posts here and it
+  // stops rendering the moment the intake completes — so a second submission is
+  // a stale tab or a script, and letting it through would overwrite answers the
+  // trainer is relying on with whatever it sent, including nothing at all.
+  if (clientProfile.intakeCompletedAt) {
+    return NextResponse.json({ error: 'You have already completed this form.' }, { status: 409 })
+  }
   const form = await prisma.form.findFirst({
     where: { id: formId, trainerId: clientProfile.trainerId },
     select: { questions: true },
@@ -46,6 +53,20 @@ export async function POST(req: Request) {
   if (!form) return NextResponse.json({ error: 'Form not found' }, { status: 404 })
 
   const questions = (Array.isArray(form.questions) ? form.questions : []) as unknown as Question[]
+
+  // Required means required on the server too. Enforcing it only in FormRunner
+  // meant an empty post stamped intakeCompletedAt, lifted the gate, and told the
+  // trainer their client had filled the form in.
+  const missing = missingRequiredQuestions(questions, answers)
+  if (missing.length > 0) {
+    return NextResponse.json(
+      {
+        error: 'Please answer every required question.',
+        missing: missing.map(q => q.id),
+      },
+      { status: 400 },
+    )
+  }
 
   // Mirror linked-field answers into CustomFieldValue so the rest of the app
   // (client profile, reports, exports) reads them the usual way rather than
