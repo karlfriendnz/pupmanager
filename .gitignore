@@ -97,3 +97,10 @@ docs/review-tasks.md
 
 # UX-audit session state (tests/audit/ux-lib.ts) — throwaway logins, never committed
 tests/audit/.ux-*-state.json
+
+# Audit-run artifacts — probe output and throwaway fixture/session state, local only
+tests/audit/out/
+tests/audit/.state.json
+tests/audit/.client-fixture.json
+tests/audit/.helpdocs-state.json
+tests/audit/signup/dbg*.ts

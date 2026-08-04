@@ -47,21 +47,27 @@ async function login(page: Page, email: string) {
     await page.locator('button[type="submit"]').evaluate((el: HTMLElement) => el.click()).catch(() => {})
     for (let j = 0; j < 12; j++) {
       await page.waitForTimeout(1000)
-      if (!(await page.evaluate(() => location.pathname.startsWith('/login')))) return
+      const done = await page.evaluate(() => !location.pathname.startsWith('/login')).catch(() => false)
+      if (done) { await page.waitForTimeout(500); return }
     }
   }
   throw new Error('login never completed')
 }
 
 async function main() {
+  // Slice the route list so each browser session stays short — several agents
+  // share this dev server and long-lived contexts are what stall.
+  const from = Number(process.argv[2] ?? 0)
+  const to = Number(process.argv[3] ?? ROUTES.length)
+  const slice = ROUTES.slice(from, to)
   const { email, trainerId } = await makeTrainer()
-  console.log(`fresh trainer: ${email} (${trainerId})\n`)
+  console.log(`fresh trainer: ${email} (${trainerId})  routes ${from}..${to}\n`)
   const browser = await chromium.launch()
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, extraHTTPHeaders: { 'x-forwarded-for': freshIp() } })
   const page = await ctx.newPage()
   await login(page, email)
 
-  for (const route of ROUTES) {
+  for (const route of slice) {
     const pageErrors: string[] = []
     const apiErrors: string[] = []
     const onErr = (e: Error) => pageErrors.push(e.message.split('\n')[0])
