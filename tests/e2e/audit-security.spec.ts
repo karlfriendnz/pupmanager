@@ -162,6 +162,9 @@ async function removeVictim(prisma: PrismaClient) {
   const companyIds = users.map(u => u.trainerProfile?.id).filter(Boolean) as string[]
   const clientIds = users.flatMap(u => u.clientProfiles.map(c => c.id))
   const userIds = users.map(u => u.id)
+  // Shares point at Business A's clients too, and there is no revoke route
+  // (see the sharing finding) — so clear them here or they outlive the spec.
+  await prisma.clientShare.deleteMany({ where: { OR: [{ sharedWithId: { in: companyIds } }, { sharedById: { in: companyIds } }, { clientId: { in: clientIds } }] } })
   await prisma.trainingTask.deleteMany({ where: { clientId: { in: clientIds } } })
   await prisma.invoice.deleteMany({ where: { trainerId: { in: companyIds } } })
   await prisma.trainingSession.deleteMany({ where: { trainerId: { in: companyIds } } })
@@ -699,6 +702,63 @@ test.describe('security audit — session revocation', () => {
       await ctx.close()
       await prisma.$disconnect()
     }
+  })
+})
+
+test.describe('security audit — client sharing', () => {
+  let prisma: PrismaClient
+  let victim: Victim
+
+  test.beforeAll(async () => {
+    prisma = makePrisma()
+    await removeVictim(prisma)
+    victim = await victimFixtures(prisma)
+  })
+  test.afterAll(async () => {
+    await removeVictim(prisma)
+    await prisma.$disconnect()
+  })
+
+  test('a trainer cannot share a client they do not own', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    const res = await page.request.post(`/api/clients/${victim.clientId}/share`, {
+      data: { partnerEmail: SEED.owner.email, shareType: 'TRANSFER' },
+      failOnStatusCode: false,
+    })
+    expect(refused(res), 'sharing someone else’s client must be refused').toBe(true)
+
+    const still = await prisma.clientProfile.findUnique({ where: { id: victim.clientId }, select: { trainerId: true } })
+    expect(still?.trainerId, 'the victim client must not have been transferred').toBe(victim.trainerId)
+    const shares = await prisma.clientShare.count({ where: { clientId: victim.clientId } })
+    expect(shares, 'no share row may be created for a client you do not own').toBe(0)
+  })
+
+  // FINDING (see docs/audit-security.md): a share, once created, is permanent.
+  // There is no trainer-facing route or UI to withdraw it — the only deleteMany
+  // in the codebase is inside admin account deletion. Access grants must be
+  // revocable. Expects the correct behaviour, so it goes green on the fix.
+  test.fail(true, 'known finding — no route exists to withdraw a client share')
+  test('a client share can be withdrawn again', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+
+    // Owner A shares their own assigned client with the victim business.
+    const share = await page.request.post(`/api/clients/${SEED.assignedClientId}/share`, {
+      data: { partnerEmail: `${MARK}-victim-owner@e2e.test`, shareType: 'READ_ONLY' },
+      failOnStatusCode: false,
+    })
+    expect(share.status(), 'sharing your own client is allowed').toBeLessThan(400)
+
+    const created = await prisma.clientShare.findFirst({
+      where: { clientId: SEED.assignedClientId, sharedWithId: victim.trainerId },
+      select: { id: true },
+    })
+    expect(created, 'the share was created').not.toBeNull()
+
+    const revoke = await page.request.delete(`/api/clients/${SEED.assignedClientId}/share/${created!.id}`, { failOnStatusCode: false })
+    expect(revoke.status(), 'a share must be withdrawable by the business that made it').toBeLessThan(400)
+
+    const after = await prisma.clientShare.count({ where: { id: created!.id } })
+    expect(after, 'the withdrawn share is gone').toBe(0)
   })
 })
 

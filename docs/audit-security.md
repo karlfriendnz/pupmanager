@@ -198,7 +198,55 @@ pins the current bypass so it cannot be forgotten.
 
 ---
 
-### F4 — Outbound email interpolates `logoUrl` into an `<img src>` unescaped — LOW
+### F4 — A client can be shared or transferred to another business with nobody's consent, and the share can never be revoked — MEDIUM
+
+`src/app/api/clients/[clientId]/share/route.ts`
+
+The route is correctly authorised — `guardPermission('clients.invite')` plus
+`findFirst({ where: { id: clientId, trainerId: guard.companyId } })`, so a
+trainer can only share a client they own, and my cross-tenant probe was refused.
+The problem is what a *legitimate* call does:
+
+```ts
+await prisma.clientShare.create({
+  data: { clientId, sharedById: guard.companyId, sharedWithId: partnerProfileId, shareType },
+})
+if (shareType === 'TRANSFER') {
+  await prisma.clientProfile.update({ where: { id: client.id }, data: { trainerId: partnerProfileId } })
+}
+```
+
+Three things follow:
+
+1. **The dog owner is never asked.** Their whole record — contact details, dog,
+   session history, notes, invoices — becomes readable by a different business
+   the instant a trainer types an email address. `TRANSFER` moves the record
+   outright. The client is not notified; only the receiving trainer is.
+2. **The receiving business is never asked either.** It receives another
+   controller's personal data unsolicited.
+3. **There is no revoke.** `grep -rn clientShare src/app src/lib` finds exactly
+   one `create` and one `deleteMany` — and that `deleteMany` is inside
+   `/api/admin/trainers/[trainerId]` account deletion. No trainer-facing route,
+   no UI. A share, once made, is permanent; `getClientAccess()` keeps honouring
+   it forever.
+
+**Why it matters.** PupManager's stated posture (see the repo's jurisdiction
+notes) has to satisfy GDPR, CCPA and the Australian APPs as well as the NZ
+Privacy Act. "One user can hand another controller a data subject's full record,
+irrevocably, without informing the subject" is the shape of a complaint, not a
+bug report. It is also the only permission grant in the app with no off switch.
+
+**Fix.** A `DELETE /api/clients/:id/share/:shareId` for the sharing business (and
+ideally for the receiving one too), an `acceptedAt` on `ClientShare` so the
+partner opts in, and a notification to the client. `TRANSFER` in particular
+should require the receiving business to accept before `trainerId` moves.
+
+**Test:** `tests/e2e/audit-security.spec.ts` → *a share can be withdrawn*
+(marked `test.fail` — there is no route to call).
+
+---
+
+### F5 — Outbound email interpolates `logoUrl` into an `<img src>` unescaped — LOW
 
 `src/app/api/enquiries/[id]/reply/route.ts` (and the same shape in several other
 email builders):
