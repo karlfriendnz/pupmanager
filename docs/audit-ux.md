@@ -200,20 +200,23 @@ primitives (`FlatBlock`, `FlatRow`) — these four screens predate or bypass the
 
 ---
 
-### 6. Tinted icon tiles painted with the raw brand hex
-**Screen:** `/help`, `/dashboard`, `/enquiries`, `/packages`,
-`/casual-classes`, `/memberships`, `/instagram` · **Severity: off-style**
+### 6. Tinted icon tiles in the empty states
+**Screen:** `/enquiries`, `/packages`, `/casual-classes`, `/memberships`,
+`/dashboard`, `/instagram` (and `/help`, which is parked) ·
+**Severity: off-style**
 **Rules broken:** 2, 3
 
-`src/app/(trainer)/help/help-center.tsx:217` renders six
-`h-10 w-10 rounded-xl` tiles filled with `var(--pm-brand-600)` — solid
-`rgb(42,157,169)`, a white icon inside. That is the shape AGENTS.md names as
-the single clearest tell of a machine-made screen, and it is painted with the
-**raw** brand value rather than a `color-mix` derivation.
-
 The empty states on `/enquiries`, `/packages`, `/casual-classes` and
-`/memberships` each carry the same pattern at `h-10`–`h-12`. Four screens, one
-component's worth of work.
+`/memberships` each carry the same pattern at `h-10`–`h-12`: a rounded tinted
+square whose only content is an icon. That is the shape AGENTS.md names as the
+single clearest tell of a machine-made screen. Four screens, one component's
+worth of work.
+
+The worst instance is `src/app/(trainer)/help/help-center.tsx:217` — six
+`h-10 w-10 rounded-xl` tiles filled with `var(--pm-brand-600)` solid
+(`rgb(42,157,169)`), white icon inside, painted with the **raw** brand value
+rather than a `color-mix` derivation. **Noted for completeness only — the help
+centre is parked, so this one should not be actioned.**
 
 ---
 
