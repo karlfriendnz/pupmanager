@@ -802,6 +802,52 @@ test.describe('client audit — known bugs, part two', () => {
     }
   })
 
+  // ── C-7 ────────────────────────────────────────────────────────────────────
+  test('C-7 · a required “Dog’s name” answer creates the dog when there isn’t one', async ({ page }) => {
+    // Dog answers were only written when the profile already had a primary dog,
+    // so an owner who signed up without naming their dog typed it into a
+    // required question and watched it go nowhere. Fixed 2026-08-04.
+    const prisma = await makePrisma()
+    const tag = Date.now().toString(36)
+    let formId: string | null = null
+    let dropClient: (() => Promise<void>) | null = null
+    try {
+      const trainer = await prisma.trainerProfile.findFirstOrThrow({ where: { user: { email: SEED.owner.email } } })
+      const { client, dog, cleanupClient } = await makeAuditClient(prisma, trainer.id, tag)
+      dropClient = cleanupClient
+      // An owner who joined without naming their dog: no Dog row at all.
+      await prisma.clientProfile.update({ where: { id: client.id }, data: { dogId: null } })
+      await prisma.dog.delete({ where: { id: dog.id } })
+
+      const form = await prisma.form.create({
+        data: {
+          trainerId: trainer.id, name: `Audit dog name ${tag}`, usableAsIntake: true, isActive: true,
+          questions: [{ id: 'd_1', type: 'CLIENT_FIELD', fieldKey: 'dogName', required: true }],
+          steps: [],
+        },
+      })
+      formId = form.id
+      await prisma.clientProfile.update({
+        where: { id: client.id }, data: { intakeFormId: form.id, intakeCompletedAt: null },
+      })
+
+      await loginAsAuditClient(page, prisma, client.id)
+      const res = await page.request.post('/api/my/intake-form/submit', {
+        data: { formId: form.id, answers: { d_1: 'Rosie' } },
+      })
+      expect(res.status(), await res.text()).toBe(200)
+
+      const after = await prisma.clientProfile.findUniqueOrThrow({
+        where: { id: client.id }, select: { dog: { select: { name: true } } },
+      })
+      expect(after.dog?.name, 'the dog they named should be their dog').toBe('Rosie')
+    } finally {
+      await dropClient?.().catch(() => {})
+      if (formId) await prisma.form.delete({ where: { id: formId } }).catch(() => {})
+      await prisma.$disconnect()
+    }
+  })
+
   // ── C-5 ────────────────────────────────────────────────────────────────────
   test('C-5 · a sold-out product says so on the shelf, not after you tap it', async ({ page }) => {
     // "Out of stock" only ever appeared INSIDE the product sheet, so a client

@@ -44,7 +44,7 @@ client before they buy it.
 | C-4 | A paid **digital download’s URL is in the page source** before purchase — **FIXED** | loses money |
 | C-5 | The shop grid gives **no sign that something is sold out** until you tap it — **FIXED** | confusing |
 | C-6 | The client **Help page's FAQ describes an app that no longer exists** | confusing |
-| C-7 | A required **"Dog's name"** intake answer is silently discarded when the client has no dog record yet | confusing |
+| C-7 | A required **"Dog’s name"** intake answer is silently discarded when the client has no dog record yet — **FIXED** | confusing |
 | C-8 | With payments off, a **priced digital product downloads free** and raises nothing — **FIXED** | loses money |
 
 ---
@@ -250,6 +250,13 @@ wrong. Worth deleting or rewriting rather than leaving.
 ---
 
 ### C-7 · A required "Dog's name" intake answer is silently discarded — *confusing*
+
+> **FIXED 2026-08-04.** When the form asks for the dog's NAME and the client has
+> no dog yet, the dog is created and becomes their primary — guarded on `dogId`
+> still being null, exactly as `/api/my/dogs` does it. A name is the one thing a
+> `Dog` row can't be made without, so breed or notes on their own still wait for
+> a dog to attach to; the original "not this route's decision" position was
+> right for an optional question and wrong for a required one.
 
 `intake-form/submit` writes dog answers only when the profile already has a
 primary dog:

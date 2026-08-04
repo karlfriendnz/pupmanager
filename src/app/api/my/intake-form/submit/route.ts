@@ -126,10 +126,26 @@ export async function POST(req: Request) {
     if (Object.keys(writes.profile).length > 0) {
       await prisma.clientProfile.update({ where: { id: clientProfile.id }, data: writes.profile })
     }
-    // Their primary dog, when they have one. Creating a dog from an intake answer
-    // is a bigger decision than this route should take on its own.
-    if (Object.keys(writes.dog).length > 0 && profile?.dogId) {
-      await prisma.dog.update({ where: { id: profile.dogId }, data: writes.dog })
+    // Their primary dog. When they already have one it's an update; when they
+    // don't and the form ASKED FOR A NAME, the dog is created — a client who
+    // signed up without naming their dog was typing it into a required question
+    // and watching it go nowhere, with the trainer's list still saying no dog
+    // (audit C-7). A name is the one thing a Dog row can't be made without, so
+    // breed or notes on their own still wait for a dog to attach to.
+    if (Object.keys(writes.dog).length > 0) {
+      if (profile?.dogId) {
+        await prisma.dog.update({ where: { id: profile.dogId }, data: writes.dog })
+      } else if (typeof writes.dog.name === 'string' && writes.dog.name.trim()) {
+        const dog = await prisma.dog.create({
+          data: { ...writes.dog, name: writes.dog.name, clientProfileId: clientProfile.id },
+        })
+        // Guarded on dogId still being null, exactly as /api/my/dogs is, so a
+        // dog added in a parallel request never has its spot taken.
+        await prisma.clientProfile.updateMany({
+          where: { id: clientProfile.id, dogId: null },
+          data: { dogId: dog.id },
+        })
+      }
     }
   }
 
