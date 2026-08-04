@@ -106,6 +106,27 @@ scroll in JS either:
 | `src/components/shared/add-location-modal.tsx` | 52–53 | add a location (`max-h-[90dvh] overflow-y-auto`) |
 | `src/components/shared/recurrence-field.tsx` | 133–134 | repeat rules (`max-h-[90dvh] overflow-y-auto`) |
 | `src/app/(trainer)/clients/[clientId]/share-client-modal.tsx` | 89 | share a client |
+| `src/app/(trainer)/reports/reports-explorer.tsx` | 447–454 | **"View data"** — measured, see below |
+
+**One of these is confirmed by measurement, not just by reading the source.**
+Opening `/reports` → "View data" at **760×560**:
+
+```
+reports-view-data  twoScrollbars=TRUE
+  overlay root: fixed.inset-0.z-[60]   role=null  aria-modal=null  pm-overlay=false
+```
+
+The overlay's body is `<div className="overflow-y-auto">` (`:454`) with no
+`no-scrollbar`, the root carries none of the three markers, and the page keeps
+scrolling behind it — so the trainer gets the modal's rail *and* the page's.
+Screenshot: `ux-760-reports-view-data.png`. At 390 it is hidden only because
+`globals.css`'s `@media (max-width: 767px)` blanket rule hides every rail — the
+bug is there at both widths, visible at one. That is exactly the trap the brief
+called out.
+
+For contrast, the phone create sheet at the same width comes back
+`twoScrollbars=false, role=dialog, aria-modal=true, visibleRails=[]` — it is
+what the others should look like.
 
 The four with `overflow-y-auto` are the visible ones: the sheet scrolls, the
 page scrolls behind it, and neither region carries `no-scrollbar`. Note the
