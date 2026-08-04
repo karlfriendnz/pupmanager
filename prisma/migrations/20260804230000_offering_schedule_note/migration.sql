@@ -1,0 +1,22 @@
+-- An offering keeps its own cadence note.
+--
+-- "Thursdays 4:00pm" was only ever written to the ClassRun. A group offering
+-- can be defined before it is scheduled, and one saved in that state took the
+-- note, returned 200, and lost it — the trainer typed it, the save succeeded,
+-- and it was gone on reload.
+--
+-- This is the same bug the `location` column on this table was added to fix,
+-- and the same fix: store it on the offering, and let a NEW run inherit it when
+-- it doesn't name its own. Inheritance is create-time only, so changing this
+-- never rewrites the note on a run that already exists.
+--
+-- NULL — the default, and what every existing row means — is "no note", which
+-- is exactly what those rows already display.
+--
+-- Table name is the @@map snake_case one (packages). The Prisma MODEL name
+-- would fail 42P01 under `migrate deploy` and take the prod build down with it.
+--
+-- Guarded so it can be replayed against a database that already has it.
+
+-- AlterTable
+ALTER TABLE "packages" ADD COLUMN IF NOT EXISTS "scheduleNote" TEXT;

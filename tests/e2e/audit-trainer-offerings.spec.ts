@@ -114,9 +114,12 @@ test('probe · every field sent by the offering editor round-trips', async ({ pa
         `${same(sent, stored) ? '  ok  ' : '  ✗   '}${key.padEnd(26)} sent=${JSON.stringify(sent)} stored=${JSON.stringify(stored)}`,
       )
     }
-    // scheduleNote / location live on the RUN, not the package — say where they went.
-    const runs = await prisma.classRun.findMany({ where: { packageId: groupId! } })
-    console.log(`   runs=${runs.length}`, runs.map(r => ({ note: r.scheduleNote, loc: r.location })))
+    // T-2 · the note and the venue must survive on an offering with NO run.
+    // "Thursdays 4:00pm" was only ever written to the ClassRun, so a group
+    // offering defined before it was scheduled took the note and lost it —
+    // the same bug the package-level `location` column was added to fix.
+    expect(rowB.scheduleNote, 'an unscheduled offering keeps its cadence note').toBe('Meet by the big gate')
+    expect(rowB.location, 'and its venue').toBe('Cornwall Park, Auckland')
   } finally {
     for (const id of [oneToOneId, groupId]) {
       if (!id) continue

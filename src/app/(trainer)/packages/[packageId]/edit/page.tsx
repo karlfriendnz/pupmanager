@@ -153,7 +153,10 @@ export default async function EditPackagePage({
             startAtIso: run?.startDate.toISOString() ?? null,
             hasAttendance,
             runStatus: run?.status,
-            scheduleNote: run?.scheduleNote ?? null,
+            // Same fallback as the venue below, and for the same reason: an
+            // offering that hasn't been scheduled has no run to read the note
+            // off, and the note it was saved with lives on the offering itself.
+            scheduleNote: run?.scheduleNote ?? pkg.scheduleNote ?? null,
             // The scheduled class is the live venue when there's exactly one;
             // otherwise (not scheduled yet, or several cohorts at their own
             // venues) fall back to the offering's own default, which is where

@@ -585,6 +585,9 @@ export async function createClassRunIn(
   // then has to survive into the class they schedule off it later. Inheritance
   // is create-time only — nothing here touches a run that already exists.
   const venue = args.location?.trim() || pkg.location?.trim() || null
+  // The cadence note inherits by the same rule and for the same reason: it was
+  // typed on the offering before there was a run to put it on.
+  const cadenceNote = args.scheduleNote?.trim() || pkg.scheduleNote?.trim() || null
 
   // A drop-in class schedules itself from its slots (each with its own day,
   // time, venue and gap); everything else uses the flat N-sessions-every-W-weeks
@@ -626,7 +629,7 @@ export async function createClassRunIn(
       trainerId: args.trainerId,
       packageId: pkg.id,
       name: args.name,
-      scheduleNote: args.scheduleNote?.trim() || null,
+      scheduleNote: cadenceNote,
       startDate: args.startDate,
       capacity: args.capacity ?? null,
       bufferMins: args.bufferMins ?? null,

@@ -254,6 +254,10 @@ export async function PATCH(
         // it. Writing it here can never rewrite an existing run's venue —
         // syncOfferingRun below is the only thing that touches a run.
         ...(location !== undefined && { location: location?.trim() || null }),
+        // The cadence note, same rule and same reason as the venue above: it
+        // was only ever written to the run, so a group offering saved before it
+        // had been scheduled took the note, returned 200 and lost it.
+        ...(scheduleNote !== undefined && { scheduleNote: scheduleNote?.trim() || null }),
         ...(dropIn && {
           allowDropIn: dropIn.allowDropIn,
           dropInPriceCents: dropIn.dropInPriceCents,

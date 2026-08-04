@@ -188,6 +188,10 @@ export async function POST(req: Request) {
         // below and nowhere else, so defining an offering WITHOUT a start date
         // — no run to write it to — accepted the address and threw it away.
         location: parsed.data.location?.trim() || null,
+        // And its cadence note, which had the identical problem — handed to the
+        // run below and nowhere else, so an offering defined without a start
+        // date took "Thursdays 4:00pm" and threw it away.
+        scheduleNote: parsed.data.scheduleNote?.trim() || null,
         sessionCount: parsed.data.sessionCount,
         weeksBetween: parsed.data.weeksBetween,
         durationMins: parsed.data.durationMins,

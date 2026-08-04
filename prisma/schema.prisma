@@ -2033,6 +2033,12 @@ model Package {
   // a run that already exists (editing a single-run offering still syncs that
   // one run, which is what the form says it does — see syncOfferingRun).
   location                 String?
+  // The offering's DEFAULT cadence note ("Thursdays 4:00pm"), free text like
+  // ClassRun.scheduleNote — and here for exactly the reason `location` is. It
+  // was only ever written to the run, so a group offering saved before it had
+  // been scheduled took the note, returned 200, and lost it. A new run inherits
+  // this when it doesn't name its own.
+  scheduleNote             String?
   sessionCount             Int         @default(3)
   weeksBetween             Int         @default(2) // gap between sessions, in weeks
   durationMins             Int         @default(60) // default duration applied to created sessions
