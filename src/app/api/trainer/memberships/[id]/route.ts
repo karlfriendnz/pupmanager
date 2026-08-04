@@ -131,6 +131,36 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const { id } = await params
   if (!(await owned(ctx.companyId, id))) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
+  // Nobody may delete something people have bought.
+  //
+  // `MembershipPurchase.membership` is `onDelete: Cascade`, so this used to take
+  // every purchase row with it — including ACTIVE ones carrying a live Stripe
+  // subscription on the trainer's connected account. Stripe carries on charging
+  // that client every week and PupManager no longer has a record that they
+  // exist: no access, no renewal, nothing to cancel it with. The confirm dialog
+  // meanwhile promised "anyone who already bought it keeps what it gave them",
+  // which was the exact opposite of what happened (audit T-5).
+  //
+  // Any purchase at all counts, not just the live ones — a settled one-off is
+  // the record of what somebody paid for, and deleting it rewrites their
+  // history. Unpublishing is the way to stop selling something.
+  const bought = await prisma.membershipPurchase.count({ where: { membershipId: id } })
+  if (bought > 0) {
+    const live = await prisma.membershipPurchase.count({
+      where: { membershipId: id, status: { in: ['ACTIVE', 'PAST_DUE', 'CANCELLING'] } },
+    })
+    return NextResponse.json(
+      {
+        error: live > 0
+          ? `${live} ${live === 1 ? 'person is' : 'people are'} on this right now. Unpublish it to stop selling it — deleting it would cancel nothing and they'd keep being charged.`
+          : `${bought} ${bought === 1 ? 'person has' : 'people have'} bought this. Unpublish it to take it off your storefront — deleting it would erase what they paid for.`,
+        bought,
+        live,
+      },
+      { status: 409 },
+    )
+  }
+
   await prisma.membership.delete({ where: { id } })
   return NextResponse.json({ ok: true })
 }

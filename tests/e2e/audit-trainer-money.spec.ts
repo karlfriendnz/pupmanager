@@ -135,3 +135,62 @@ test('a withdrawn enrolment does not leave the client owing, and a promoted one 
     await prisma.$disconnect()
   }
 })
+
+test('deleting a membership cannot quietly take away what people already bought', async ({ page }) => {
+  // The confirm dialog promises "Anyone who already bought it keeps what it gave
+  // them." MembershipPurchase.membership is onDelete: Cascade, so the delete
+  // takes every purchase row with it — including ACTIVE ones carrying a live
+  // Stripe subscription id, which keeps billing with nothing left behind it.
+  test.setTimeout(120_000)
+  const prisma = await makePrisma()
+  const tag = Date.now().toString(36)
+  let membershipId = ''
+  let clientIds: { userId: string; dogId: string; clientId: string } | null = null
+  try {
+    await login(page)
+    const trainer = await prisma.trainerProfile.findFirstOrThrow({
+      where: { user: { email: SEED.owner.email } },
+    })
+    clientIds = await makeClient(prisma, trainer.id, `${tag}m`)
+
+    const membership = await prisma.membership.create({
+      data: { trainerId: trainer.id, name: `Money audit membership ${tag}`, priceCents: 9900, published: true },
+    })
+    membershipId = membership.id
+
+    // Someone is on it, and being charged for it.
+    await prisma.membershipPurchase.create({
+      data: {
+        membershipId: membership.id,
+        trainerId: trainer.id,
+        clientId: clientIds.clientId,
+        status: 'ACTIVE',
+        stripeSubscriptionId: `sub_audit_${tag}`,
+      },
+    })
+
+    const res = await page.request.delete(`/api/trainer/memberships/${membership.id}`)
+
+    // Either it refuses, or it keeps the promise. What it must NOT do is say ok
+    // and delete the record of what someone paid for.
+    const survived = await prisma.membershipPurchase.count({ where: { membershipId: membership.id } })
+    expect(
+      survived,
+      'a purchase — with a live Stripe subscription on it — must survive the offering being deleted',
+    ).toBe(1)
+    expect(res.status(), 'and the API should say why it refused').toBe(409)
+  } finally {
+    if (membershipId) {
+      await prisma.membershipPurchase.deleteMany({ where: { membershipId } }).catch(() => {})
+      await prisma.membership.delete({ where: { id: membershipId } }).catch(() => {})
+    }
+    if (clientIds) {
+      await prisma.clientProfile.updateMany({ where: { id: clientIds.clientId }, data: { dogId: null } }).catch(() => {})
+      await prisma.clientProfile.deleteMany({ where: { id: clientIds.clientId } }).catch(() => {})
+      await prisma.dog.deleteMany({ where: { id: clientIds.dogId } }).catch(() => {})
+      await prisma.account.deleteMany({ where: { userId: clientIds.userId } }).catch(() => {})
+      await prisma.user.deleteMany({ where: { id: clientIds.userId } }).catch(() => {})
+    }
+    await prisma.$disconnect()
+  }
+})

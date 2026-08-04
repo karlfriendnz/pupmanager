@@ -334,11 +334,20 @@ export function MembershipsView({
   // for a row of little icons. It confirms, then drops the trainer back on the
   // list with the card gone.
   async function remove(id: string) {
-    if (!confirm('Delete this package? Anyone who already bought it keeps what it gave them.')) return
+    // The old wording promised "anyone who already bought it keeps what it gave
+    // them", and the delete cascaded straight through their purchases — so it
+    // promised the exact opposite of what happened (audit T-5). The server now
+    // refuses once anything has been bought, and says why; show that sentence
+    // rather than a generic failure, because it names the way out (unpublish).
+    if (!confirm('Delete this package? This only works while nobody has bought it.')) return
     setBusy(true)
     const res = await fetch(`/api/trainer/memberships/${id}`, { method: 'DELETE' })
     setBusy(false)
-    if (!res.ok) { setError('Could not delete this package — try again.'); return }
+    if (!res.ok) {
+      const body = await res.json().catch(() => null) as { error?: unknown } | null
+      setError(typeof body?.error === 'string' ? body.error : 'Could not delete this package — try again.')
+      return
+    }
     setList(prev => prev.filter(m => m.id !== id))
     setDraft(null)
   }
