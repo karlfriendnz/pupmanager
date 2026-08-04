@@ -1,3 +1,15 @@
+-- Replay-safe, deliberately.
+--
+-- This migration failed the 2026-08-05 deploy with 42710: `type
+-- "MessageGroupMode" already exists`. The group-chat work had been pushed to
+-- production with `prisma db push` while it was being built, so the objects
+-- were there with nothing in _prisma_migrations to say so — and the FIRST of
+-- twenty queued migrations aborted, taking the other nineteen and the whole
+-- build with it.
+--
+-- So every statement here is guarded: it applies cleanly to a database that has
+-- none of this, and to one that already has all of it.
+
 -- Group messaging: a group is its own THREAD that sits beside the 1:1 client
 -- threads, with two modes — BROADCAST (replies are private to the trainer's
 -- team) and COMMUNITY (everyone sees everyone).
@@ -13,13 +25,21 @@
 -- `migrate deploy` and take the whole production build down.
 
 -- CreateEnum
-CREATE TYPE "MessageGroupMode" AS ENUM ('BROADCAST', 'COMMUNITY');
-CREATE TYPE "MessageGroupScope" AS ENUM ('MANUAL', 'ALL_CLIENTS', 'CLASS_RUN', 'PACKAGE', 'MEMBERSHIP');
-CREATE TYPE "MessageGroupRole" AS ENUM ('OWNER', 'STAFF', 'CLIENT');
-CREATE TYPE "GroupMessageVisibility" AS ENUM ('EVERYONE', 'TRAINER_ONLY');
+DO $$ BEGIN
+  CREATE TYPE "MessageGroupMode" AS ENUM ('BROADCAST', 'COMMUNITY');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE TYPE "MessageGroupScope" AS ENUM ('MANUAL', 'ALL_CLIENTS', 'CLASS_RUN', 'PACKAGE', 'MEMBERSHIP');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE TYPE "MessageGroupRole" AS ENUM ('OWNER', 'STAFF', 'CLIENT');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE TYPE "GroupMessageVisibility" AS ENUM ('EVERYONE', 'TRAINER_ONLY');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 -- CreateTable
-CREATE TABLE "message_groups" (
+CREATE TABLE IF NOT EXISTS "message_groups" (
     "id" TEXT NOT NULL,
     "trainerId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -39,7 +59,7 @@ CREATE TABLE "message_groups" (
 );
 
 -- CreateTable
-CREATE TABLE "message_group_participants" (
+CREATE TABLE IF NOT EXISTS "message_group_participants" (
     "id" TEXT NOT NULL,
     "groupId" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
@@ -58,7 +78,7 @@ CREATE TABLE "message_group_participants" (
 );
 
 -- CreateTable
-CREATE TABLE "group_messages" (
+CREATE TABLE IF NOT EXISTS "group_messages" (
     "id" TEXT NOT NULL,
     "groupId" TEXT NOT NULL,
     "senderId" TEXT NOT NULL,
@@ -73,24 +93,40 @@ CREATE TABLE "group_messages" (
 );
 
 -- CreateIndex
-CREATE INDEX "message_groups_trainerId_lastMessageAt_idx" ON "message_groups"("trainerId", "lastMessageAt");
-CREATE INDEX "message_group_participants_groupId_idx" ON "message_group_participants"("groupId");
-CREATE INDEX "message_group_participants_userId_idx" ON "message_group_participants"("userId");
-CREATE INDEX "message_group_participants_clientProfileId_idx" ON "message_group_participants"("clientProfileId");
+CREATE INDEX IF NOT EXISTS "message_groups_trainerId_lastMessageAt_idx" ON "message_groups"("trainerId", "lastMessageAt");
+CREATE INDEX IF NOT EXISTS "message_group_participants_groupId_idx" ON "message_group_participants"("groupId");
+CREATE INDEX IF NOT EXISTS "message_group_participants_userId_idx" ON "message_group_participants"("userId");
+CREATE INDEX IF NOT EXISTS "message_group_participants_clientProfileId_idx" ON "message_group_participants"("clientProfileId");
 -- One membership per person per group. Deliberately on the PAIR: the same
 -- person belongs to many groups, so nothing may narrow this to userId.
-CREATE UNIQUE INDEX "message_group_participants_groupId_userId_key" ON "message_group_participants"("groupId", "userId");
-CREATE INDEX "group_messages_groupId_createdAt_idx" ON "group_messages"("groupId", "createdAt");
-CREATE INDEX "group_messages_senderId_idx" ON "group_messages"("senderId");
+CREATE UNIQUE INDEX IF NOT EXISTS "message_group_participants_groupId_userId_key" ON "message_group_participants"("groupId", "userId");
+CREATE INDEX IF NOT EXISTS "group_messages_groupId_createdAt_idx" ON "group_messages"("groupId", "createdAt");
+CREATE INDEX IF NOT EXISTS "group_messages_senderId_idx" ON "group_messages"("senderId");
 -- The responses view: every reply to one broadcast, by person.
-CREATE INDEX "group_messages_replyToId_idx" ON "group_messages"("replyToId");
+CREATE INDEX IF NOT EXISTS "group_messages_replyToId_idx" ON "group_messages"("replyToId");
 
 -- AddForeignKey
-ALTER TABLE "message_groups" ADD CONSTRAINT "message_groups_trainerId_fkey" FOREIGN KEY ("trainerId") REFERENCES "trainer_profiles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "message_groups" ADD CONSTRAINT "message_groups_classRunId_fkey" FOREIGN KEY ("classRunId") REFERENCES "class_runs"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-ALTER TABLE "message_group_participants" ADD CONSTRAINT "message_group_participants_groupId_fkey" FOREIGN KEY ("groupId") REFERENCES "message_groups"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "message_group_participants" ADD CONSTRAINT "message_group_participants_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "message_group_participants" ADD CONSTRAINT "message_group_participants_clientProfileId_fkey" FOREIGN KEY ("clientProfileId") REFERENCES "client_profiles"("id") ON DELETE SET NULL ON UPDATE CASCADE;
-ALTER TABLE "group_messages" ADD CONSTRAINT "group_messages_groupId_fkey" FOREIGN KEY ("groupId") REFERENCES "message_groups"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE "group_messages" ADD CONSTRAINT "group_messages_senderId_fkey" FOREIGN KEY ("senderId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-ALTER TABLE "group_messages" ADD CONSTRAINT "group_messages_replyToId_fkey" FOREIGN KEY ("replyToId") REFERENCES "group_messages"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "message_groups" ADD CONSTRAINT "message_groups_trainerId_fkey" FOREIGN KEY ("trainerId") REFERENCES "trainer_profiles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  ALTER TABLE "message_groups" ADD CONSTRAINT "message_groups_classRunId_fkey" FOREIGN KEY ("classRunId") REFERENCES "class_runs"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  ALTER TABLE "message_group_participants" ADD CONSTRAINT "message_group_participants_groupId_fkey" FOREIGN KEY ("groupId") REFERENCES "message_groups"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  ALTER TABLE "message_group_participants" ADD CONSTRAINT "message_group_participants_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  ALTER TABLE "message_group_participants" ADD CONSTRAINT "message_group_participants_clientProfileId_fkey" FOREIGN KEY ("clientProfileId") REFERENCES "client_profiles"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  ALTER TABLE "group_messages" ADD CONSTRAINT "group_messages_groupId_fkey" FOREIGN KEY ("groupId") REFERENCES "message_groups"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  ALTER TABLE "group_messages" ADD CONSTRAINT "group_messages_senderId_fkey" FOREIGN KEY ("senderId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  ALTER TABLE "group_messages" ADD CONSTRAINT "group_messages_replyToId_fkey" FOREIGN KEY ("replyToId") REFERENCES "group_messages"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null; END $$;

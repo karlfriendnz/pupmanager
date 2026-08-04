@@ -13,4 +13,4 @@
 -- Null on every existing row, which reads as "no grace running". Anyone already
 -- PAST_DUE keeps the paused grants they already have — this does not silently
 -- hand access back to someone who lost it under the old rule.
-ALTER TABLE "membership_purchases" ADD COLUMN "accessGraceUntil" TIMESTAMP(3);
+ALTER TABLE "membership_purchases" ADD COLUMN IF NOT EXISTS "accessGraceUntil" TIMESTAMP(3);

@@ -88,4 +88,54 @@ describe('every migration names tables, not Prisma models', () => {
       `Use the @@map name from schema.prisma (TrainerProfile → trainer_profiles).\n`,
     ).toEqual([])
   })
+
+  /**
+   * Replay-safe from 2026-08-01 on.
+   *
+   * The 2026-08-05 deploy failed on its first attempt with 42710 — `type
+   * "MessageGroupMode" already exists`. The group-chat work had been pushed to
+   * production with `prisma db push` while it was being built, so the objects
+   * were there and _prisma_migrations knew nothing about them. The FIRST of
+   * twenty queued migrations aborted and took the other nineteen with it.
+   *
+   * `db push` against production is a habit this repo has (see the warning in
+   * AGENTS.md about DIRECT_URL), so a migration must apply to a database that
+   * already has its objects. Older migrations are grandfathered: they are
+   * applied everywhere already, and rewriting them would change checksums.
+   */
+  const CUTOFF = '20260801'
+
+  it('every migration since the cutoff can be applied twice', () => {
+    const unguarded: string[] = []
+    for (const file of files) {
+      if (file.name < CUTOFF) continue
+      const sql = withoutComments(file.sql)
+      const problems: string[] = []
+      if (/CREATE TABLE "/.test(sql)) problems.push('CREATE TABLE without IF NOT EXISTS')
+      if (/CREATE (UNIQUE )?INDEX "/.test(sql)) problems.push('CREATE INDEX without IF NOT EXISTS')
+      if (/ADD COLUMN "/.test(sql)) problems.push('ADD COLUMN without IF NOT EXISTS')
+      if (/ADD VALUE '/.test(sql)) problems.push('ADD VALUE without IF NOT EXISTS')
+      // A bare CREATE TYPE / ADD CONSTRAINT is fine only inside a DO block that
+      // swallows duplicate_object.
+      // Two guard styles are in use here and both are fine: swallow the
+      // duplicate_object exception, or check the catalogue first. The dress
+      // rehearsal (replaying all 20 against a full database) is what proves it;
+      // this only checks the shape.
+      const guardCount =
+        (sql.match(/EXCEPTION\s+WHEN duplicate_object/gi) ?? []).length +
+        (sql.match(/IF NOT EXISTS \(SELECT 1 FROM pg_(type|constraint|class|indexes)/g) ?? []).length
+      const needsGuard =
+        (sql.match(/CREATE TYPE "/g) ?? []).length + (sql.match(/ADD CONSTRAINT "/g) ?? []).length
+      if (needsGuard > 0 && guardCount === 0) problems.push('CREATE TYPE / ADD CONSTRAINT with no duplicate_object guard')
+      if (problems.length) unguarded.push(`${file.name}: ${problems.join('; ')}`)
+    }
+    expect(
+      unguarded,
+      `\nThis migration cannot be applied to a database that already has its\n` +
+      `objects — which production may well be, because db push has been run\n` +
+      `against it before. One of these took a whole deploy down on 2026-08-05.\n\n` +
+      `Use IF NOT EXISTS, and wrap CREATE TYPE / ADD CONSTRAINT in\n` +
+      `DO $$ BEGIN ... EXCEPTION WHEN duplicate_object THEN null; END $$;\n`,
+    ).toEqual([])
+  })
 })

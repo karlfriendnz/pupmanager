@@ -1,3 +1,8 @@
+-- Guarded like every other statement in this batch: production has had objects
+-- created by `prisma db push` during development before, so a migration must
+-- apply cleanly whether or not its tables and types are already there. One
+-- unguarded CREATE TYPE cost the 2026-08-05 deploy its first attempt.
+
 -- Product categories become rows.
 --
 -- They were a free-form string on each product, which grouped the shop but
@@ -13,7 +18,7 @@
 -- trainer_profiles). Prisma MODEL names would fail 42P01 under `migrate deploy`.
 
 -- CreateTable
-CREATE TABLE "product_categories" (
+CREATE TABLE IF NOT EXISTS "product_categories" (
     "id" TEXT NOT NULL,
     "trainerId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -26,22 +31,26 @@ CREATE TABLE "product_categories" (
 
 -- CreateIndex
 -- One "Treats" per business; a second would split the shelf in two.
-CREATE UNIQUE INDEX "product_categories_trainerId_name_key" ON "product_categories"("trainerId", "name");
-CREATE INDEX "product_categories_trainerId_idx" ON "product_categories"("trainerId");
+CREATE UNIQUE INDEX IF NOT EXISTS "product_categories_trainerId_name_key" ON "product_categories"("trainerId", "name");
+CREATE INDEX IF NOT EXISTS "product_categories_trainerId_idx" ON "product_categories"("trainerId");
 
 -- AlterTable
-ALTER TABLE "products" ADD COLUMN "categoryId" TEXT;
+ALTER TABLE "products" ADD COLUMN IF NOT EXISTS "categoryId" TEXT;
 
 -- AddForeignKey
-ALTER TABLE "product_categories"
-  ADD CONSTRAINT "product_categories_trainerId_fkey"
-  FOREIGN KEY ("trainerId") REFERENCES "trainer_profiles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "product_categories"
+    ADD CONSTRAINT "product_categories_trainerId_fkey"
+    FOREIGN KEY ("trainerId") REFERENCES "trainer_profiles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 -- SetNull, not Cascade: deleting a category must not delete the things in it.
 -- They fall back to Uncategorised and stay on sale.
-ALTER TABLE "products"
-  ADD CONSTRAINT "products_categoryId_fkey"
-  FOREIGN KEY ("categoryId") REFERENCES "product_categories"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "products"
+    ADD CONSTRAINT "products_categoryId_fkey"
+    FOREIGN KEY ("categoryId") REFERENCES "product_categories"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 -- Backfill: one row per distinct name a trainer has actually used, ordered the
 -- way the list already showed them (alphabetically), then point the products at
