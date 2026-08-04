@@ -321,9 +321,18 @@ report: they are now pinned by tests so they stay held.
 
 ### Tenant isolation across the `:id` surface
 
-Signed in as trainer B, pointed at trainer A's rows. **Every one refused with a
-404** (a few 403), and re-reading the database afterwards showed **nothing
-written** — no rename, no delete, no planted row.
+**121 probes, signed in as trainer B, every one pointed at a row owned by
+trainer A. Result: 107 refused outright (404, a few 403), 12 refused on a second
+pass with a valid body, 2 answered 200 with a provably empty payload. Zero
+leaks, and re-reading the database afterwards showed nothing written — no
+rename, no delete, no planted row.**
+
+The 12 that first came back `400 Invalid input` or `405` were my malformed
+bodies, not a defence. Re-sent with schema-valid payloads they all 404'd:
+`clients/:id/location`, `clients/:id/share`, `schedule/:id/buddies`,
+`sessions/:id/series-step`, `products/:id/clone`, `products/categories/:id`,
+`tags/assign` (PUT ×2 + GET), `receivables/:id` PATCH, and
+`receivables/:id/record-payment`.
 
 Covered: clients (detail/dogs/field-values/location/notify/packages/
 achievements/reinvite/share/product-requests), dogs (detail/media/photo),
@@ -353,6 +362,23 @@ than a 404 so the screen renders nothing instead of erroring — the source says
 so explicitly ("an empty payload says so without leaking which"). No foreign
 data is present in either. The e2e spec asserts the payloads really are empty
 rather than blanket-allowing the 200.
+
+**Query-string tenant overrides are ignored.** Appending `?trainerId=<rival>` to
+`/api/clients`, `/api/packages` and `/api/schedule/report` returns 200 — with the
+*caller's own* data. The param is not read; the tenant comes from the session
+context (`getTrainerContext().companyId`) in every case. `/api/schedule/report`
+additionally refuses a staff member without `schedule.viewAll` with a 403, so
+company-wide financials are not reachable from a restricted seat. Same for
+`?clientId=<foreign>` on `/api/messages` (404) and
+`/api/messages/unread-count` (200, `{"count":0}`).
+
+**Reorder endpoints silently no-op on foreign ids.** `POST
+/api/custom-fields/reorder` with another business's field id returns
+`{"ok":true}` — but the write is `updateMany({ where: { id, trainerId } })`, so
+zero rows match. Verified in the database afterwards: both fields still
+`order: 0`, unchanged. It is safe; it just answers 200 where its siblings
+(`/api/products/reorder`, `/api/tags/reorder`) answer 404. Worth aligning so the
+"silently did nothing" case can't be mistaken for success.
 
 ### Mass assignment
 
