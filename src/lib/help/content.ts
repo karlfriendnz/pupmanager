@@ -6,6 +6,30 @@ import { OFFERING_ARTICLES } from './content-offerings'
 import { SHOP_ARTICLES } from './content-shop'
 import { TOOL_ARTICLES } from './content-tools'
 
+/**
+ * A screenshot of the real screen, with the thing to click already marked on
+ * it. Captured by tests/audit/shoot-help.ts against the running app, so a
+ * picture can never drift from the app without the capture failing first.
+ *
+ * Only add one where a picture beats the sentence — a control that is hard to
+ * describe ("the cog", "the ⋯", the drag handle). A shot of a screen the step
+ * already names is decoration.
+ */
+export type HelpShot = {
+  /** Path under /public — e.g. '/help/shots/open-settings.png'. */
+  src: string
+  /** What the picture shows. Used as the alt text, so write it for a reader. */
+  alt: string
+  /**
+   * 1-based index of the step this illustrates. The image renders directly
+   * under that step. Omit to hang it at the end of the article.
+   */
+  step?: number
+  /** Intrinsic pixel size, so the row reserves space and never jumps. */
+  width: number
+  height: number
+}
+
 export type HelpArticle = {
   slug: string
   title: string
@@ -16,6 +40,8 @@ export type HelpArticle = {
   summary: string
   // Numbered steps shown when the article is opened.
   steps: string[]
+  // Optional annotated screenshots — see HelpShot.
+  shots?: HelpShot[]
 }
 
 export type Faq = {
