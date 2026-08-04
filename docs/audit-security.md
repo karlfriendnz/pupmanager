@@ -421,6 +421,13 @@ entity-obfuscated), `<script>`, `<img onerror>` in every delimiter form,
 descriptions are HTML-escaped before conversion, so `<img src=x onerror=…>`
 typed into an old textarea renders as text.
 
+**And the delivery side matches.** Every `dangerouslySetInnerHTML` in the repo
+is on a trainer-admin *email preview* surface (listed under F3). There is not
+one on a client page or a public page: `src/app/(client)/**`, `src/app/c/**`,
+`src/app/l/**` and `src/app/form/**` render every description, intro and
+homework body through `<RichText>` or `richTextToPlain`. So the payloads above
+have nowhere to land even if one were stored.
+
 ### Admin surface
 
 All 23 files under `src/app/api/admin/**` carry a role check. A normal trainer
@@ -477,6 +484,56 @@ sees the invitation, not the conversation or the other members. Cross-business
 group ids 404.
 
 ---
+
+### Webhooks
+
+All three inbound webhooks fail **closed** and verify properly, which is the
+pattern the cron routes should copy:
+
+- `/api/webhooks/stripe` and `/api/webhooks/stripe/connect` — 503 when no
+  secret is configured, 400 with no `stripe-signature`, verified against the raw
+  body, dual live/sandbox secret candidates.
+- `/api/webhooks/resend` — 503 with no `RESEND_WEBHOOK_SECRET`, Svix signature.
+- `/api/xero/webhook` — HMAC-SHA256 of the raw body compared with
+  `crypto.timingSafeEqual`, length-checked first.
+
+### Public / unauthenticated surface
+
+- `/api/auth/signup-client` creates a login **and nothing else** — no
+  `ClientProfile`, because a client list is the trainer's business record. It
+  raises an `Enquiry` the trainer approves. It explicitly refuses to attach a
+  password to an existing `User` (the comment names account takeover as the
+  reason), so a client their trainer already added cannot be hijacked by anyone
+  who knows the address.
+- `/api/form/:id/submit` is length-capped on every field and rate-limited per IP;
+  it snapshots only the custom fields actually enabled on the form.
+- Open-redirect: `safeInternalPath()` decodes once, then rejects anything that
+  is not a single-leading-slash relative path — no `//host`, no `/\`, no
+  backslashes, no scheme.
+- CSRF: `requireSameOrigin()` validates `Origin` (falling back to `Referer`) on
+  the money / account-deletion / role-change routes, and deliberately allows a
+  *missing* Origin for the Capacitor webview — which is the correct trade-off,
+  since a cross-site attacker's browser always sends one.
+
+## Smaller observations (not findings)
+
+- **`/api/cron/keep-warm` is unauthenticated** and runs `SELECT 1` on every
+  call. Harmless content, but it is an open endpoint that touches the database.
+- **Account enumeration on client signup.** `POST /api/auth/signup-client`
+  returns a distinct "there is already an account for this email" error, so the
+  endpoint confirms whether an address is registered. Mitigated by the 5/hour/IP
+  rate limit, and the alternative (a silent success) is worse UX for a dog owner
+  who genuinely forgot. Worth knowing it is a deliberate trade.
+- **Ten routes still resolve the tenant with the legacy owner-only lookup**
+  `prisma.trainerProfile.findUnique({ where: { userId } })` instead of
+  `guard.companyId` — achievements (×2), library types/tasks/themes,
+  embed-forms, custom-fields (×3), and the admin addons route. They fail
+  **closed** (an invited MANAGER gets 403, so it is a functional bug rather than
+  a hole), but it is exactly the drift that turns into a hole when someone
+  "fixes" the 403 by deleting the scope instead of switching to `guard.companyId`.
+- **`POST /api/custom-fields/reorder` answers 200 on a foreign id** where its
+  five sibling reorder routes answer 404. It writes nothing (verified), but the
+  inconsistency makes "silently did nothing" look like success.
 
 ## Coverage — what I could *not* test
 
