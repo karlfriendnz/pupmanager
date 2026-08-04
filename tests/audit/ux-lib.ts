@@ -28,8 +28,11 @@ export async function open(which: AccountKey, opts: { width?: number; height?: n
     const ctx = await browser.newContext({ storageState: STATE, viewport, deviceScaleFactor: 1 })
     await ctx.addInitScript(shim)
     const page = await ctx.newPage()
-    await page.goto(BASE + landing, { waitUntil: 'domcontentloaded' })
-    if (!page.url().includes('/login')) return { browser, ctx, page }
+    // The shared dev server compiles on demand and is busy — give the probe
+    // navigation room rather than throwing away a perfectly good session.
+    const ok = await page.goto(BASE + landing, { waitUntil: 'domcontentloaded', timeout: 90000 })
+      .then(() => true).catch(() => false)
+    if (ok && !page.url().includes('/login')) return { browser, ctx, page }
     await ctx.close()
   }
   const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1 })

@@ -26,11 +26,14 @@ Severity: **unusable** · **hard to use** · **off-style** · **nitpick**.
 
 **Good news first, because it is real:**
 
-1. **Nothing overflows horizontally.** 42 trainer routes at 1440 and the first
-   14 at 390 — every `document.scrollWidth` matched the viewport. The
+1. **Nothing overflows horizontally.** 42 trainer routes at 1440 and 31 at 390 —
+   every `document.scrollWidth` matched the viewport, on every one. The
    60-character business name, the 40-session class and the long invoice titles
    all truncate rather than shove. This is the rule that usually rots first and
    it is clean.
+   Touch targets are clean too: the `min-height/min-width: 44px` rule in
+   `globals.css` holds everywhere, with the only sub-40px control being a
+   `role="switch"` toggle, which that stylesheet exempts on purpose.
 2. **Safe areas are handled properly** — `env(safe-area-inset-*)` in the shell,
    the phone header, the bottom tabs and the create sheet, plus `--app-safe-top`
    on the desktop bar so an iPad on the desktop layout still clears the notch.
@@ -235,9 +238,17 @@ A bare `<input type="time">` with no label is unusable by voice control and
 opaque to a screen reader. It also means the in-app review widget cannot name
 the field when Karl pins a comment on it, which is the second cost.
 
+**`/doggy-daycare` has 7 more** on the same pattern — the daycare name, the
+day-part name, two bare `input[type=time]`, price, limit and a bare
+`input[type=date]`.
+
 Smaller instances: `/clients` search, `/finances` two search boxes,
 `/ai-tools` (client select, goal textarea, duration select), `/timesheets`
-(rate name + rate value), `/marketing/new` (template select, subject).
+(rate name + rate value), `/marketing/new` (template select, subject),
+`/dashboard` and `/sessions/needs-notes` ("Add a to-do…", the brain-dump
+textarea), `/instagram` (file input).
+
+Confirmed identical at 390 and 1440 — this is markup, not a responsive branch.
 
 ---
 
