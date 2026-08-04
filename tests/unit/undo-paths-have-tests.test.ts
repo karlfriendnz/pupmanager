@@ -54,55 +54,55 @@ function allTestSource(): string {
  */
 const KNOWN_UNTESTED = new Set([
   '/achievements/[achievementId]',
-  '/admin/announcements/[id]',
-  '/admin/onboarding-emails/[id]/image',
-  '/admin/promo-codes/[codeId]',
-  '/admin/trainer-notes/[id]',
-  '/admin/trainer-tasks/[id]',
-  '/admin/trainers/[trainerId]',
+  // '/admin/announcements/[id]' — covered 2026-08-05 by audit-undo-paths.spec
+  // '/admin/onboarding-emails/[id]/image' — covered 2026-08-05 by audit-undo-paths.spec
+  // '/admin/promo-codes/[codeId]' — covered 2026-08-05 by audit-undo-paths.spec
+  // '/admin/trainer-notes/[id]' — covered 2026-08-05 by audit-undo-paths.spec
+  // '/admin/trainer-tasks/[id]' — covered 2026-08-05 by audit-undo-paths.spec
+  // '/admin/trainers/[trainerId]' — covered 2026-08-05 by audit-undo-paths.spec
   '/availability/[slotId]',
   '/blackouts/[blackoutId]',
   '/clients/[clientId]/achievements/[achievementId]',
   '/clients/[clientId]/dogs/[dogId]',
   '/custom-fields/[fieldId]',
-  '/devices/register',
+  // '/devices/register' — covered 2026-08-05 by audit-undo-paths.spec
   '/dogs/[dogId]',
-  '/dogs/[dogId]/media/[mediaId]',
-  '/dogs/[dogId]/photo',
+  // '/dogs/[dogId]/media/[mediaId]' — covered 2026-08-05 by audit-undo-paths.spec
+  // '/dogs/[dogId]/photo' — covered 2026-08-05 by audit-undo-paths.spec
   '/email-templates/[id]',
   '/embed-forms/[formId]',
   '/library/types/[typeId]',
   '/message-groups/[groupId]',
-  '/message-groups/[groupId]/messages/[messageId]',
-  '/message-groups/[groupId]/participants/[participantId]',
+  // '/message-groups/[groupId]/messages/[messageId]' — covered 2026-08-05 by audit-undo-paths.spec
+  // '/message-groups/[groupId]/participants/[participantId]' — covered 2026-08-05 by audit-undo-paths.spec
   '/my/memberships/[membershipId]/request',
   '/products/categories/[categoryId]',
-  '/review/comments/[id]',
-  '/schedule/[sessionId]/buddies/[buddyId]',
-  '/schedule/notify-reschedules',
+  // '/review/comments/[id]' — covered 2026-08-05 by audit-undo-paths.spec
+  // '/schedule/[sessionId]/buddies/[buddyId]' — covered 2026-08-05 by audit-undo-paths.spec
+  // '/schedule/notify-reschedules' — covered 2026-08-05 by audit-undo-paths.spec
   '/session-forms/[formId]',
-  '/sessions/[sessionId]/attachments/[attachmentId]',
+  // '/sessions/[sessionId]/attachments/[attachmentId]' — covered 2026-08-05 by audit-undo-paths.spec
   '/sessions/[sessionId]/form-responses/[formId]',
   '/sessions/[sessionId]/time-entries',
-  '/system-emails',
-  '/tags/[tagId]',
+  // '/system-emails' — covered 2026-08-05 by audit-undo-paths.spec
+  // '/tags/[tagId]' — covered 2026-08-05 by audit-undo-paths.spec
   '/tasks/[taskId]',
   '/tasks/[taskId]/complete',
   '/time-rates/[id]',
   '/timesheets/[id]',
   '/timesheets/[id]/entries/[entryId]',
   '/timesheets/[id]/finalise',
-  '/todos/[todoId]',
+  // '/todos/[todoId]' — covered 2026-08-05 by audit-undo-paths.spec
   '/trainer/booking-pages/[id]',
   '/trainer/booking-pages/[id]/automations/[autoId]',
-  '/trainer/class-runs/[runId]/comms-flow/[stepId]',
-  '/trainer/comms-flow-templates/[templateId]',
+  // '/trainer/class-runs/[runId]/comms-flow/[stepId]' — covered 2026-08-05 by audit-undo-paths.spec
+  // '/trainer/comms-flow-templates/[templateId]' — covered 2026-08-05 by audit-undo-paths.spec
   '/trainer/discounts/[id]',
-  '/trainer/lead-magnets/[id]',
+  // '/trainer/lead-magnets/[id]' — covered 2026-08-05 by audit-undo-paths.spec
   '/trainer/locations/[id]',
   // '/trainer/memberships/[id]' — covered 2026-08-04 by audit-trainer-money.spec (T-5)
-  '/trainer/memberships/[id]/comms-flow/[stepId]',
-  '/trainer/memberships/[id]/invites',
+  // '/trainer/memberships/[id]/comms-flow/[stepId]' — covered 2026-08-05 by audit-undo-paths.spec
+  // '/trainer/memberships/[id]/invites' — covered 2026-08-05 by audit-undo-paths.spec
 ])
 
 describe('every undo path is either tested or on the list', () => {
