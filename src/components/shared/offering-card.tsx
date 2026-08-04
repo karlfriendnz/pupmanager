@@ -362,10 +362,14 @@ export function useOfferingGrouping(page: string): [boolean, (v: boolean) => voi
 export function OfferingGroupToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
   const label = value ? 'Grouped by tag — tap to ungroup' : 'Group by tag'
   return (
-    // p-0.5 around an h-8 button is 36px tall — the same as the add button
-    // beside it. p-1 made it 40, and three controls in a row at three
-    // different heights is what made the bar look assembled rather than designed.
-    <div className="flex items-center rounded-xl bg-slate-100 p-0.5">
+    // No VERTICAL padding, and that is the fix rather than an oversight.
+    // globals.css forces every button to a 44px minimum tap target, so the
+    // `h-8` below is silently ignored and the button is 44 tall whatever it
+    // says — which made this track 44 + 8 = 52px beside a 44px add button, and
+    // three controls at three heights is what made the bar look assembled
+    // rather than designed. The 2px inset stays on the sides, where nothing
+    // overrides it and the track still reads as a track.
+    <div className="flex items-center rounded-xl bg-slate-100 px-0.5">
       <button
         type="button"
         onClick={() => onChange(!value)}
@@ -402,7 +406,7 @@ export function OfferingGroupHeading({ label, count }: { label: string; count: n
 /** List / grid switch. Hidden on phones — one column either way there. */
 export function OfferingViewToggle({ value, onChange }: { value: OfferingView; onChange: (v: OfferingView) => void }) {
   return (
-    <div className="hidden items-center gap-0.5 rounded-xl bg-slate-100 p-0.5 md:flex">
+    <div className="hidden items-center gap-0.5 rounded-xl bg-slate-100 px-0.5 md:flex">
       {([
         { id: 'list' as const, icon: <ListIcon className="h-4 w-4" />, label: 'List view' },
         { id: 'grid' as const, icon: <LayoutGrid className="h-4 w-4" />, label: 'Grid view' },
