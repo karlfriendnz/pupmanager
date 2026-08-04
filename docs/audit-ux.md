@@ -499,13 +499,29 @@ which is correct.
 `tests/e2e/audit-ux.spec.ts` (new, mine alone) asserts the mechanical rules that
 rot silently:
 
-1. **No horizontal overflow** on 13 trainer screens at 390 / 760 / 1440, and 5
-   client screens at 390 / 1440 — with the offending element named in the
-   failure message.
-2. **One scrollbar with the phone create sheet open** — body scroll is locked,
-   and no scrolling region inside the overlay renders a visible rail.
-3. **Focus is visible** on the login form and on the first control of
-   `/settings`.
+| # | Guard | Result |
+|---|---|---|
+| 1 | No horizontal overflow, 13 trainer screens @ 390 | ✓ |
+| 2 | No horizontal overflow, 13 trainer screens @ 760 | ✓ |
+| 3 | No horizontal overflow, 13 trainer screens @ 1440 | ✓ |
+| 4 | No horizontal overflow, 5 client screens @ 390 | ✓ |
+| 5 | No horizontal overflow, 5 client screens @ 1440 | ✓ |
+| 6 | Phone create sheet leaves one scrollbar, not two | ✓ |
+| 7 | **Open overlay leaves one scrollbar at 760×560** | ✓ |
+| 8 | Every scrolling overlay opts into the no-scrollbar net | ✓ |
+| 9 | Focus visible on the login form | ✓ |
+| 10 | Focus ring survives on the first `/settings` control | ✓ |
+
+Guard 7 is the one that matters most: it is the width where the
+`@media (max-width: 767px)` blanket rule stops hiding rails, so a regression
+that is invisible on a phone fails here. Each overflow guard names the
+offending element and its right edge in the failure message, so a break tells
+you what to fix rather than just that something moved.
+
+Note guards 6–8 pin the create sheet, which is **correct today**. The
+`/reports` "View data" modal (finding 2) is *not* pinned, deliberately: a guard
+that fails on landing would leave the suite red for everyone else. Fix that
+modal and it is a two-line change to add it here.
 
 Deliberately not pinned: colour, gradients, stroke weight, card stacking. Those
 are taste calls and belong in this document, not in a test that would fight the
