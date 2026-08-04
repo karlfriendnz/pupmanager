@@ -246,7 +246,57 @@ should require the receiving business to accept before `trainerId` moves.
 
 ---
 
-### F5 — Outbound email interpolates `logoUrl` into an `<img src>` unescaped — LOW
+### F5 — 20 of 21 cron routes compare the Bearer token against `"Bearer undefined"` — MEDIUM (conditional)
+
+Every cron route is gated like this:
+
+```ts
+if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+}
+```
+
+When `CRON_SECRET` is unset, the template literal evaluates to the string
+`"Bearer undefined"` — and anyone who sends exactly that header is in. Only
+`src/app/api/cron/purge-deactivated/route.ts` gets it right:
+
+```ts
+if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) { … }
+```
+
+The other 20 do not. `/api/cron` is also in `PUBLIC_PATHS` in `src/proxy.ts`
+(correctly — the routes authenticate themselves), so there is no second layer.
+
+**What an attacker would get** in an environment missing the variable: mass email
+and push to every trainer and client (`daily-reminders`, `session-reminders`,
+`client-session-reminders`, `daily-summary`, `weekly-summary`,
+`onboarding-emails`, `comms-flows`, `message-email-fallback`,
+`enquiry-followups`), billing and membership reconciliation, Stripe/Xero state
+mutation, Google Calendar backfills, and `purge-deactivated` (the one that is
+guarded — luckily the destructive one).
+
+**Confirmed not exploitable on this dev instance** — `CRON_SECRET` *is* set in
+`.env`, so `Authorization: Bearer undefined` correctly returns 401. This is a
+hardening finding: the failure mode is a missing env var, not a bad comparison
+today. It is worth taking seriously because this repo has already had one
+CRON_SECRET rotation go wrong (11 jobs, some missed, silent 401s), and because a
+preview deployment or a new environment is exactly where a var goes missing.
+
+**Note:** `/api/cron/keep-warm` is deliberately unauthenticated. It runs
+`SELECT 1` and returns `{ok:true}` — nothing to protect, though it is an
+open endpoint that touches the database.
+
+**Fix.** One line, twenty times: `if (!process.env.CRON_SECRET || …)`. Better,
+extract the check into a `requireCronSecret(req)` helper the way
+`requireSameOrigin` already works, so a new cron route cannot get it wrong.
+
+**Test:** `tests/unit/security/audit-cron-auth.test.ts` — enumerates the cron
+directory rather than listing routes, so a cron route added later is covered on
+the day it lands.
+
+---
+
+### F6 — Outbound email interpolates `logoUrl` into an `<img src>` unescaped — LOW
 
 `src/app/api/enquiries/[id]/reply/route.ts` (and the same shape in several other
 email builders):
