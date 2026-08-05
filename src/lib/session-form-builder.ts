@@ -10,7 +10,7 @@
 
 export type BasicType = 'SHORT_TEXT' | 'LONG_TEXT' | 'NUMBER' | 'RATING_1_5'
 export type ChoiceType = 'DROPDOWN' | 'RADIO' | 'CHECKBOX'
-export type QuestionType = BasicType | ChoiceType | 'CUSTOM_FIELD' | 'CLIENT_FIELD'
+export type QuestionType = BasicType | ChoiceType | 'CUSTOM_FIELD' | 'CLIENT_FIELD' | 'FILE_UPLOAD'
 
 /**
  * Conditional visibility: show this question only when the referenced
@@ -70,7 +70,37 @@ export interface ClientFieldQuestion {
   step?: string
 }
 
-export type Question = BasicQuestion | ChoiceQuestion | LinkedQuestion | ClientFieldQuestion
+/**
+ * A question that asks for a FILE — "send us a photo of your dog", "attach the
+ * vet letter".
+ *
+ * The answer is a list of URLs, exactly the shape
+ * `SessionFormResponse.imagesByQuestion` has always stored (question id →
+ * string[]). It rides in the same `answers` map as every other answer because
+ * that map is already `Record<string, string | string[]>` — a second parallel
+ * bucket would mean every reader had to know which one to look in, and the one
+ * that forgot would report the question as unanswered.
+ *
+ * `accept` and `maxFiles` are what the client may send. Both are checked AT
+ * UPLOAD, on the server: a browser that decides how big a file may be has
+ * decided nothing (AGENTS.md bug #3).
+ */
+export type FileAccept = 'IMAGE' | 'ANY'
+export interface FileQuestion {
+  id: string
+  type: 'FILE_UPLOAD'
+  label: string
+  required: boolean
+  isPrivate?: boolean
+  showIf?: ShowIf
+  step?: string
+  /** IMAGE = photos only (a dog photo); ANY = a document too. Absent = IMAGE. */
+  accept?: FileAccept
+  /** How many they may attach. Absent = 1. */
+  maxFiles?: number
+}
+
+export type Question = BasicQuestion | ChoiceQuestion | LinkedQuestion | ClientFieldQuestion | FileQuestion
 
 /** Narrows a Question to one that owns an `options` array. */
 export function hasOptions(q: Question): q is ChoiceQuestion {
@@ -78,7 +108,29 @@ export function hasOptions(q: Question): q is ChoiceQuestion {
 }
 
 /** A question the trainer authored — the ones that carry their own label text. */
-export type AuthoredQuestion = BasicQuestion | ChoiceQuestion
+export type AuthoredQuestion = BasicQuestion | ChoiceQuestion | FileQuestion
+
+/** What a FILE_UPLOAD question actually asks for, absences filled in. One place,
+ *  so the picker on screen and the size check on the server agree. */
+export const FILE_QUESTION_MAX_MB = 10
+export function fileSpecFor(q: FileQuestion): { accept: FileAccept; maxFiles: number; maxMb: number } {
+  return {
+    accept: q.accept ?? 'IMAGE',
+    maxFiles: Math.min(Math.max(q.maxFiles ?? 1, 1), 10),
+    // The same cap /api/upload/image enforces. Past this the serverless request
+    // body gives out before any check of ours runs — which is why every uploader
+    // in this app compresses first (lib/compress-image.ts).
+    maxMb: FILE_QUESTION_MAX_MB,
+  }
+}
+
+/** The URLs a file question was answered with. Always a list, never a string —
+ *  a single upload stored as a bare string is how a reader ends up iterating
+ *  the characters of a URL. */
+export function fileAnswerUrls(v: string | string[] | undefined): string[] {
+  if (Array.isArray(v)) return v.filter(u => typeof u === 'string' && u.trim().length > 0)
+  return typeof v === 'string' && v.trim() ? [v] : []
+}
 
 /**
  * Does this question carry its own label?
@@ -117,6 +169,7 @@ export const TYPE_LABELS: Record<Exclude<QuestionType, 'CUSTOM_FIELD' | 'CLIENT_
   DROPDOWN: 'Dropdown',
   RADIO: 'Radio',
   CHECKBOX: 'Checkbox',
+  FILE_UPLOAD: 'File or photo',
 }
 
 /** Palette order for the "New question" group. */
@@ -131,7 +184,7 @@ export const TYPE_LABELS: Record<Exclude<QuestionType, 'CUSTOM_FIELD' | 'CLIENT_
 export const SAVED_FIELD_TYPES: Exclude<QuestionType, 'CUSTOM_FIELD' | 'CLIENT_FIELD'>[] = ['SHORT_TEXT', 'NUMBER', 'DROPDOWN']
 
 export const NEW_QUESTION_TYPES: Exclude<QuestionType, 'CUSTOM_FIELD' | 'CLIENT_FIELD'>[] = [
-  'SHORT_TEXT', 'LONG_TEXT', 'NUMBER', 'RATING_1_5', 'DROPDOWN', 'RADIO', 'CHECKBOX',
+  'SHORT_TEXT', 'LONG_TEXT', 'NUMBER', 'RATING_1_5', 'DROPDOWN', 'RADIO', 'CHECKBOX', 'FILE_UPLOAD',
 ]
 
 export function newQuestionId(): string {
@@ -272,6 +325,10 @@ export function isQuestionAnswered(
   answers: Record<string, string | string[] | undefined>,
 ): boolean {
   const v = answers[q.id]
+  // A file question is answered when a file actually arrived. An empty list —
+  // which is what a form that rendered the picker and never used it posts — is
+  // not an upload, and the server is the only place that can insist on that.
+  if (q.type === 'FILE_UPLOAD') return fileAnswerUrls(v).length > 0
   if (Array.isArray(v)) return v.length > 0
   return !!(v && String(v).trim())
 }
@@ -418,6 +475,21 @@ export function serializeQuestions(questions: Question[]): Question[] {
         required: q.required,
         isPrivate: !!q.isPrivate,
         options: q.options.map(o => o.trim()).filter(Boolean),
+        ...extra,
+      }
+    }
+    // A file question's own settings, emitted only when set — the same
+    // only-what-was-authored rule the rest of this function follows, and the
+    // thing that stops "attach up to 3 photos" coming back as "attach 1".
+    if (q.type === 'FILE_UPLOAD') {
+      return {
+        id: q.id,
+        type: q.type,
+        label: q.label.trim(),
+        required: q.required,
+        isPrivate: !!q.isPrivate,
+        ...(q.accept ? { accept: q.accept } : {}),
+        ...(q.maxFiles ? { maxFiles: q.maxFiles } : {}),
         ...extra,
       }
     }

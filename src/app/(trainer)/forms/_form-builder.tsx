@@ -12,7 +12,7 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import {
-  AlignLeft, CheckSquare, CircleDot, Hash, Link2, List, Plus, Star,
+  AlignLeft, CheckSquare, CircleDot, Hash, Link2, List, Paperclip, Plus, Star,
   Type as TypeIcon, UserSquare,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -101,6 +101,7 @@ const TYPE_ICONS: Record<Exclude<QuestionType, 'CUSTOM_FIELD' | 'CLIENT_FIELD'>,
   DROPDOWN: List,
   RADIO: CircleDot,
   CHECKBOX: CheckSquare,
+  FILE_UPLOAD: Paperclip,
 }
 
 /** The whole form is a drop target, so a palette row dropped past the last

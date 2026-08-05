@@ -26,6 +26,22 @@ export const questionSchema = z.discriminatedUnion('type', [
   z.object({ ...baseQuestion, type: z.literal('DROPDOWN'), label: z.string().min(1), options: choiceOptions }),
   z.object({ ...baseQuestion, type: z.literal('RADIO'), label: z.string().min(1), options: choiceOptions }),
   z.object({ ...baseQuestion, type: z.literal('CHECKBOX'), label: z.string().min(1), options: choiceOptions }),
+  // Asks for a FILE — a photo of the dog, the vet letter. The answer is a list
+  // of URLs (the shape SessionFormResponse.imagesByQuestion already uses), and
+  // the upload itself goes through /api/form/[formId]/upload, which re-derives
+  // `accept` and the size cap from THIS question rather than trusting the
+  // browser's word for either.
+  //
+  // No `.default()` on the two settings: a default here would materialise keys
+  // the trainer never set, so a form saved and reloaded would differ from the
+  // one they built (AGENTS.md bug #1). fileSpecFor() resolves the absences.
+  z.object({
+    ...baseQuestion,
+    type: z.literal('FILE_UPLOAD'),
+    label: z.string().min(1),
+    accept: z.enum(['IMAGE', 'ANY']).optional(),
+    maxFiles: z.number().int().min(1).max(10).optional(),
+  }),
   // A question whose answer is kept ON THE CLIENT'S RECORD, not just in this
   // form's answers — so it shows on their profile, sorts the clients list, and
   // reaches the reports and importers.

@@ -216,3 +216,29 @@ describe('legacy EmbedForm submissions are untouched', () => {
     expect(h.formFindFirst).not.toHaveBeenCalled()
   })
 })
+
+// A file question's answer is the list of URLs of what was already uploaded.
+// This endpoint is public, so "did they attach the thing you asked for" is a
+// question only the server may answer (AGENTS.md bug #3).
+describe('public unified-form submit — a required file', () => {
+  const FILE_Q = { id: 'q_photo', type: 'FILE_UPLOAD', label: 'A photo of your dog', required: true }
+
+  beforeEach(() => {
+    h.formFindFirst.mockResolvedValue({ id: FORM, trainerId: TRAINER, questions: [FILE_Q] })
+  })
+
+  it('refuses an enquiry where nothing was uploaded', async () => {
+    for (const answers of [{}, { q_photo: [] }, { q_photo: '' }]) {
+      const res = await post({ contact: CONTACT, answers })
+      expect(res.status, JSON.stringify(answers)).toBe(400)
+      expect((await res.json()).error).toContain('A photo of your dog')
+    }
+    expect(h.enquiryCreate).not.toHaveBeenCalled()
+  })
+
+  it('takes one where the file actually landed, and keeps the urls', async () => {
+    const answers = { q_photo: ['https://blob.test/form-uploads/t/f/q_photo/a.jpg'] }
+    expect((await post({ contact: CONTACT, answers })).status).toBe(201)
+    expect(h.enquiryCreate.mock.calls[0][0].data.formAnswers).toEqual(answers)
+  })
+})

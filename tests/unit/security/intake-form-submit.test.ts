@@ -76,6 +76,31 @@ describe('POST /api/my/intake-form/submit — guards', () => {
   })
 })
 
+// A file question's answer is a list of URLs, and an empty list is not an
+// upload. Enforcing that only in FormRunner would let a stale tab stamp
+// intakeCompletedAt, lift the gate and tell the trainer their client had sent
+// the photo (AGENTS.md bug #3 — the same shape as the empty-intake bug).
+describe('POST /api/my/intake-form/submit — a required file', () => {
+  const FILE_Q = { id: 'q_photo', type: 'FILE_UPLOAD', label: 'A photo of your dog', required: true }
+
+  beforeEach(() => h.formFindFirst.mockResolvedValue({ questions: [FILE_Q] }))
+
+  it('refuses a submission where nothing was uploaded', async () => {
+    for (const answers of [{}, { q_photo: [] }, { q_photo: '' }]) {
+      const res = await post({ formId: FORM, answers })
+      expect(res.status, JSON.stringify(answers)).toBe(400)
+      expect(await res.json()).toMatchObject({ missing: ['q_photo'] })
+    }
+    expect(h.clientUpdate).not.toHaveBeenCalled()
+  })
+
+  it('accepts one where a file actually landed', async () => {
+    const answers = { q_photo: ['https://blob.test/form-uploads/t/f/q_photo/a.jpg'] }
+    expect((await post({ formId: FORM, answers })).status).toBe(200)
+    expect(h.clientUpdate.mock.calls[0][0].data.intakeAnswers).toEqual(answers)
+  })
+})
+
 describe('POST /api/my/intake-form/submit — writes', () => {
   it('lifts the gate and stores the answers', async () => {
     const answers = { q1: 'Yes', q2: ['a', 'b'] }
