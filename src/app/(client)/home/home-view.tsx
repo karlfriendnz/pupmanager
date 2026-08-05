@@ -2,6 +2,7 @@
 
 import { DogPhotoHeroPrompt } from './dog-photo-prompt'
 import { richTextToPlain, isRichTextEmpty } from '@/lib/rich-text'
+import { RichText } from '@/components/shared/rich-text'
 
 import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -367,11 +368,16 @@ export function ClientHomeView({
               saying one thing — the hero asks now, and this went. */}
 
           {/* ─── Welcome note from the trainer ─── */}
-          {welcomeNote?.trim() && (
+          {/* Rich text (Tiptap HTML) since the trainer writes it in
+              Settings → Design. <RichText> sanitizes before rendering and turns
+              a legacy plain-text note into paragraphs, so the line breaks the
+              old whitespace-pre-line preserved still survive. isRichTextEmpty
+              keeps an empty document ('<p></p>') from drawing an empty card. */}
+          {!isRichTextEmpty(welcomeNote) && (
             <section className="px-4">
               <div className="rounded-2xl bg-accent-soft/60 border border-accent/10 p-4">
                 <p className="text-[11px] uppercase tracking-wider font-semibold text-accent mb-1">Welcome</p>
-                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{welcomeNote.trim()}</p>
+                <RichText html={welcomeNote} className="text-sm text-slate-700 leading-relaxed" />
               </div>
             </section>
           )}

@@ -16,6 +16,11 @@ const h = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/auth', () => ({ auth: h.auth }))
+// The route revalidates the screens that render the photo after a successful
+// write; outside a request scope the real revalidatePath throws "static
+// generation store missing", which the route's catch reported as a 502 upload
+// failure. Pre-existing red — same fix as the trainer-profile route's tests.
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     dog: { findUnique: h.dogFindUnique, update: h.dogUpdate },

@@ -55,6 +55,28 @@ test.describe('Settings → Design', () => {
     expect(previewBox!.x + previewBox!.width).toBeLessThanOrEqual(390)
   })
 
+  // Rule 1: a field the trainer typed must survive a reload. The welcome note
+  // used to be editable ONLY in the first-run personalisation wizard, so a
+  // trainer who finished it had no way back to the greeting every client reads.
+  test('the client welcome message saves and survives a reload', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await openDesignTab(page)
+
+    const editorBox = page.getByTestId('client-welcome-note-editor')
+    const editor = editorBox.locator('[contenteditable="true"]')
+    await editor.click()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.type('Welcome! Bring treats on Saturday.')
+
+    await page.getByRole('button', { name: 'Save design' }).click()
+    await expect(page.getByText('Saved!')).toBeVisible({ timeout: 20_000 })
+
+    await page.reload()
+    await expect(page.getByRole('button', { name: 'Save design' })).toBeVisible({ timeout: 20_000 })
+    await expect(editorBox).toContainText('Welcome! Bring treats on Saturday.')
+  })
+
   test('the preview repaints as the brand colour changes', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await login(page, SEED.owner.email, SEED.owner.password)

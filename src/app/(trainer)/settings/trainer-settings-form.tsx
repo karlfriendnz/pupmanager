@@ -20,6 +20,8 @@ import { PERSONAS } from '@/lib/onboarding-recommendations'
 import { ImagePlus, Loader2 } from 'lucide-react'
 import { BaseCurrencySelect } from './base-currency-select'
 import { HomeImageCard } from './home-image-card'
+import { RichTextEditor } from '@/components/shared/rich-text-editor'
+import { richTextToPlain, isRichTextEmpty } from '@/lib/rich-text'
 
 const businessSchema = z.object({
   name: z.string().min(2, 'Your name is required'),
@@ -54,7 +56,7 @@ export function TrainerSettingsForm({
   section = 'both',
 }: {
   user: { name: string | null; email: string | null; timezone: string; landingPage: string }
-  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; addressCountry: string | null; publicEmail: string | null; logoUrl: string | null; iconUrl: string | null; emailAccentColor: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[]; payoutCurrency: string | null; homeHeroImageUrl: string | null; homeHeroShowLockup: boolean }
+  profile: { businessName: string; phone: string | null; showPhoneToClients: boolean; signupCountry: string | null; addressCountry: string | null; publicEmail: string | null; logoUrl: string | null; iconUrl: string | null; emailAccentColor: string | null; clientWelcomeNote: string | null; baseAddress: string | null; baseLat: number | null; baseLng: number | null; businessRoles: string[]; payoutCurrency: string | null; homeHeroImageUrl: string | null; homeHeroShowLockup: boolean }
   /** Which half to render — the two live on separate Settings tabs now.
    *  'both' keeps the original single-page layout for any other caller. */
   section?: 'details' | 'design' | 'both'
@@ -91,6 +93,13 @@ export function TrainerSettingsForm({
       emailAccentColor: profile.emailAccentColor ?? '',
     },
   })
+
+  // The greeting every client sees at the top of their app home. Rich text, so
+  // it lives outside react-hook-form (the editor is controlled HTML, not an
+  // input) and is posted alongside the rest of the design form. Until this
+  // existed the ONLY place to change it was the first-run personalisation
+  // wizard, which a trainer can't get back to once it's done.
+  const [welcomeNote, setWelcomeNote] = useState(profile.clientWelcomeNote ?? '')
 
   const logoUrl = designForm.watch('logoUrl')
   const iconUrl = designForm.watch('iconUrl')
@@ -185,6 +194,10 @@ export function TrainerSettingsForm({
         logoUrl: data.logoUrl,
         iconUrl: data.iconUrl,
         emailAccentColor: data.emailAccentColor,
+        // Always sent, so clearing the editor really clears the note (an
+        // omitted key would leave the old greeting live on every client home).
+        // The route sanitizes it and stores null for an empty document.
+        clientWelcomeNote: isRichTextEmpty(welcomeNote) ? '' : welcomeNote,
       }),
     })
     setDesignMsg(res.ok ? 'Saved!' : 'Failed to save.')
@@ -418,6 +431,24 @@ export function TrainerSettingsForm({
             )}
           </div>
 
+          {/* Welcome message — the note at the top of every client's home. It
+              belongs on this tab because this is the tab about what clients
+              see, and the phone preview beside it shows exactly where it lands. */}
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium text-slate-700">Welcome message</label>
+            <p className="text-xs text-slate-400 -mt-1">
+              A short hello at the top of your clients&apos; home screen. Leave it empty to show no welcome at all.
+            </p>
+            <div data-testid="client-welcome-note-editor">
+              <RichTextEditor
+                value={welcomeNote}
+                onChange={setWelcomeNote}
+                theme="light"
+                minHeight={120}
+              />
+            </div>
+          </div>
+
           {uploadError && <Alert variant="error">{uploadError}</Alert>}
 
           <Button type="submit" size="sm" className="self-start" loading={designForm.formState.isSubmitting}>Save design</Button>
@@ -430,7 +461,9 @@ export function TrainerSettingsForm({
               logoUrl={logoUrl || ''}
               iconUrl={iconUrl || ''}
               brandColor={emailAccentColor || DEFAULT_BRAND_COLOR}
-              note=""
+              // The mockup renders the note as plain text in a 2-line clamp, so
+              // strip the markup rather than showing "<p>Hi there</p>".
+              note={richTextToPlain(welcomeNote)}
             />
             <p className="mt-3 text-center text-xs text-slate-400">Live preview of your client app</p>
           </div>

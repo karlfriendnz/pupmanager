@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { auth } from '@/lib/auth'
+import { sanitizeRichHtml, isRichTextEmpty } from '@/lib/rich-text'
 import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
@@ -69,7 +71,11 @@ const patchSchema = z.object({
   // Drives the client-app accent AND the accent strip on outbound emails.
   emailAccentColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional().or(z.literal('')),
   // Personal welcome note shown to clients on the app home (empty to clear).
-  clientWelcomeNote: z.string().max(500).optional().or(z.literal('')),
+  // Rich text (Tiptap HTML) since Settings → Design edits it with RichTextEditor,
+  // so the cap is on the MARKUP, not the words — a few paragraphs of formatted
+  // text runs well past the old 500. Sanitized below; plain text is accepted too
+  // (the first-run wizard still posts plain text, and every legacy value is).
+  clientWelcomeNote: z.string().max(4000).optional().or(z.literal('')),
   // Schedule view prefs. Hours 0–23, days 1=Mon..7=Sun, end > start.
   // The mobile pair is an optional override applied only on phones —
   // pass `null` to clear and fall back to the desktop pair.
@@ -146,7 +152,16 @@ export async function PATCH(req: Request) {
   // Empty string from the colour input means "clear this" — store as null
   // so the email template falls back to the default.
   if (data.emailAccentColor === '') data.emailAccentColor = null as unknown as string
-  if (data.clientWelcomeNote === '') data.clientWelcomeNote = null as unknown as string
+  // The welcome note is trainer-authored and rendered to every one of their
+  // clients, so this route — not the browser — is the XSS boundary. Sanitize with
+  // the shared rich-text allowlist (NOT the admin-only regex sanitizeEmailHtml),
+  // and store null for an empty document (''/'<p></p>'/whitespace) so the client
+  // home drops the Welcome block instead of rendering an empty card.
+  if (data.clientWelcomeNote !== undefined) {
+    data.clientWelcomeNote = (
+      isRichTextEmpty(data.clientWelcomeNote) ? null : sanitizeRichHtml(data.clientWelcomeNote)
+    ) as unknown as string
+  }
   if (data.website === '') data.website = null as unknown as string
   // "Remove image" posts an empty string; store null so the home screen falls
   // back to no photo rather than an empty background-image declaration.
@@ -196,6 +211,21 @@ export async function PATCH(req: Request) {
     where: { id: guard.companyId },
     data,
   })
+
+  // The client home is a server component, so a trainer saving here changes
+  // nothing a client has already been served — the welcome note, business name,
+  // logo and brand colour all render from a cached page. Same class of bug as
+  // the dog photo that saved and kept showing the placeholder (2026-08-06).
+  //
+  // Swallowed deliberately: the profile row is ALREADY written by this point, so
+  // a throw from revalidation would report a failed save for something that
+  // saved — the trainer retypes a welcome note that was never lost. A stale
+  // screen is the smaller problem and clears itself.
+  try {
+    revalidatePath('/home')
+  } catch (err) {
+    console.error('Client-home revalidation failed (profile itself saved):', err)
+  }
 
   // When they tell us their trade, pre-create the matching starter fields so
   // their intake form isn't blank (a groomer gets coat type / last groomed,

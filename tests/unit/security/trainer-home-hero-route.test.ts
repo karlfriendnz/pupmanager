@@ -27,6 +27,9 @@ const h = vi.hoisted(() => ({
 
 vi.mock('@/lib/auth', () => ({ auth: h.auth }))
 vi.mock('@/lib/membership', () => ({ guardPermission: h.guardPermission }))
+// The route revalidates the client home after a successful write; outside a
+// request scope the real one throws "static generation store missing".
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     trainerProfile: { update: h.profileUpdate, findUnique: h.profileFindUnique },

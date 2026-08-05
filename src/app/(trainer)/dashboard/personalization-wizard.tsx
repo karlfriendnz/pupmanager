@@ -7,6 +7,7 @@ import { BrandPreview } from '@/components/brand-preview'
 import { DEFAULT_BRAND_COLOR } from '@/lib/brand'
 import { extractLogoColors, type LogoPalette } from '@/lib/logo-colors'
 import { compressImageFile } from '@/lib/compress-image'
+import { richTextToPlain } from '@/lib/rich-text'
 import { type CurrencyCode } from '@/lib/pricing'
 import { PERSONAS, WIZ_QUESTIONS, MANAGED_ADDON_IDS, recommendedAddons, coreAddonState, packageOptionsFor, questionApplies, landingViewForRoles, type WizAnswers } from '@/lib/onboarding-recommendations'
 import { ClientFieldsStep } from './client-fields-step'
@@ -125,7 +126,14 @@ export function PersonalizationWizard({
   const [logoUrl, setLogoUrl] = useState(initial.logoUrl ?? '')
   const [accent, setAccent] = useState(initial.emailAccentColor || DEFAULT_BRAND_COLOR)
   // Pre-fill a starter note for fresh trainers; keep an existing one untouched.
-  const [note, setNote] = useState(initial.clientWelcomeNote?.trim() ? initial.clientWelcomeNote : STARTER_NOTES[0])
+  // The column is rich text now (Settings → Design edits it with the Tiptap
+  // editor), and this step is a plain textarea, so flatten the markup rather
+  // than showing "<p>Hi there</p>" in the box. Saving from here posts plain
+  // text, which the route converts back to paragraphs — the words survive the
+  // round trip, formatting added in Settings does not.
+  const [note, setNote] = useState(
+    initial.clientWelcomeNote?.trim() ? richTextToPlain(initial.clientWelcomeNote) : STARTER_NOTES[0],
+  )
   const [starterIdx, setStarterIdx] = useState(0)
   const noteRef = useRef<HTMLTextAreaElement>(null)
 

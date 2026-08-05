@@ -28,10 +28,11 @@ export const TAB_INTRO: Record<string, TabIntroCopy> = {
   design: {
     title: 'Design',
     blurb:
-      'Your logo, icon and brand colour — what clients see in their app, on your booking pages and on every email you send. Your colour also tints your own home screen on a phone.',
+      'Your logo, icon, brand colour and the welcome message on your clients’ home screen — what clients see in their app, on your booking pages and on every email you send. Your colour also tints your own home screen on a phone.',
     steps: [
       'Upload your logo (the full wordmark) and your icon (a square mark).',
       'Pick the brand colour used across your client app and emails.',
+      'Write the welcome message your clients read at the top of their home screen.',
       'Check the preview to see how it looks to a client.',
     ],
   },
