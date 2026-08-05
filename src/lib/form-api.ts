@@ -250,3 +250,122 @@ export async function resolveContinuationIntakeForm(
   })
   return form?.id ?? null
 }
+
+// ─── Turning the two OLD models into real forms ──────────────────────────────
+//
+// A trainer's questions used to live in three places. `CustomField` rows were
+// both the columns on a client's record AND — via the fallback intake gate — the
+// questions a new client answered. `EmbedForm` was a separate lead-capture form
+// with its own fixed field toggles. `Form` came last and does the asking
+// properly: pages, conditional questions, a preview, an invite email.
+//
+// Karl, 2026-08-06, on the field library sitting in the forms list: "that should
+// be an intake form", and on the embed editor: "this design is very very
+// different to the other one … all forms should be the same right?"
+//
+// Both of these build a Form out of what already exists WITHOUT touching the
+// thing they were built from. Kept here, pure, because the interesting parts —
+// which page a question lands on, what happens to a key with no modern
+// equivalent — are exactly the parts worth testing without a database.
+
+export interface FieldForConversion {
+  id: string
+  required: boolean
+  appliesTo: string | null
+}
+
+/**
+ * The field library, as an intake form.
+ *
+ * Each question is a bare `customFieldId` link, which is the whole point: the
+ * answers keep landing on exactly the same field they always did, so nothing
+ * already collected moves and nobody is asked twice. Deleting the form later
+ * leaves every field untouched.
+ *
+ * The old gate asked about the owner first and the dog second, so that reading
+ * order becomes two real pages — unless one of them would be empty, because a
+ * page a client taps Next through for no reason is worse than no page at all.
+ */
+export function buildIntakeFormFromFields(fields: FieldForConversion[]): {
+  questions: z.infer<typeof questionSchema>[]
+  steps: { id: string; title: string }[]
+} {
+  const ownerFields = fields.filter(f => f.appliesTo !== 'DOG')
+  const dogFields = fields.filter(f => f.appliesTo === 'DOG')
+  const steps = [
+    ...(ownerFields.length ? [{ id: 'owner', title: 'About you' }] : []),
+    ...(dogFields.length ? [{ id: 'dog', title: 'About your dog' }] : []),
+  ]
+  // One page is not a wizard — store no steps so it renders as a plain form.
+  const useSteps = steps.length > 1
+
+  const questions = [...ownerFields, ...dogFields].map(f => ({
+    id: `q_${f.id}`,
+    type: 'CUSTOM_FIELD' as const,
+    customFieldId: f.id,
+    required: f.required,
+    ...(useSteps && { step: f.appliesTo === 'DOG' ? 'dog' : 'owner' }),
+  }))
+
+  return { questions, steps: useSteps ? steps : [] }
+}
+
+/**
+ * An embed form's field toggles, as unified questions.
+ *
+ * The rule is REPRODUCE WHAT IT ASKS TODAY, not what its row says. Two places
+ * where those differ:
+ *
+ *   - Name and email are not in `fields` at all. The public embed form renders
+ *     them unconditionally and requires both (an enquiry with no way to reply is
+ *     not an enquiry), so they are added here as required questions.
+ *   - Old rows can still carry dogName / dogBreed / dogWeight / dogDob. The
+ *     public form has filtered those out since they stopped being standard
+ *     fields, so converting them in would ADD questions nobody is being asked —
+ *     a silent change of behaviour dressed up as a migration. They come back as
+ *     `skipped` instead, for the caller to say out loud.
+ *
+ * `message` has no client column to write to — it is the enquiry's own text —
+ * so it becomes a plain long-text question rather than a CLIENT_FIELD.
+ */
+export function buildEnquiryFormFromEmbed(
+  embedFields: { key: string; required: boolean }[],
+  linkedFieldIds: string[],
+  fieldRequired: Record<string, boolean> = {},
+): { questions: z.infer<typeof questionSchema>[]; skipped: string[] } {
+  const questions: z.infer<typeof questionSchema>[] = [
+    { id: 'q_name', type: 'CLIENT_FIELD', fieldKey: 'name', required: true },
+    { id: 'q_email', type: 'CLIENT_FIELD', fieldKey: 'email', required: true },
+  ]
+  const skipped: string[] = []
+
+  for (const f of embedFields) {
+    if (f.key === 'name' || f.key === 'email') continue // already added, always required
+    if (f.key === 'message') {
+      questions.push({
+        id: 'q_message',
+        type: 'LONG_TEXT',
+        label: 'Message',
+        required: f.required,
+      })
+      continue
+    }
+    if (f.key === 'phone') {
+      questions.push({ id: 'q_phone', type: 'CLIENT_FIELD', fieldKey: 'phone', required: f.required })
+      continue
+    }
+    // Anything else is a key the live form no longer renders.
+    skipped.push(f.key)
+  }
+
+  for (const id of linkedFieldIds) {
+    questions.push({
+      id: `q_${id}`,
+      type: 'CUSTOM_FIELD',
+      customFieldId: id,
+      required: fieldRequired[id] ?? false,
+    })
+  }
+
+  return { questions, skipped }
+}

@@ -247,6 +247,29 @@ export function EmbedFormEditor({
   const [autoReplyBody, setAutoReplyBody] = useState(initial?.autoReplyBody ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Converting this legacy form to the modern Form model. See
+  // /api/embed-forms/[formId]/to-form — it builds a copy and leaves THIS form
+  // alone, because this one is live inside an iframe on the trainer's website.
+  const [converting, setConverting] = useState(false)
+  const [convertError, setConvertError] = useState<string | null>(null)
+  async function convertToWebsiteForm() {
+    if (!initial || converting) return
+    setConverting(true)
+    setConvertError(null)
+    try {
+      const res = await fetch(`/api/embed-forms/${initial.id}/to-form`, { method: 'POST' })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        setConvertError(data?.error ?? 'Could not build the new form.')
+        return
+      }
+      router.push(`/forms/client/${data.id}`)
+    } catch {
+      setConvertError('Could not build the new form.')
+    } finally {
+      setConverting(false)
+    }
+  }
   // Same two panels as the shared builder: what the form IS, and what happens
   // once someone has filled it in.
   const [tab, setTab] = useState<'build' | 'settings'>('build')
@@ -442,6 +465,43 @@ export function EmbedFormEditor({
       saveLabel={initial ? 'Save changes' : 'Create form'}
     >
       {tab === 'build' && <>
+      {/* Why this screen looks unlike the other form editors — said out loud,
+          with the way out next to it.
+
+          Karl, 2026-08-06: "this design is very very different to the other one
+          … all forms should be the same right?" It is different because it is a
+          different MODEL: an EmbedForm has two fixed toggles and a list of field
+          ids, where a client form has real questions, pages, conditional logic
+          and a preview. Restyling this editor would have hidden that rather than
+          fixed it.
+
+          The new form is created as a DRAFT and this one keeps working. This one
+          is live inside an <iframe> on the trainer's own website, which nothing
+          here can reach — so switching over is them pasting a new URL when they
+          are ready, never a side effect of pressing this. */}
+      {initial && (
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5">
+          <p className="text-sm font-medium text-slate-900">This is an older kind of form</p>
+          <p className="mt-1 text-[13px] text-slate-500">
+            It can ask for a phone number and a message, and nothing else. A website
+            form can ask anything, across pages, and show questions only when they
+            apply.
+          </p>
+          <p className="mt-1 text-[13px] text-slate-500">
+            Making one copies these questions across. This form keeps working on your
+            site until you swap the link yourself.
+          </p>
+          {convertError && <p className="mt-2 text-xs text-red-600">{convertError}</p>}
+          <button
+            type="button"
+            onClick={convertToWebsiteForm}
+            disabled={converting}
+            className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {converting ? 'Building…' : 'Turn into a website form'}
+          </button>
+        </div>
+      )}
       {showEmbed && embedSnippet && (
         <FormEditorSection title="Paste this on your site" action={<CopyButton text={embedSnippet} label="Copy" />}>
           <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-600">
