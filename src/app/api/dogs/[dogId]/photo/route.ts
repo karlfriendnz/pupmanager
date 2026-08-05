@@ -12,7 +12,15 @@ import crypto from 'crypto'
  * placeholder. Reported by Karl 2026-08-06, with the blob stored and readable.
  */
 function revalidateDogPhotoScreens() {
-  for (const path of ['/home', '/my-dogs', '/my-profile']) revalidatePath(path)
+  // Never allowed to fail the request. The upload's own try/catch answers 502
+  // with "Upload failed — please try again", so a throw from here would tell a
+  // client their photo hadn't saved when it had, and invite them to upload it
+  // again. A stale screen is the smaller problem, and it clears on its own.
+  try {
+    for (const path of ['/home', '/my-dogs', '/my-profile']) revalidatePath(path)
+  } catch (err) {
+    console.error('Dog photo revalidation failed (photo itself saved):', err)
+  }
 }
 
 const MAX_SIZE_BYTES = 10 * 1024 * 1024
