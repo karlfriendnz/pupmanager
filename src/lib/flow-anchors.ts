@@ -120,26 +120,13 @@ export function isCronDelivered(step: {
 }
 
 /**
- * Can the app currently tell when somebody has FINISHED this kind of step?
- *
- * `blocking` is a wall: `availableSteps` offers nothing past an unfinished
- * blocking step, and the only thing that takes a wall down is a
- * FlowStepCompletion row. So a blocking step of a kind nothing writes a
- * completion for is not "a step that waits" — it is a journey that stops dead,
- * with the person on the far side of it never hearing from anybody again.
- *
- * Today exactly one kind gets ticked off: ACCOUNT, by
- * `completeAccountStepForEnquiry` when the continuation token is spent. The
- * others are asked for and delivered, but nothing yet records the answer coming
- * back — so they must not be allowed to block, in the builder OR in the route.
- *
- * This is the single place that fact lives. When the client-side tick-off
- * lands for forms, uploads and homework, adding them here opens the toggle,
- * the API and the summary line in one edit.
+ * Can the app tell when somebody has FINISHED a step? Defined next to
+ * `uploadSpecFor` in comms-flow-steps.ts, because the answer for an UPLOAD
+ * depends on what the step asks for and that default must be read from one
+ * place. Re-exported here so every caller that reaches for the anchors gets it
+ * from the same door as `availableSteps`, which is the thing it gates.
  */
-export function canWaitForCompletion(kind: FlowStepKind): boolean {
-  return kind === 'ACCOUNT'
-}
+export { canWaitForCompletion } from './comms-flow-steps'
 
 // ─── Sequencing ─────────────────────────────────────────────────────────────
 

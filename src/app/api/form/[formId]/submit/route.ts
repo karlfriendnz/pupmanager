@@ -9,6 +9,8 @@ import { isQuestionVisible, type Question } from '@/lib/session-form-builder'
 import { continuationPath, mintContinuationToken } from '@/lib/form-continuation'
 import { sendContinuationEmail } from '@/lib/form-continuation-email'
 import { formJourneySteps, journeyNeedsAccount, startEnquiryFlowRun } from '@/lib/flow-journey'
+import { completeFormFlowSteps } from '@/lib/flow-completions'
+import { auth } from '@/lib/auth'
 
 // Length caps matter here because this is an UNAUTHENTICATED public endpoint —
 // without them a submitter can post megabyte strings and bloat the DB.
@@ -226,6 +228,33 @@ async function submitUnified(req: Request, id: string) {
   if (journey.length > 0) {
     await startEnquiryFlowRun({ enquiryId: enquiry.id, formId: form.id, trainerId: form.trainerId })
       .catch(err => console.error('[form-submit] flow run failed to start:', err))
+  }
+
+  // ── The other direction: this submission ANSWERS a step ────────────────────
+  //
+  // A journey can send somebody back to a published form of the trainer's
+  // ("fill this in before your first class"), and /form/<id> is the one URL in
+  // the app that renders one. So a submission here may be the thing a FORM step
+  // was waiting for.
+  //
+  // Only for a SIGNED-IN person, and deliberately so. This endpoint is public:
+  // the name and email in the body are whatever was typed, and matching a run
+  // on them would let a stranger take somebody else's gate down by submitting a
+  // form with their address on it. The session is the only fact about who this
+  // is (AGENTS.md bug #6 — gate on the fact, not a proxy for it). By the time a
+  // journey asks for a form the person has normally been through its ACCOUNT
+  // step, so they are signed in for the case this exists to serve.
+  const viewer = await auth().catch(() => null)
+  if (viewer?.user?.id) {
+    // Guarded here as well as inside the recorder: losing somebody's enquiry
+    // because their journey couldn't advance is the one outcome this whole
+    // ordering was written to prevent.
+    await completeFormFlowSteps({
+      userId: viewer.user.id,
+      trainerId: form.trainerId,
+      formId: form.id,
+      answers,
+    }).catch(err => console.error('[form-submit] flow step tick-off failed:', err))
   }
 
   if (handover) {

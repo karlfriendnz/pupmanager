@@ -16,6 +16,12 @@ const h = vi.hoisted(() => ({
   // with no flow must take exactly the path it always did.
   flowStepFindMany: vi.fn(),
   startEnquiryFlowRun: vi.fn(),
+  // Nobody is signed in for any test in this file — these are the PUBLIC
+  // submissions. The route reads the session only to decide whether this
+  // submission also ANSWERS a flow step somebody was asked to fill in, and a
+  // stranger's submission must never do that. See flow-completions.
+  auth: vi.fn(),
+  completeFormFlowSteps: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -31,6 +37,8 @@ vi.mock('@/lib/flow-journey', async () => ({
   ...(await vi.importActual<typeof import('@/lib/flow-journey')>('@/lib/flow-journey')),
   startEnquiryFlowRun: h.startEnquiryFlowRun,
 }))
+vi.mock('@/lib/auth', () => ({ auth: h.auth }))
+vi.mock('@/lib/flow-completions', () => ({ completeFormFlowSteps: h.completeFormFlowSteps }))
 vi.mock('@/lib/notify-enquiry-trainer', () => ({ notifyEnquiryTrainer: h.notifyEnquiryTrainer }))
 vi.mock('@/lib/form-auto-reply', () => ({ sendFormAutoReply: h.sendFormAutoReply }))
 vi.mock('@/lib/rate-limit', () => ({
@@ -69,6 +77,8 @@ beforeEach(() => {
   h.formFindFirst.mockResolvedValue({ id: FORM, trainerId: TRAINER, questions: QUESTIONS })
   h.customFieldFindMany.mockResolvedValue([])
   h.flowStepFindMany.mockResolvedValue([])
+  h.auth.mockResolvedValue(null)
+  h.completeFormFlowSteps.mockResolvedValue(0)
   h.startEnquiryFlowRun.mockResolvedValue(null)
   h.enquiryCreate.mockResolvedValue({ id: 'enq-1' })
   h.notifyEnquiryTrainer.mockResolvedValue(undefined)
@@ -329,5 +339,46 @@ describe('public unified-form submit — a form with a flow on it', () => {
     expect(res.status).toBe(201)
     expect(h.enquiryCreate).toHaveBeenCalled()
     expect(h.notifyEnquiryTrainer).toHaveBeenCalled()
+  })
+})
+
+// ── A public submission must not tick off somebody else's step ───────────────
+//
+// A journey can send a client back to a published form of the trainer's, so a
+// submission here CAN be the answer a blocking FORM step is waiting for. But
+// this endpoint is public and the email in the body is whatever was typed —
+// matching a run on it would let a stranger take another person's gate down.
+// The session is the only fact about who this is (AGENTS.md bug #6).
+describe('answering a flow step from the public form', () => {
+  it('records nothing when nobody is signed in', async () => {
+    h.auth.mockResolvedValue(null)
+    const res = await post({ contact: CONTACT, answers: { q1: 'No' } })
+    expect(res.status).toBe(201)
+    expect(h.completeFormFlowSteps).not.toHaveBeenCalled()
+  })
+
+  it('records against the SIGNED-IN person, never the typed email', async () => {
+    h.auth.mockResolvedValue({ user: { id: 'user-9' } })
+    await post({ contact: { ...CONTACT, email: 'someone.else@example.com' }, answers: { q1: 'No' } })
+    expect(h.completeFormFlowSteps).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-9', formId: FORM, trainerId: TRAINER }),
+    )
+  })
+
+  it('still returns the enquiry when the tick-off blows up', async () => {
+    h.auth.mockResolvedValue({ user: { id: 'user-9' } })
+    h.completeFormFlowSteps.mockRejectedValue(new Error('boom'))
+    const res = await post({ contact: CONTACT, answers: { q1: 'No' } })
+    expect(res.status).toBe(201)
+    expect(h.enquiryCreate).toHaveBeenCalled()
+  })
+
+  // A session that can't be read is not a signed-in person. It must not become
+  // a 500 on a form anyone can reach.
+  it('survives a session read that throws', async () => {
+    h.auth.mockRejectedValue(new Error('no cookie store'))
+    const res = await post({ contact: CONTACT, answers: { q1: 'No' } })
+    expect(res.status).toBe(201)
+    expect(h.completeFormFlowSteps).not.toHaveBeenCalled()
   })
 })

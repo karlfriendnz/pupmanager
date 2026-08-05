@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { clientVisibleHomeworkWhere } from '@/lib/homework-visibility'
 import { safeEvaluate } from '@/lib/achievements'
 import { notifyTrainer } from '@/lib/trainer-notify'
+import { completeTaskFlowSteps } from '@/lib/flow-completions'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -31,7 +32,9 @@ export async function POST(
   // Verify the task belongs to one of this user's client profiles (any trainer).
   const task = await prisma.trainingTask.findFirst({
     where: { id: taskId, client: { userId: session.user.id }, ...clientVisibleHomeworkWhere() },
-    select: { id: true, clientId: true },
+    // title + libraryTaskId are how a flow's TASK step recognises its own
+    // homework coming back — see completeTaskFlowSteps.
+    select: { id: true, clientId: true, title: true, libraryTaskId: true },
   })
   if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
 
@@ -55,6 +58,19 @@ export async function POST(
   })
 
   await safeEvaluate(task.clientId)
+
+  // A journey that handed this homework out and was told to wait for it stops
+  // waiting. Only on a FRESH completion: editing the note on an already-done
+  // task is not somebody finishing it again. Swallows its own errors.
+  if (!wasComplete) {
+    await completeTaskFlowSteps({
+      userId: session.user.id,
+      clientId: task.clientId,
+      taskId: task.id,
+      title: task.title,
+      libraryTaskId: task.libraryTaskId,
+    })
+  }
 
   // Tell the trainer when this completion clears the client's whole task list.
   if (!wasComplete) {

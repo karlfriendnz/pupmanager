@@ -878,8 +878,14 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
             Only in a sequence (nothing else has a "next step"), and only for a
             kind the app can actually see finish: a wall comes down when a
             completion is written, and a step nothing writes one for would park
-            every person on it for ever. See canWaitForCompletion. */}
-        {sequenced && canWaitForCompletion(draft.kind) && (
+            every person on it for ever. See canWaitForCompletion.
+
+            The PAYLOAD goes in too: an UPLOAD can be waited for when it asks
+            for a photo of their dog (it lands on the dog, so the app sees it
+            arrive) and not when it asks for any old file. Switching the target
+            hides this toggle — and the route takes the wall down with it, so
+            what disappears from the screen disappears from the run. */}
+        {sequenced && canWaitForCompletion(draft.kind, draft.payload) && (
           <label className="flex items-start gap-2.5 cursor-pointer">
             <Switch checked={draft.blocking} onChange={() => onPatch({ blocking: !draft.blocking })} onColor="bg-slate-900" className="mt-0.5" aria-label="Wait for this step" />
             <span className="text-sm text-slate-700">

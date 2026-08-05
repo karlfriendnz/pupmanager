@@ -10,7 +10,9 @@ import { stepPatchSchema, stepWriteData, sentFieldsOnly, formStepBlocking, type 
 async function ownedStep(trainerId: string, formId: string, stepId: string) {
   return prisma.commsFlowStep.findFirst({
     where: { id: stepId, formId, form: { trainerId } },
-    select: { id: true, audience: true, channels: true, kind: true },
+    // `blocking` + `payload` come back because a wall's legality depends on
+    // both, and a patch may move either half — see formStepBlocking.
+    select: { id: true, audience: true, channels: true, kind: true, blocking: true, payload: true },
   })
 }
 
@@ -35,8 +37,17 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ formId
   // A step nothing can tick off cannot be waited for — a blocking one would
   // park every person on it for ever. The browser already hides the toggle;
   // this is the half that counts (AGENTS.md bug #3).
+  //
+  // The kind AND the payload after this patch, not before it: an UPLOAD moved
+  // off "a photo of their dog" stops being completable, and its wall has to
+  // come down in the same write or it becomes one nothing can take down.
   const kind = (rest.kind ?? existing.kind) as FlowStepKind
-  const safeBlocking = formStepBlocking(kind, blocking)
+  const safeBlocking = formStepBlocking({
+    kind,
+    payload: 'payload' in rest ? rest.payload : existing.payload,
+    blocking,
+    currentBlocking: existing.blocking,
+  })
 
   const data = stepWriteData(
     {

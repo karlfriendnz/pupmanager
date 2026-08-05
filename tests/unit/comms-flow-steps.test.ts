@@ -508,15 +508,44 @@ describe('sentFieldsOnly — the defaults zod leaves behind', () => {
 })
 
 describe('canWaitForCompletion — what may block a journey', () => {
-  it('is true only for the kind something actually ticks off today', () => {
-    expect(canWaitForCompletion('ACCOUNT')).toBe(true)
-    for (const kind of flowStepKindEnum.options.filter(k => k !== 'ACCOUNT')) {
+  // Each of these has a route that writes the completion. Adding a kind here
+  // without one is how a journey stops dead — see lib/flow-completions.
+  it('is true for the kinds something actually ticks off', () => {
+    for (const kind of ['ACCOUNT', 'FORM', 'TASK'] as const) {
+      expect(canWaitForCompletion(kind), kind).toBe(true)
+    }
+  })
+
+  it('is false for the kinds nothing records the answer to', () => {
+    for (const kind of ['MESSAGE', 'CHOOSE_OFFERING', 'APPROVAL'] as const) {
       expect(canWaitForCompletion(kind), kind).toBe(false)
     }
   })
 
+  // The one kind whose answer depends on its configuration rather than its
+  // kind: a dog photo lands on the dog, so the app sees it arrive. Anything
+  // else is sent by email or handed over at the class, and nothing sees it.
+  it('lets an UPLOAD block only when it asks for the dog’s photo', () => {
+    expect(canWaitForCompletion('UPLOAD', { target: 'DOG_PHOTO' })).toBe(true)
+    expect(canWaitForCompletion('UPLOAD', { target: 'ATTACHMENT' })).toBe(false)
+    // Unset means ATTACHMENT, read through uploadSpecFor rather than the raw JSON.
+    expect(canWaitForCompletion('UPLOAD')).toBe(false)
+    expect(canWaitForCompletion('UPLOAD', {})).toBe(false)
+    expect(canWaitForCompletion('UPLOAD', 'not even an object')).toBe(false)
+  })
+
+  it('answers for every kind in the enum', () => {
+    for (const kind of flowStepKindEnum.options) {
+      expect(typeof canWaitForCompletion(kind), kind).toBe('boolean')
+    }
+  })
+
   it('withFormDefaults refuses to create a wall nothing can take down', () => {
-    expect(withFormDefaults({ kind: 'FORM', blocking: true }).blocking).toBe(false)
+    expect(withFormDefaults({ kind: 'CHOOSE_OFFERING', blocking: true }).blocking).toBe(false)
     expect(withFormDefaults({ kind: 'ACCOUNT' }).blocking).toBe(true)
+    expect(withFormDefaults({ kind: 'FORM' }).blocking).toBe(true)
+    // An UPLOAD starts unconfigured, so it starts as a nudge rather than a wall.
+    expect(withFormDefaults({ kind: 'UPLOAD' }).blocking).toBe(false)
+    expect(withFormDefaults({ kind: 'UPLOAD', payload: { target: 'DOG_PHOTO' } }).blocking).toBe(true)
   })
 })

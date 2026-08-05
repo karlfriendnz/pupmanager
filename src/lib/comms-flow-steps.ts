@@ -3,7 +3,6 @@
 // drift. (Send-side logic lives in comms-flows.ts; the flow-engine primitives —
 // trigger resolution, sequencing, the completion ledger — live in flow-steps.ts.)
 import { z } from 'zod'
-import { canWaitForCompletion } from './flow-anchors'
 // Type-only, so it is erased before this module reaches the browser (the
 // comms-flow editor is a 'use client' component and imports from here).
 import type { Prisma } from '@/generated/prisma'
@@ -343,6 +342,66 @@ export function taskSpecFor(payload: z.infer<typeof taskStepPayloadSchema> | nul
   }
 }
 
+// ─── What may be waited for ─────────────────────────────────────────────────
+
+/**
+ * Can the app actually tell when somebody has FINISHED this step?
+ *
+ * `blocking` is a wall: `availableSteps` offers nothing past an unfinished
+ * blocking step, and the only thing that takes a wall down is a
+ * FlowStepCompletion row. So a blocking step nothing writes a completion for is
+ * not "a step that waits" — it is a journey that stops dead, with the person on
+ * the far side of it never hearing from anybody again.
+ *
+ * This is the single place that fact lives — the builder, the API and the
+ * summary line all read it, so a kind opens up in ONE edit.
+ *
+ * Ticked off today, and by what:
+ *
+ *   ACCOUNT — `completeAccountStepForEnquiry`, when the continuation token is
+ *             spent (phase 3).
+ *   FORM    — the form's own submit routes (`/api/my/intake-form/submit` and
+ *             `/api/form/[formId]/submit`), via lib/flow-completions.
+ *   TASK    — `/api/tasks/[taskId]/complete`, when the client ticks it off.
+ *   UPLOAD  — `/api/dogs/[dogId]/photo`, when the picture lands on the dog.
+ *
+ * UPLOAD is the one kind whose answer depends on its CONFIGURATION rather than
+ * its kind, which is why this takes the payload. `target: 'DOG_PHOTO'` is asked
+ * for on /my-dogs and lands on a real column, so the app knows when it arrives.
+ * An ATTACHMENT has no screen of its own to arrive on — a vet letter asked for
+ * by a flow is sent by email or handed over at the class, and nothing in this
+ * app sees it happen. Letting one block would be exactly the dead gate this
+ * function exists to prevent.
+ */
+export function canWaitForCompletion(kind: FlowStepKind, payload?: unknown): boolean {
+  switch (kind) {
+    case 'ACCOUNT':
+    case 'FORM':
+    case 'TASK':
+      return true
+    case 'UPLOAD':
+      // Read through uploadSpecFor, never off the raw JSON: "no target set"
+      // means ATTACHMENT, and that default lives in exactly one place.
+      return uploadSpecFor(safeFlowStepPayload('UPLOAD', payload).payload).target === 'DOG_PHOTO'
+    case 'MESSAGE':
+      // Nothing to finish — a message is delivered, not answered.
+      return false
+    case 'CHOOSE_OFFERING':
+    case 'APPROVAL':
+      // Asked for, and nothing yet records the answer coming back. Opening
+      // either up is a recorder on the route that takes the decision, plus a
+      // case here.
+      return false
+    default: {
+      // A kind added to the enum and not answered for here is a compile error,
+      // not a wall nobody can take down.
+      const unhandled: never = kind
+      void unhandled
+      return false
+    }
+  }
+}
+
 /**
  * Why this step cannot run yet — or null when it is ready.
  *
@@ -584,20 +643,42 @@ export function withFormDefaults(partial: Partial<StepFields>): StepFields {
     trigger: personTriggerEnum.safeParse(partial.trigger).success
       ? (partial.trigger as PersonTrigger)
       : 'ON_ENQUIRY_SUBMITTED',
-    // A wall only comes down when a FlowStepCompletion is written, and today
-    // only the ACCOUNT step gets one. `defaultsForKind` turns blocking ON for
-    // every kind a person has to DO — right in principle, and a permanent stall
-    // in practice for the kinds nothing ticks off yet. See canWaitForCompletion.
-    blocking: canWaitForCompletion(kind) && (partial.blocking ?? merged.blocking),
+    // A wall only comes down when a FlowStepCompletion is written.
+    // `defaultsForKind` turns blocking ON for every kind a person has to DO —
+    // right in principle, and a permanent stall in practice for the kinds
+    // nothing ticks off. See canWaitForCompletion.
+    blocking: canWaitForCompletion(kind, merged.payload) && (partial.blocking ?? merged.blocking),
   }
 }
 
-/** The same rule for a PATCH: whatever the browser sends, a step that cannot be
- *  finished cannot be waited for. Validation in the browser is not validation
- *  (AGENTS.md bug #3). */
-export function formStepBlocking(kind: FlowStepKind, blocking: boolean | undefined): boolean | undefined {
-  if (blocking === undefined) return undefined
-  return canWaitForCompletion(kind) && blocking
+/**
+ * What `blocking` must be on a form step after a patch — or undefined to leave
+ * the column alone.
+ *
+ * Two jobs, and the second is the one that isn't obvious:
+ *
+ *   1. Whatever the browser sends, a step that cannot be finished cannot be
+ *      waited for. Validation in the browser is not validation (AGENTS.md #3).
+ *   2. A step that COULD be waited for and then stopped — an UPLOAD switched
+ *      from "a photo of their dog" to "a file" — has its wall taken down in the
+ *      same write. Without this the payload edit succeeds, the toggle
+ *      disappears from the builder, and the wall it left behind is one nothing
+ *      can ever take down: a journey stopped dead by a switch the trainer can
+ *      no longer see.
+ *
+ * `payload` is what the row will hold AFTER the patch, and `currentBlocking`
+ * what it says today — so a patch mentioning neither returns undefined and
+ * writes nothing.
+ */
+export function formStepBlocking(args: {
+  kind: FlowStepKind
+  payload?: unknown
+  blocking?: boolean
+  currentBlocking: boolean
+}): boolean | undefined {
+  const wanted = args.blocking ?? args.currentBlocking
+  const allowed = canWaitForCompletion(args.kind, args.payload) && wanted
+  return allowed === args.currentBlocking ? undefined : allowed
 }
 
 // Validator for a template's stored `steps` JSON when applying it to a run.

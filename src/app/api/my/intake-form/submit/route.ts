@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { collectClientFieldWrites, hasClientFieldWrites } from '@/lib/client-field-writes'
 import { missingRequiredQuestions, type Question } from '@/lib/session-form-builder'
+import { completeFormFlowSteps } from '@/lib/flow-completions'
 
 const schema = z.object({
   formId: z.string().min(1),
@@ -152,6 +153,19 @@ export async function POST(req: Request) {
   await prisma.clientProfile.update({
     where: { id: clientProfile.id },
     data: { intakeAnswers: answers as unknown as object, intakeCompletedAt: new Date() },
+  })
+
+  // The answers are in, so any journey waiting on THIS form stops waiting.
+  // Recorded here rather than in the browser because a blocking step is a gate,
+  // and a gate a client's own screen can open is not a gate (AGENTS.md bug #3).
+  // Swallows its own errors — a flow that fails to advance must never tell a
+  // client their form didn't save.
+  await completeFormFlowSteps({
+    userId: session.user.id,
+    clientId: clientProfile.id,
+    trainerId: clientProfile.trainerId,
+    formId,
+    answers,
   })
 
   return NextResponse.json({ ok: true })

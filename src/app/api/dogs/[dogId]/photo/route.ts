@@ -4,6 +4,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { put } from '@vercel/blob'
 import crypto from 'crypto'
+import { completeDogPhotoFlowSteps } from '@/lib/flow-completions'
 
 /**
  * The dog's picture is rendered by more than one server component, so a
@@ -117,6 +118,17 @@ export async function POST(
       select: { id: true, photoUrl: true },
     })
     revalidateDogPhotoScreens()
+    // The picture has landed, so a journey that asked for one stops waiting.
+    // Here rather than on /my-dogs' own upload button because this is the route
+    // the photo actually arrives at, whoever pressed it — a trainer adding it
+    // for a client still satisfies the ask that was made of that client.
+    // Swallows its own errors; the photo is already saved.
+    await completeDogPhotoFlowSteps({
+      clientId: owningClientProfileId,
+      trainerId: owningTrainerId,
+      dogId,
+      photoUrl: blob.url,
+    })
     return NextResponse.json(updated)
   } catch (err) {
     // Log the real cause server-side; don't blame the Blob store in the UI

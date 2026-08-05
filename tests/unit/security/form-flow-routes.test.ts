@@ -181,17 +181,38 @@ describe('reorder — the order IS the behaviour, so it is persisted', () => {
   })
 })
 
-// A wall only comes down when a FlowStepCompletion is written, and today only
-// the ACCOUNT step gets one. A blocking step of any other kind would not
-// "wait" — it would park every person on it for ever, with nobody told.
+// A wall only comes down when a FlowStepCompletion is written. Four kinds now
+// get one — ACCOUNT, FORM, TASK, and an UPLOAD that asks for a dog's photo.
+// The rest would not "wait": they would park every person on the step for ever,
+// with nobody told. Enforced HERE and not only in the builder, because
+// validation in the browser is not validation (AGENTS.md bug #3).
 describe('a step nothing can tick off cannot be made to wait', () => {
-  it('POST refuses to create a blocking FORM step, however it was asked for', async () => {
-    await POST(req({ kind: 'FORM', blocking: true }), { params: params() })
-    expect(h.stepCreate.mock.calls[0][0].data.blocking).toBe(false)
+  /** A stored row as ownedStep selects it. */
+  const owned = (over: Record<string, unknown> = {}) => ({
+    id: 's1', audience: 'CUSTOM', channels: ['PUSH'], kind: 'MESSAGE',
+    blocking: false, payload: null, ...over,
   })
+
+  /**
+   * What the row's `blocking` says AFTER the patch.
+   *
+   * The route writes the column only when the answer CHANGES — a patch that
+   * would leave it as it is writes nothing, so asserting on the write alone
+   * confuses "refused" with "already false". This asks the question that
+   * matters: is this step a wall now?
+   */
+  function blockingAfter(existing: { blocking: boolean }): boolean {
+    const data = h.stepUpdate.mock.calls[0][0].data as { blocking?: boolean }
+    return 'blocking' in data ? !!data.blocking : existing.blocking
+  }
 
   it('POST keeps an ACCOUNT step blocking — that one really is a wall', async () => {
     await POST(req({ kind: 'ACCOUNT' }), { params: params() })
+    expect(h.stepCreate.mock.calls[0][0].data.blocking).toBe(true)
+  })
+
+  it('POST keeps a FORM step blocking — the submit route ticks it off', async () => {
+    await POST(req({ kind: 'FORM', blocking: true }), { params: params() })
     expect(h.stepCreate.mock.calls[0][0].data.blocking).toBe(true)
   })
 
@@ -200,21 +221,78 @@ describe('a step nothing can tick off cannot be made to wait', () => {
     expect(h.stepCreate.mock.calls[0][0].data.blocking).toBe(false)
   })
 
-  it('PATCH strips it too — the browser hiding the toggle is not the check', async () => {
-    h.stepFindFirst.mockResolvedValue({ id: 's1', audience: 'CUSTOM', channels: ['PUSH'], kind: 'UPLOAD' })
+  it('POST refuses a blocking CHOOSE_OFFERING — nothing records the choice yet', async () => {
+    await POST(req({ kind: 'CHOOSE_OFFERING', blocking: true }), { params: params() })
+    expect(h.stepCreate.mock.calls[0][0].data.blocking).toBe(false)
+  })
+
+  it('POST refuses a blocking APPROVAL for the same reason', async () => {
+    await POST(req({ kind: 'APPROVAL', blocking: true }), { params: params() })
+    expect(h.stepCreate.mock.calls[0][0].data.blocking).toBe(false)
+  })
+
+  it('PATCH strips it — the browser hiding the toggle is not the check', async () => {
+    const row = owned({ kind: 'APPROVAL' })
+    h.stepFindFirst.mockResolvedValue(row)
+    await PATCH(req({ blocking: true }), { params: params({ stepId: 's1' }) })
+    expect(blockingAfter(row)).toBe(false)
+  })
+
+  it('PATCH pulls down a wall that somehow got stored on one', async () => {
+    const row = owned({ kind: 'APPROVAL', blocking: true })
+    h.stepFindFirst.mockResolvedValue(row)
     await PATCH(req({ blocking: true }), { params: params({ stepId: 's1' }) })
     expect(h.stepUpdate.mock.calls[0][0].data.blocking).toBe(false)
   })
 
   it('PATCH lets an ACCOUNT step keep its wall', async () => {
-    h.stepFindFirst.mockResolvedValue({ id: 's1', audience: 'CUSTOM', channels: ['PUSH'], kind: 'ACCOUNT' })
+    const row = owned({ kind: 'ACCOUNT' })
+    h.stepFindFirst.mockResolvedValue(row)
     await PATCH(req({ blocking: true }), { params: params({ stepId: 's1' }) })
-    expect(h.stepUpdate.mock.calls[0][0].data.blocking).toBe(true)
+    expect(blockingAfter(row)).toBe(true)
   })
 
   it('a PATCH that never mentions blocking does not write it', async () => {
-    h.stepFindFirst.mockResolvedValue({ id: 's1', audience: 'CUSTOM', channels: ['PUSH'], kind: 'ACCOUNT' })
+    h.stepFindFirst.mockResolvedValue(owned({ kind: 'ACCOUNT', blocking: true }))
     await PATCH(req({ enabled: false }), { params: params({ stepId: 's1' }) })
+    expect('blocking' in h.stepUpdate.mock.calls[0][0].data).toBe(false)
+  })
+
+  // An UPLOAD is the one kind whose answer depends on its CONFIGURATION: a
+  // photo of their dog lands on the dog and the app sees it arrive; a general
+  // attachment has no screen of its own to land on.
+  it('an UPLOAD asking for a dog photo may block', async () => {
+    const row = owned({ kind: 'UPLOAD' })
+    h.stepFindFirst.mockResolvedValue(row)
+    await PATCH(req({ kind: 'UPLOAD', blocking: true, payload: { target: 'DOG_PHOTO' } }), {
+      params: params({ stepId: 's1' }),
+    })
+    expect(blockingAfter(row)).toBe(true)
+  })
+
+  it('an UPLOAD asking for any old file may not', async () => {
+    const row = owned({ kind: 'UPLOAD' })
+    h.stepFindFirst.mockResolvedValue(row)
+    await PATCH(req({ kind: 'UPLOAD', blocking: true, payload: { target: 'ATTACHMENT' } }), {
+      params: params({ stepId: 's1' }),
+    })
+    expect(blockingAfter(row)).toBe(false)
+  })
+
+  // The trap this closes: the payload edit succeeds, the toggle disappears from
+  // the builder, and the wall it left behind is one nothing can ever take down.
+  it('takes an existing wall DOWN when the payload stops being completable', async () => {
+    h.stepFindFirst.mockResolvedValue(owned({ kind: 'UPLOAD', blocking: true, payload: { target: 'DOG_PHOTO' } }))
+    await PATCH(req({ kind: 'UPLOAD', payload: { target: 'ATTACHMENT' } }), {
+      params: params({ stepId: 's1' }),
+    })
+    expect(h.stepUpdate.mock.calls[0][0].data.blocking).toBe(false)
+  })
+
+  // …and does not, when the payload is untouched by the patch.
+  it('leaves a legal wall standing through an unrelated patch', async () => {
+    h.stepFindFirst.mockResolvedValue(owned({ kind: 'UPLOAD', blocking: true, payload: { target: 'DOG_PHOTO' } }))
+    await PATCH(req({ title: 'A photo of Bailey' }), { params: params({ stepId: 's1' }) })
     expect('blocking' in h.stepUpdate.mock.calls[0][0].data).toBe(false)
   })
 })
