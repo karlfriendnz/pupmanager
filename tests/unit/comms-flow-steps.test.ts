@@ -19,6 +19,12 @@ import {
   personTriggerEnum,
   flowTriggerEnum,
   flowStepKindEnum,
+  safeFlowStepPayload,
+  flowStepConfigProblem,
+  uploadSpecFor,
+  taskSpecFor,
+  defaultsForKind,
+  homeworkTimingEnum,
   type Channel,
 } from '@/lib/comms-flow-steps'
 
@@ -281,5 +287,196 @@ describe('create accepts a partial', () => {
     const parsed = stepCreateSchema.safeParse({})
     expect(parsed.success).toBe(true)
     expect(parsed.success && withDefaults(parsed.data).title).toBe(DEFAULT_STEP_FIELDS.title)
+  })
+})
+
+// ─── Phase 2: each kind's configuration is real ─────────────────────────────
+//
+// Phase 1 stored a shrug — an open object with one optional field per kind —
+// because nothing could create one. These are the actual shapes, and the thing
+// every one of them has to survive is a ROUND TRIP: what a trainer configured
+// has to come back byte for byte after a save and a reload. That is AGENTS.md
+// bug #1, the most repeated bug in this repo, and it is repeated because a
+// schema that quietly adds a default or drops a field looks fine until somebody
+// reopens the screen.
+
+/** Save → store as JSON → reload, the way the database actually does it. */
+function roundTrip(kind: Parameters<typeof parseFlowStepPayload>[0], payload: unknown) {
+  const validated = stepFieldsSchema.parse({ ...MESSAGE_STEP, kind, title: null, body: null, payload })
+  const forWrite = payloadForWrite(validated.payload)
+  // Prisma stores a Json column as JSON; anything that can't survive that is
+  // lost between the save and the reload with nothing to say it went.
+  const stored = JSON.parse(JSON.stringify(forWrite ?? null))
+  return parseFlowStepPayload(kind, stored).payload
+}
+
+describe('payload round-trips — save, reload, identical', () => {
+  const CONFIGURED = {
+    FORM: { formId: 'form_123', ctaLabel: 'Start your intake' },
+    UPLOAD: { target: 'DOG_PHOTO', accept: 'IMAGE', label: "A photo of your dog", minCount: 1, maxCount: 3, maxMb: 8 },
+    TASK: { libraryTaskId: 'lib_1', description: null, repetitions: 10, videoUrl: 'https://v/1', timing: 'BEFORE_SESSION' },
+    ACCOUNT: { method: 'PASSWORD', redirectTo: '/home' },
+    CHOOSE_OFFERING: { packageIds: ['pkg_1', 'pkg_2'], allowMultiple: true, requireTime: true },
+    APPROVAL: { decides: 'BOOKING_TIME', allowReschedule: true, autoApproveHours: 48 },
+  } as const
+
+  for (const [kind, payload] of Object.entries(CONFIGURED)) {
+    it(`a fully-configured ${kind} step comes back exactly as it was saved`, () => {
+      expect(roundTrip(kind as keyof typeof CONFIGURED, payload)).toEqual(payload)
+    })
+  }
+
+  // The half of the bug that a "does it save?" test never catches: a schema
+  // default materialises a key nobody typed, so the second save writes
+  // something different from the first and a diff of the two is never empty.
+  it('adds nothing a trainer did not configure', () => {
+    for (const kind of Object.keys(CONFIGURED) as (keyof typeof CONFIGURED)[]) {
+      expect(roundTrip(kind, {}), `${kind} invented a field`).toEqual({})
+    }
+  })
+
+  it('drops a key from a later phase rather than refusing the save', () => {
+    expect(roundTrip('FORM', { formId: 'f1', somethingPhase9Added: true })).toEqual({ formId: 'f1' })
+  })
+
+  it('survives a second trip unchanged — the reopen-and-save-again case', () => {
+    const once = roundTrip('UPLOAD', CONFIGURED.UPLOAD)
+    expect(roundTrip('UPLOAD', once)).toEqual(once)
+  })
+})
+
+describe('FORM payload', () => {
+  it('names the form to send', () => {
+    expect(parseFlowStepPayload('FORM', { formId: 'f1' }).payload).toEqual({ formId: 'f1' })
+  })
+
+  // `blocking` is a COLUMN. A second copy of the same fact inside the JSON is
+  // how the trigger/direction pair would have drifted, and it would drift here
+  // the first time a PATCH moved one and not the other.
+  it('does not carry its own "does this block" flag — that is the column', () => {
+    expect(roundTrip('FORM', { formId: 'f1', blocking: true, blocksProgress: true })).toEqual({ formId: 'f1' })
+    const step = stepFieldsSchema.parse({ ...MESSAGE_STEP, kind: 'FORM', title: null, body: null, blocking: true, payload: { formId: 'f1' } })
+    expect(step.blocking).toBe(true)
+  })
+
+  it('refuses copy that is not a string', () => {
+    expect(stepFieldsSchema.safeParse({ ...MESSAGE_STEP, kind: 'FORM', payload: { ctaLabel: 42 } }).success).toBe(false)
+  })
+})
+
+describe('UPLOAD payload', () => {
+  it('says what is being asked for and where it lands', () => {
+    const spec = uploadSpecFor(parseFlowStepPayload('UPLOAD', { target: 'DOG_PHOTO' }).payload)
+    expect(spec.target).toBe('DOG_PHOTO')
+    expect(spec.accept).toBe('IMAGE') // a dog photo is a photo
+    expect(spec.maxCount).toBe(1)
+    expect(spec.maxMb).toBe(10) // the same cap /api/upload/image enforces
+  })
+
+  it('defaults an unconfigured step to one general attachment', () => {
+    expect(uploadSpecFor(null)).toMatchObject({ target: 'ATTACHMENT', accept: 'ANY', minCount: 1, maxCount: 1 })
+  })
+
+  it('refuses a dog photo that would accept a PDF', () => {
+    expect(stepFieldsSchema.safeParse({
+      ...MESSAGE_STEP, kind: 'UPLOAD', title: null, body: null,
+      payload: { target: 'DOG_PHOTO', accept: 'ANY' },
+    }).success).toBe(false)
+  })
+
+  it('refuses a minimum bigger than the maximum', () => {
+    expect(stepFieldsSchema.safeParse({
+      ...MESSAGE_STEP, kind: 'UPLOAD', title: null, body: null,
+      payload: { minCount: 4, maxCount: 2 },
+    }).success).toBe(false)
+  })
+
+  it('caps the size a step may ask for — the request body gives out first', () => {
+    expect(stepFieldsSchema.safeParse({
+      ...MESSAGE_STEP, kind: 'UPLOAD', title: null, body: null, payload: { maxMb: 500 },
+    }).success).toBe(false)
+  })
+})
+
+describe('TASK payload', () => {
+  // The point of the shape: it is PackageDefaultTask's, so a TASK step hands out
+  // the same homework the offering's defaults do, from the same library.
+  it('takes a library item and reads its text live', () => {
+    const spec = taskSpecFor(parseFlowStepPayload('TASK', { libraryTaskId: 'lib_1' }).payload)
+    expect(spec).toMatchObject({ libraryTaskId: 'lib_1', title: null, timing: 'AFTER_SESSION' })
+  })
+
+  it('takes an inline one-off instead', () => {
+    const spec = taskSpecFor(parseFlowStepPayload('TASK', { title: 'Practise sit', repetitions: 5 }).payload)
+    expect(spec).toMatchObject({ libraryTaskId: null, title: 'Practise sit', repetitions: 5 })
+  })
+
+  it('refuses both at once — a library item is named by the library', () => {
+    expect(stepFieldsSchema.safeParse({
+      ...MESSAGE_STEP, kind: 'TASK', title: null, body: null,
+      payload: { libraryTaskId: 'lib_1', title: 'Something else' },
+    }).success).toBe(false)
+  })
+
+  it('only knows the two timings HomeworkTiming has', () => {
+    expect(homeworkTimingEnum.options).toEqual(['BEFORE_SESSION', 'AFTER_SESSION'])
+  })
+})
+
+describe('ACCOUNT payload', () => {
+  it('refuses a redirect off the app — that is an open redirect', () => {
+    for (const redirectTo of ['https://evil.test', '//evil.test', 'javascript:alert(1)']) {
+      expect(
+        stepFieldsSchema.safeParse({ ...MESSAGE_STEP, kind: 'ACCOUNT', title: null, body: null, payload: { redirectTo } }).success,
+        redirectTo,
+      ).toBe(false)
+    }
+    expect(stepFieldsSchema.safeParse({ ...MESSAGE_STEP, kind: 'ACCOUNT', title: null, body: null, payload: { redirectTo: '/home' } }).success).toBe(true)
+  })
+})
+
+describe('flowStepConfigProblem', () => {
+  it('lets a configured step run', () => {
+    expect(flowStepConfigProblem({ kind: 'FORM', payload: { formId: 'f1' } })).toBeNull()
+    expect(flowStepConfigProblem({ kind: 'TASK', payload: { libraryTaskId: 'l1' } })).toBeNull()
+    expect(flowStepConfigProblem({ kind: 'UPLOAD', payload: null })).toBeNull()
+    expect(flowStepConfigProblem({ kind: 'MESSAGE', payload: null, title: 't', body: 'b' })).toBeNull()
+  })
+
+  // Saving a half-built step is allowed on purpose — a trainer adds it and then
+  // configures it. Running one is not: a "fill in this form" notification with
+  // no form on the end of it is worse than silence.
+  it('holds back a step that was never finished', () => {
+    expect(flowStepConfigProblem({ kind: 'FORM', payload: {} })).toBe('No form chosen')
+    expect(flowStepConfigProblem({ kind: 'TASK', payload: {} })).toBe('No task chosen')
+    expect(flowStepConfigProblem({ kind: 'MESSAGE', payload: null, title: null, body: null })).toBeTruthy()
+  })
+
+  it('reads a corrupted payload as unconfigured rather than throwing', () => {
+    expect(flowStepConfigProblem({ kind: 'FORM', payload: { formId: 42 } })).toBe('No form chosen')
+    expect(safeFlowStepPayload('UPLOAD', 'not an object').payload).toEqual({})
+  })
+})
+
+describe('defaultsForKind', () => {
+  it('leaves a message step exactly as it always was', () => {
+    expect(defaultsForKind('MESSAGE')).toEqual(DEFAULT_STEP_FIELDS)
+  })
+
+  // Seeding "Reminder from {{business}}" onto a FORM step would put a stray
+  // title on a row whose whole point is that it has none — and the first thing
+  // to read it would be a client's inbox.
+  it('gives a non-message step no copy, and makes it a wall', () => {
+    const form = defaultsForKind('FORM')
+    expect(form).toMatchObject({ kind: 'FORM', title: null, body: null, blocking: true, offsetMinutes: 0 })
+    expect(stepFieldsSchema.safeParse(form).success).toBe(true)
+  })
+
+  it('withDefaults follows the kind it was handed', () => {
+    expect(withDefaults({ kind: 'UPLOAD' })).toMatchObject({ kind: 'UPLOAD', title: null, blocking: true })
+    expect(withMembershipDefaults({ kind: 'UPLOAD' })).toMatchObject({ kind: 'UPLOAD', direction: 'AFTER_PURCHASE', title: null })
+    // …and still fills a message the way it always did.
+    expect(withDefaults({}).title).toBe(DEFAULT_STEP_FIELDS.title)
+    expect(withMembershipDefaults({}).title).toBe(DEFAULT_MEMBERSHIP_STEP_FIELDS.title)
   })
 })

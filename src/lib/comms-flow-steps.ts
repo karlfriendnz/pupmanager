@@ -66,20 +66,150 @@ export type PersonTrigger = z.infer<typeof personTriggerEnum>
 // title/body/emailBody, where the editor, the renderer and every existing row
 // already keep it.
 //
-// Phase 1 keeps the non-MESSAGE shapes minimal and open (`.catchall`): nothing
-// can create one yet, and guessing at fields now would only mean guessing wrong
-// and migrating twice. Phase 2 tightens each one as its step type is built.
-const openPayload = <T extends z.ZodRawShape>(shape: T) => z.object(shape).catchall(z.unknown())
+// Phase 1 left these open (`.catchall`) because nothing could create one yet.
+// Phase 2 makes each one REAL, and three rules hold across all six:
+//
+//   1. NO `.default()`, anywhere. A default materialises a key on the way in,
+//      so what a trainer saved and what comes back differ by whatever the
+//      schema decided to add. Absent means absent; the fallbacks live in the
+//      `…SpecFor()` resolvers below, which are the only things allowed to know
+//      what "not set" means. That is what makes save → reload → identical true
+//      (AGENTS.md bug #1) rather than nearly true.
+//   2. NOTHING that already has a column. `blocking` is the column that says a
+//      step waits — a `blocksProgress` in the JSON would be the same
+//      two-columns-one-fact trap the `trigger`/`direction` split was written to
+//      avoid, and the two WOULD drift the first time a PATCH touched one.
+//   3. Unknown keys are DROPPED, not rejected. z.object strips by default, so a
+//      payload written by a later phase reads back as the fields this version
+//      knows instead of failing a trainer's save outright.
+//
+// Every field is optional: a trainer adds a step and then configures it, so
+// "not configured yet" has to be storable. What stops an unconfigured step
+// running is `flowStepConfigProblem()`, not the parser.
 
-export const formStepPayloadSchema = openPayload({ formId: z.string().min(1).optional() })
-export const uploadStepPayloadSchema = openPayload({ label: z.string().max(200).optional() })
-export const taskStepPayloadSchema = openPayload({ label: z.string().max(200).optional() })
-export const accountStepPayloadSchema = openPayload({})
-export const chooseOfferingStepPayloadSchema = openPayload({
-  /** Which offerings they may pick from. Empty/absent = everything published. */
-  packageIds: z.array(z.string()).optional(),
+/** Where an UPLOAD step's files land. */
+export const uploadTargetEnum = z.enum([
+  // The dog's own photo — the thing Karl asked for ("upload dog image").
+  'DOG_PHOTO',
+  // Anything else: a vaccination card, a vet letter, a photo of the garden.
+  // Kept with the completion, not written onto a record.
+  'ATTACHMENT',
+])
+export type UploadTarget = z.infer<typeof uploadTargetEnum>
+
+/** What may be attached — mirrors the FILE_UPLOAD question's own `accept`. */
+export const uploadAcceptEnum = z.enum(['IMAGE', 'ANY'])
+export type UploadAccept = z.infer<typeof uploadAcceptEnum>
+
+/** Preparation, or practice — the same two values as Prisma's HomeworkTiming. */
+export const homeworkTimingEnum = z.enum(['BEFORE_SESSION', 'AFTER_SESSION'])
+
+/**
+ * FORM — "fill this in".
+ *
+ * `formId` names one of the trainer's own unified Forms. It is optional here
+ * and required by `flowStepConfigProblem` for the same reason every other field
+ * is: a half-built step must be savable, and an unconfigured one must not run.
+ * Tenant ownership of the id is the ROUTE's job, never this schema's.
+ */
+export const formStepPayloadSchema = z.object({
+  formId: z.string().min(1).optional(),
+  /** The words on the button. Absent = "Open the form". */
+  ctaLabel: z.string().trim().min(1).max(60).optional(),
 })
-export const approvalStepPayloadSchema = openPayload({})
+
+/**
+ * UPLOAD — "send us a picture of Bailey".
+ *
+ * `target` is where it LANDS and is the whole difference between a dog photo
+ * and a general attachment; `accept`/`maxMb`/`minCount`/`maxCount` are what the
+ * client is allowed to send. The size cap is checked server-side at upload —
+ * a browser-side limit is not a limit (AGENTS.md bug #3).
+ */
+export const uploadStepPayloadSchema = z
+  .object({
+    target: uploadTargetEnum.optional(),
+    accept: uploadAcceptEnum.optional(),
+    /** What is being asked for, in the trainer's words. */
+    label: z.string().trim().min(1).max(200).optional(),
+    minCount: z.number().int().min(1).max(20).optional(),
+    maxCount: z.number().int().min(1).max(20).optional(),
+    maxMb: z.number().int().min(1).max(20).optional(),
+  })
+  .superRefine((p, ctx) => {
+    if (p.minCount !== undefined && p.maxCount !== undefined && p.minCount > p.maxCount) {
+      ctx.addIssue({ code: 'custom', path: ['maxCount'], message: 'Ask for at least as many as you require' })
+    }
+    // A dog photo is one photo of a dog. Letting it be a PDF would put a
+    // document where every screen renders an <img>.
+    if (p.target === 'DOG_PHOTO' && p.accept === 'ANY') {
+      ctx.addIssue({ code: 'custom', path: ['accept'], message: 'A dog photo has to be an image' })
+    }
+  })
+
+/**
+ * TASK — homework, handed out by the flow instead of by hand.
+ *
+ * Deliberately the SAME shape as PackageDefaultTask: a library item read live
+ * (so editing the library keeps every flow current) OR an inline one-off, and
+ * a `timing` that belongs to this step rather than to the library item. On
+ * execution it becomes an ordinary TrainingTask snapshot, exactly as
+ * `assignDefaults` already makes one — there is no second kind of to-do in this
+ * app and this must not invent one.
+ */
+export const taskStepPayloadSchema = z
+  .object({
+    libraryTaskId: z.string().min(1).optional(),
+    title: z.string().trim().min(1).max(200).optional(),
+    description: z.string().max(8000).nullable().optional(),
+    repetitions: z.number().int().min(1).max(1000).nullable().optional(),
+    videoUrl: z.string().max(500).nullable().optional(),
+    timing: homeworkTimingEnum.optional(),
+  })
+  .superRefine((p, ctx) => {
+    // A library-backed default reads its text THROUGH the item (see
+    // suggestedHomeworkForSession), so an inline title alongside one is a
+    // second answer to "what is this called" that nothing would ever read.
+    if (p.libraryTaskId && p.title) {
+      ctx.addIssue({ code: 'custom', path: ['title'], message: 'A library task is named by the library item' })
+    }
+  })
+
+/**
+ * ACCOUNT — "set a password".
+ *
+ * The step that turns an enquiry into a login. lib/form-continuation.ts is the
+ * hard-coded version of it; the shape here is what that flow needs to be
+ * expressible — how they prove who they are, and where they land afterwards.
+ */
+export const accountStepPayloadSchema = z.object({
+  method: z.enum(['PASSWORD', 'MAGIC_LINK']).optional(),
+  /** An in-app path only. An absolute URL here would be an open redirect. */
+  redirectTo: z.string().max(200).regex(/^\/(?!\/)/, 'Must be a path within the app').optional(),
+})
+
+/** CHOOSE_OFFERING — "pick what you'd like to book". */
+export const chooseOfferingStepPayloadSchema = z.object({
+  /** Which offerings they may pick from. Empty/absent = everything published. */
+  packageIds: z.array(z.string().min(1)).max(100).optional(),
+  allowMultiple: z.boolean().optional(),
+  /** Do they pick a TIME too, or just the offering? */
+  requireTime: z.boolean().optional(),
+})
+
+/**
+ * APPROVAL — the step the OTHER SIDE does.
+ *
+ * "the trainer gets a notification, the trainer accepts the time or moves the
+ * time" (Karl). `decides` says what is being accepted so the notification can
+ * name it; `autoApproveHours` is the escape hatch for a trainer on holiday, so
+ * a blocking approval can't strand a client for ever.
+ */
+export const approvalStepPayloadSchema = z.object({
+  decides: z.enum(['BOOKING_TIME', 'ENROLMENT', 'UPLOAD', 'FORM']).optional(),
+  allowReschedule: z.boolean().optional(),
+  autoApproveHours: z.number().int().min(1).max(720).optional(),
+})
 
 /**
  * The payload schema for each kind. MESSAGE is `null` — not an empty object —
@@ -122,12 +252,138 @@ export function payloadForWrite(payload: unknown): Prisma.InputJsonValue | undef
   return payload == null ? undefined : (payload as Prisma.InputJsonValue)
 }
 
-/** Parse a stored payload against the kind on the row. Throws on a mismatch. */
-export function parseFlowStepPayload(kind: FlowStepKind, payload: unknown): FlowStepPayload {
+/** One kind's payload type, on its own — `FlowStepPayloadOf<'UPLOAD'>`. */
+export type FlowStepPayloadOf<K extends FlowStepKind> = Extract<FlowStepPayload, { kind: K }>['payload']
+
+/**
+ * Parse a stored payload against the kind on the row. Throws on a mismatch.
+ *
+ * Generic in the kind so `parseFlowStepPayload('UPLOAD', …).payload` is an
+ * upload payload rather than the union of all seven — a caller that has to
+ * narrow it by hand ends up casting, and a cast is how the wrong payload gets
+ * read as the right one.
+ */
+export function parseFlowStepPayload<K extends FlowStepKind>(
+  kind: K,
+  payload: unknown,
+): { kind: K; payload: FlowStepPayloadOf<K> } {
   // A null payload on a non-message step is "not configured yet", not invalid —
   // a trainer adds the step, then fills it in.
   const value = kind === 'MESSAGE' ? null : (payload ?? {})
-  return { kind, payload: PAYLOAD_SCHEMA_BY_KIND[kind].parse(value) } as FlowStepPayload
+  return { kind, payload: PAYLOAD_SCHEMA_BY_KIND[kind].parse(value) as FlowStepPayloadOf<K> }
+}
+
+/** Same, but a stored row that has gone bad reads as unconfigured rather than
+ *  throwing into a cron tick that is delivering everybody else's reminders. */
+export function safeFlowStepPayload<K extends FlowStepKind>(
+  kind: K,
+  payload: unknown,
+): { kind: K; payload: FlowStepPayloadOf<K> } {
+  try {
+    return parseFlowStepPayload(kind, payload)
+  } catch {
+    return { kind, payload: (kind === 'MESSAGE' ? null : {}) as FlowStepPayloadOf<K> }
+  }
+}
+
+// ─── What "not set" means ───────────────────────────────────────────────────
+// The schemas carry no defaults (see above), so exactly one place is allowed to
+// say what an absent field falls back to. Everything that renders or executes an
+// UPLOAD or a TASK step goes through these, so the client's screen and the
+// server's size check cannot disagree about what was asked for.
+
+export interface UploadSpec {
+  target: UploadTarget
+  accept: UploadAccept
+  label: string | null
+  minCount: number
+  maxCount: number
+  maxMb: number
+}
+
+/** The upload actually being asked for, absences filled in. */
+export function uploadSpecFor(payload: z.infer<typeof uploadStepPayloadSchema> | null | undefined): UploadSpec {
+  const p = payload ?? {}
+  const target = p.target ?? 'ATTACHMENT'
+  const maxCount = p.maxCount ?? 1
+  return {
+    target,
+    // A dog photo is a photo. Anything else may be a document too.
+    accept: p.accept ?? (target === 'DOG_PHOTO' ? 'IMAGE' : 'ANY'),
+    label: p.label ?? null,
+    minCount: Math.min(p.minCount ?? 1, maxCount),
+    maxCount,
+    // 10 MB matches /api/upload/image. Bigger than that and the serverless
+    // request body gives out before any of our checks run.
+    maxMb: p.maxMb ?? 10,
+  }
+}
+
+/** The homework a TASK step hands out, absences filled in. `libraryTaskId` set
+ *  means the text is read LIVE from the item and the inline fields are ignored,
+ *  exactly as PackageDefaultTask behaves. */
+export function taskSpecFor(payload: z.infer<typeof taskStepPayloadSchema> | null | undefined): {
+  libraryTaskId: string | null
+  title: string | null
+  description: string | null
+  repetitions: number | null
+  videoUrl: string | null
+  timing: 'BEFORE_SESSION' | 'AFTER_SESSION'
+} {
+  const p = payload ?? {}
+  return {
+    libraryTaskId: p.libraryTaskId ?? null,
+    title: p.title ?? null,
+    description: p.description ?? null,
+    repetitions: p.repetitions ?? null,
+    videoUrl: p.videoUrl ?? null,
+    // Practice after the session, same default as PackageDefaultTask.timing.
+    timing: p.timing ?? 'AFTER_SESSION',
+  }
+}
+
+/**
+ * Why this step cannot run yet — or null when it is ready.
+ *
+ * The parser deliberately accepts a half-built step, because a trainer adds one
+ * and then configures it. This is the other half of that bargain: the engine
+ * asks here before it does anything, so an unconfigured step is a step that
+ * quietly waits rather than a FORM notification with no form on the end of it.
+ */
+export function flowStepConfigProblem(step: {
+  kind: FlowStepKind
+  payload?: unknown
+  title?: string | null
+  body?: string | null
+}): string | null {
+  // Narrowed one branch at a time rather than destructured up front: `kind` and
+  // `payload` are two variables, and a switch on one tells the compiler nothing
+  // about the other.
+  const kind = step.kind
+  switch (kind) {
+    case 'MESSAGE':
+      // Same rule the schema enforces on save, restated for a row that predates
+      // it or was written by hand.
+      if (!step.title?.trim() || !step.body?.trim()) return 'This message has no copy'
+      return null
+    case 'FORM':
+      return safeFlowStepPayload(kind, step.payload).payload.formId ? null : 'No form chosen'
+    case 'TASK': {
+      const task = safeFlowStepPayload(kind, step.payload).payload
+      return task.libraryTaskId || task.title?.trim() ? null : 'No task chosen'
+    }
+    case 'UPLOAD':
+    case 'ACCOUNT':
+    case 'CHOOSE_OFFERING':
+    case 'APPROVAL':
+      // Every field on these has a sensible fallback, so an unconfigured one is
+      // still a step that means something.
+      return null
+    default: {
+      const unhandled: never = kind
+      return `Unknown step type: ${String(unhandled)}`
+    }
+  }
 }
 
 // The full editable shape of one step.
@@ -225,8 +481,36 @@ export const DEFAULT_STEP_FIELDS: StepFields = {
 // Create accepts a partial and fills the rest from the default.
 export const stepCreateSchema = stepFieldsBase.partial()
 
+/**
+ * The starting shape for one kind of step.
+ *
+ * A MESSAGE starts with copy in it, because a trainer adding one is about to
+ * write a reminder. Every other kind starts with NO copy: seeding "Reminder
+ * from {{business}}" onto a FORM step would put a stray title on a row whose
+ * whole point is that it has none, and the first thing to read it would be a
+ * client's inbox.
+ */
+export function defaultsForKind(kind: FlowStepKind, base: StepFields = DEFAULT_STEP_FIELDS): StepFields {
+  if (kind === 'MESSAGE') return { ...base, kind }
+  return {
+    ...base,
+    kind,
+    title: null,
+    body: null,
+    emailBody: null,
+    // A step a person has to DO is a step the next one waits for. That is the
+    // difference between a journey and a pile of independent nudges — and it is
+    // the trainer's to turn off, not ours to leave off.
+    blocking: true,
+    // Fires the moment its anchor comes round; a form to fill in has no lead
+    // time to count down the way a reminder does.
+    offsetMinutes: 0,
+    payload: null,
+  }
+}
+
 export function withDefaults(partial: Partial<StepFields>): StepFields {
-  return { ...DEFAULT_STEP_FIELDS, ...partial }
+  return { ...defaultsForKind(partial.kind ?? 'MESSAGE'), ...partial }
 }
 
 // A membership has no sessions, so its steps count from the client's purchase.
@@ -240,7 +524,7 @@ export const DEFAULT_MEMBERSHIP_STEP_FIELDS: StepFields = {
 }
 
 export function withMembershipDefaults(partial: Partial<StepFields>): StepFields {
-  return { ...DEFAULT_MEMBERSHIP_STEP_FIELDS, ...partial }
+  return { ...defaultsForKind(partial.kind ?? 'MESSAGE', DEFAULT_MEMBERSHIP_STEP_FIELDS), ...partial }
 }
 
 // Validator for a template's stored `steps` JSON when applying it to a run.
