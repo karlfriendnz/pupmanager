@@ -666,8 +666,12 @@ export function BookingWizard(props: {
                       imageUrl={p.imageUrl}
                       title={p.name}
                       meta={<>
-                        <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{p.durationMins} min</span>
-                        {/* Only the exception is worth a line. Nearly everything
+                        {/* No duration here: the client picks a time next, and
+                            the length is on that step where it bears on the
+                            choice. On the card it was another number to read
+                            past to reach the name and the price.
+
+                            Only the exception is worth a line. Nearly everything
                             a dog trainer sells happens in person, so saying so
                             on every row is noise; "Virtual" is the fact that
                             changes what a client turns up to. */}
