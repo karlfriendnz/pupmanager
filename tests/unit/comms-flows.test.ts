@@ -908,30 +908,35 @@ describe('processCommsFlows — a TASK step', () => {
 // toggles, and never through the client's delivery path.
 
 describe('a trainer-actor step', () => {
-  it('goes to the trainer’s notifications, not the client’s', async () => {
+  it('reaches the trainer, and never the client it is about', async () => {
     h.stepFindMany.mockResolvedValue([step({
       kind: 'UPLOAD', actor: 'TRAINER', title: 'A photo to check', body: 'From {{name}}',
       payload: {}, channels: ['PUSH', 'EMAIL', 'IN_APP'],
     })])
     h.enrollmentFindMany.mockResolvedValue([enrollment()])
+    h.classRunTrainerFindMany.mockResolvedValue([{ membership: { user: staffUser() } }])
 
     const res = await processCommsFlows(NOW)
 
     expect(res.sent).toBe(1)
-    // The trainer's own surface — which is the one that knows their per-type
-    // toggles and their custom copy.
+    // The trainer's own surface — the one that knows their per-type toggles and
+    // their custom copy — addressed to one of the TRAINER's people. Sending
+    // "you need to accept this" to the client it is about would be the whole
+    // feature backwards, and the recipient resolution is what decides that.
     expect(h.notifyTrainer).toHaveBeenCalledTimes(1)
     const [userId, type, subs, path, companyId] = h.notifyTrainer.mock.calls[0]
+    expect(userId).toBe('staff1')
     expect(type).toBe('FLOW_STEP_WAITING')
-    expect(subs).toMatchObject({ clientName: 'Sam', title: 'A photo to check', detail: 'From Sam' })
+    expect(subs).toMatchObject({ clientName: 'Bree', title: 'A photo to check', detail: 'From Bree' })
     expect(companyId).toBe('co1')
-    expect(path).toBeTruthy()
-    void userId
+    // …and a trainer-side link, not /my-dogs, which they cannot act on.
+    expect(path).toBe('/classes/run1')
 
-    // …and NOT the client's. deliver() is never reached.
+    // deliver() is never reached, so the client hears nothing at all.
     expect(h.sendPush).not.toHaveBeenCalled()
     expect(h.sendEmail).not.toHaveBeenCalled()
     expect(h.notificationCreate).not.toHaveBeenCalled()
+    expect(h.notifyTrainer.mock.calls.some(c => c[0] === 'u1')).toBe(false)
   })
 
   it('is still recorded once, so it is not asked twice', async () => {
@@ -1065,7 +1070,7 @@ describe('processFlowRun', () => {
   // Same idiom as the cron's (step, session, user) row: calling twice asks
   // once. Without it, every advance would re-send the same "fill this in".
   it('asks once however many times it is called', async () => {
-    h.sendFindMany.mockResolvedValue([{ stepId: 'intake' }])
+    h.sendFindMany.mockResolvedValue([{ userId: 'u1' }])
 
     const res = await processFlowRun('run1', NOW)
 
@@ -1077,7 +1082,10 @@ describe('processFlowRun', () => {
 
   it('looks the sends up against the RUN, not a session', async () => {
     await processFlowRun('run1', NOW)
-    expect(h.sendFindMany.mock.calls[0][0].where).toMatchObject({ runId: 'run1', userId: 'u1' })
+    const where = h.sendFindMany.mock.calls[0][0].where
+    expect(where).toMatchObject({ runId: 'run1', stepId: 'intake' })
+    expect(where.userId).toEqual({ in: ['u1'] })
+    expect(where.sessionId).toBeUndefined()
   })
 
   // A journey starts BEFORE the person exists: the enquiry is written first, so
@@ -1118,16 +1126,40 @@ describe('processFlowRun', () => {
       journeyStep('accept', 0, { kind: 'APPROVAL', actor: 'TRAINER', title: 'A time to accept', body: '{{name}} picked a slot', payload: {} }),
       journeyStep('welcome', 1),
     ])
+    // A journey has no session and no class, so the recipient is whoever owns
+    // the business.
+    h.trainerProfileFindUnique.mockResolvedValue({ user: staffUser({ id: 'owner1' }) })
 
     const res = await processFlowRun('run1', NOW)
 
     expect(res.waitingOn).toBe('accept')
     expect(h.notifyTrainer).toHaveBeenCalledTimes(1)
+    expect(h.notifyTrainer.mock.calls[0][0]).toBe('owner1')
     expect(h.notifyTrainer.mock.calls[0][1]).toBe('FLOW_STEP_WAITING')
-    expect(h.notifyTrainer.mock.calls[0][2]).toMatchObject({ clientName: 'Sam', title: 'A time to accept' })
+    // {{name}} is still the person on the journey — the step is ABOUT them,
+    // however it is addressed.
+    expect(h.notifyTrainer.mock.calls[0][2]).toMatchObject({ clientName: 'Sam', title: 'A time to accept', detail: 'Sam picked a slot' })
+    // …and it links to their record, where the trainer can act on it.
+    expect(h.notifyTrainer.mock.calls[0][3]).toBe('/clients/c1')
     // The client is not pushed at, and the step behind it is not reached.
     expect(h.sendPush).not.toHaveBeenCalled()
     expect(h.sendCreate.mock.calls.map(c => c[0].data.stepId)).toEqual(['accept'])
+    expect(h.sendCreate.mock.calls[0][0].data.userId).toBe('owner1')
+  })
+
+  // The trainer exists from the first step, even when the person walking the
+  // journey has not set a password yet — so an approval reaches them anyway.
+  it('a trainer-actor step reaches the trainer before the client has an account', async () => {
+    h.runFindUnique.mockResolvedValue({ ...RUN, userId: null, user: null })
+    h.stepFindMany.mockResolvedValue([
+      journeyStep('accept', 0, { kind: 'APPROVAL', actor: 'TRAINER', title: 'A new enquiry to look at', body: 'Someone asked for a time', payload: {} }),
+    ])
+    h.trainerProfileFindUnique.mockResolvedValue({ user: staffUser({ id: 'owner1' }) })
+
+    const res = await processFlowRun('run1', NOW)
+
+    expect(res.asked).toBe(1)
+    expect(h.notifyTrainer.mock.calls[0][0]).toBe('owner1')
   })
 
   it('a step the trainer never configured is skipped without blocking silently forever', async () => {

@@ -239,8 +239,20 @@ async function deliver(args: {
 // default copy, and a second path would be a second place for a client's mute
 // to be forgotten.
 
-/** Where a step's notification takes them. */
-export function flowStepLink(kind: FlowStepKind, payload: unknown, fallback: string): string {
+/**
+ * Where a step's notification takes them.
+ *
+ * A TRAINER-actor step always keeps the fallback, which its caller has already
+ * made a trainer-side path: /form/<id> and /my-dogs are the CLIENT's screens,
+ * and sending a trainer to one is sending them somewhere they cannot act.
+ */
+export function flowStepLink(
+  kind: FlowStepKind,
+  payload: unknown,
+  fallback: string,
+  actor: FlowStepActor = 'CLIENT',
+): string {
+  if (actor === 'TRAINER') return fallback
   switch (kind) {
     case 'FORM': {
       const formId = safeFlowStepPayload('FORM', payload).payload.formId
@@ -411,7 +423,7 @@ export async function executeFlowStep(args: {
 
   const copy = flowStepCopy(step)
   const rendered = renderCommsMessage({ ...step, title: copy.title, body: copy.body }, vars)
-  const link = flowStepLink(step.kind, step.payload, args.link)
+  const link = flowStepLink(step.kind, step.payload, args.link, step.actor)
 
   // A TASK step's homework lands first: the notification says there is
   // something new to practise, so it must not go out before there is.
@@ -426,6 +438,11 @@ export async function executeFlowStep(args: {
   // a client's flow ("accept the time or move it"). It goes to the trainer's
   // own notification surface, with their own per-type preferences — never
   // through deliver(), which is the client's.
+  //
+  // `user` here is already one of the TRAINER's people: the callers resolve an
+  // actor-TRAINER step's recipients through the staff resolver, exactly as they
+  // do a STAFF-audience one. Sending a "you need to accept this" to the client
+  // it is about would be the whole feature backwards.
   if (step.actor === 'TRAINER') {
     await notifyTrainer(
       user.id,
@@ -623,7 +640,12 @@ export async function processCommsFlows(
     // people working it hear the same thing, with {{dog}} standing in for the
     // dogs booked that day. Resolved per session — the same class can be
     // covered by different people week to week.
-    const toStaff = step.audience === 'STAFF'
+    //
+    // A step whose ACTOR is the trainer resolves the same way, whatever its
+    // audience says. "The trainer accepts the time" is by definition the
+    // trainer's to do, and pushing it at the client it is about would be the
+    // whole feature backwards.
+    const toStaff = step.audience === 'STAFF' || step.actor === 'TRAINER'
     const staffFor = toStaff ? await staffResolver(owner.trainerId, step.classRunId) : null
 
     if (step.classRunId) {
@@ -811,19 +833,36 @@ export async function processFlowRun(
   // Nobody to ask yet — a journey starts before the person exists (the enquiry
   // is written first, the User arrives at the account step). The steps still
   // sequence; there is simply nothing to notify until then.
-  const user = run.user
+  //
+  // A TRAINER-actor step is the exception: the trainer exists from the first
+  // step, so "accept this time" reaches them whether or not the person walking
+  // through the journey has an account yet.
+  const client = run.user
+  let staffFor: Awaited<ReturnType<typeof staffResolver>> | null = null
   let asked = 0
-  if (user?.id && open.length) {
-    const already = await prisma.commsFlowSend.findMany({
-      where: { stepId: { in: open.map(s => s.id) }, runId, userId: user.id },
-      select: { stepId: true },
-    })
-    const asked0 = new Set(already.map(a => a.stepId))
 
-    for (const step of open) {
-      if (asked0.has(step.id)) continue
+  for (const step of open) {
+    const toTrainer = step.actor === 'TRAINER'
+    if (!toTrainer && !client?.id) continue
+
+    // A journey has no session and no class, so "assigned to the session" comes
+    // down to whoever owns the business.
+    staffFor ??= toTrainer ? await staffResolver(run.trainerId, null) : null
+    const recipients = toTrainer ? await staffFor!(null) : [client!]
+    if (!recipients.length) continue
+
+    const already = await prisma.commsFlowSend.findMany({
+      where: { stepId: step.id, runId, userId: { in: recipients.map(u => u.id) } },
+      select: { userId: true },
+    })
+    const asked0 = new Set(already.map(a => a.userId))
+
+    for (const user of recipients) {
+      if (asked0.has(user.id)) continue
       const vars: CommsVars = {
-        name: user.name ?? 'there',
+        // A trainer-actor step is ABOUT the person walking the journey, so
+        // {{name}} stays theirs however it is addressed.
+        name: client?.name ?? 'there',
         dog: '',
         time: '',
         date: '',
@@ -836,10 +875,13 @@ export async function processFlowRun(
         user,
         trainer: run.trainer,
         vars,
-        // A journey has no session list to send them to; their own home is
-        // where every one of these screens lives.
-        link: '/home',
-        clientId: run.clientId,
+        // A journey has no session list to send them to. The client's own home
+        // is where every one of their screens lives; the trainer's is the
+        // client's record, which is where they act on it.
+        link: toTrainer ? (run.clientId ? `/clients/${run.clientId}` : '/dashboard') : '/home',
+        // Homework belongs to the person on the journey, never to the trainer
+        // who was asked to approve something about them.
+        clientId: toTrainer ? null : run.clientId,
         date: now,
         companyId: run.trainerId,
       })
@@ -932,7 +974,8 @@ async function processMembershipStep(
   // membership has no sessions, so the equivalent of "assigned to the session"
   // is the member's own assigned trainer — the person who looks after them —
   // and the owner when nobody is. The link goes to the trainer-side page.
-  const toStaff = step.audience === 'STAFF'
+  // A trainer-actor step resolves the same way; see the session pass.
+  const toStaff = step.audience === 'STAFF' || step.actor === 'TRAINER'
   const staffFor = toStaff ? await staffResolver(membership.trainerId, null) : null
 
   let sent = 0
