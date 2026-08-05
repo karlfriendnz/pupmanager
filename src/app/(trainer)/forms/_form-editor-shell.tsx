@@ -198,6 +198,7 @@ export function FormEditorShell({
   error,
   children,
   sidebar,
+  holdSidebarColumn = true,
   onDelete,
   onCancel,
   onSave,
@@ -219,6 +220,17 @@ export function FormEditorShell({
    * FullScreenSheet instead. One column, tap to add.
    */
   sidebar?: React.ReactNode
+  /**
+   * Keep the palette column open when there is no palette in it (the default).
+   *
+   * That is right for TABS, where pressing Settings must not slide the panel
+   * sideways. It is wrong for the wizard: its steps have no palette, so the
+   * held-open column left the panel hard right of a lap of empty page and the
+   * whole thing read as broken rather than centred. Moving between numbered
+   * steps is a deliberate journey — a palette appearing beside the questions is
+   * expected there, in a way a tab flick never is.
+   */
+  holdSidebarColumn?: boolean
   /** Omitted for a new form — there's nothing to delete yet. */
   onDelete?: () => Promise<void> | void
   onCancel: () => void
@@ -261,7 +273,9 @@ export function FormEditorShell({
           A tab switch swaps what is IN a panel. It should never move the panel.
           So the first column is held open even when empty — the rail goes, and
           nothing else does. */}
-      <div className="grid gap-4 lg:grid-cols-[15rem_minmax(0,1fr)] lg:items-start">
+      <div className={`grid gap-4 lg:items-start ${
+        sidebar || holdSidebarColumn ? 'lg:grid-cols-[15rem_minmax(0,1fr)]' : 'lg:grid-cols-1'
+      }`}>
         {sidebar ? (
           // Sticky so the palette is still there when you have scrolled to
           // question twelve. `no-scrollbar` because a visible rail here would be
@@ -269,11 +283,11 @@ export function FormEditorShell({
           <aside className="no-scrollbar hidden lg:sticky lg:top-4 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
             {sidebar}
           </aside>
-        ) : (
+        ) : holdSidebarColumn ? (
           // Holds the column open. Below lg the grid is one column anyway, so
           // this contributes nothing on a phone — no stray gap, no empty row.
           <div className="hidden lg:block" aria-hidden="true" />
-        )}
+        ) : null}
 
         <div className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white [&>section+section]:border-t [&>section+section]:border-slate-200">
           {error && (

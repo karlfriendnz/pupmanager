@@ -424,7 +424,12 @@ export function FormBuilder({
     <DndArea sensors={sensors} collisionDetection={questionsWinCollision} onDragEnd={onDragEnd}>
       {/* Which panel a review pin was made on — without this every pin on this
           screen collapses onto one indistinguishable page key (AGENTS.md). */}
-      <div data-review-scope={`Form builder: ${wizard ? WIZARD_LABELS[stepKey] : tab === 'build' ? 'Build' : settingsLabel}`}>
+      {/* The page chrome already centres this in a max-w-5xl column, so there is
+          nothing to add here — what the wizard needed was the empty palette
+          column GONE (see holdSidebarColumn), not another wrapper. */}
+      <div
+        data-review-scope={`Form builder: ${wizard ? WIZARD_LABELS[stepKey] : tab === 'build' ? 'Build' : settingsLabel}`}
+      >
         {wizard && (
           <div className="mb-4 flex items-center gap-1.5 px-1">
             {wizardKeys.map((k, i) => (
@@ -477,6 +482,9 @@ export function FormBuilder({
           // The rail belongs to the form, not to its settings — there is nothing
           // on the Settings panel to drag a field onto.
           sidebar={showQuestions ? palette('rail') : undefined}
+          // A wizard step with no palette should not sit beside a column-shaped
+          // hole — see the prop's own note.
+          holdSidebarColumn={!wizard}
         >
           {(showQuestions || showAbove) ? (
             <>
