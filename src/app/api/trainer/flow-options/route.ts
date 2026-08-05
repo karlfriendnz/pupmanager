@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { guardPermission } from '@/lib/membership'
+import { auth } from '@/lib/auth'
 
 // Everything a flow step can POINT AT, for this trainer, in one call.
 //
@@ -14,10 +14,18 @@ import { guardPermission } from '@/lib/membership'
 // renders labels, and a list endpoint that hands back more than the labels is
 // how a paid download's URL ended up in page source (AGENTS.md bug #5).
 
+// READ-ONLY, so any member of the team may ask — the same posture as
+// `GET /api/forms`. The flow editor is mounted on four different screens, each
+// behind a different permission (classes.manage, packages.manage,
+// settings.edit); gating the label lookup on any one of them would leave a
+// trainer with the other permission looking at rows that say "not chosen yet"
+// about a form that is chosen. Nothing here is worth more than the names.
 export async function GET() {
-  const ctx = await guardPermission('settings.edit')
-  if (ctx instanceof NextResponse) return ctx
-  const trainerId = ctx.companyId
+  const session = await auth()
+  if (!session || session.user.role !== 'TRAINER' || !session.user.trainerId) {
+    return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  }
+  const trainerId = session.user.trainerId
 
   const [forms, tasks, offerings] = await Promise.all([
     prisma.form.findMany({

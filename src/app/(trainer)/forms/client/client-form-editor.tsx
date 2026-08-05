@@ -16,6 +16,7 @@ import {
   FormEditorSection, FormField, FormRowGroup, FormToggleRow,
 } from '../_form-editor-shell'
 import { FormBuilder } from '../_form-builder'
+import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
 
 // Platform default copy for the invite email, mirrored from src/lib/enquiries.ts
 // (DEFAULT_WELCOME_*). Kept as literals because that module is server-only.
@@ -506,6 +507,18 @@ export function ClientFormEditor({
             />
           </FormField>
         </FormEditorSection>
+      )}
+
+      {/* The journey this form starts.
+          It lives on the LAST wizard step — the one that already answers "what
+          happens when it comes back" — because that is the same question, one
+          size up: not just where they land, but everything they walk through
+          afterwards. Only on a saved enquiry form: a flow needs a form id to
+          hang off, and a form nobody can submit has no journey to run. */}
+      {asEnquiry && initial && (
+        <section className="flex flex-col gap-3 px-4 py-4 sm:px-5 sm:py-5">
+          <CommsFlowEditor formId={initial.id} offeringName={name} />
+        </section>
       )}
 
       {asIntake && (

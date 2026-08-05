@@ -35,7 +35,8 @@ import { PATCH, DELETE } from '@/app/api/trainer/forms/[formId]/comms-flow/[step
 import { POST as REORDER } from '@/app/api/trainer/forms/[formId]/comms-flow/reorder/route'
 
 const TRAINER = 'trainer-1'
-const params = (over: Record<string, string> = {}) => Promise.resolve({ formId: 'form-1', ...over })
+const params = <T extends Record<string, string>>(over?: T) =>
+  Promise.resolve({ formId: 'form-1', ...(over ?? ({} as T)) })
 
 function req(body: unknown = {}): Request {
   return new Request('https://app.pupmanager.com/x', {
