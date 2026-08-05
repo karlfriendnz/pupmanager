@@ -824,6 +824,31 @@ export function FormsManager({
     }
   }
 
+  const [converting, setConverting] = useState(false)
+  const [convertError, setConvertError] = useState<string | null>(null)
+
+  // Build a real intake form out of the field library and open it in the
+  // builder. The server links each question to the field it already had, so this
+  // adds a way to ASK them; it does not copy, move or delete a single field.
+  async function convertFieldsToForm() {
+    if (converting) return
+    setConverting(true)
+    setConvertError(null)
+    try {
+      const res = await fetch('/api/forms/from-fields', { method: 'POST' })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        setConvertError(data?.error ?? 'Could not build the form.')
+        return
+      }
+      router.push(`/forms/client/${data.id}`)
+    } catch {
+      setConvertError('Could not build the form.')
+    } finally {
+      setConverting(false)
+    }
+  }
+
   const intakeFieldCount = intakeCustomFields.length + 3 // + name/email/phone
 
   return (
@@ -838,6 +863,77 @@ export function FormsManager({
           <Plus className="h-4 w-4" strokeWidth={1.75} />
           New form
         </Button>
+      </div>
+
+      {/* ── Your fields ──────────────────────────────────────────────────── */}
+      {/* This used to sit INSIDE the forms list, styled like one of them, which
+          is what made Karl ask "do we need this now?" and then "that should be
+          an intake form" (2026-08-06). Both halves of that are answered here.
+
+          It is not a form, so it no longer sits among them: a field is a COLUMN
+          ON THE CLIENT'S RECORD, read by the profile, the clients list, reports,
+          exports and email merge tags. Deleting the library would take all of
+          that with it.
+
+          What was true is that the ASKING should be a form — the fallback gate
+          asks these fields raw, with no pages, no conditional questions and no
+          preview. "Turn into a form" builds one that links to these same fields,
+          so nothing already collected moves and nobody is asked twice. */}
+      <div>
+        <SectionLabel>Your fields</SectionLabel>
+        <p className="mb-2 px-1 text-xs text-slate-400">
+          The details kept on every client&rsquo;s record — read by their profile, the
+          clients list, reports and exports.
+        </p>
+        <FlatBlock>
+          <div className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <ListChecks className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+              <button
+                type="button"
+                onClick={() => selectView('fields')}
+                className="min-w-0 flex-1 text-left"
+              >
+                <span className="block truncate text-sm font-medium text-slate-900">
+                  {intakeFieldCount} field{intakeFieldCount === 1 ? '' : 's'}
+                </span>
+                <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                  Asked at sign-up when a client has no intake form of their own.
+                </span>
+                {convertError && (
+                  <span className="mt-0.5 block text-xs text-red-600">{convertError}</span>
+                )}
+              </button>
+            </div>
+            <div className="flex flex-shrink-0 items-center gap-1 pl-[30px] sm:pl-0">
+              <button
+                type="button"
+                onClick={convertFieldsToForm}
+                disabled={converting}
+                className={FORM_QUIET_ACTION}
+              >
+                {converting ? 'Building…' : 'Turn into a form'}
+              </button>
+              <a
+                href="/forms/intake/preview"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={FORM_QUIET_ACTION}
+              >
+                <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />
+                Preview
+              </a>
+              <button
+                type="button"
+                onClick={togglePublished}
+                disabled={togglingPublished}
+                className={FORM_QUIET_ACTION}
+              >
+                {isPublished ? 'Unpublish' : 'Publish'}
+              </button>
+            </div>
+          </div>
+        </FlatBlock>
       </div>
 
       {/* ── Forms ────────────────────────────────────────────────────────── */}
@@ -875,48 +971,6 @@ export function FormsManager({
                 <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
               </Link>
             ))}
-
-            {/* The field library, shown as the form it becomes. Not a separate
-                question set — its row opens the Fields tab, which is where it
-                is actually edited. It is what a client fills in when they have
-                no client form assigned. */}
-            <div className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:gap-3">
-              <div className="flex min-w-0 flex-1 items-center gap-3">
-                <ListChecks className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
-                <button
-                  type="button"
-                  onClick={() => selectView('fields')}
-                  className="min-w-0 flex-1 text-left"
-                >
-                  <span className="block truncate text-sm font-medium text-slate-900">Your fields</span>
-                  <span className="mt-0.5 block truncate text-[13px] text-slate-500">
-                    Asked once, when a client joins — unless you send them one of the forms above.
-                  </span>
-                  <span className="mt-0.5 block truncate text-xs text-slate-400">
-                    {intakeFieldCount} field{intakeFieldCount === 1 ? '' : 's'} · {isPublished ? 'Published' : 'Draft'}
-                  </span>
-                </button>
-              </div>
-              <div className="flex flex-shrink-0 items-center gap-1 pl-[30px] sm:pl-0">
-                <a
-                  href="/forms/intake/preview"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={FORM_QUIET_ACTION}
-                >
-                  <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.75} />
-                  Preview
-                </a>
-                <button
-                  type="button"
-                  onClick={togglePublished}
-                  disabled={togglingPublished}
-                  className={FORM_QUIET_ACTION}
-                >
-                  {isPublished ? 'Unpublish' : 'Publish'}
-                </button>
-              </div>
-            </div>
 
             {/* Lead-capture (embed) forms, the older way of putting a form on
                 your own site. Nothing creates one any more — a client form set

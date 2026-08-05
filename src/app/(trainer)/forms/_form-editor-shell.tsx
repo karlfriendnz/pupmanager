@@ -246,27 +246,6 @@ export function FormEditorShell({
 
   return (
     <div className="flex flex-col gap-4">
-      {(status || statusActions) && (
-        <div className="flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white px-2 py-2">
-          {status && (
-            <button
-              type="button"
-              onClick={status.onToggle}
-              disabled={status.busy}
-              className={FORM_QUIET_ACTION}
-              aria-label={status.isActive ? 'Unpublish this form' : 'Publish this form'}
-            >
-              <span
-                className={`h-2 w-2 rounded-full ${status.isActive ? 'bg-emerald-500' : 'bg-amber-400'}`}
-                aria-hidden
-              />
-              {status.isActive ? 'Published' : 'Draft'}
-            </button>
-          )}
-          {statusActions}
-        </div>
-      )}
-
       {/* The grid is here on BOTH tabs, whether or not there is a rail to put
           in it. Dropping it when `sidebar` was undefined is what made switching
           to Settings feel broken: the panel fell into column one and stretched
@@ -294,9 +273,33 @@ export function FormEditorShell({
 
         <div className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white [&>section+section]:border-t [&>section+section]:border-slate-200">
           <div className="sticky top-0 z-20 flex items-center gap-2 rounded-t-xl border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-5">
+            {/* Status and its actions live IN the bar, not in a card above it
+                (Karl, 2026-08-06: "1 line?"). Two stacked strips of chrome — one
+                saying Published, one holding Save — cost about 120px of the
+                screen before a single question, and neither was the form. */}
+            {(status || statusActions) && (
+              <div className="mr-auto flex flex-wrap items-center gap-1">
+          {status && (
+            <button
+              type="button"
+              onClick={status.onToggle}
+              disabled={status.busy}
+              className={FORM_QUIET_ACTION}
+              aria-label={status.isActive ? 'Unpublish this form' : 'Publish this form'}
+            >
+              <span
+                className={`h-2 w-2 rounded-full ${status.isActive ? 'bg-emerald-500' : 'bg-amber-400'}`}
+                aria-hidden
+              />
+              {status.isActive ? 'Published' : 'Draft'}
+            </button>
+          )}
+          {statusActions}
+              </div>
+            )}
             {onDelete && (
               confirmDelete ? (
-                <div className="mr-auto flex items-center gap-1">
+                <div className="flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() => setConfirmDelete(false)}
@@ -321,7 +324,7 @@ export function FormEditorShell({
                 <button
                   type="button"
                   onClick={() => setConfirmDelete(true)}
-                  className="mr-auto inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50"
                 >
                   <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
                   Delete
