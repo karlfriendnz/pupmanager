@@ -639,29 +639,21 @@ export function BookingWizard(props: {
                 <SectionLabel icon={<CalendarPlus className="h-3.5 w-3.5" />} text={term.oneToOne} />
                 <div className="flex flex-col gap-2.5">
                   {shownPackages.map(p => (
-                    <button key={p.id} onClick={() => chooseSession(p)} className="group text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
-                      <div className="flex items-start gap-3">
-                        {p.imageUrl && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={p.imageUrl} alt="" className="h-11 w-11 rounded-xl object-cover shrink-0" />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[15px] font-semibold text-slate-900">{p.name}</p>
-                          <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">
-                            <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{p.durationMins} min</span>
-                            <span className="inline-flex items-center gap-1">
-                              {p.sessionType === 'VIRTUAL' ? <Video className="h-3 w-3" /> : <MapPin className="h-3 w-3" />}
-                              {p.sessionType === 'VIRTUAL' ? 'Virtual' : 'In person'}
-                            </span>
-                            {p.sessionCount > 1 && <span className="inline-flex items-center gap-1"><Repeat className="h-3 w-3" />{p.sessionCount} sessions</span>}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {price(p.priceCents, currency) && <span className="text-sm font-semibold text-slate-900">{price(p.priceCents, currency)}</span>}
-                          <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
-                        </div>
-                      </div>
-                    </button>
+                    <OfferingRow
+                      key={p.id}
+                      onClick={() => chooseSession(p)}
+                      imageUrl={p.imageUrl}
+                      title={p.name}
+                      meta={<>
+                        <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{p.durationMins} min</span>
+                        <span className="inline-flex items-center gap-1">
+                          {p.sessionType === 'VIRTUAL' ? <Video className="h-3 w-3" /> : <MapPin className="h-3 w-3" />}
+                          {p.sessionType === 'VIRTUAL' ? 'Virtual' : 'In person'}
+                        </span>
+                        {p.sessionCount > 1 && <span className="inline-flex items-center gap-1"><Repeat className="h-3 w-3" />{p.sessionCount} sessions</span>}
+                      </>}
+                      price={price(p.priceCents, currency) ? <span className="text-sm font-semibold text-slate-900">{price(p.priceCents, currency)}</span> : null}
+                    />
                   ))}
                 </div>
               </section>
@@ -674,28 +666,20 @@ export function BookingWizard(props: {
                   {shownClasses.map(c => {
                     const isFull = c.seatsLeft === 0
                     return (
-                      <button key={c.id} onClick={() => chooseClass(c)} className="group text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
-                        <div className="flex items-start gap-3">
-                          {c.imageUrl && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={c.imageUrl} alt="" className="h-11 w-11 rounded-xl object-cover shrink-0" />
+                      <OfferingRow
+                        key={c.id}
+                        onClick={() => chooseClass(c)}
+                        imageUrl={c.imageUrl}
+                        title={c.name}
+                        subtitle={c.packageName}
+                        meta={<>
+                          {c.scheduleNote && <span className="inline-flex items-center gap-1"><CalendarDays className="h-3 w-3" />{c.scheduleNote}</span>}
+                          {c.seatsLeft != null && (
+                            <span className={`inline-flex items-center gap-1 ${isFull ? 'text-amber-600' : ''}`}><Users className="h-3 w-3" />{isFull ? 'Full' : `${c.seatsLeft} left`}</span>
                           )}
-                          <div className="min-w-0 flex-1">
-                            <p className="text-[15px] font-semibold text-slate-900">{c.name}</p>
-                            <p className="text-xs text-slate-500 mt-0.5">{c.packageName}</p>
-                            <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">
-                              {c.scheduleNote && <span className="inline-flex items-center gap-1"><CalendarDays className="h-3 w-3" />{c.scheduleNote}</span>}
-                              {c.seatsLeft != null && (
-                                <span className={`inline-flex items-center gap-1 ${isFull ? 'text-amber-600' : ''}`}><Users className="h-3 w-3" />{isFull ? 'Full' : `${c.seatsLeft} left`}</span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            {price(c.fullPriceCents, currency) && <span className="text-sm font-semibold text-slate-900">{price(c.fullPriceCents, currency)}</span>}
-                            <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
-                          </div>
-                        </div>
-                      </button>
+                        </>}
+                        price={price(c.fullPriceCents, currency) ? <span className="text-sm font-semibold text-slate-900">{price(c.fullPriceCents, currency)}</span> : null}
+                      />
                     )
                   })}
                 </div>
@@ -716,32 +700,24 @@ export function BookingWizard(props: {
                     const from = tierPrices.length > 0 ? Math.min(...tierPrices) : null
                     const label = from != null ? price(from, currency) : price(e.priceCents, currency)
                     return (
-                      <button key={e.id} onClick={() => chooseEvent(e)} className="group text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
-                        <div className="flex items-start gap-3">
-                          {e.imageUrl && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={e.imageUrl} alt="" className="h-11 w-11 rounded-xl object-cover shrink-0" />
+                      <OfferingRow
+                        key={e.id}
+                        onClick={() => chooseEvent(e)}
+                        imageUrl={e.imageUrl}
+                        title={e.name}
+                        meta={<>
+                          {fmtNextSession(e.startsAt, tz) && <span className="inline-flex items-center gap-1"><CalendarDays className="h-3 w-3" />{fmtNextSession(e.startsAt, tz)}</span>}
+                          {e.seatsLeft != null && (
+                            <span className={`inline-flex items-center gap-1 ${isFull ? 'text-amber-600' : ''}`}><Users className="h-3 w-3" />{isFull ? 'Full' : `${e.seatsLeft} left`}</span>
                           )}
-                          <div className="min-w-0 flex-1">
-                            <p className="text-[15px] font-semibold text-slate-900">{e.name}</p>
-                            <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">
-                              {fmtNextSession(e.startsAt, tz) && <span className="inline-flex items-center gap-1"><CalendarDays className="h-3 w-3" />{fmtNextSession(e.startsAt, tz)}</span>}
-                              {e.seatsLeft != null && (
-                                <span className={`inline-flex items-center gap-1 ${isFull ? 'text-amber-600' : ''}`}><Users className="h-3 w-3" />{isFull ? 'Full' : `${e.seatsLeft} left`}</span>
-                              )}
-                              {e.tiers.length > 1 && <span className="inline-flex items-center gap-1"><Ticket className="h-3 w-3" />{e.tiers.length} ticket types</span>}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 shrink-0">
-                            {label && (
-                              <span className="text-sm font-semibold text-slate-900">
-                                {from != null && e.tiers.length > 1 ? <span className="text-xs font-normal text-slate-400">from </span> : null}{label}
-                              </span>
-                            )}
-                            <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
-                          </div>
-                        </div>
-                      </button>
+                          {e.tiers.length > 1 && <span className="inline-flex items-center gap-1"><Ticket className="h-3 w-3" />{e.tiers.length} ticket types</span>}
+                        </>}
+                        price={label ? (
+                          <span className="text-sm font-semibold text-slate-900">
+                            {from != null && e.tiers.length > 1 ? <span className="text-xs font-normal text-slate-400">from </span> : null}{label}
+                          </span>
+                        ) : null}
+                      />
                     )
                   })}
                 </div>
@@ -948,6 +924,52 @@ function SectionLabel({ icon, text }: { icon: React.ReactNode; text: string }) {
       {icon}
       <h2 className="text-xs font-bold uppercase tracking-wide">{text}</h2>
     </div>
+  )
+}
+
+/**
+ * One bookable thing, as a row. Used by 1:1s, classes and events alike — the
+ * three had the same markup copied three times, so a change to one of them
+ * (this one: the picture) had to be made three times to hold.
+ *
+ * The picture sits hard against the right edge and fills the row's height. It
+ * used to be an 11px-square thumbnail inset by the card's own padding, which
+ * left it floating in white with rounded corners of its own. The padding now
+ * belongs to the text, not to the card, so the image can reach the edge.
+ *
+ * On the right rather than the left deliberately (Karl, 2026-08-06): the text
+ * then starts in the same place whether or not there IS a picture, so a
+ * trainer who has uploaded none still gets a straight left margin down the list.
+ */
+function OfferingRow({ onClick, imageUrl, title, subtitle, meta, price }: {
+  onClick: () => void
+  imageUrl: string | null
+  title: string
+  subtitle?: string | null
+  meta: React.ReactNode
+  price?: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="group w-full text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden hover:border-accent/40 transition-colors"
+    >
+      <div className="flex items-stretch">
+        <div className="min-w-0 flex-1 p-4">
+          <p className="text-[15px] font-semibold text-slate-900">{title}</p>
+          {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+          <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">{meta}</div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0 py-4 pr-4">
+          {price}
+          <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
+        </div>
+        {imageUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={imageUrl} alt="" className="w-24 self-stretch object-cover shrink-0" />
+        )}
+      </div>
+    </button>
   )
 }
 
