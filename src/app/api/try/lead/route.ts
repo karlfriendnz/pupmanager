@@ -76,9 +76,11 @@ export async function POST(req: Request) {
       termsVersion: parsed.data.termsVersion,
       termsAcceptedAt: now,
       marketingOptIn: optedIn,
-      // Recorded whether or not they ticked: "was offered this wording and said
-      // no" is the half of the record that protects us.
-      marketingVersion: TRY_MARKETING.id,
+      // Null when no marketing wording was shown. The form is one required
+      // terms box now and claims no marketing consent, so recording a version
+      // id here would assert they were offered a choice they never saw — and a
+      // consent record that overstates itself is worse than none.
+      marketingVersion: parsed.data.marketingVersion ?? null,
       marketingOptInAt: optedIn ? now : null,
       source: normaliseSource(parsed.data.source),
       campaign: normaliseCampaign(parsed.data.campaign),

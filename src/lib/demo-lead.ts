@@ -9,7 +9,7 @@
 
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
-import { TRY_TERMS, TRY_MARKETING } from '@/lib/demo-consent'
+import { TRY_TERMS_V2, TRY_MARKETING } from '@/lib/demo-consent'
 import { DEMO_PERSONA_IDS } from '@/lib/demo-tenant'
 
 /**
@@ -89,7 +89,12 @@ export const tryLeadSchema = z.object({
   /** Which wording they saw. Checked against the current id below. */
   termsVersion: z.string().max(60),
   marketingOptIn: z.boolean().default(false),
-  marketingVersion: z.string().max(60),
+  /**
+   * Only sent while a marketing tick box exists on the form. The form is one
+   * required terms box now (Karl, 2026-08-06) and claims no marketing consent,
+   * so this is absent — and a required field would 400 every submission.
+   */
+  marketingVersion: z.string().max(60).optional(),
   source: z.string().max(20).optional(),
   campaign: z.string().max(60).optional(),
 })
@@ -103,7 +108,14 @@ export type TryLeadInput = z.infer<typeof tryLeadSchema>
  * a worthless consent record is worse than none, because it looks like proof.
  */
 export function consentVersionsAreCurrent(input: Pick<TryLeadInput, 'termsVersion' | 'marketingVersion'>): boolean {
-  return input.termsVersion === TRY_TERMS.id && input.marketingVersion === TRY_MARKETING.id
+  // The terms id must be the one the form is CURRENTLY showing — v1 is kept in
+  // CONSENT_BLOCKS so old records still resolve, but it is no longer on screen,
+  // so a submission carrying it did not read today's words.
+  if (input.termsVersion !== TRY_TERMS_V2.id) return false
+  // Marketing is not asked for any more. Absent is correct; a stale or invented
+  // id still isn't.
+  if (input.marketingVersion == null) return true
+  return input.marketingVersion === TRY_MARKETING.id
 }
 
 export const tryLaunchSchema = z.object({

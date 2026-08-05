@@ -151,5 +151,10 @@ export function consentText(versionId: string): ConsentBlock | null {
  * a client that posts `try-terms-v0` did not see the terms we are recording.
  */
 export function isCurrentConsentVersion(kind: 'terms' | 'marketing', versionId: string): boolean {
-  return (kind === 'terms' ? TRY_TERMS.id : TRY_MARKETING.id) === versionId
+  // "Current" means on screen now, not merely published. TRY_TERMS (v1) still
+  // resolves through consentText for records written against it, but a NEW
+  // submission carrying it did not read today's words. Marketing is no longer
+  // asked for at all, so nothing is current for it.
+  if (kind === 'marketing') return false
+  return TRY_TERMS_V2.id === versionId
 }

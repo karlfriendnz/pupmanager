@@ -17,7 +17,7 @@ vi.mock('@/lib/rate-limit', () => ({
 }))
 
 import { POST } from '@/app/api/try/lead/route'
-import { TRY_MARKETING, TRY_TERMS, consentText, isCurrentConsentVersion } from '@/lib/demo-consent'
+import { TRY_MARKETING, TRY_TERMS, TRY_TERMS_V2, consentText, isCurrentConsentVersion } from '@/lib/demo-consent'
 
 function req(body: unknown): Request {
   return new Request('https://app.pupmanager.com/api/try/lead', {
@@ -32,9 +32,8 @@ const GOOD = {
   companyName: 'Carter Canine',
   email: 'Jess@CarterCanine.co.nz',
   acceptTerms: true,
-  termsVersion: TRY_TERMS.id,
+  termsVersion: TRY_TERMS_V2.id,
   marketingOptIn: false,
-  marketingVersion: TRY_MARKETING.id,
 }
 
 beforeEach(() => {
@@ -44,6 +43,8 @@ beforeEach(() => {
 
 describe('consent text catalog', () => {
   it('resolves a stored version id back to the exact words that were on screen', () => {
+    expect(consentText(TRY_TERMS_V2.id)?.text).toBe(TRY_TERMS_V2.text)
+    // Superseded, but still resolvable — that is the whole point of append-only.
     expect(consentText(TRY_TERMS.id)?.text).toBe(TRY_TERMS.text)
     expect(consentText(TRY_MARKETING.id)?.text).toBe(TRY_MARKETING.text)
   })
@@ -54,10 +55,11 @@ describe('consent text catalog', () => {
   })
 
   it('keeps terms and marketing as two different questions', () => {
-    expect(TRY_TERMS.required).toBe(true)
-    expect(TRY_MARKETING.required).toBe(false)
-    expect(TRY_TERMS.id).not.toBe(TRY_MARKETING.id)
-    expect(isCurrentConsentVersion('terms', TRY_TERMS.id)).toBe(true)
+    expect(TRY_TERMS_V2.required).toBe(true)
+    expect(TRY_TERMS_V2.id).not.toBe(TRY_TERMS.id)
+    expect(isCurrentConsentVersion('terms', TRY_TERMS_V2.id)).toBe(true)
+    // v1 is published but no longer shown, so it is not current.
+    expect(isCurrentConsentVersion('terms', TRY_TERMS.id)).toBe(false)
     expect(isCurrentConsentVersion('terms', TRY_MARKETING.id)).toBe(false)
   })
 })
@@ -69,16 +71,19 @@ describe('POST /api/try/lead — recording consent', () => {
     expect(res.status).toBe(200)
 
     const data = h.createLead.mock.calls[0][0].data
-    expect(data.termsVersion).toBe(TRY_TERMS.id)
+    expect(data.termsVersion).toBe(TRY_TERMS_V2.id)
     expect(data.termsAcceptedAt).toBeInstanceOf(Date)
     expect(data.termsAcceptedAt.getTime()).toBeGreaterThanOrEqual(before)
   })
 
-  it('records the marketing wording even when they DECLINE — "offered and refused" is the record', async () => {
-    await POST(req({ ...GOOD, marketingOptIn: false }))
+  // The form is one required terms box now, so no marketing wording is shown.
+  // Recording a version id would assert they were offered a choice they never
+  // saw, and a consent record that overstates itself is worse than none.
+  it('claims no marketing consent when no marketing wording was shown', async () => {
+    await POST(req(GOOD))
     const data = h.createLead.mock.calls[0][0].data
     expect(data.marketingOptIn).toBe(false)
-    expect(data.marketingVersion).toBe(TRY_MARKETING.id)
+    expect(data.marketingVersion).toBeNull()
     expect(data.marketingOptInAt).toBeNull()
   })
 
