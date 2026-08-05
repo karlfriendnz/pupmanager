@@ -17,7 +17,10 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { NAV_LABEL_CATALOG, type NavLabelKey } from '@/lib/nav-labels'
+import {
+  NAV_LABEL_CATALOG, CLIENT_NAV_LABEL_CATALOG, RENAMEABLE_CATALOG,
+  type NavLabelKey, type RenameableEntry,
+} from '@/lib/nav-labels'
 
 const MAX_LABEL = 40
 
@@ -37,8 +40,8 @@ export function NavLabelsPanel({
 
   // Compared against what's actually SAVED, not against the defaults — so the
   // button is live exactly when there's something to write.
-  const dirty = NAV_LABEL_CATALOG.some(e => (values[e.key] ?? '') !== (initial[e.key] ?? ''))
-  const renamed = NAV_LABEL_CATALOG.filter(e => (values[e.key] ?? '').trim()).length
+  const dirty = RENAMEABLE_CATALOG.some(e => (values[e.key] ?? '') !== (initial[e.key] ?? ''))
+  const renamed = RENAMEABLE_CATALOG.filter(e => (values[e.key] ?? '').trim()).length
 
   function edit(key: NavLabelKey, value: string) {
     setSaved(false)
@@ -91,44 +94,37 @@ export function NavLabelsPanel({
       )}
 
       <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
-        {NAV_LABEL_CATALOG.map(entry => {
-          const value = values[entry.key] ?? ''
-          return (
-            <div key={entry.key} className="flex items-center gap-3 px-4 py-3">
-              <span className="min-w-0 basis-1/3 sm:basis-1/4">
-                <span className="block truncate text-sm font-medium text-slate-900">{entry.defaultLabel}</span>
-                {/* Said plainly rather than with a coloured chip: a group heading
-                    renames the whole run of items under it, which is worth
-                    knowing before you type. */}
-                {entry.isSection && <span className="mt-0.5 block text-[11px] text-slate-500">Group heading</span>}
-              </span>
-              <input
-                type="text"
-                value={value}
-                onChange={e => edit(entry.key, e.target.value)}
-                disabled={!canEdit}
-                maxLength={MAX_LABEL}
-                placeholder={`e.g. ${entry.examples.join(', ')}`}
-                aria-label={`Your word for ${entry.defaultLabel}`}
-                className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-accent disabled:bg-slate-50"
-              />
-              {/* Only where there's something to undo — a row of dead buttons
-                  down the side is noise. */}
-              {canEdit && value.trim() !== '' && (
-                <button
-                  type="button"
-                  onClick={() => edit(entry.key, '')}
-                  aria-label={`Use our word for ${entry.defaultLabel}`}
-                  title="Use our word"
-                  className="shrink-0 rounded-lg p-2 text-slate-400 active:bg-slate-100 active:text-slate-700"
-                >
-                  <RotateCcw className="h-4 w-4" strokeWidth={1.75} />
-                </button>
-              )}
-            </div>
-          )
-        })}
+        {NAV_LABEL_CATALOG.map(entry => (
+          <LabelRow
+            key={entry.key}
+            entry={entry}
+            value={values[entry.key] ?? ''}
+            canEdit={canEdit}
+            onEdit={edit}
+          />
+        ))}
       </div>
+
+      {/* The client app has words of its own that no menu row covers — the
+          booking tile on their home screen borrowed the Offerings heading, so
+          renaming it meant renaming the whole group. Its own box, in its own
+          block, because it is a different audience. */}
+      {CLIENT_NAV_LABEL_CATALOG.length > 0 && (
+        <>
+          <h3 className="mt-6 mb-2 text-sm font-semibold text-slate-900">What your clients see</h3>
+          <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+            {CLIENT_NAV_LABEL_CATALOG.map(entry => (
+              <LabelRow
+                key={entry.key}
+                entry={entry}
+                value={values[entry.key] ?? ''}
+                canEdit={canEdit}
+                onEdit={edit}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
       {canEdit && (
         <div className="mt-3 flex items-center gap-3">
@@ -140,5 +136,53 @@ export function NavLabelsPanel({
         </div>
       )}
     </section>
+  )
+}
+
+function LabelRow({
+  entry, value, canEdit, onEdit,
+}: {
+  entry: RenameableEntry
+  value: string
+  canEdit: boolean
+  onEdit: (key: NavLabelKey, value: string) => void
+}) {
+  // A group heading renames the whole run of items under it, and a client-side
+  // row appears somewhere other than this menu — both worth knowing before you
+  // type, and both said plainly rather than with a coloured chip.
+  const note = entry.hint ?? (entry.isSection ? 'Group heading' : null)
+  // Two rows can carry the same default word (the Offerings heading and the
+  // client's booking tile), so the accessible name has to say which is which.
+  const ariaName = entry.hint ? `${entry.defaultLabel} — ${entry.hint}` : entry.defaultLabel
+  return (
+    <div className="flex items-center gap-3 px-4 py-3">
+      <span className="min-w-0 basis-1/3 sm:basis-1/4">
+        <span className="block truncate text-sm font-medium text-slate-900">{entry.defaultLabel}</span>
+        {note && <span className="mt-0.5 block text-[11px] text-slate-500">{note}</span>}
+      </span>
+      <input
+        type="text"
+        value={value}
+        onChange={e => onEdit(entry.key, e.target.value)}
+        disabled={!canEdit}
+        maxLength={MAX_LABEL}
+        placeholder={`e.g. ${entry.examples.join(', ')}`}
+        aria-label={`Your word for ${ariaName}`}
+        className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-accent disabled:bg-slate-50"
+      />
+      {/* Only where there's something to undo — a row of dead buttons down the
+          side is noise. */}
+      {canEdit && value.trim() !== '' && (
+        <button
+          type="button"
+          onClick={() => onEdit(entry.key, '')}
+          aria-label={`Use our word for ${ariaName}`}
+          title="Use our word"
+          className="shrink-0 rounded-lg p-2 text-slate-400 active:bg-slate-100 active:text-slate-700"
+        >
+          <RotateCcw className="h-4 w-4" strokeWidth={1.75} />
+        </button>
+      )}
+    </div>
   )
 }

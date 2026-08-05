@@ -10,7 +10,7 @@ import { loadPublishedMemberships } from '@/lib/client-memberships'
 import { PACKAGES_HIDDEN_FROM_CLIENTS } from '@/lib/feature-flags'
 import { mergeClientDogs } from '@/lib/dogs'
 import { getEnabledAddons } from '@/lib/billing'
-import { offeringVisibleWhere, offeringVisibleRelationWhere } from '@/lib/offering-visibility'
+import { selfBookablePackagesWhere, openClassRunsWhere } from '@/lib/bookable-offerings'
 import { BookingWizard, type WizardPackage, type WizardClass, type WizardEvent, type WizardTag, type WizardProduct, type PreviewDay } from './booking-wizard'
 import type { Metadata } from 'next'
 
@@ -113,16 +113,15 @@ export default async function MyAvailabilityPage() {
   if (!profile) redirect('/login')
 
   // Self-bookable 1-on-1 packages (mirrors GET /api/my/self-book).
-  // isGroup: false is load-bearing. A class or drop-in with self-booking on
-  // was landing here too, and the 1:1 flow then offered the trainer's open
-  // hours — "pick any Tuesday at 2pm" — for something that runs on its own
-  // fixed timetable. Group offerings are booked from the classes list below,
-  // by their real sessions.
+  //
+  // The where-clause lives in lib/bookable-offerings, because the client home's
+  // Bookings tile has to count the SAME things to decide whether to show itself
+  // at all. Two copies of it is how the tile and this page come to disagree.
   const rawPackages = await prisma.package.findMany({
-    // ...and not one the trainer has scheduled to appear later — see
+    // Excludes one the trainer has scheduled to appear later — see
     // lib/offering-visibility. The tag section further down intersects THIS
     // list, so gating here empties the tags of hidden offerings too.
-    where: { trainerId: profile.trainerId, clientSelfBook: true, isGroup: false, ...offeringVisibleWhere() },
+    where: selfBookablePackagesWhere(profile.trainerId),
     orderBy: [{ order: 'asc' }, { createdAt: 'desc' }],
     select: {
       id: true, name: true, imageUrl: true, description: true, sessionCount: true, weeksBetween: true,
@@ -163,19 +162,12 @@ export default async function MyAvailabilityPage() {
   const enrolledRunIds = enrolled.filter(e => e.type === 'FULL').map(e => e.classRunId)
   const bookedSessionIds = new Set(enrolled.map(e => e.dropInSessionId).filter(Boolean) as string[])
   const now = new Date()
+  // A run needs a live session still to come, and inherits its offering's
+  // visibility — next term's classes can be built in November without appearing
+  // here until the trainer says so. Shared with the home tile's count; see
+  // lib/bookable-offerings.
   const openRuns = await prisma.classRun.findMany({
-    where: {
-      trainerId: profile.trainerId,
-      status: { in: ['SCHEDULED', 'RUNNING'] },
-      id: { notIn: enrolledRunIds.length ? enrolledRunIds : ['__none__'] },
-      // …with at least one LIVE session still to come. A run whose remaining
-      // weeks have all been called off is not something to offer a place in.
-      sessions: { some: { scheduledAt: { gte: now }, cancelledAt: null } },
-      // A run inherits its offering's visibility. Next term's classes can be
-      // built and scheduled in November without appearing here until the
-      // trainer says so — and the ticket tiers selected below go with them.
-      ...offeringVisibleRelationWhere(now),
-    },
+    where: openClassRunsWhere(profile.trainerId, enrolledRunIds, now),
     // The trainer's own arranged order (from dragging their Classes list) is
     // what a client sees; start date breaks ties.
     orderBy: [{ order: 'asc' }, { startDate: 'asc' }],

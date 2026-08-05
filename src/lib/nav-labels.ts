@@ -89,6 +89,12 @@ export interface RenameableEntry {
    * the single answer we had in mind.
    */
   examples: string[]
+  /**
+   * One short line under our word in the editor, for a row whose own name
+   * doesn't say where it appears — the client-side entries below sit beside a
+   * trainer menu item with the same default word.
+   */
+  hint?: string
 }
 
 /**
@@ -124,6 +130,44 @@ export const NAV_LABEL_CATALOG: readonly RenameableEntry[] = [
   // editor — a trainer scanning for "Offerings" shouldn't wade past them.
 ]
 
+/** Prefix for a label that belongs to a CLIENT-app surface, not the trainer menu. */
+export const CLIENT_KEY_PREFIX = 'client:'
+
+/**
+ * Words that live only in the CLIENT app, which a trainer may set directly.
+ *
+ * Deliberately NOT in NAV_LABEL_CATALOG: that list is a mirror of the trainer's
+ * own left menu and `tests/unit/nav-labels.test.ts` fails if anything appears in
+ * one and not the other. These keys have no trainer menu row to mirror, so they
+ * are a second list — carried alongside it everywhere the catalogue is used
+ * (see RENAMEABLE_CATALOG below), and drift-tested on their own terms.
+ *
+ * The booking tile borrowed the "Offerings" SECTION heading, so the only way to
+ * rename it was to rename the trainer's whole Offerings group — Karl,
+ * 2026-08-06: "add a terminology option in here to change text to what they
+ * want". Set here it wins; left blank the borrowed section word still applies,
+ * so nothing regresses for a trainer who already renamed their section.
+ */
+export const CLIENT_NAV_LABEL_CATALOG: readonly RenameableEntry[] = [
+  {
+    key: 'client:/my-availability',
+    defaultLabel: 'Offerings',
+    isSection: false,
+    hint: 'Booking tile on your clients’ home screen',
+    examples: ['Book now', 'Bookings', 'Book a class'],
+  },
+]
+
+/**
+ * Everything renameable, both sides of the app. This is what the sanitizer
+ * allows by default, so a client-side rename saves and reads back through the
+ * same route, the same column and the same lock as a menu one.
+ */
+export const RENAMEABLE_CATALOG: readonly RenameableEntry[] = [
+  ...NAV_LABEL_CATALOG,
+  ...CLIENT_NAV_LABEL_CATALOG,
+]
+
 export function isRenameable(key: NavLabelKey, defaultLabel: string): boolean {
   if (LOCKED.has(key)) return false
   if (LOCKED_LABELS.has(defaultLabel.trim())) return false
@@ -139,7 +183,7 @@ export function isRenameable(key: NavLabelKey, defaultLabel: string): boolean {
  */
 export function sanitizeNavLabels(
   input: unknown,
-  renameable: readonly RenameableEntry[] = NAV_LABEL_CATALOG,
+  renameable: readonly RenameableEntry[] = RENAMEABLE_CATALOG,
 ): Record<NavLabelKey, string> {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
   const allowed = new Map(renameable.map(r => [r.key, r.defaultLabel]))
@@ -244,12 +288,40 @@ export const CLIENT_LABEL_SOURCE: Readonly<Record<string, NavLabelKey>> = {
   '/my-shop': '/products',
 }
 
-/** A client-side item's label: the trainer's word for it when they have one. */
+/**
+ * Which client-side items have a word of their OWN, set directly rather than
+ * borrowed. href → its key in CLIENT_NAV_LABEL_CATALOG.
+ */
+export const CLIENT_OWN_LABEL_KEY: Readonly<Record<string, NavLabelKey>> = {
+  '/my-availability': 'client:/my-availability',
+}
+
+/**
+ * A client-side item's label, in three steps:
+ *
+ *   1. the trainer's own word for THIS tile, if they set one;
+ *   2. else the trainer-side label it borrows by meaning (so a trainer who
+ *      renamed their Offerings section before this existed keeps their word);
+ *   3. else ours.
+ *
+ * Every step goes through `labelFor`, so the lock and the sanitizer apply at
+ * each one and a client can never be shown a word the trainer wasn't allowed
+ * to set.
+ */
 export function clientLabelFor(
   href: string,
   fallback: string,
   overrides: Record<NavLabelKey, string> | null | undefined,
 ): string {
+  const ownKey = CLIENT_OWN_LABEL_KEY[href]
+  if (ownKey && overrides?.[ownKey]?.trim()) {
+    const own = CLIENT_NAV_LABEL_CATALOG.find(e => e.key === ownKey)
+    const ownDefault = own?.defaultLabel ?? fallback
+    // Locked? Fall through to the borrowed word rather than silently rendering
+    // a stored string the editor would have refused.
+    if (isRenameable(ownKey, ownDefault)) return labelFor(ownKey, ownDefault, overrides)
+  }
+
   const source = CLIENT_LABEL_SOURCE[href]
   if (!source) return fallback
   const entry = NAV_LABEL_CATALOG.find(e => e.key === source)

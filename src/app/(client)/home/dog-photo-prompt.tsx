@@ -2,19 +2,22 @@
 
 import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Camera, Loader2, X } from 'lucide-react'
+import { Camera, Loader2 } from 'lucide-react'
+
 import { compressImageFile } from '@/lib/compress-image'
 
-// Shown on the client home when their dog has no photo yet — a gentle nudge to
-// add one. Data-driven: once a photo is uploaded, router.refresh() re-renders
-// the home with photoUrl set and the prompt disappears (so it naturally stops
-// showing). Dismiss only hides it for the current view.
-export function DogPhotoPrompt({ dogId, dogName }: { dogId: string; dogName: string }) {
+/**
+ * One upload path for the dog's photo, shared by whatever asks for it.
+ *
+ * Compression is not optional: the route reads the file through a serverless
+ * function whose request body caps at ~4.5 MB, and a photo straight off a phone
+ * clears that on its own.
+ */
+function useDogPhotoUpload(dogId: string) {
   const router = useRouter()
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [dismissed, setDismissed] = useState(false)
 
   async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -32,44 +35,54 @@ export function DogPhotoPrompt({ dogId, dogName }: { dogId: string; dogName: str
         setError(body.error ?? 'Upload failed — try a different image.')
         return
       }
+      // Data-driven: the home re-renders with photoUrl set, the hero shows the
+      // photo, and this invitation stops existing.
       router.refresh()
     } finally {
       setUploading(false)
     }
   }
 
-  if (dismissed) return null
+  return { inputRef, uploading, error, onPick, open: () => inputRef.current?.click() }
+}
+
+/**
+ * The empty hero IS the invitation.
+ *
+ * With no gallery and no photo, the hero was a flat panel of the trainer's
+ * colour with a dog outline on it — a dead 300px that said nothing and did
+ * nothing, while a separate card underneath asked for the same photo. So the
+ * panel itself became the button (Karl, 2026-08-06: "if no image here put a
+ * transparent button to say upload image") and the card went with it.
+ *
+ * Transparent by design: the hero already carries its own top and bottom
+ * gradients, so the words read against the accent without a second filled
+ * surface being introduced on top of it.
+ *
+ * Only rendered when there IS a dog — with no dog record there is nothing to
+ * attach a photo to, and a button that cannot work is worse than no button.
+ */
+export function DogPhotoHeroPrompt({ dogId, dogName }: { dogId: string; dogName: string }) {
+  const { inputRef, uploading, error, onPick, open } = useDogPhotoUpload(dogId)
 
   return (
-    <section className="px-4">
-      <div className="relative flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <button
-          type="button"
-          onClick={() => setDismissed(true)}
-          className="absolute right-2.5 top-2.5 text-slate-300 hover:text-slate-500"
-          aria-label="Dismiss"
-        >
-          <X className="h-4 w-4" />
-        </button>
-        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-accent-soft text-accent">
-          <Camera className="h-6 w-6" />
+    <>
+      <button
+        type="button"
+        onClick={open}
+        disabled={uploading}
+        className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 pb-16 text-white disabled:opacity-70"
+        style={{ textShadow: '0 1px 14px rgba(0,0,0,0.55)' }}
+      >
+        {uploading
+          ? <Loader2 className="h-8 w-8 animate-spin" strokeWidth={1.75} />
+          : <Camera className="h-8 w-8" strokeWidth={1.75} />}
+        <span className="text-sm font-semibold">
+          {uploading ? 'Uploading…' : `Upload a photo of ${dogName}`}
         </span>
-        <div className="min-w-0 flex-1 pr-4">
-          <p className="text-sm font-semibold text-slate-900">Add a photo of {dogName}</p>
-          <p className="mt-0.5 text-xs text-slate-500">Make their training space feel like home.</p>
-          {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
-        </div>
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          disabled={uploading}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-semibold text-white transition-transform active:scale-[0.98] disabled:opacity-60"
-          style={{ background: 'var(--accent)' }}
-        >
-          {uploading ? <><Loader2 className="h-4 w-4 animate-spin" />Uploading…</> : 'Add photo'}
-        </button>
-        <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={onPick} />
-      </div>
-    </section>
+        {error && <span className="px-6 text-center text-xs font-medium text-white/90">{error}</span>}
+      </button>
+      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={onPick} />
+    </>
   )
 }

@@ -6,6 +6,7 @@ import {
   NAV_LABEL_CATALOG, pageTitleLabel,
   type RenameableEntry,
   clientLabelFor,
+  CLIENT_NAV_LABEL_CATALOG, RENAMEABLE_CATALOG, CLIENT_OWN_LABEL_KEY,
 } from '@/lib/nav-labels'
 
 const entries: RenameableEntry[] = [
@@ -314,6 +315,105 @@ describe("a client sees the trainer's words too", () => {
   // client can never be shown something the trainer was not allowed to set.
   it('will not carry a locked rename across', () => {
     expect(clientLabelFor('/my-messages', 'Messages', { '/messages': 'Chat' })).toBe('Messages')
+  })
+})
+
+// ── The booking tile's own word ──────────────────────────────────────────────
+//
+// It used to borrow the "Offerings" SECTION heading, so the only way to rename
+// the tile on a client's home was to rename the trainer's whole Offerings group
+// (Karl, 2026-08-06). It now has a word of its own, and falls back to the
+// borrowed one so nothing regresses for a trainer who already renamed theirs.
+
+describe('the booking tile can be named on its own', () => {
+  const OWN = 'client:/my-availability'
+
+  it('uses their word for the tile when they set one', () => {
+    expect(clientLabelFor('/my-availability', 'Offerings', { [OWN]: 'Book now' })).toBe('Book now')
+  })
+
+  it('their tile word wins over the borrowed section word', () => {
+    const both = { [OWN]: 'Book now', 'section:programs': 'Services' }
+    expect(clientLabelFor('/my-availability', 'Offerings', both)).toBe('Book now')
+  })
+
+  it('falls back to the section word when the tile has none', () => {
+    expect(clientLabelFor('/my-availability', 'Offerings', { 'section:programs': 'Services' }))
+      .toBe('Services')
+  })
+
+  it('falls back to ours when they have set neither', () => {
+    expect(clientLabelFor('/my-availability', 'Offerings', {})).toBe('Offerings')
+    expect(clientLabelFor('/my-availability', 'Offerings', null)).toBe('Offerings')
+  })
+
+  it('treats a blank tile word as not set, not as an empty tile', () => {
+    expect(clientLabelFor('/my-availability', 'Offerings', { [OWN]: '   ', 'section:programs': 'Services' }))
+      .toBe('Services')
+  })
+
+  it('saves and reads back through the same sanitizer as a menu label', () => {
+    expect(sanitizeNavLabels({ [OWN]: 'Book now' })).toEqual({ [OWN]: 'Book now' })
+    // Same rules: blanks, over-long values and "the same as the default" go.
+    expect(sanitizeNavLabels({ [OWN]: '  ' })).toEqual({})
+    expect(sanitizeNavLabels({ [OWN]: 'Offerings' })).toEqual({})
+    expect(sanitizeNavLabels({ [OWN]: 'x'.repeat(80) })[OWN]).toHaveLength(40)
+  })
+
+  // Messages is locked on BOTH sides (Karl, 2026-07-30) and gets no client-side
+  // escape hatch — an invented key for it must not save, and must not render.
+  it('gives no client-side way round a lock', () => {
+    expect(sanitizeNavLabels({ 'client:/my-messages': 'Chat' })).toEqual({})
+    expect(clientLabelFor('/my-messages', 'Messages', { 'client:/my-messages': 'Chat' })).toBe('Messages')
+    expect(clientLabelFor('/my-messages', 'Messages', { '/messages': 'Chat' })).toBe('Messages')
+  })
+})
+
+describe('the client-side catalogue', () => {
+  // NAV_LABEL_CATALOG mirrors the trainer menu and is drift-tested against it,
+  // so a client-only key CANNOT live there — it has no menu row to mirror and
+  // the "lists nothing that isn't in the menu" test would fail. It is a second
+  // list, and this is what keeps it honest on its own terms.
+  it('stays out of the trainer-menu mirror', () => {
+    const menuKeys = new Set(NAV_LABEL_CATALOG.map(e => e.key))
+    for (const e of CLIENT_NAV_LABEL_CATALOG) {
+      expect(menuKeys.has(e.key), `${e.key} must not be in the menu catalogue`).toBe(false)
+      expect(e.key.startsWith('client:'), `${e.key} needs the client: prefix`).toBe(true)
+    }
+  })
+
+  it('is carried by the catalogue the sanitizer and the editor use', () => {
+    for (const e of [...NAV_LABEL_CATALOG, ...CLIENT_NAV_LABEL_CATALOG]) {
+      expect(RENAMEABLE_CATALOG.some(x => x.key === e.key), e.key).toBe(true)
+    }
+  })
+
+  it('offers nothing it would then refuse to save', () => {
+    const refused = CLIENT_NAV_LABEL_CATALOG.filter(e => !isRenameable(e.key, e.defaultLabel))
+    expect(refused).toEqual([])
+  })
+
+  it('says where each one appears, since its default word repeats a menu row', () => {
+    for (const e of CLIENT_NAV_LABEL_CATALOG) {
+      expect(e.hint?.trim(), `${e.key} needs a hint`).toBeTruthy()
+      expect(e.examples.length, `${e.key} needs a few examples`).toBeGreaterThan(1)
+    }
+  })
+
+  it('every own-label key has a catalogue entry behind it', () => {
+    for (const key of Object.values(CLIENT_OWN_LABEL_KEY)) {
+      expect(CLIENT_NAV_LABEL_CATALOG.some(e => e.key === key), key).toBe(true)
+    }
+  })
+
+  it('is offered in the trainer’s rename editor', () => {
+    const panel = readFileSync(
+      resolve(__dirname, '../../src/app/(trainer)/settings/nav-labels-panel.tsx'),
+      'utf8',
+    )
+    expect(panel).toContain('CLIENT_NAV_LABEL_CATALOG.map')
+    // Dirty/count read the whole list, or a client-only rename can't be saved.
+    expect(panel).toContain('RENAMEABLE_CATALOG.some')
   })
 })
 

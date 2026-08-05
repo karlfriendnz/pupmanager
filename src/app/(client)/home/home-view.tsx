@@ -1,6 +1,6 @@
 'use client'
 
-import { DogPhotoPrompt } from './dog-photo-prompt'
+import { DogPhotoHeroPrompt } from './dog-photo-prompt'
 import { richTextToPlain, isRichTextEmpty } from '@/lib/rich-text'
 
 import { useState, useTransition, useEffect } from 'react'
@@ -128,6 +128,12 @@ interface Props {
   packageProgress: PackageProgress | null
   featuredProducts: FeaturedProduct[]
   shopEnabled: boolean
+  /**
+   * Is there anything this client could actually book right now? Resolved on
+   * the SERVER against the same offerings /my-availability lists — the tile is
+   * a shortcut to that page, so it must not exist when the page is empty.
+   */
+  bookingEnabled: boolean
   libraryItems: LibraryItem[]
   pendingRequests: PendingRequest[]
   achievements?: AchievementBadge[]
@@ -167,6 +173,17 @@ function relativeTime(iso: string) {
   return `${days}d ago`
 }
 
+/**
+ * Tailwind scans for whole class names, so the three cases are written out
+ * rather than built as `grid-cols-${n}`. Message is always there, so the row is
+ * never empty — index 0 is unreachable and 1 is the honest floor.
+ */
+const QUICK_ACTION_COLS: Record<number, string> = {
+  1: 'grid-cols-1',
+  2: 'grid-cols-2',
+  3: 'grid-cols-3',
+}
+
 // ─── View ────────────────────────────────────────────────────────────────────
 
 export function ClientHomeView({
@@ -181,6 +198,7 @@ export function ClientHomeView({
   latestMessage,
   featuredProducts,
   shopEnabled,
+  bookingEnabled,
   libraryItems,
   pendingRequests,
   achievements = [],
@@ -226,6 +244,8 @@ export function ClientHomeView({
   const dogName = primaryDog?.name ?? 'your pup'
   const firstName = clientName.split(' ')[0] || 'there'
   const heroImg = primaryDog?.photoUrl ?? null
+  // No gallery and no photo — the hero has nothing to show.
+  const heroEmpty = gallery.length === 0 && !heroImg
   // Next achievement the client is closest to (unearned, but actually started).
   const nextBadge = achievements
     .filter(a => !a.earned && a.progress && a.progress.target > 0 && a.progress.current > 0)
@@ -239,6 +259,18 @@ export function ClientHomeView({
   // Their trainer's words for the things they can open. Empty for most trainers,
   // in which case every label below is ours.
   const navLabels = useNavLabelOverrides()
+
+  // Built first, counted after: the column count follows the tiles that are
+  // actually there, so a hidden one never leaves a stretched or orphaned row.
+  const quickActions = [
+    // The trainer's own word for these, the same as the menu beside them uses.
+    // This tile said "Offerings" while the menu said "Services".
+    ...(bookingEnabled
+      ? [{ label: clientLabelFor('/my-availability', 'Offerings', navLabels), icon: CalendarIcon, href: '/my-availability' }]
+      : []),
+    { label: 'Message', icon: MessageCircle, href: '/my-messages' },
+    ...(shopEnabled ? [{ label: clientLabelFor('/my-shop', 'Shop', navLabels), icon: ShoppingBag, href: '/my-shop' }] : []),
+  ]
 
   return (
     <div className="bg-surface min-h-full">
@@ -271,44 +303,51 @@ export function ClientHomeView({
             <img src={heroImg} alt={dogName} className="absolute inset-0 h-full w-full object-cover object-[50%_30%]" />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'var(--accent)' }}>
-              <DogIcon className="h-16 w-16 text-white/80" />
+              {/* With a dog on file the panel becomes the upload button below,
+                  so the outline would only sit behind its camera. Without one
+                  there is nothing to upload against — the outline is all there
+                  is to show. */}
+              {!primaryDog && <DogIcon className="h-16 w-16 text-white/80" strokeWidth={1.75} />}
             </div>
           )}
           <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/55 via-black/15 to-transparent" />
           <div className="absolute inset-x-0 bottom-0 h-52 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
           <div
-            className="absolute bottom-8 left-5 right-5 z-10 text-white"
+            // pointer-events-none so a tap anywhere on an empty hero reaches the
+            // upload button underneath it — this block is text, nothing to click.
+            className="pointer-events-none absolute bottom-8 left-5 right-5 z-10 text-white"
             style={{ textShadow: '0 1px 14px rgba(0,0,0,0.55)' }}
           >
             <p className="text-[11px] uppercase tracking-wider font-semibold text-white/80">{businessName}</p>
             <h1 className="font-display text-3xl font-extrabold leading-tight">{dogName}</h1>
             {primaryDog?.breed && <p className="text-sm text-white/85">{primaryDog.breed}</p>}
           </div>
+          {/* Nothing to look at yet — so the hero asks for the photo itself,
+              rather than a card underneath asking for the same thing. */}
+          {heroEmpty && primaryDog && (
+            <DogPhotoHeroPrompt dogId={primaryDog.id} dogName={primaryDog.name} />
+          )}
         </section>
 
-        {/* ─── Quick actions ─── (Shop hidden when the trainer's shop add-on is off) */}
-        <div className={cn('px-4 -mt-7 relative z-20 grid gap-3', shopEnabled ? 'grid-cols-3' : 'grid-cols-2')}>
-          {[
-            // The trainer's own word for these, the same as the menu beside them
-            // uses. This tile said "Offerings" while the menu said "Services".
-            { label: clientLabelFor('/my-availability', 'Offerings', navLabels), icon: CalendarIcon, href: '/my-availability' },
-            { label: 'Message', icon: MessageCircle, href: '/my-messages' },
-            ...(shopEnabled ? [{ label: clientLabelFor('/my-shop', 'Shop', navLabels), icon: ShoppingBag, href: '/my-shop' }] : []),
-          ].map(a => (
-            <Link key={a.label} href={a.href} className="rounded-2xl bg-white shadow-[0_4px_16px_rgba(15,31,36,0.10)] py-3.5 flex flex-col items-center gap-1.5 active:scale-[0.98] transition-transform">
+        {/* ─── Quick actions ───
+            Bookings hidden when the trainer has nothing this client can book
+            (server-resolved — see lib/bookable-offerings), Shop hidden when the
+            trainer's shop add-on is off. The row is whatever is left. */}
+        <nav aria-label="Quick actions" className={cn('px-4 -mt-7 relative z-20 grid gap-3', QUICK_ACTION_COLS[quickActions.length])}>
+          {quickActions.map(a => (
+            <Link key={a.href} href={a.href} className="rounded-2xl bg-white shadow-[0_4px_16px_rgba(15,31,36,0.10)] py-3.5 flex flex-col items-center gap-1.5 active:scale-[0.98] transition-transform">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-soft text-accent"><a.icon className="h-5 w-5" /></span>
               <span className="text-xs font-semibold text-slate-700">{a.label}</span>
             </Link>
           ))}
-        </div>
+        </nav>
 
         <div className="mt-6 flex flex-col gap-6 pb-8">
           <p className="px-5 -mb-2 text-sm text-slate-500">Hi {firstName} 👋</p>
 
-          {/* ─── Nudge: add the dog's photo when none is set yet ─── */}
-          {primaryDog && !primaryDog.photoUrl && (
-            <DogPhotoPrompt dogId={primaryDog.id} dogName={primaryDog.name} />
-          )}
+          {/* The "add a photo" nudge used to sit here as its own card, under a
+              hero that was itself an empty panel asking for nothing. Two things
+              saying one thing — the hero asks now, and this went. */}
 
           {/* ─── Welcome note from the trainer ─── */}
           {welcomeNote?.trim() && (

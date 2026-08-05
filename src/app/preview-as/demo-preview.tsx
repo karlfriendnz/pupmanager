@@ -67,6 +67,7 @@ export function DemoClientPreview({
           <ClientHomeView
       timeZone="Pacific/Auckland"
             shopEnabled
+            bookingEnabled
             clientName={SAMPLE_CLIENT_NAME}
             businessName={businessName}
             trainerLogoUrl={logoUrl}

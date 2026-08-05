@@ -6,6 +6,7 @@ import { ClientHomeView } from './home-view'
 import { AppInstallModal } from '../app-install-modal'
 import { computeAchievementProgress } from '@/lib/achievements'
 import { getEnabledAddons } from '@/lib/billing'
+import { hasBookableOfferings } from '@/lib/bookable-offerings'
 import { mergeClientDogs } from '@/lib/dogs'
 import { productPriceSummary } from '@/lib/product-price'
 import { todayInTz, weekBoundsUtcDates } from '@/lib/timezone'
@@ -261,11 +262,21 @@ export default async function ClientHomePage() {
   const shopEnabled = homeAddons.has('shop')
   const achievementsEnabled = homeAddons.has('achievements')
 
+  // The Bookings tile is a shortcut to /my-availability, so it only earns its
+  // place when that page has something on it. Counted here, on the server,
+  // against the very offerings that page lists — never inferred in the browser
+  // off a proxy like "does this trainer take payments".
+  const bookingEnabled = await hasBookableOfferings({
+    trainerId: clientProfile.trainer.id,
+    clientId: clientProfile.id,
+  })
+
   return (
     <>
     <AppInstallModal />
     <ClientHomeView
       shopEnabled={shopEnabled}
+      bookingEnabled={bookingEnabled}
       // Sessions happen in the trainer's locale — render them there, not in the
       // server's zone (UTC) or whatever zone the client's device is in.
       timeZone={timeZone}
