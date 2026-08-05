@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation'
-import { Dog as DogIcon } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { mergeClientDogs } from '@/lib/dogs'
 import { PageHeader } from '@/components/shared/page-header'
+import { MyDogsManager, type ClientDog } from './my-dogs-manager'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'My dogs' }
@@ -21,44 +21,26 @@ export default async function MyDogsPage() {
   })
   if (!profile) redirect('/login')
 
-  const dogs = mergeClientDogs(profile.dog, profile.dogs)
-  const ageYears = (dob: Date | null) => dob ? Math.max(0, Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 3600 * 1000))) : null
+  // A dog can travel BOTH relations (primary + household list) and is one dog.
+  // A newly added dog is written to `dogs` and, when it's the first, also
+  // becomes `dogId` — so without this merge it would appear twice the moment it
+  // was created. See lib/dogs.ts.
+  const dogs: ClientDog[] = mergeClientDogs(profile.dog, profile.dogs).map(d => ({
+    id: d.id,
+    name: d.name,
+    breed: d.breed,
+    photoUrl: d.photoUrl,
+    weight: d.weight,
+    // Dates are serialised here so the client component takes plain props.
+    dob: d.dob ? d.dob.toISOString().slice(0, 10) : null,
+    deceasedAt: d.deceasedAt ? d.deceasedAt.toISOString() : null,
+  }))
 
   return (
     <>
       <PageHeader title="My dogs" />
       <div className="px-4 pt-5 pb-10 max-w-3xl mx-auto w-full space-y-3">
-        {dogs.length === 0 && (
-          <div className="rounded-3xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-8 text-center">
-            <div className="mx-auto h-12 w-12 rounded-2xl bg-accent-soft flex items-center justify-center"><DogIcon className="h-6 w-6 text-accent" /></div>
-            <p className="mt-3 text-sm font-semibold text-slate-700">No dogs added yet</p>
-            <p className="mt-1 text-xs text-slate-400">Your dog will show up here once they&apos;ve been added.</p>
-          </div>
-        )}
-        {dogs.map(d => {
-          const age = ageYears(d.dob)
-          return (
-            <div key={d.id} className="rounded-3xl bg-white shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden flex">
-              {d.photoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={d.photoUrl} alt={d.name} className="h-28 w-28 object-cover shrink-0" />
-              ) : (
-                <div className="h-28 w-28 bg-accent-soft flex items-center justify-center shrink-0"><DogIcon className="h-8 w-8 text-accent" /></div>
-              )}
-              <div className="p-4 flex-1 min-w-0">
-                <p className="font-display text-lg font-bold text-slate-900 leading-tight">{d.name}</p>
-                {d.breed && <p className="text-xs text-slate-500">{d.breed}</p>}
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {/* A dog that has died stays on this list — the history is theirs — but
-                      is badged, which is also why they no longer appear in classes. */}
-                  {d.deceasedAt && <span className="rounded-full bg-slate-200 text-slate-600 text-[11px] font-semibold px-2 py-0.5">Deceased</span>}
-                  {age != null && <span className="rounded-full bg-accent-soft text-accent text-[11px] font-semibold px-2 py-0.5">{age} yr{age === 1 ? '' : 's'}</span>}
-                  {d.weight != null && <span className="rounded-full bg-accent-soft text-accent text-[11px] font-semibold px-2 py-0.5">{d.weight} kg</span>}
-                </div>
-              </div>
-            </div>
-          )
-        })}
+        <MyDogsManager dogs={dogs} />
       </div>
     </>
   )

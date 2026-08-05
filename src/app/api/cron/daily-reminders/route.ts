@@ -118,7 +118,7 @@ export async function GET(req: Request) {
             </p>
             <p style="color:#94a3b8;font-size:12px;margin-top:32px;">
               You're receiving this because you have email reminders enabled.
-              <a href="${process.env.NEXT_PUBLIC_APP_URL}/my-profile" style="color:#94a3b8;">Manage preferences</a>
+              <a href="${process.env.NEXT_PUBLIC_APP_URL}/my-notifications?tab=settings" style="color:#94a3b8;">Manage preferences</a>
             </p>
           </div>
         `,

@@ -1,33 +1,64 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { z } from 'zod'
 
+// Whatever the form on /my-dogs refuses, this route refuses too (AGENTS.md
+// bug #3 — "validation in the browser is not validation"). The add form is a
+// `required` input and a number field; on their own those are decoration, so
+// every rule the client sees is restated here.
+//
+// `z.object` strips unknown keys, which is the point: a body carrying
+// `clientProfileId` or `id` cannot reach Prisma. The owning profile is taken
+// from the session via getActiveClient and never from the request.
 const schema = z.object({
-  name: z.string().min(1),
-  breed: z.string().optional().nullable(),
-  weight: z.number().positive().optional().nullable(),
+  // Trimmed BEFORE the length check, so "   " is an empty name, not a 3-char one.
+  name: z.string().trim().min(1).max(80),
+  breed: z.string().trim().max(80).nullish(),
+  // Sane bounds: the heaviest dog on record is ~155 kg. An unbounded Float is
+  // how a fat-fingered "705" ends up on a roster.
+  weight: z.number().positive().max(200).nullish(),
+  // Date-only, as the <input type="date"> sends it.
+  dob: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
 })
 
+/** A yyyy-mm-dd string as a real date, or null if it isn't one we'll accept. */
+function parseDob(value: string | null | undefined): { ok: true; value: Date | null } | { ok: false } {
+  if (value == null || value === '') return { ok: true, value: null }
+  const dob = new Date(`${value}T00:00:00.000Z`)
+  if (Number.isNaN(dob.getTime())) return { ok: false }
+  // A dog cannot have been born tomorrow, and one born in 1900 is a typo.
+  if (dob.getTime() > Date.now()) return { ok: false }
+  if (dob.getUTCFullYear() < 1970) return { ok: false }
+  return { ok: true, value: dob }
+}
+
 export async function POST(req: Request) {
-  const session = await auth()
-  if (!session || session.user.role !== 'CLIENT') return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
-
+  // Tenancy comes from the session + the active-trainer cookie, never from the
+  // body. Deliberately NOT gated on `session.user.role === 'CLIENT'`: a trainer
+  // is often somebody else's client too (see lib/client-context), and the role
+  // check locked those people out of their own dog list. getActiveClient can
+  // only ever resolve a profile that belongs to the signed-in user.
   const active = await getActiveClient()
-  if (!active) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  const clientProfile = { id: active.clientId }
+  if (!active) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
+  // Preview mode is read-only — a trainer looking through a client's eyes must
+  // not create records in that client's name.
+  if (active.isPreview) return NextResponse.json({ error: 'Not available in preview' }, { status: 403 })
 
-  const body = await req.json()
+  const body = await req.json().catch(() => null)
   const parsed = schema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
+
+  const dob = parseDob(parsed.data.dob)
+  if (!dob.ok) return NextResponse.json({ error: 'Enter a real date of birth' }, { status: 400 })
 
   const dog = await prisma.dog.create({
     data: {
       name: parsed.data.name,
-      breed: parsed.data.breed ?? null,
+      breed: parsed.data.breed?.trim() || null,
       weight: parsed.data.weight ?? null,
-      clientProfileId: clientProfile.id,
+      dob: dob.value,
+      clientProfileId: active.clientId,
     },
   })
 
@@ -36,7 +67,7 @@ export async function POST(req: Request) {
   // dogs and no primary — which is what made their trainer's list say "No dog".
   // Guarded on dogId still being null so a second dog never steals the spot.
   await prisma.clientProfile.updateMany({
-    where: { id: clientProfile.id, dogId: null },
+    where: { id: active.clientId, dogId: null },
     data: { dogId: dog.id },
   })
 

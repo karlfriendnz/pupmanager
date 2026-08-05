@@ -21,8 +21,12 @@ function faqFor(label: (href: string, fallback: string) => string) {
   const home = label('/home', 'Home')
   const offerings = label('/my-availability', 'Offerings')
   const invoices = label('/my-invoices', 'Invoices')
-  const details = label('/my-profile', 'My details')
   const messages = label('/my-messages', 'Messages')
+  // Dogs and notifications each have their own screen now; they used to be
+  // tabs on My details, and the answers below said so (audit C-6 all over
+  // again). Derived from the menu, so a rename carries.
+  const dogs = label('/my-dogs', 'My dogs')
+  const notifications = label('/my-notifications', 'Notifications')
   return [
     {
       q: 'How do I log my training at home?',
@@ -42,11 +46,11 @@ function faqFor(label: (href: string, fallback: string) => string) {
     },
     {
       q: 'How do I change what you email me?',
-      a: `Open ${details} and pick the Notifications tab. You can turn each kind of message on or off.`,
+      a: `Open ${notifications} and pick Settings. You can turn each kind of message on or off.`,
     },
     {
       q: 'How do I add another dog?',
-      a: `Open ${details} and pick the Dogs tab. Add as many as you need — your trainer sees them all.`,
+      a: `Open ${dogs} and tap “Add a dog”. Add as many as you need — your trainer sees them all.`,
     },
   ]
 }

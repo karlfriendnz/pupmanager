@@ -4,10 +4,14 @@ import { prisma } from '@/lib/prisma'
 import { dogBelongsToAnyClient } from '@/lib/dog-access'
 import { z } from 'zod'
 
+// Same rules the /my-dogs add form enforces on screen, restated here — the
+// browser's `required`/`max` attributes are decoration (AGENTS.md bug #3).
 const patchSchema = z.object({
-  name: z.string().min(1).optional(),
-  breed: z.string().optional(),
-  weight: z.number().positive().nullable().optional(),
+  name: z.string().trim().min(1).max(80).optional(),
+  breed: z.string().trim().max(80).nullable().optional(),
+  weight: z.number().positive().max(200).nullable().optional(),
+  // Date-only ("1970-01-01"), as <input type="date"> sends it. Null clears it.
+  dob: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
 })
 
 // All of the signed-in user's client-profile ids. A human can be a client of
@@ -35,7 +39,24 @@ export async function PATCH(
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const dog = await prisma.dog.update({ where: { id: dogId }, data: parsed.data })
+  const { dob, ...rest } = parsed.data
+  let dobValue: Date | null | undefined
+  if (dob !== undefined) {
+    if (dob === null) {
+      dobValue = null
+    } else {
+      const parsedDob = new Date(`${dob}T00:00:00.000Z`)
+      if (Number.isNaN(parsedDob.getTime()) || parsedDob.getTime() > Date.now() || parsedDob.getUTCFullYear() < 1970) {
+        return NextResponse.json({ error: 'Enter a real date of birth' }, { status: 400 })
+      }
+      dobValue = parsedDob
+    }
+  }
+
+  const dog = await prisma.dog.update({
+    where: { id: dogId },
+    data: { ...rest, ...(dobValue !== undefined ? { dob: dobValue } : {}) },
+  })
   return NextResponse.json(dog)
 }
 

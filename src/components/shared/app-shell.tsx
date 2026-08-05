@@ -171,6 +171,9 @@ const CLIENT_MENU = [
   { href: '/my-invoices', label: 'Invoices', icon: FileText },
   { href: '/my-achievements', label: 'Achievements', icon: Trophy },
   { href: '/my-dogs', label: 'My dogs', icon: Dog },
+  // Was a tab inside My Profile. It's its own page now (inbox + what you want
+  // to hear about), so it needs a way in that isn't the bell badge alone.
+  { href: '/my-notifications', label: 'Notifications', icon: Bell },
   { href: '/my-profile', label: 'My details', icon: User },
 ]
 // Desktop sidebar = Home + everything in the menu.
