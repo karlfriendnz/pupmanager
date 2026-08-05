@@ -873,6 +873,9 @@ test.describe('the jobs a trainer does every day', () => {
       // A new form opens with one blank question, and it must be given words:
       // saving without them is refused in a sentence ("Every question needs a
       // label") rather than saving a form that asks nothing.
+      // The questions are their own step now (the editor became a wizard on
+      // 2026-08-05), so building one means walking to them.
+      await page.getByRole('button', { name: /next: the questions/i }).click()
       await page.getByRole('textbox', { name: 'Question 1' }).fill('What are you hoping to work on?')
       await page.getByRole('button', { name: 'Create form' }).click()
 
@@ -1142,6 +1145,63 @@ test('a SINGLE-session offering can be saved from its edit screen', async ({ pag
       .toBe(renamed)
   } finally {
     if (id) await prisma.package.delete({ where: { id } }).catch(() => {})
+    await prisma.$disconnect()
+  }
+})
+
+test('a client form is built in numbered steps, and any step is one click away', async ({ page }) => {
+  // The client form editor used to be two tabs — Build, and a Settings tab that
+  // held "what happens when it comes back". Most people never pressed the second
+  // one. It walks in three numbered steps now (Karl, 2026-08-05), and the rail
+  // is clickable so editing an existing form is not a four-screen march.
+  test.setTimeout(180_000)
+  const prisma = await makePrisma()
+  const name = `Wizard form ${stamp()}`
+  let id = ''
+  try {
+    await signIn(page)
+    const trainer = await prisma.trainerProfile.findFirstOrThrow({
+      where: { user: { email: SEED.owner.email } },
+    })
+    const form = await prisma.form.create({
+      data: {
+        trainerId: trainer.id, name, usableAsIntake: true, isActive: true,
+        questions: [{ id: 'q1', type: 'SHORT_TEXT', label: 'Biggest challenge', required: false }],
+        steps: [],
+      },
+    })
+    id = form.id
+
+    await page.goto(`/forms/client/${id}`)
+
+    // Step 1 is the basics, and the form's name is on it.
+    await expect(page.getByLabel('Form name')).toBeVisible({ timeout: 20_000 })
+
+    // Forward through the steps by their own names.
+    await page.getByRole('button', { name: /next: the questions/i }).click()
+    // The question's label is an editable box, not words on the page.
+    await expect(page.getByRole('textbox', { name: 'Question 1' }))
+      .toHaveValue('Biggest challenge', { timeout: 15_000 })
+    // And the basics are NOT also on this step — that was the first bug in this
+    // wizard: everything rendered at once and the steps meant nothing.
+    await expect(page.getByLabel('Form name')).toHaveCount(0)
+
+    await page.getByRole('button', { name: /next: what happens next/i }).click()
+    await expect(page.getByLabel('Heading').first()).toBeVisible({ timeout: 15_000 })
+
+    // And back to the start in ONE click, which is the point of the rail.
+    await page.getByRole('button', { name: 'The basics' }).click()
+    await expect(page.getByLabel('Form name')).toBeVisible({ timeout: 15_000 })
+
+    // Saving still works from any step.
+    const renamed = `${name} renamed`
+    await page.getByLabel('Form name').fill(renamed)
+    await page.getByRole('button', { name: /save changes/i }).first().click()
+    await expect
+      .poll(async () => (await prisma.form.findUnique({ where: { id } }))?.name, { timeout: 20_000 })
+      .toBe(renamed)
+  } finally {
+    if (id) await prisma.form.delete({ where: { id } }).catch(() => {})
     await prisma.$disconnect()
   }
 })

@@ -242,6 +242,12 @@ export function ClientFormEditor({
 
   return (
     <FormBuilder
+      // Numbered steps rather than two tabs (Karl, 2026-08-05). A client form
+      // has three real parts — what it is, what it asks, and what happens when
+      // it comes back — and the tabs hid the third one behind a word most
+      // people never pressed. The rail is clickable, so building your first
+      // form is guided and fixing a typo in your tenth is still one click.
+      wizard
       questions={questions}
       onChange={setQuestions}
       customFields={customFields}

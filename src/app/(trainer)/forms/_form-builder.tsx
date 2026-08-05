@@ -323,6 +323,7 @@ export function FormBuilder({
   // — the two panels —
   above,
   settings,
+  wizard = false,
   settingsLabel = 'Settings',
 }: {
   status?: FormEditorStatus
@@ -345,11 +346,33 @@ export function FormBuilder({
   questionsHint?: string
   /** The form's own sections — name, where it's used, pages. Above the questions. */
   above?: ReactNode
+  /**
+   * Walk it in numbered steps instead of two tabs: the basics, then the
+   * questions, then what happens afterwards.
+   *
+   * The rail is CLICKABLE, deliberately. A wizard that makes you pass through
+   * four screens to change the invitation email is worse than the tabs it
+   * replaced — this keeps the order for someone building their first form and
+   * stays one click deep for someone fixing a typo in their tenth.
+   */
+  wizard?: boolean
   /** What happens after it is filled in. Omit for a form with nothing to configure. */
   settings?: ReactNode
   settingsLabel?: string
 }) {
   const [tab, setTab] = useState<'build' | 'settings'>('build')
+  // Wizard mode. 'after' only exists when there is something to configure.
+  const wizardKeys: ('basics' | 'questions' | 'after')[] = [
+    'basics', 'questions', ...(settings ? ['after' as const] : []),
+  ]
+  const [wstep, setWstep] = useState(0)
+  const step = Math.min(wstep, wizardKeys.length - 1)
+  const stepKey = wizardKeys[step]
+
+  // What each mode shows. Non-wizard behaviour is exactly what it always was.
+  const showAbove = wizard ? stepKey === 'basics' : tab === 'build'
+  const showQuestions = wizard ? stepKey === 'questions' : tab === 'build'
+  const showSettings = wizard ? stepKey === 'after' : tab === 'settings'
   const [paletteSheetOpen, setPaletteSheetOpen] = useState(false)
   const [fieldPickerOpen, setFieldPickerOpen] = useState(false)
   const [detailPickerOpen, setDetailPickerOpen] = useState(false)
@@ -401,8 +424,34 @@ export function FormBuilder({
     <DndArea sensors={sensors} collisionDetection={questionsWinCollision} onDragEnd={onDragEnd}>
       {/* Which panel a review pin was made on — without this every pin on this
           screen collapses onto one indistinguishable page key (AGENTS.md). */}
-      <div data-review-scope={`Form builder: ${tab === 'build' ? 'Build' : settingsLabel}`}>
-        {settings && (
+      <div data-review-scope={`Form builder: ${wizard ? WIZARD_LABELS[stepKey] : tab === 'build' ? 'Build' : settingsLabel}`}>
+        {wizard && (
+          <div className="mb-4 flex items-center gap-1.5 px-1">
+            {wizardKeys.map((k, i) => (
+              <div key={k} className="flex flex-1 items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setWstep(i)}
+                  aria-current={i === step ? 'step' : undefined}
+                  className="flex items-center gap-2 text-left"
+                >
+                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-colors ${
+                    i < step ? 'bg-accent text-white'
+                    : i === step ? 'bg-accent text-white ring-4 ring-accent/15'
+                    : 'bg-slate-100 text-slate-400'
+                  }`}>{i + 1}</span>
+                  <span className={`hidden text-sm font-medium sm:block ${i === step ? 'text-slate-900' : 'text-slate-400'}`}>
+                    {WIZARD_LABELS[k]}
+                  </span>
+                </button>
+                {i < wizardKeys.length - 1 && (
+                  <span className={`h-0.5 flex-1 rounded ${i < step ? 'bg-accent' : 'bg-slate-200'}`} />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {settings && !wizard && (
           <div className="mb-3 px-1">
             <FormSegmented
               ariaLabel="Form builder panel"
@@ -427,11 +476,12 @@ export function FormBuilder({
           saveLabel={saveLabel}
           // The rail belongs to the form, not to its settings — there is nothing
           // on the Settings panel to drag a field onto.
-          sidebar={tab === 'build' ? palette('rail') : undefined}
+          sidebar={showQuestions ? palette('rail') : undefined}
         >
-          {tab === 'build' ? (
+          {(showQuestions || showAbove) ? (
             <>
-              {above}
+              {showAbove && above}
+              {showQuestions && (
               <FormEditorSection
                 title={questionsTitle}
                 hint={questionsHint}
@@ -473,9 +523,35 @@ export function FormBuilder({
                   />
                 </FormCanvas>
               </FormEditorSection>
+              )}
             </>
-          ) : (
-            settings
+          ) : null}
+          {showSettings && settings}
+
+          {wizard && (
+            <div className="md:col-span-2 mt-2 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setWstep(s => Math.max(0, s - 1))}
+                disabled={step === 0}
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40"
+              >
+                Back
+              </button>
+              {step < wizardKeys.length - 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setWstep(s => Math.min(wizardKeys.length - 1, s + 1))}
+                  className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                >
+                  Next: {WIZARD_LABELS[wizardKeys[step + 1]]}
+                </button>
+              ) : (
+                // Save lives in the shell's action bar and is reachable from
+                // every step, so the last one does not need its own.
+                <span className="text-sm text-slate-400">That's everything — Save when you're ready.</span>
+              )}
+            </div>
           )}
         </FormEditorShell>
       </div>
@@ -517,6 +593,13 @@ export function FormBuilder({
 }
 
 /** The drop target of last resort — see CANVAS_ID. */
+/** What each step is called, in the rail and to the review widget. */
+const WIZARD_LABELS: Record<'basics' | 'questions' | 'after', string> = {
+  basics: 'The basics',
+  questions: 'The questions',
+  after: 'What happens next',
+}
+
 function FormCanvas({ children }: { children: ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: CANVAS_ID })
   return (
