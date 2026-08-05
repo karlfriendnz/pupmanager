@@ -11,6 +11,11 @@ const h = vi.hoisted(() => ({
   notifyEnquiryTrainer: vi.fn(),
   sendFormAutoReply: vi.fn(),
   enforceRateLimit: vi.fn(),
+  // The form's flow steps. EMPTY for every test in this file, which is the
+  // point: these are the assertions about the live three-screen run, and a form
+  // with no flow must take exactly the path it always did.
+  flowStepFindMany: vi.fn(),
+  startEnquiryFlowRun: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => ({
@@ -19,7 +24,12 @@ vi.mock('@/lib/prisma', () => ({
     form: { findFirst: h.formFindFirst },
     customField: { findMany: h.customFieldFindMany },
     enquiry: { create: h.enquiryCreate },
+    commsFlowStep: { findMany: h.flowStepFindMany },
   },
+}))
+vi.mock('@/lib/flow-journey', async () => ({
+  ...(await vi.importActual<typeof import('@/lib/flow-journey')>('@/lib/flow-journey')),
+  startEnquiryFlowRun: h.startEnquiryFlowRun,
 }))
 vi.mock('@/lib/notify-enquiry-trainer', () => ({ notifyEnquiryTrainer: h.notifyEnquiryTrainer }))
 vi.mock('@/lib/form-auto-reply', () => ({ sendFormAutoReply: h.sendFormAutoReply }))
@@ -58,6 +68,8 @@ beforeEach(() => {
   h.embedFindFirst.mockResolvedValue(null)
   h.formFindFirst.mockResolvedValue({ id: FORM, trainerId: TRAINER, questions: QUESTIONS })
   h.customFieldFindMany.mockResolvedValue([])
+  h.flowStepFindMany.mockResolvedValue([])
+  h.startEnquiryFlowRun.mockResolvedValue(null)
   h.enquiryCreate.mockResolvedValue({ id: 'enq-1' })
   h.notifyEnquiryTrainer.mockResolvedValue(undefined)
 })
@@ -240,5 +252,82 @@ describe('public unified-form submit — a required file', () => {
     const answers = { q_photo: ['https://blob.test/form-uploads/t/f/q_photo/a.jpg'] }
     expect((await post({ contact: CONTACT, answers })).status).toBe(201)
     expect(h.enquiryCreate.mock.calls[0][0].data.formAnswers).toEqual(answers)
+  })
+})
+
+// ── Phase 3: the same submit, when the trainer has BUILT a flow ─────────────
+//
+// Everything above runs with no flow steps, and is the proof that the live
+// three-screen run did not move. These are the new behaviour, and they are
+// deliberately in the same file so the two sit side by side: the only thing
+// that differs is whether `commsFlowStep.findMany` comes back empty.
+describe('public unified-form submit — a form with a flow on it', () => {
+  const flow = (kinds: string[]) =>
+    kinds.map((kind, i) => ({ id: `s${i}`, kind, blocking: true, enabled: true, order: i }))
+
+  it('starts a run, tied to the enquiry, for the trainer’s own tenant', async () => {
+    h.flowStepFindMany.mockResolvedValue(flow(['MESSAGE', 'FORM']))
+    const res = await post({ contact: CONTACT, answers: { q1: 'No' } })
+    expect(res.status).toBe(201)
+    expect(h.startEnquiryFlowRun).toHaveBeenCalledWith({
+      enquiryId: 'enq-1',
+      formId: FORM,
+      trainerId: TRAINER,
+    })
+  })
+
+  it('starts NO run when the trainer has built nothing — the live path', async () => {
+    h.flowStepFindMany.mockResolvedValue([])
+    await post({ contact: CONTACT, answers: { q1: 'No' } })
+    expect(h.startEnquiryFlowRun).not.toHaveBeenCalled()
+  })
+
+  it('an ACCOUNT step in the flow mints the SAME continuation token', async () => {
+    // The generalisation Karl asked for: the account step is now a step of the
+    // flow rather than a checkbox. What resumes it is unchanged — the single-use
+    // 24h token, which is the enumeration defence (see lib/form-continuation).
+    h.formFindFirst.mockResolvedValue({ id: FORM, trainerId: TRAINER, questions: QUESTIONS, continueToAccount: false })
+    h.flowStepFindMany.mockResolvedValue(flow(['ACCOUNT', 'CHOOSE_OFFERING']))
+
+    const res = await post({ contact: CONTACT, answers: { q1: 'No' } })
+    const body = await res.json()
+
+    expect(body.continueUrl).toMatch(new RegExp(`^/form/${FORM}/account\\?t=[0-9a-f]{64}$`))
+    const data = h.enquiryCreate.mock.calls[0][0].data
+    expect(data.continuationTokenHash).toHaveLength(64)
+    expect(data.continuationExpiresAt).toBeInstanceOf(Date)
+  })
+
+  it('a flow with no ACCOUNT step mints no token — nothing to resume', async () => {
+    h.formFindFirst.mockResolvedValue({ id: FORM, trainerId: TRAINER, questions: QUESTIONS, continueToAccount: false })
+    h.flowStepFindMany.mockResolvedValue(flow(['MESSAGE', 'APPROVAL']))
+
+    const res = await post({ contact: CONTACT, answers: { q1: 'No' } })
+    expect((await res.json()).continueUrl).toBeUndefined()
+    expect(h.enquiryCreate.mock.calls[0][0].data.continuationTokenHash).toBeUndefined()
+    // …but the run still starts: a trainer-actor step reaches the trainer, who
+    // exists from the very first moment.
+    expect(h.startEnquiryFlowRun).toHaveBeenCalled()
+  })
+
+  it('a DISABLED account step is not an account step', async () => {
+    h.formFindFirst.mockResolvedValue({ id: FORM, trainerId: TRAINER, questions: QUESTIONS, continueToAccount: false })
+    // formJourneySteps filters on enabled server-side, so a paused step never
+    // reaches the check — asserted through the query it makes.
+    h.flowStepFindMany.mockResolvedValue([])
+    const res = await post({ contact: CONTACT, answers: { q1: 'No' } })
+    expect((await res.json()).continueUrl).toBeUndefined()
+    expect(h.flowStepFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { formId: FORM, enabled: true } }),
+    )
+  })
+
+  it('a flow that fails to start still leaves the trainer the enquiry', async () => {
+    h.flowStepFindMany.mockResolvedValue(flow(['MESSAGE']))
+    h.startEnquiryFlowRun.mockRejectedValue(new Error('boom'))
+    const res = await post({ contact: CONTACT, answers: { q1: 'No' } })
+    expect(res.status).toBe(201)
+    expect(h.enquiryCreate).toHaveBeenCalled()
+    expect(h.notifyEnquiryTrainer).toHaveBeenCalled()
   })
 })

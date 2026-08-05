@@ -15,6 +15,7 @@ const h = vi.hoisted(() => ({
   completeContinuation: vi.fn(),
   sendClientVerificationEmail: vi.fn(async () => {}),
   tokenCreate: vi.fn(async () => ({})),
+  completeAccountStepForEnquiry: vi.fn(async () => null),
 }))
 
 vi.mock('@/lib/env', () => ({ env: { NEXT_PUBLIC_APP_URL: 'https://app.pupmanager.com', AUTH_SECRET: 's3cret' } }))
@@ -31,6 +32,7 @@ vi.mock('@/lib/rate-limit', () => ({
   getClientIp: () => '203.0.113.9',
 }))
 vi.mock('@/lib/auth-emails', () => ({ sendClientVerificationEmail: h.sendClientVerificationEmail }))
+vi.mock('@/lib/flow-journey', () => ({ completeAccountStepForEnquiry: h.completeAccountStepForEnquiry }))
 vi.mock('@/lib/form-continuation', async () => {
   const actual = await vi.importActual<typeof import('@/lib/form-continuation')>('@/lib/form-continuation')
   return {
@@ -77,6 +79,7 @@ beforeEach(() => {
   h.completeContinuation.mockReset().mockResolvedValue({ clientProfileId: 'cp1', hasIntake: true })
   h.sendClientVerificationEmail.mockClear()
   h.tokenCreate.mockClear()
+  h.completeAccountStepForEnquiry.mockReset().mockResolvedValue(null)
 })
 
 describe('POST /api/form/[formId]/continue — account takeover', () => {
@@ -263,5 +266,46 @@ describe('POST /api/form/[formId]/continue — landing in the right business', (
     // the "check your email, then start again" break this feature removes.
     expect(body.status).toBe('ready')
     expect(body.hasIntake).toBe(true)
+  })
+})
+
+// ── Phase 3: the run this step belongs to ──────────────────────────────────
+//
+// The token has just been spent, which is what proves this is the person the
+// enquiry was about — so, and only then, the journey is told who is walking it.
+// There is deliberately no new resume mechanism: the token remains the boundary.
+describe('the journey moves on once the account exists', () => {
+  it('advances the run, keyed on the enquiry the token resolved to', async () => {
+    h.auth.mockResolvedValue(null)
+    h.resolveContinuation.mockResolvedValue({ ok: true, run: RUN })
+    h.userFindUnique.mockResolvedValue(null)
+    h.completeContinuation.mockResolvedValue({ clientProfileId: 'cp1', hasIntake: true })
+
+    const res = await POST(req({ token: TOKEN, password: 'a-good-password' }), ctx)
+    expect(res.status).toBe(200)
+    expect(h.completeAccountStepForEnquiry).toHaveBeenCalledWith({
+      enquiryId: RUN.enquiryId,
+      clientProfileId: 'cp1',
+    })
+  })
+
+  it('a journey that cannot advance does NOT undo an account that now exists', async () => {
+    h.auth.mockResolvedValue(null)
+    h.resolveContinuation.mockResolvedValue({ ok: true, run: RUN })
+    h.userFindUnique.mockResolvedValue(null)
+    h.completeContinuation.mockResolvedValue({ clientProfileId: 'cp1', hasIntake: false })
+    h.completeAccountStepForEnquiry.mockRejectedValue(new Error('boom'))
+
+    const res = await POST(req({ token: TOKEN, password: 'a-good-password' }), ctx)
+    expect(res.status).toBe(200)
+    expect((await res.json()).status).toBe('ready')
+  })
+
+  it('is never reached when the run was refused', async () => {
+    h.auth.mockResolvedValue(null)
+    h.resolveContinuation.mockResolvedValue({ ok: false, problem: 'EXPIRED' })
+    const res = await POST(req({ token: TOKEN, password: 'a-good-password' }), ctx)
+    expect(res.status).toBe(410)
+    expect(h.completeAccountStepForEnquiry).not.toHaveBeenCalled()
   })
 })

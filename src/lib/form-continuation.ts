@@ -116,7 +116,15 @@ export async function resolveContinuation(
       continuationUsedAt: true,
       trainer: { select: { businessName: true, logoUrl: true, emailAccentColor: true } },
       unifiedForm: {
-        select: { id: true, name: true, isActive: true, continueToAccount: true, continueIntakeFormId: true },
+        select: {
+          id: true, name: true, isActive: true, continueToAccount: true, continueIntakeFormId: true,
+          // An ACCOUNT step in the form's flow is the OTHER way a trainer can
+          // ask somebody to set up a login — the generalised version of the
+          // `continueToAccount` toggle. Selected as a count of the enabled ones
+          // so a form with no flow at all reads as zero and the check below
+          // collapses to exactly what it was before flows could be built.
+          flowSteps: { where: { kind: 'ACCOUNT', enabled: true }, select: { id: true }, take: 1 },
+        },
       },
     },
   })
@@ -125,8 +133,11 @@ export async function resolveContinuation(
   const form = enquiry.unifiedForm
   // A form that was unpublished, or had the setting switched off, mid-run stops
   // the run: the trainer's current answer to "may people join themselves?" is
-  // the one that counts, not the answer at the moment they hit submit.
-  if (!form || !form.isActive || !form.continueToAccount) return { ok: false, problem: 'NOT_FOUND' }
+  // the one that counts, not the answer at the moment they hit submit. That
+  // now includes deleting the ACCOUNT step out of the flow — same question,
+  // asked the newer way.
+  const asksForAnAccount = form ? form.continueToAccount || (form.flowSteps?.length ?? 0) > 0 : false
+  if (!form || !form.isActive || !asksForAnAccount) return { ok: false, problem: 'NOT_FOUND' }
   if (enquiry.continuationUsedAt) return { ok: false, problem: 'USED' }
   if (!enquiry.continuationExpiresAt || enquiry.continuationExpiresAt.getTime() < Date.now()) {
     return { ok: false, problem: 'EXPIRED' }

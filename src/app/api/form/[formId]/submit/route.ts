@@ -8,6 +8,7 @@ import { enforceRateLimit, getClientIp } from '@/lib/rate-limit'
 import { isQuestionVisible, type Question } from '@/lib/session-form-builder'
 import { continuationPath, mintContinuationToken } from '@/lib/form-continuation'
 import { sendContinuationEmail } from '@/lib/form-continuation-email'
+import { formJourneySteps, journeyNeedsAccount, startEnquiryFlowRun } from '@/lib/flow-journey'
 
 // Length caps matter here because this is an UNAUTHENTICATED public endpoint —
 // without them a submitter can post megabyte strings and bloat the DB.
@@ -188,7 +189,15 @@ async function submitUnified(req: Request, id: string) {
   // name, an email and a phone number to reply to by hand — an enquiry with no
   // way to reply is worse than no enquiry, and that is the failure mode a
   // "sign up first" ordering would have created.
-  const handover = form.continueToAccount ? mintContinuationToken() : null
+  //
+  // Two ways to reach the account step now, and one of them is the older one
+  // untouched: the `continueToAccount` toggle, OR a flow with an ACCOUNT step
+  // in it. A form with NO flow steps returns an empty list here, so this reads
+  // exactly as `form.continueToAccount` did before flows could be built at all
+  // — that is the whole compatibility guarantee, and it is why the OR is on
+  // this side rather than inside the token logic.
+  const journey = await formJourneySteps(form.id)
+  const handover = form.continueToAccount || journeyNeedsAccount(journey) ? mintContinuationToken() : null
 
   const enquiry = await prisma.enquiry.create({
     data: {
@@ -209,6 +218,15 @@ async function submitUnified(req: Request, id: string) {
   })
 
   await notifyEnquiryTrainer({ enquiryId: enquiry.id })
+
+  // The journey begins. No-ops entirely when the trainer has built no flow, so
+  // an old-style form does not gain a FlowRun it has no use for. Errors are
+  // swallowed for the same reason the notification's are: a flow that fails to
+  // start must never lose somebody's enquiry.
+  if (journey.length > 0) {
+    await startEnquiryFlowRun({ enquiryId: enquiry.id, formId: form.id, trainerId: form.trainerId })
+      .catch(err => console.error('[form-submit] flow run failed to start:', err))
+  }
 
   if (handover) {
     // The same link by email, so a closed tab isn't the end of the run. Fire

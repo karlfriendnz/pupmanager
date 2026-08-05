@@ -10,6 +10,7 @@ import {
   completeContinuation,
   resolveContinuation,
 } from '@/lib/form-continuation'
+import { completeAccountStepForEnquiry } from '@/lib/flow-journey'
 import crypto from 'crypto'
 
 // POST /api/form/<formId>/continue — the account step of the continuous run.
@@ -144,6 +145,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ formId:
     }
     throw err
   }
+
+  // ── The journey moves on ──────────────────────────────────────────────────
+  //
+  // The token has just been SPENT (completeContinuation claims it inside its
+  // transaction), which is what proves this is the person the enquiry was
+  // about — so the run can now be told who is walking it, and its ACCOUNT step
+  // ticked off. No-ops for a form with no flow, which is every form that used
+  // this endpoint before phase 3.
+  //
+  // Awaited, not fired and forgotten: the next screen is decided by where the
+  // run is parked, and a run still sitting on "set up a login" would send them
+  // back to the step they have just finished. Errors are swallowed — a journey
+  // that cannot advance must not undo an account that already exists.
+  await completeAccountStepForEnquiry({
+    enquiryId: run.enquiryId,
+    clientProfileId: done.clientProfileId,
+  }).catch(err => console.error('[form-continue] flow run failed to advance:', err))
 
   // ── Confirm-your-email, sent but not enforced ─────────────────────────────
   //
