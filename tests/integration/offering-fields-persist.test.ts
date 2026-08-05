@@ -191,43 +191,79 @@ describe('an offering edit reaches the database', () => {
   // others' — exactly the shape that returns 200 and stores half of itself.
   // Set it, read the ROW back, resolve it through the reader the client picker
   // and the self-book route use, and compare.
-  it('saves a weekly booking window and reads it back identically', async () => {
-    const id = await makeOffering('TEST window weekly', false, false)
+  it('saves PER-DAY bands with their own hours and reads them back identically', async () => {
+    // Karl's example: "monday from 3-5 and wed 1-7". One shared start/end
+    // could not say this; each band carries its own.
+    const id = await makeOffering('TEST window bands', false, false)
     const res = await patch(id, {
-      bookingWindow: { mode: 'WEEKLY_WINDOW', days: [4, 2], startTime: '09:00', endTime: '13:00' },
+      bookingWindow: {
+        mode: 'RESTRICTED',
+        ranges: [{ day: 3, start: '13:00', end: '19:00' }, { day: 1, start: '15:00', end: '17:00' }],
+      },
     })
     expect(res.status).toBe(200)
     const row = await prisma.package.findUniqueOrThrow({ where: { id } })
-    expect(row.bookingWindowMode).toBe('WEEKLY_WINDOW')
+    expect(row.bookingWindowMode).toBe('RESTRICTED')
     expect(packageBookingWindow(row)).toEqual({
-      mode: 'WEEKLY_WINDOW', days: [2, 4], startTime: '09:00', endTime: '13:00', times: [],
+      mode: 'RESTRICTED',
+      ranges: [{ day: 1, start: '15:00', end: '17:00' }, { day: 3, start: '13:00', end: '19:00' }],
+      dates: [],
     })
   })
 
-  it('saves named exact start times and reads them back identically', async () => {
-    const id = await makeOffering('TEST window exact', false, false)
+  it('saves TWO bands on the same day — a morning and an afternoon block', async () => {
+    const id = await makeOffering('TEST window two bands', false, false)
+    expect((await patch(id, {
+      bookingWindow: {
+        mode: 'RESTRICTED',
+        ranges: [{ day: 1, start: '15:00', end: '17:00' }, { day: 1, start: '09:00', end: '11:00' }],
+      },
+    })).status).toBe(200)
+    const row = await prisma.package.findUniqueOrThrow({ where: { id } })
+    expect(packageBookingWindow(row).ranges).toEqual([
+      { day: 1, start: '09:00', end: '11:00' },
+      { day: 1, start: '15:00', end: '17:00' },
+    ])
+  })
+
+  it('saves the UNION of bands and one-off dated starts', async () => {
+    const id = await makeOffering('TEST window union', false, false)
     const res = await patch(id, {
       bookingWindow: {
-        mode: 'EXACT_TIMES',
-        times: [{ day: 4, time: '14:00' }, { day: 2, time: '09:00' }, { day: 2, time: '10:30' }],
+        mode: 'RESTRICTED',
+        ranges: [{ day: 1, start: '15:00', end: '17:00' }],
+        dates: [{ date: '2030-01-12', time: '10:00' }],
       },
     })
     expect(res.status).toBe(200)
     const row = await prisma.package.findUniqueOrThrow({ where: { id } })
     expect(packageBookingWindow(row)).toEqual({
-      mode: 'EXACT_TIMES', days: [], startTime: null, endTime: null,
-      times: [{ day: 2, time: '09:00' }, { day: 2, time: '10:30' }, { day: 4, time: '14:00' }],
+      mode: 'RESTRICTED',
+      ranges: [{ day: 1, start: '15:00', end: '17:00' }],
+      dates: [{ date: '2030-01-12', time: '10:00' }],
     })
+  })
+
+  it('keeps an expired dated start rather than silently deleting it', async () => {
+    const id = await makeOffering('TEST window expired', false, false)
+    expect((await patch(id, {
+      bookingWindow: { mode: 'RESTRICTED', dates: [{ date: '2020-01-04', time: '10:00' }] },
+    })).status).toBe(200)
+    const row = await prisma.package.findUniqueOrThrow({ where: { id } })
+    expect(packageBookingWindow(row).dates).toEqual([{ date: '2020-01-04', time: '10:00' }])
   })
 
   it('switching back to any-time clears the stored window in the database', async () => {
     const id = await makeOffering('TEST window clear', false, false)
     expect((await patch(id, {
-      bookingWindow: { mode: 'EXACT_TIMES', times: [{ day: 2, time: '09:00' }] },
+      bookingWindow: { mode: 'RESTRICTED', dates: [{ date: '2030-01-08', time: '09:00' }] },
     })).status).toBe(200)
     expect((await patch(id, { bookingWindow: { mode: 'ANY_TIME' } })).status).toBe(200)
     const row = await prisma.package.findUniqueOrThrow({ where: { id } })
     expect(row.bookingWindowMode).toBe('ANY_TIME')
+    expect(row.bookingWindowRanges).toEqual([])
+    expect(row.bookingWindowDates).toEqual([])
+    // …and the legacy columns with them.
     expect(row.bookingWindowTimes).toEqual([])
     expect(row.bookingWindowDays).toEqual([])
     expect(row.bookingWindowStart).toBeNull()

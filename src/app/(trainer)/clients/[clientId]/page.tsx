@@ -17,6 +17,7 @@ import { ClientActionsPanel } from './client-actions-panel'
 import { AssignedTrainerControl } from './assigned-trainer-control'
 import { PageHeader } from '@/components/shared/page-header'
 import { SampleRecordBadge } from '@/components/sample-record-badge'
+import { packageBookingWindow } from '@/lib/package-booking-window'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Client profile' }
@@ -294,6 +295,10 @@ export default async function ClientDetailPage({
         weeksBetween: p.weeksBetween,
         durationMins: p.durationMins,
         sessionType: p.sessionType,
+        bufferMins: p.bufferMins,
+        // When this offering runs. The assign modal places sessions inside it
+        // first — the trainer gets the same slots a client would be offered.
+        bookingWindow: packageBookingWindow(p),
       }))}
       classes={openClasses.map(c => {
         const cap = c.capacity ?? c.package.capacity ?? null

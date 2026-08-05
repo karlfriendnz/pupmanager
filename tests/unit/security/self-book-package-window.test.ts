@@ -101,12 +101,15 @@ describe('POST /api/my/self-book — no window (every offering created before th
   })
 })
 
-describe('POST /api/my/self-book — a weekly booking window', () => {
+describe('POST /api/my/self-book — per-day booking bands', () => {
   const WEEKLY = {
-    bookingWindowMode: 'WEEKLY_WINDOW',
-    bookingWindowDays: [2, 4],          // Tue + Thu
-    bookingWindowStart: '09:00',
-    bookingWindowEnd: '13:00',
+    bookingWindowMode: 'RESTRICTED',
+    // Per-day bands with their OWN hours — the thing one shared start/end
+    // could not say. Tuesday mornings, Thursday afternoons.
+    bookingWindowRanges: [
+      { day: 2, start: '09:00', end: '13:00' },
+      { day: 4, start: '09:00', end: '13:00' },
+    ],
   }
 
   beforeEach(() => h.packageFindFirst.mockResolvedValue(offering(WEEKLY)))
@@ -179,10 +182,11 @@ describe('POST /api/my/self-book — a weekly booking window', () => {
   })
 })
 
-describe('POST /api/my/self-book — named exact start times', () => {
+describe('POST /api/my/self-book — one-off dated start times', () => {
   const EXACT = {
-    bookingWindowMode: 'EXACT_TIMES',
-    bookingWindowTimes: [{ day: 2, time: '09:00' }, { day: 2, time: '10:30' }],
+    bookingWindowMode: 'RESTRICTED',
+    // One-off starts on real calendar DATES. 2030-01-08 is the Tuesday.
+    bookingWindowDates: [{ date: TUE, time: '09:00' }, { date: TUE, time: '10:30' }],
   }
 
   beforeEach(() => h.packageFindFirst.mockResolvedValue(offering(EXACT)))
@@ -200,7 +204,7 @@ describe('POST /api/my/self-book — named exact start times', () => {
     expect(h.createBookingAssignment).not.toHaveBeenCalled()
   })
 
-  it('refuses a named time on the wrong weekday', async () => {
+  it('refuses the same time on a different date', async () => {
     const res = await POST(req(`${WED}T09:00:00.000Z`))
     expect(res.status).toBe(400)
     expect((await res.json()).error).toBe("This one isn't offered at that time")
@@ -212,16 +216,15 @@ describe('GET /api/my/self-book — the list carries the window', () => {
   it('sends the resolved window so any picker narrows to what POST accepts', async () => {
     h.packageFindMany.mockResolvedValue([
       offering({
-        bookingWindowMode: 'EXACT_TIMES',
-        bookingWindowTimes: [{ day: 2, time: '09:00' }],
+        bookingWindowMode: 'RESTRICTED',
+        bookingWindowDates: [{ date: TUE, time: '09:00' }],
       }),
       offering({ id: 'pkg-2' }),
     ])
     const res = await GET()
     const body = await res.json()
     expect(body[0].bookingWindow).toEqual({
-      mode: 'EXACT_TIMES', days: [], startTime: null, endTime: null,
-      times: [{ day: 2, time: '09:00' }],
+      mode: 'RESTRICTED', ranges: [], dates: [{ date: TUE, time: '09:00' }],
     })
     expect(body[1].bookingWindow.mode).toBe('ANY_TIME')
   })

@@ -6,7 +6,11 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { Package as PackageIcon, X, AlertTriangle, ChevronDown, Check, Search, Plus } from 'lucide-react'
-import { findNextAvailable, type AvailabilityRow } from '@/lib/availability'
+import { type AvailabilityRow } from '@/lib/availability'
+import {
+  findNextBookableStart, trainerPickInsideWindow, describeBookingWindow, ANY_TIME_WINDOW,
+  type PackageBookingWindow,
+} from '@/lib/package-booking-window'
 import { occupiedEndMs } from '@/lib/buffer'
 import { createQuickClient } from '@/lib/quick-client'
 
@@ -27,6 +31,12 @@ interface PkgOption {
   // so a proposal that lands in it clashes.
   bufferMins: number
   sessionType: 'IN_PERSON' | 'VIRTUAL'
+  /**
+   * When this offering runs, if the trainer said. Omitted = any time they're
+   * free. GUIDES the placement below — auto-placed sessions land in the window
+   * first, and a pinned time outside it is warned about, never refused.
+   */
+  bookingWindow?: PackageBookingWindow
 }
 
 // A staff member the package can be assigned to. Only used in multi-trainer
@@ -269,10 +279,17 @@ function AssignPackageFromScheduleModalInner({
   //   search forward by weeksBetween from the previous session.
   // Ongoing packages keep walking forward until either the end date or the
   // safety cap is hit.
-  const proposals = useMemo<({ at: Date | null })[]>(() => {
-    const out: ({ at: Date | null })[] = []
+  // When this offering runs. It STEERS the auto-placement and flags a pinned
+  // time that falls outside — it never refuses one. A trainer is the boss of
+  // their own diary; only the client path hard-refuses.
+  const bookingWindow = pkg.bookingWindow ?? ANY_TIME_WINDOW
+
+  const proposals = useMemo<({ at: Date | null; insideWindow: boolean })[]>(() => {
+    const out: ({ at: Date | null; insideWindow: boolean })[] = []
     const start = parseDate(startDate)
-    if (!start) return isOngoing ? [] : Array.from({ length: pkg.sessionCount }, () => ({ at: null }))
+    if (!start) {
+      return isOngoing ? [] : Array.from({ length: pkg.sessionCount }, () => ({ at: null, insideWindow: true }))
+    }
 
     // "No end date" mode generates an initial 6-week buffer, then schedule
     // page loads keep topping it up via extendOngoingPackages.
@@ -291,24 +308,39 @@ function AssignPackageFromScheduleModalInner({
       if (end && cursor > end) break
 
       let placed: Date | null
+      let insideWindow = true
       if (pinnedTime) {
         // Honour the trainer's chosen time on every session, not just the
-        // first one.
+        // first one. A pinned time is an instruction, so the window never
+        // overrides it — it only says whether the pin fell outside.
         placed = new Date(cursor)
         placed.setHours(pinnedTime.h, pinnedTime.m, 0, 0)
+        insideWindow = trainerPickInsideWindow(bookingWindow, placed, pkg.durationMins)
       } else {
-        placed = findNextAvailable(availability, cursor, pkg.durationMins, SLOT_SEARCH_DAYS)
+        const hit = findNextBookableStart({
+          slots: availability,
+          from: cursor,
+          durationMins: pkg.durationMins,
+          bufferMins: pkg.bufferMins,
+          maxDays: SLOT_SEARCH_DAYS,
+          window: bookingWindow,
+        })
+        placed = hit?.at ?? null
+        insideWindow = hit?.insideWindow ?? true
         // Ongoing packages must still drop a session on every cadence step
         // even when no availability slot matches — otherwise the proposal
         // list came back empty, the interface didn't render, and nothing
         // got created. Fall back to the cursor day; the trainer can drag
         // it afterwards.
-        if (!placed && isOngoing) placed = new Date(cursor)
+        if (!placed && isOngoing) {
+          placed = new Date(cursor)
+          insideWindow = trainerPickInsideWindow(bookingWindow, placed, pkg.durationMins)
+        }
       }
       // Stop once we've walked past the end date — don't add a placeholder past it.
       if (end && placed && placed > end) break
       if (isOngoing && !placed) break
-      out.push({ at: placed })
+      out.push({ at: placed, insideWindow })
 
       const base = placed ?? cursor
       const next = new Date(base)
@@ -316,9 +348,12 @@ function AssignPackageFromScheduleModalInner({
       cursor = next
     }
     return out
-  }, [availability, pkg, startDate, startTime, endDate, isOngoing, noEnd])
+  }, [availability, pkg, startDate, startTime, endDate, isOngoing, noEnd, bookingWindow])
 
   const placedCount = proposals.filter(p => p.at !== null).length
+  // Sessions sitting outside the offering's own hours. A warning, never a
+  // block — see the note on `bookingWindow` above.
+  const outsideWindowCount = proposals.filter(p => p.at !== null && !p.insideWindow).length
   const allPlaced = isOngoing ? placedCount > 0 : placedCount === pkg.sessionCount
   const anyMissing = !isOngoing && placedCount < pkg.sessionCount
 
@@ -593,6 +628,17 @@ function AssignPackageFromScheduleModalInner({
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
               Proposed sessions
             </p>
+            {bookingWindow.mode !== 'ANY_TIME' && (
+              <p className="text-[11px] text-slate-500 mb-2">
+                This one runs {describeBookingWindow(bookingWindow)} — sessions are placed there first.
+              </p>
+            )}
+            {outsideWindowCount > 0 && (
+              <p className="text-[11px] text-amber-700 mb-2">
+                {outsideWindowCount} session{outsideWindowCount === 1 ? '' : 's'} sit outside those
+                hours. That’s allowed — it’s your diary — just check it’s what you meant.
+              </p>
+            )}
             <div className="flex flex-col gap-1.5">
               {proposals.map((p, i) => {
                 const conflict = p.at ? conflictFor(p.at) : null
@@ -629,6 +675,11 @@ function AssignPackageFromScheduleModalInner({
                         </span>
                       )}
                     </div>
+                    {p.at && !p.insideWindow && !conflict && (
+                      <p className="ml-5 text-[11px] text-amber-700">
+                        Outside the hours this one normally runs.
+                      </p>
+                    )}
                     {conflict && (
                       <div className="ml-5 flex flex-col gap-1.5">
                         <p className="text-[11px] font-semibold text-red-700">

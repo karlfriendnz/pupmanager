@@ -74,10 +74,14 @@ export async function POST(_req: Request, { params }: { params: Promise<{ packag
       // "Tuesday and Thursday mornings only" consult that came back bookable
       // at any hour would be a different offering wearing the same name.
       bookingWindowMode: src.bookingWindowMode,
+      bookingWindowRanges: src.bookingWindowRanges ?? [],
+      bookingWindowDates: src.bookingWindowDates ?? [],
+      // Legacy columns carried verbatim so an unmigrated source row's window
+      // survives the copy — the reader folds them in either way.
+      bookingWindowTimes: src.bookingWindowTimes ?? [],
       bookingWindowDays: src.bookingWindowDays ?? [],
       bookingWindowStart: src.bookingWindowStart,
       bookingWindowEnd: src.bookingWindowEnd,
-      bookingWindowTimes: src.bookingWindowTimes ?? [],
       // Carried, so duplicating next term's not-yet-showing offering doesn't
       // publish the copy the moment it is made — which is the one thing a
       // trainer duplicating a scheduled offering could not possibly want.

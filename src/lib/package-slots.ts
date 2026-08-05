@@ -41,15 +41,23 @@ export type SlotInput = z.infer<typeof slotSchema>
  * weekdays (1=Mon..7=Sun), NOT slotSchema's 0=Sun..6=Sat above; the two are
  * different concepts and the availability half of the app is ISO throughout.
  */
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+
 export const bookingWindowSchema = z.object({
-  mode: z.enum(['ANY_TIME', 'WEEKLY_WINDOW', 'EXACT_TIMES']),
-  days: z.array(z.number().int().min(1).max(7)).max(7).optional(),
-  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(),
-  endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(),
-  times: z.array(z.object({
+  mode: z.enum(['ANY_TIME', 'RESTRICTED']),
+  // Per-day bands. SEVERAL may share a day — "Monday 9–11 and Monday 3–5" is
+  // two entries, and that is the only way to say it.
+  ranges: z.array(z.object({
     day: z.number().int().min(1).max(7),
-    time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
-  })).max(50).optional(),
+    start: z.string().regex(HHMM),
+    end: z.string().regex(HHMM),
+  })).max(60).optional(),
+  // One-off starts on a real calendar DATE, UNIONED with the ranges above —
+  // not an alternative to them. A trainer may use either or both.
+  dates: z.array(z.object({
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    time: z.string().regex(HHMM),
+  })).max(60).optional(),
 })
 
 /**

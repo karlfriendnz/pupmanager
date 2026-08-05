@@ -13,6 +13,7 @@ import { todayInTz, startOfDayInTz, endOfDayInTz } from '@/lib/timezone'
 import { dateParts, ymdInTz, personLabel } from '@/lib/utils'
 import { buildPreviewBlocks } from '@/lib/booking-request-preview'
 import { mergeClientDogs, extraClientDogs } from '@/lib/dogs'
+import { packageBookingWindow } from '@/lib/package-booking-window'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Schedule' }
@@ -456,6 +457,9 @@ export default async function SchedulePage({
         durationMins: p.durationMins,
         bufferMins: p.bufferMins,
         sessionType: p.sessionType,
+        // When this offering runs. Steers where the assign modal places its
+        // sessions — the trainer gets the same slots a client would be offered.
+        bookingWindow: packageBookingWindow(p),
       }))}
       selectedDate={selectedDate}
       today={today}

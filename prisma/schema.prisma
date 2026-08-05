@@ -51,11 +51,22 @@ enum SessionType {
   VIRTUAL
 }
 
-/// When a client may self-book a 1:1 offering. See Package.bookingWindowMode.
+/// When a 1:1 offering can be booked. See Package.bookingWindowMode.
+///
 /// ANY_TIME is the default and the behaviour of every offering created before
-/// this existed — the client picks from the trainer's general availability.
+/// this existed — book anywhere in the trainer's general availability.
+/// RESTRICTED means the offering names its own times: the UNION of
+/// bookingWindowRanges (per-day hour bands) and bookingWindowTimes (named exact
+/// starts). A trainer can use either, or both at once.
+///
+/// WEEKLY_WINDOW and EXACT_TIMES are LEGACY values kept only so a row written
+/// before the two were merged still READS. Nothing writes them any more, the
+/// migration rewrites them to RESTRICTED, and packageBookingWindow() maps them
+/// there anyway — removing them from this enum would make an unmigrated row
+/// throw on read, which is not a trade worth making for tidiness.
 enum PackageBookingMode {
   ANY_TIME
+  RESTRICTED
   WEEKLY_WINDOW
   EXACT_TIMES
 }
@@ -2144,34 +2155,49 @@ model Package {
   // (false). Only meaningful when clientSelfBook is true.
   clientSelfBook           Boolean     @default(false)
   selfBookRequiresApproval Boolean     @default(true)
-  /// WHEN a client may self-book this 1:1 offering. A third, independent
-  /// dimension of self-booking: clientSelfBook says whether they can,
-  /// selfBookRequiresApproval says what happens after they do, and this says
-  /// which times were ever on offer.
+  /// WHEN this 1:1 offering can be booked — by a CLIENT self-booking, and by
+  /// the TRAINER placing it themselves. It describes when the offering happens,
+  /// not merely when a client may self-serve, so it is read whether or not
+  /// clientSelfBook is on.
   ///
   /// ANY_TIME — the default, and what every row written before this means:
-  /// the client picks out of the trainer's general availability, unchanged.
-  /// WEEKLY_WINDOW — only bookingWindowDays, between bookingWindowStart and
-  /// bookingWindowEnd ("Tuesdays and Thursdays, 9am–1pm").
-  /// EXACT_TIMES — only the named starts in bookingWindowTimes ("Tue 9:00,
-  /// Tue 10:30, Thu 14:00").
+  /// anywhere in the trainer's general availability, unchanged.
+  /// RESTRICTED — the offering names its own times, as the UNION of the two
+  /// columns below. "Monday 3–5, Wednesday 1–7, plus Saturday 10:00 sharp" is
+  /// one window, not three settings.
   ///
   /// A window NARROWS and never widens. The trainer's availability, their
-  /// blackouts and everything already in the diary are applied FIRST and still
-  /// remove a slot — see lib/package-booking-window.ts, which is the only
-  /// place that reads these columns.
+  /// blackouts, everything already in the diary and both turnaround buffers are
+  /// applied FIRST and still remove a slot — see lib/package-booking-window.ts,
+  /// the only place that reads these columns.
   ///
   /// Modelled on BookingPage.availDays/availStartTime/availEndTime rather than
   /// on PackageSessionSlot: those rows GENERATE drop-in sessions, and a 1:1
   /// booking window generates nothing.
   bookingWindowMode        PackageBookingMode @default(ANY_TIME)
-  /// ISO weekdays (1=Mon..7=Sun) the WEEKLY_WINDOW covers. Ignored otherwise.
+  /// Per-day hour bands: `[{ "day": 1, "start": "15:00", "end": "17:00" }]`,
+  /// ISO weekday (1=Mon..7=Sun) + 24h wall clock. SEVERAL entries may share a
+  /// day — a morning band and an afternoon band are two rows, which is the only
+  /// way to say "Monday 9–11 and 3–5". The whole session must fit in a band.
+  bookingWindowRanges      Json        @default("[]")
+  /// One-off dated starts: `[{ "date": "2026-09-03", "time": "10:00" }]`.
+  /// Unioned with the ranges above — a trainer may use either or both. A dated
+  /// entry fires ONCE, on that calendar date; a date in the past can never
+  /// produce a slot again, and is kept (never silently deleted) but ignored
+  /// when resolving, and shown as expired in the editor.
+  bookingWindowDates       Json        @default("[]")
+  /// LEGACY weekday exact starts: `[{ "day": 1, "time": "09:00" }]`. Replaced
+  /// by a weekday RANGE one session long, which says the same thing with one
+  /// row kind instead of two. The migration converts them; the reader converts
+  /// any leftovers the same way, so nothing a trainer configured is dropped.
+  bookingWindowTimes       Json        @default("[]")
+  /// LEGACY, from before ranges were per-day. A single band applied to every
+  /// day in bookingWindowDays. Nothing writes these; the migration folds them
+  /// into bookingWindowRanges, and packageBookingWindow() folds them in at READ
+  /// time too, so a row this deploy hasn't reached still behaves correctly.
   bookingWindowDays        Json        @default("[]")
-  /// "HH:MM" 24h bounds of the WEEKLY_WINDOW. The whole session must fit.
   bookingWindowStart       String?
   bookingWindowEnd         String?
-  /// EXACT_TIMES: `[{ "day": 1, "time": "09:00" }]`, ISO weekday + 24h start.
-  bookingWindowTimes       Json        @default("[]")
   /// The instant this offering starts being visible to CLIENTS. null — the
   /// default and what every existing row means — is "visible immediately".
   ///

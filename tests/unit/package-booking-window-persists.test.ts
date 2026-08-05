@@ -78,8 +78,8 @@ beforeEach(() => {
     name: 'Puppy Intro', sessionCount: 1, weeksBetween: 0, durationMins: 60, bufferMins: 0,
     sessionType: 'IN_PERSON' as const, priceCents: null, specialPriceCents: null,
     pricePerSessionCents: null, allowDropIn: false, sessionSlots: [],
-    bookingWindowMode: 'ANY_TIME', bookingWindowDays: [], bookingWindowStart: null,
-    bookingWindowEnd: null, bookingWindowTimes: [],
+    bookingWindowMode: 'ANY_TIME', bookingWindowRanges: [], bookingWindowDates: [],
+    bookingWindowTimes: [], bookingWindowDays: [], bookingWindowStart: null, bookingWindowEnd: null,
   })
   h.pkgFindUnique.mockResolvedValue({ isGroup: false })
   h.pkgAggregate.mockResolvedValue({ _max: { order: 0 } })
@@ -104,71 +104,99 @@ describe('creating a 1:1 offering', () => {
     })
   })
 
-  it('stores a weekly window and reads it back identically', async () => {
+  it('stores per-day bands and reads them back identically', async () => {
     const res = await post({
       ...NEW_ONE_TO_ONE,
-      bookingWindow: { mode: 'WEEKLY_WINDOW', days: [4, 2], startTime: '09:00', endTime: '13:00' },
+      bookingWindow: {
+        mode: 'RESTRICTED',
+        ranges: [{ day: 3, start: '13:00', end: '19:00' }, { day: 1, start: '15:00', end: '17:00' }],
+      },
     })
     expect(res.status).toBe(201)
     // The columns…
-    expect(created().bookingWindowMode).toBe('WEEKLY_WINDOW')
-    expect(created().bookingWindowDays).toEqual([2, 4])
-    expect(created().bookingWindowStart).toBe('09:00')
-    expect(created().bookingWindowEnd).toBe('13:00')
+    expect(created().bookingWindowMode).toBe('RESTRICTED')
+    expect(created().bookingWindowRanges).toEqual([
+      { day: 1, start: '15:00', end: '17:00' },
+      { day: 3, start: '13:00', end: '19:00' },
+    ])
     // …and what the reader sees when the form reopens on them.
     expect(packageBookingWindow(created())).toEqual({
-      mode: 'WEEKLY_WINDOW', days: [2, 4], startTime: '09:00', endTime: '13:00', times: [],
+      mode: 'RESTRICTED',
+      ranges: [{ day: 1, start: '15:00', end: '17:00' }, { day: 3, start: '13:00', end: '19:00' }],
+      dates: [],
     })
   })
 
-  it('stores named exact times and reads them back identically', async () => {
+  it('stores one-off dated starts and reads them back identically', async () => {
     const res = await post({
       ...NEW_ONE_TO_ONE,
       bookingWindow: {
-        mode: 'EXACT_TIMES',
-        times: [{ day: 4, time: '14:00' }, { day: 2, time: '09:00' }],
+        mode: 'RESTRICTED',
+        dates: [{ date: '2030-01-12', time: '14:00' }, { date: '2030-01-08', time: '09:00' }],
       },
     })
     expect(res.status).toBe(201)
     expect(packageBookingWindow(created())).toEqual({
-      mode: 'EXACT_TIMES', days: [], startTime: null, endTime: null,
-      times: [{ day: 2, time: '09:00' }, { day: 4, time: '14:00' }],
+      mode: 'RESTRICTED',
+      ranges: [],
+      dates: [{ date: '2030-01-08', time: '09:00' }, { date: '2030-01-12', time: '14:00' }],
     })
   })
 
-  it('refuses a window that names no days', async () => {
-    // The form says this too. The form is not what makes it true.
-    const res = await post({
-      ...NEW_ONE_TO_ONE,
-      bookingWindow: { mode: 'WEEKLY_WINDOW', days: [], startTime: '09:00', endTime: '13:00' },
-    })
-    expect(res.status).toBe(400)
-    expect(h.pkgCreate).not.toHaveBeenCalled()
-  })
-
-  it('refuses a window that ends before it starts', async () => {
-    const res = await post({
-      ...NEW_ONE_TO_ONE,
-      bookingWindow: { mode: 'WEEKLY_WINDOW', days: [2], startTime: '13:00', endTime: '09:00' },
-    })
-    expect(res.status).toBe(400)
-    expect(h.pkgCreate).not.toHaveBeenCalled()
-  })
-
-  it('refuses duplicated start times', async () => {
+  it('stores BOTH halves at once — bands and a one-off together', async () => {
+    // Karl's ask: "a combination of days in the week and set times also".
     const res = await post({
       ...NEW_ONE_TO_ONE,
       bookingWindow: {
-        mode: 'EXACT_TIMES',
-        times: [{ day: 2, time: '09:00' }, { day: 2, time: '09:00' }],
+        mode: 'RESTRICTED',
+        ranges: [{ day: 1, start: '15:00', end: '17:00' }],
+        dates: [{ date: '2030-01-12', time: '10:00' }],
+      },
+    })
+    expect(res.status).toBe(201)
+    expect(packageBookingWindow(created())).toEqual({
+      mode: 'RESTRICTED',
+      ranges: [{ day: 1, start: '15:00', end: '17:00' }],
+      dates: [{ date: '2030-01-12', time: '10:00' }],
+    })
+  })
+
+  it('refuses a restricted window with nothing in it', async () => {
+    // The form says this too. The form is not what makes it true.
+    const res = await post({
+      ...NEW_ONE_TO_ONE,
+      bookingWindow: { mode: 'RESTRICTED', ranges: [], dates: [] },
+    })
+    expect(res.status).toBe(400)
+    expect(h.pkgCreate).not.toHaveBeenCalled()
+  })
+
+  it('refuses a band that ends before it starts', async () => {
+    const res = await post({
+      ...NEW_ONE_TO_ONE,
+      bookingWindow: { mode: 'RESTRICTED', ranges: [{ day: 2, start: '13:00', end: '09:00' }] },
+    })
+    expect(res.status).toBe(400)
+    expect(h.pkgCreate).not.toHaveBeenCalled()
+  })
+
+  it('refuses duplicated dated starts', async () => {
+    const res = await post({
+      ...NEW_ONE_TO_ONE,
+      bookingWindow: {
+        mode: 'RESTRICTED',
+        dates: [{ date: '2030-01-08', time: '09:00' }, { date: '2030-01-08', time: '09:00' }],
       },
     })
     expect(res.status).toBe(400)
     expect(h.pkgCreate).not.toHaveBeenCalled()
   })
 
-  it('refuses exact-times with nothing named', async () => {
-    const res = await post({ ...NEW_ONE_TO_ONE, bookingWindow: { mode: 'EXACT_TIMES', times: [] } })
+  it('refuses a date that is not a real day', async () => {
+    const res = await post({
+      ...NEW_ONE_TO_ONE,
+      bookingWindow: { mode: 'RESTRICTED', dates: [{ date: '2030-02-31', time: '09:00' }] },
+    })
     expect(res.status).toBe(400)
     expect(h.pkgCreate).not.toHaveBeenCalled()
   })
@@ -177,31 +205,33 @@ describe('creating a 1:1 offering', () => {
 describe('editing a 1:1 offering', () => {
   it('stores an edited window and reads it back identically', async () => {
     const res = await patch({
-      bookingWindow: { mode: 'EXACT_TIMES', times: [{ day: 2, time: '10:30' }] },
+      bookingWindow: { mode: 'RESTRICTED', dates: [{ date: '2030-01-08', time: '10:30' }] },
     })
     expect(res.status).toBe(200)
     expect(packageBookingWindow(updated())).toEqual({
-      mode: 'EXACT_TIMES', days: [], startTime: null, endTime: null,
-      times: [{ day: 2, time: '10:30' }],
+      mode: 'RESTRICTED', ranges: [], dates: [{ date: '2030-01-08', time: '10:30' }],
     })
   })
 
-  it('switching mode CLEARS the fields the old mode used', async () => {
+  it('going back to any-time CLEARS both halves', async () => {
     // Otherwise switching away and back would resurrect the old window.
     const res = await patch({
-      bookingWindow: { mode: 'WEEKLY_WINDOW', days: [2], startTime: '09:00', endTime: '13:00' },
+      bookingWindow: { mode: 'RESTRICTED', ranges: [{ day: 2, start: '09:00', end: '13:00' }] },
     })
     expect(res.status).toBe(200)
-    expect(updated().bookingWindowTimes).toEqual([])
+    expect(updated().bookingWindowDates).toEqual([])
 
     h.pkgUpdate.mockClear()
     const back = await patch({ bookingWindow: { mode: 'ANY_TIME' } })
     expect(back.status).toBe(200)
     expect(updated().bookingWindowMode).toBe('ANY_TIME')
+    expect(updated().bookingWindowRanges).toEqual([])
+    expect(updated().bookingWindowDates).toEqual([])
+    // …and the legacy columns with them.
+    expect(updated().bookingWindowTimes).toEqual([])
     expect(updated().bookingWindowDays).toEqual([])
     expect(updated().bookingWindowStart).toBeNull()
     expect(updated().bookingWindowEnd).toBeNull()
-    expect(updated().bookingWindowTimes).toEqual([])
   })
 
   it('leaves the stored window ALONE when the patch doesn’t mention it', async () => {
@@ -211,11 +241,12 @@ describe('editing a 1:1 offering', () => {
     const res = await patch({ name: 'Renamed' })
     expect(res.status).toBe(200)
     expect(updated()).not.toHaveProperty('bookingWindowMode')
-    expect(updated()).not.toHaveProperty('bookingWindowTimes')
+    expect(updated()).not.toHaveProperty('bookingWindowRanges')
+    expect(updated()).not.toHaveProperty('bookingWindowDates')
   })
 
   it('refuses an invalid window on edit too', async () => {
-    const res = await patch({ bookingWindow: { mode: 'EXACT_TIMES', times: [] } })
+    const res = await patch({ bookingWindow: { mode: 'RESTRICTED', ranges: [], dates: [] } })
     expect(res.status).toBe(400)
     expect(h.pkgUpdate).not.toHaveBeenCalled()
   })

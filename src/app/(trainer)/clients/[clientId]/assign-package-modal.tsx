@@ -7,7 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { Package as PackageIcon, X, AlertTriangle } from 'lucide-react'
 import { ModalPortal } from '@/components/shared/modal-portal'
-import { findNextAvailable, type AvailabilityRow } from '@/lib/availability'
+import { type AvailabilityRow } from '@/lib/availability'
+import {
+  findNextBookableStart, packageBookingWindow, describeBookingWindow, ANY_TIME_WINDOW,
+  type PackageBookingWindow,
+} from '@/lib/package-booking-window'
 
 interface PkgOption {
   id: string
@@ -17,6 +21,13 @@ interface PkgOption {
   weeksBetween: number
   durationMins: number
   sessionType: 'IN_PERSON' | 'VIRTUAL'
+  /** Turnaround gap, so a proposal can't butt against an existing booking. */
+  bufferMins?: number
+  /**
+   * When this offering runs, if the trainer said. Omitted = any time they're
+   * free. GUIDES the placement below — it never blocks the trainer.
+   */
+  bookingWindow?: PackageBookingWindow
 }
 
 // A staff member the package can be assigned to. Only used in multi-trainer
@@ -222,11 +233,19 @@ function AssignModal({
     setEndDate(prev => (prev < startDate ? addWeeksISO(startDate, ONGOING_DEFAULT_WEEKS) : prev))
   }, [startDate])
 
-  const proposals = useMemo<({ at: Date | null })[]>(() => {
-    const out: ({ at: Date | null })[] = []
+  // When this offering runs. The trainer's placements are STEERED into it —
+  // they get the same slots a client would have been offered — but never
+  // refused: see findNextBookableStart, which falls back to plain availability
+  // and flags the session instead of dropping it.
+  const bookingWindow = pkg?.bookingWindow ?? ANY_TIME_WINDOW
+
+  const proposals = useMemo<({ at: Date | null; insideWindow: boolean })[]>(() => {
+    const out: ({ at: Date | null; insideWindow: boolean })[] = []
     if (!pkg) return out
     const start = parseDate(startDate)
-    if (!start) return isOngoing ? [] : Array.from({ length: pkg.sessionCount }, () => ({ at: null }))
+    if (!start) {
+      return isOngoing ? [] : Array.from({ length: pkg.sessionCount }, () => ({ at: null, insideWindow: true }))
+    }
 
     const end = isOngoing ? parseDate(endDate) : null
     const cadenceWeeks = isOngoing ? Math.max(1, pkg.weeksBetween) : pkg.weeksBetween
@@ -235,19 +254,30 @@ function AssignModal({
     let cursor = start
     for (let i = 0; i < limit; i++) {
       if (end && cursor > end) break
-      const found = findNextAvailable(availability, cursor, pkg.durationMins, SLOT_SEARCH_DAYS)
+      const hit = findNextBookableStart({
+        slots: availability,
+        from: cursor,
+        durationMins: pkg.durationMins,
+        bufferMins: pkg.bufferMins,
+        maxDays: SLOT_SEARCH_DAYS,
+        window: bookingWindow,
+      })
+      const found = hit?.at ?? null
       if (end && found && found > end) break
       if (isOngoing && !found) break
-      out.push({ at: found })
+      out.push({ at: found, insideWindow: hit?.insideWindow ?? true })
       const base = found ?? cursor
       const next = new Date(base)
       next.setDate(next.getDate() + cadenceWeeks * 7)
       cursor = next
     }
     return out
-  }, [availability, pkg, startDate, endDate, isOngoing])
+  }, [availability, pkg, startDate, endDate, isOngoing, bookingWindow])
 
   const placedCount = proposals.filter(p => p.at !== null).length
+  // Sessions that had to be put outside the offering's own hours. A warning,
+  // never a block — the trainer decides what goes in their diary.
+  const outsideWindowCount = proposals.filter(p => p.at !== null && !p.insideWindow).length
   const allPlaced = isOngoing ? placedCount > 0 : placedCount === pkg?.sessionCount
   const anyMissing = !isOngoing && !!pkg && placedCount < pkg.sessionCount
 
@@ -520,6 +550,11 @@ function AssignModal({
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
               Proposed sessions
             </p>
+            {bookingWindow.mode !== 'ANY_TIME' && (
+              <p className="text-[11px] text-slate-500 mb-2">
+                This one runs {describeBookingWindow(bookingWindow)} — sessions are placed there first.
+              </p>
+            )}
             <div className="flex flex-col gap-1.5">
               {proposals.map((p, i) => (
                 <div
@@ -530,6 +565,7 @@ function AssignModal({
                 >
                   <span className="text-slate-600 flex items-center gap-1.5">
                     {!p.at && <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}
+                    {p.at && !p.insideWindow && <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />}
                     Session {i + 1}{isOngoing || !pkg ? '' : `/${pkg.sessionCount}`}
                   </span>
                   {p.at ? (
@@ -546,6 +582,13 @@ function AssignModal({
                 </div>
               ))}
             </div>
+            {outsideWindowCount > 0 && (
+              <p className="text-[11px] text-amber-700 mt-2">
+                {outsideWindowCount} session{outsideWindowCount === 1 ? '' : 's'} had to go outside
+                the hours this one normally runs ({describeBookingWindow(bookingWindow)}) — there was
+                nothing free in them. Assign anyway, or move the start date.
+              </p>
+            )}
             {anyMissing && (
               <p className="text-[11px] text-amber-700 mt-2">
                 {pkg.sessionCount - placedCount} of {pkg.sessionCount} sessions could not be placed.

@@ -14,6 +14,7 @@ import { ModalPortal } from '@/components/shared/modal-portal'
 import { FlatBlock, FlatRow, FlatRowGrid, SectionLabel } from '@/components/shared/flat-list'
 import { useIsNative } from '@/lib/native'
 import { cn } from '@/lib/utils'
+import type { PackageBookingWindow } from '@/lib/package-booking-window'
 
 interface PkgOption {
   id: string
@@ -23,6 +24,9 @@ interface PkgOption {
   weeksBetween: number
   durationMins: number
   sessionType: 'IN_PERSON' | 'VIRTUAL'
+  bufferMins?: number
+  /** When this offering runs — steers where the assign modal places sessions. */
+  bookingWindow?: PackageBookingWindow
 }
 
 interface AvailabilityRow {
