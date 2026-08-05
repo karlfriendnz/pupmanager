@@ -627,7 +627,9 @@ export function BookingWizard(props: {
                     ("I've got a new puppy") finds the tag. */}
                 {tags.length > 0 && (
                   <div className="flex flex-col gap-3">
-                    <SectionLabel icon={<TagIcon className="h-3.5 w-3.5" />} text="Browse by tag" />
+                    {/* No "Browse by tag" heading — the tag rows carry a tag
+                        icon and the trainer's own words for each one, so the
+                        label only named what was already on screen. */}
                     {tags.map(t => {
                       const count = t.packageIds.length + t.classIds.length + t.eventIds.length + t.productIds.length
                       return (
