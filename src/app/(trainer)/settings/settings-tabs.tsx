@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { ArrowLeft, User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark, MapPin, Palette, CalendarDays, Dog, Mail, SlidersHorizontal, Tag, Plug, Workflow } from 'lucide-react'
+import { ArrowLeft, User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark, MapPin, Palette, CalendarDays, Dog, Mail, SlidersHorizontal, Tag, Tags, Plug, Workflow } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
 import { cn } from '@/lib/utils'
 import { TabIntro } from './tab-intro'
@@ -40,6 +40,11 @@ const ALL_TABS = [
   { id: 'notifications', label: 'Notifications', icon: Bell, section: 'account' },
   { id: 'configure', label: 'Configure', icon: SlidersHorizontal, section: 'business' },
   { id: 'naming', label: 'What you call things', icon: Tag, section: 'business' },
+  // Directly after it, because both tabs are the trainer's own vocabulary for
+  // their own catalogue: Naming replaces our words, Tags adds theirs. Came off
+  // the top-level menu (Karl, 2026-08-06) — a tag is not a sixth kind of thing
+  // to sell, it is how a trainer groups the five they have.
+  { id: 'tags', label: 'Tags', icon: Tags, section: 'business' },
   { id: 'addons', label: 'Add-ons', icon: Puzzle, section: 'business' },
   // Only rendered when the puppyschool add-on is on — the daycare's one home
   // for setting itself up (the board has no controls of its own).
@@ -80,6 +85,7 @@ export function SettingsTabs({
   calendar,
   configure,
   naming,
+  tags,
   automations,
   integrations,
   addons,
@@ -103,6 +109,7 @@ export function SettingsTabs({
   calendar?: React.ReactNode
   configure?: React.ReactNode
   naming?: React.ReactNode
+  tags?: React.ReactNode
   automations?: React.ReactNode
   integrations?: React.ReactNode
   addons?: React.ReactNode
@@ -115,7 +122,7 @@ export function SettingsTabs({
   activity?: React.ReactNode
 }) {
   const native = useIsNative()
-  const present: Record<TabId, React.ReactNode> = { profile, design, notifications, forms, locations, integration, calendar, configure, naming, automations, integrations, addons, daycare, emails, team, payments, xero, billing, activity }
+  const present: Record<TabId, React.ReactNode> = { profile, design, notifications, forms, locations, integration, calendar, configure, naming, tags, automations, integrations, addons, daycare, emails, team, payments, xero, billing, activity }
   // Hide Billing inside the native app — subscription billing is handled on
   // the web (Apple Guideline 3.1.1: no in-app pricing / purchase surfaces).
   // Every tab that RENDERS — what ?tab= may name, and what gets a hidden div.
@@ -309,6 +316,7 @@ export function SettingsTabs({
         {calendar != null && <div className={tab === 'calendar' ? 'max-w-2xl' : 'hidden'}>{calendar}</div>}
         {configure != null && <div className={tab === 'configure' ? '' : 'hidden'}>{configure}</div>}
         {naming != null && <div className={tab === 'naming' ? '' : 'hidden'}>{naming}</div>}
+        {tags != null && <div className={tab === 'tags' ? '' : 'hidden'}>{tags}</div>}
         {automations != null && <div className={tab === 'automations' ? '' : 'hidden'}>{automations}</div>}
         {integrations != null && <div className={tab === 'integrations' ? '' : 'hidden'}>{integrations}</div>}
         {addons != null && <div className={tab === 'addons' ? '' : 'hidden'}>{addons}</div>}

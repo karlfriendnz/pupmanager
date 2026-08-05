@@ -60,7 +60,10 @@ const LISTING_PAGES: { name: string; file: string }[] = [
   { name: 'Route', file: 'schedule/route/page.tsx' },
   { name: 'Draft notes', file: 'sessions/draft-notes/page.tsx' },
   { name: 'To do', file: 'sessions/needs-notes/page.tsx' },
-  { name: 'Tags', file: 'offerings/tags/tags-view.tsx' },
+  // A settings TAB rather than a page since 2026-08-06, but still a list of
+  // things with an add button, so it still wears the drill — and the settings
+  // content column is full width, so the no-centred-ribbon rule still bites.
+  { name: 'Tags', file: 'settings/tags-panel.tsx' },
   { name: 'Timesheets', file: 'timesheets/page.tsx' },
 ]
 
@@ -101,7 +104,7 @@ describe('the add action is a button at the top, not a row under the last card',
   // has to be on the page — the corner create circle offers offerings, clients
   // and sales, and none of these is one of those (see lib/offering-create.ts).
   const OWNS_ITS_ONLY_ADD: { name: string; file: string; label: string }[] = [
-    { name: 'Tags', file: 'offerings/tags/tags-view.tsx', label: 'New tag' },
+    { name: 'Tags', file: 'settings/tags-panel.tsx', label: 'New tag' },
     { name: 'Achievements', file: 'achievements/achievements-manager.tsx', label: 'Add achievement' },
     { name: 'Timesheets', file: 'timesheets/timesheets-view.tsx', label: 'New timesheet' },
     { name: 'Marketing', file: 'marketing/marketing-view.tsx', label: 'New email' },
@@ -152,7 +155,7 @@ describe('the view toggle appears only where a grid is a second useful reading',
   // And where a grid IS worth having, it is remembered per page rather than
   // reset on every navigation.
   const REMEMBERS_ITS_VIEW: [string, string][] = [
-    ['offerings/tags/tags-view.tsx', "useOfferingView('tags')"],
+    ['settings/tags-panel.tsx', "useOfferingView('tags')"],
     ['achievements/achievements-manager.tsx', "useOfferingView('achievements')"],
     ['library/library-categories.tsx', "useOfferingView('library')"],
   ]

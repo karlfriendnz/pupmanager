@@ -25,7 +25,13 @@ export interface TagRow {
 }
 
 /**
- * The trainer's one flat list of tags.
+ * The trainer's one flat list of tags — Settings → Tags.
+ *
+ * MOVED, not rewritten (Karl, 2026-08-06: "please move tags to settings area").
+ * This is the same component that stood at /offerings/tags, writing to the same
+ * four `/api/tags` routes; only its home and its outer padding changed, because
+ * the settings content column already pads itself. A second tags UI would be two
+ * places for the create/rename/delete rules to drift.
  *
  * Deliberately the SAME row shape as the shop's category rail
  * (products/category-rail.tsx) — a hairline-divided block, a grip on the left,
@@ -34,7 +40,7 @@ export interface TagRow {
  * and deleted here: a category rail hands that off to the product form, and a
  * tag has no single form to hand it to.
  */
-export function TagsView({ tags: initial }: { tags: TagRow[] }) {
+export function TagsPanel({ tags: initial }: { tags: TagRow[] }) {
   const [tags, setTags] = useState(initial)
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
@@ -178,13 +184,15 @@ export function TagsView({ tags: initial }: { tags: TagRow[] }) {
   }
 
   return (
-    <div className="w-full p-4 md:p-8">
+    // The settings content column already pads itself, so this one doesn't —
+    // and `data-review-scope` so a pin made here records which tab it was on.
+    <div className="w-full" data-review-scope="Tab: Tags">
       {error && (
         <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>
       )}
 
-      {/* No heading here — the page is already called Tags at the top of the
-          screen, and saying it twice is chrome, not information. */}
+      {/* No heading here — TabIntro above already says Tags and what one is
+          for, and saying it twice is chrome, not information. */}
       <OfferingListBar
         view={view}
         onView={setView}

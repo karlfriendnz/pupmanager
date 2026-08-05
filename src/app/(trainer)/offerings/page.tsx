@@ -57,9 +57,12 @@ export default async function OfferingsPage() {
     { href: '/products', label: 'Products', icon: 'products', count: products, one: 'product', many: 'products', on: addons.has('shop') },
     { href: '/library', label: 'Library', icon: 'library', count: null, one: '', many: '', on: true },
     // Not a type of offering — a label that crosses ALL of them, which is why
-    // it sits at the foot of the hub rather than in the nav. One "Puppy" tag
-    // can hold a course, a 1:1 session and a product at the same time.
-    { href: '/offerings/tags', label: 'Tags', icon: 'tags', count: tags, one: 'tag', many: 'tags', on: true },
+    // it sits at the foot of the hub. One "Puppy" tag can hold a course, a 1:1
+    // session and a product at the same time. The row stays because this is
+    // where a trainer MEETS the idea; the screen it opens now lives in Settings
+    // (Karl, 2026-08-06), so it links straight there rather than through the
+    // /offerings/tags redirect.
+    { href: '/settings?tab=tags', label: 'Tags', icon: 'tags', count: tags, one: 'tag', many: 'tags', on: true },
   ] as const
 
   const visible: OfferingRowData[] = rows

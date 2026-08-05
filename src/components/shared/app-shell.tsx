@@ -13,7 +13,7 @@ import {
   X, Inbox, GraduationCap, Bell,
   Dog, Menu as MenuIcon, Globe, Phone, Mail, ChevronRight, ChevronLeft, ChevronDown, ArrowLeftRight, Wallet,
   BarChart3, Clock, Navigation, FileText, Megaphone, Lock, ClipboardList,
-  type LucideIcon, Ticket, CircleDollarSign, Tag as TagIcon,} from 'lucide-react'
+  type LucideIcon, Ticket, CircleDollarSign,} from 'lucide-react'
 import { InstagramIcon } from '@/components/icons/instagram-icon'
 import { stepKeyForLocation } from '@/lib/onboarding/path-step'
 import { UnreadBadgeSync } from './unread-badge-sync'
@@ -73,12 +73,12 @@ const TRAINER_NAV: NavItem[] = [
   // (trainer)/layout.tsx), and the add-on itself is `hidden` so it is not
   // advertised while the feature is unfinished.
   { href: '/memberships',  label: 'Packages',   icon: Ticket,          section: 'programs' },
-  // Last in Offerings, because a tag is not a sixth kind of thing to sell — it
-  // is a word that crosses all five, and the shop besides. It also appears only
-  // once the trainer has made a tag (see hiddenNavHrefs in (trainer)/layout.tsx):
-  // a menu row naming a concept they have never met explains nothing and costs a
-  // line of the menu forever.
-  { href: '/offerings/tags', label: 'Tags',      icon: TagIcon,         section: 'programs' },
+  // Tags used to sit here, last in Offerings. It moved into Settings (Karl,
+  // 2026-08-06: "please move tags to settings area") — a tag is not a sixth
+  // kind of thing to sell, it is configuration: a word that crosses all five
+  // and the shop besides. Settings → Tags now, and /offerings/tags redirects
+  // there. Removed from NAV_LABEL_CATALOG with it; the catalogue mirrors this
+  // list and its drift test fails on a stale row.
 
   // Not offerings themselves — the things that support them.
   { href: '/schedule/route', label: 'Route',      icon: Navigation,      section: 'tools' },

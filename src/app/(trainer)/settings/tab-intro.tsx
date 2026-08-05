@@ -75,6 +75,16 @@ export const TAB_INTRO: Record<string, TabIntroCopy> = {
       'A few keep their names — Stripe, Finances, Reports — so help articles still make sense.',
     ],
   },
+  tags: {
+    title: 'Tags',
+    blurb:
+      'Your own words for grouping what you sell. One “Puppy” tag can hold a course, a 1:1 session and something from your shop at the same time — so when a client says “I’ve just got a puppy”, everything you’d offer them is already together.',
+    steps: [
+      'Add a tag for something you get asked for — Puppy, Reactive, Recall.',
+      'Put it on an offering or a product from that thing’s own edit screen.',
+      'Open a tag any time to see everything in it, and drag them into the order you want.',
+    ],
+  },
   addons: {
     title: 'Add-ons',
     blurb:

@@ -17,7 +17,7 @@ const ROUTES = [
   '/sessions/needs-notes',
   '/offerings',
   '/offerings/new',
-  '/offerings/tags',
+  '/settings?tab=tags',
   '/packages',
   '/classes',
   '/casual-classes',

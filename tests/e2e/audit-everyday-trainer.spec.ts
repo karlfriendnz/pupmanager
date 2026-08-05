@@ -442,9 +442,15 @@ test.describe('the jobs a trainer does every day', () => {
       const trainer = await ownerTrainer(prisma)
 
       // ── Create ──────────────────────────────────────────────────────────────
+      // Arrived at through the OLD url on purpose: Tags moved into Settings
+      // (2026-08-06) and /offerings/tags was a menu item for long enough to be
+      // in bookmarks and histories, so the redirect is part of the feature.
+      await page.goto('/offerings/tags')
+      await expect(page, 'the old tags url no longer lands on the tags screen')
+        .toHaveURL(/\/settings\?tab=tags/, { timeout: 20_000 })
+
       // Deliberately two steps — press, then name it — which is what stops
       // "Puppy", "Puppies" and "puppy class" all existing at once.
-      await page.goto('/offerings/tags')
       await page.getByRole('button', { name: 'New tag' }).click()
       await page.getByLabel('New tag name').fill(name)
       await page.getByRole('button', { name: 'Add', exact: true }).click()
@@ -455,7 +461,7 @@ test.describe('the jobs a trainer does every day', () => {
       )
       id = made.id
 
-      await page.goto('/offerings/tags')
+      await page.goto('/settings?tab=tags')
       await expect(
         page.getByText(name).first(),
         'the tag saved, but it is not on the tags screen',

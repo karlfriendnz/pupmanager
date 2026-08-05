@@ -106,7 +106,9 @@ export default async function TagPage({ params }: { params: Promise<{ tagId: str
 
   return (
     <>
-      <PageHeader title={tag.name} back={{ href: '/offerings/tags', label: 'Tags' }} />
+      {/* Back to the list, which now lives in Settings (Karl, 2026-08-06) —
+          pointed straight at it rather than at the /offerings/tags redirect. */}
+      <PageHeader title={tag.name} back={{ href: '/settings?tab=tags', label: 'Tags' }} />
       <TagDetail tag={tag} items={[...offerings, ...shopItems]} />
     </>
   )

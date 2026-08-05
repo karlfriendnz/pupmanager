@@ -13,7 +13,7 @@ import fs from 'fs'
 export const TRAINER_ROUTES = [
   '/dashboard', '/schedule', '/clients', '/enquiries', '/messages',
   '/sessions/draft-notes', '/sessions/needs-notes', '/packages', '/classes',
-  '/casual-classes', '/events', '/doggy-daycare', '/memberships', '/offerings/tags',
+  '/casual-classes', '/events', '/doggy-daycare', '/memberships', '/settings?tab=tags',
   '/library', '/products', '/products/categories', '/achievements', '/awards',
   '/marketing', '/instagram', '/lead-magnets', '/finances', '/timesheets',
   '/reports', '/settings', '/notifications', '/website', '/templates',

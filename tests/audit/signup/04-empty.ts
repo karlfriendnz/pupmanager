@@ -10,7 +10,7 @@ const PW = 'AuditPass123!'
 // Every static (non-parameterised) trainer route.
 const ROUTES = [
   '/dashboard', '/schedule', '/schedule/route', '/clients', '/clients/invite', '/clients/waitlist',
-  '/offerings', '/offerings/new', '/offerings/tags', '/packages', '/classes', '/casual-classes',
+  '/offerings', '/offerings/new', '/settings?tab=tags', '/packages', '/classes', '/casual-classes',
   '/doggy-daycare', '/events', '/memberships', '/products', '/products/new', '/products/categories',
   '/library', '/templates', '/templates/new', '/progress', '/achievements', '/achievements/new',
   '/awards', '/messages', '/notifications', '/enquiries', '/forms/intake', '/forms/new',

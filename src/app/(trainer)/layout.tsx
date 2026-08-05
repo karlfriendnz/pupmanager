@@ -200,13 +200,6 @@ export default async function TrainerLayout({ children }: { children: React.Reac
       // Their words for their own menu — sanitized on the way out, so a rename
       // that's since been locked or removed quietly reverts to our default.
       navLabels: true,
-      // Has this business made a tag yet? The Tags menu row appears only when
-      // they have (see below). Read HERE, folded into the profile query the
-      // shell already runs on every navigation, rather than as a `tag.count`
-      // of its own — Prisma resolves a relation count inside the same
-      // statement, so the fact arrives for free. A separate query would have
-      // put a round trip on every page load of the app to decide one menu row.
-      _count: { select: { tags: true } },
       subscriptionStatus: true,
       trialEndsAt: true,
       stripeSubscriptionId: true,
@@ -214,12 +207,10 @@ export default async function TrainerLayout({ children }: { children: React.Reac
     },
   })
 
-  // No tags, no Tags row. Karl's condition, and the right instinct: the screen
-  // manages labels that only exist once something has been labelled, so until
-  // then it is a menu item that opens onto an explanation. The place a trainer
-  // MEETS the idea is the Tags field on the offering and product editors, and
-  // the row at the foot of the Offerings hub — both of which stay put.
-  if ((tp?._count.tags ?? 0) === 0) hiddenNavHrefs.push('/offerings/tags')
+  // The "no tags, no Tags row" rule lived here. It went with the menu row when
+  // Tags moved into Settings (Karl, 2026-08-06) — a settings tab is somewhere
+  // you go to set something up, so it is allowed to be empty, and the tag count
+  // it needed came off this query with it.
 
   // Where the top-bar logo links — the signed-in user's chosen landing page
   // (Settings → Business). Per-user, so staff and owner can differ.

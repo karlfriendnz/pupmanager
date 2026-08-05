@@ -117,9 +117,10 @@ export const NAV_LABEL_CATALOG: readonly RenameableEntry[] = [
   { key: '/casual-classes', defaultLabel: 'Casual Classes', isSection: false, examples: ['Drop-ins', 'Pay as you go', 'Casual sessions'] },
   { key: '/events', defaultLabel: 'Events', isSection: false, examples: ['Seminars', 'Workshops', 'Talks'] },
   { key: '/memberships', defaultLabel: 'Packages', isSection: false, examples: ['Memberships', 'Plans', 'Bundles'] },
-  // Renameable like the rest of Offerings: "Tags" is our word for it, and a
-  // trainer who thinks in themes or streams should get to say so.
-  { key: '/offerings/tags', defaultLabel: 'Tags', isSection: false, examples: ['Labels', 'Themes', 'Streams'] },
+  // Tags was here. It left the menu for Settings → Tags (Karl, 2026-08-06), and
+  // the row had to go with it: this catalogue is a mirror of the real menu, and
+  // an entry for a menu item that no longer exists both fails the drift test and
+  // offers a rename box that would change nothing.
 
   { key: '/library', defaultLabel: 'Library', isSection: false, examples: ['Resources', 'Guides', 'Downloads'] },
   { key: '/products', defaultLabel: 'Products', isSection: false, examples: ['Shop', 'Store', 'Merch'] },
