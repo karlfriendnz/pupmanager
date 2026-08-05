@@ -129,9 +129,34 @@ describe('it only speaks when something changed', () => {
       .toEqual({ kind: 'assignments', count: 8 })
   })
 
-  // Creating an offering has no saved value to compare against, and nothing
-  // scheduled either — so it stays quiet without needing a special case.
+  // Creating a GROUP offering has nothing scheduled, so it stays quiet via the
+  // existingSessions check — which is why the 1:1 case below went unnoticed.
   it('is quiet on a brand-new offering', () => {
     expect(sessionCountChange({ existingSessions: 0, wanted: 6 })).toEqual({ kind: 'none' })
+  })
+
+  // Found on screen: /offerings/new?kind=onetoone showed "Anyone assigned this
+  // from now on gets 1 session. Clients already on it keep the sessions they
+  // have." before the offering had ever been saved. A 1:1 skips the
+  // existingSessions check (it owns no schedule) and `previous` is undefined on
+  // a create, so the only guard left was one that can't fire — the create has to
+  // say so itself.
+  it('is quiet on a brand-new 1:1 offering, where nobody is assigned yet', () => {
+    expect(sessionCountChange({ existingSessions: 0, wanted: 1, isGroup: false, isNew: true }))
+      .toEqual({ kind: 'none' })
+    expect(sessionCountChange({ existingSessions: 0, wanted: 6, isGroup: false, isNew: true }))
+      .toEqual({ kind: 'none' })
+  })
+
+  it('is quiet on a brand-new class with several cohorts claimed', () => {
+    expect(sessionCountChange({ existingSessions: 0, wanted: 6, runCount: 3, isNew: true }))
+      .toEqual({ kind: 'none' })
+  })
+
+  // The flag is about creating, not about the number — editing an existing 1:1
+  // must still warn, or fixing this would silence the real case.
+  it('still speaks when editing an existing 1:1', () => {
+    expect(sessionCountChange({ existingSessions: 0, wanted: 8, previous: 5, isGroup: false, isNew: false }))
+      .toEqual({ kind: 'assignments', count: 8 })
   })
 })

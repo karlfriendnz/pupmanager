@@ -35,6 +35,7 @@ export function sessionCountChange({
   existingSessions,
   wanted,
   previous,
+  isNew = false,
   isGroup = true,
   runCount = 1,
 }: {
@@ -48,6 +49,15 @@ export function sessionCountChange({
    * "what will this edit do", so an untouched form has nothing to say.
    */
   previous?: number
+  /**
+   * Creating an offering rather than editing one. There is nothing to change yet
+   * and nobody assigned, so every branch below is a statement about clients who
+   * don't exist — the new-offering wizard was warning that "clients already on it
+   * keep the sessions they have" before the offering had been saved once.
+   * Checked before `previous`, which is undefined on a create and so can't
+   * distinguish "unchanged" from "not yet a thing".
+   */
+  isNew?: boolean
   /** A 1:1 package owns no schedule; a class does. */
   isGroup?: boolean
   /** How many cohorts of this class are running. Only one has a schedule we can
@@ -55,6 +65,9 @@ export function sessionCountChange({
   runCount?: number
 }): SessionCountChange {
   if (!Number.isFinite(wanted) || wanted < 0) return { kind: 'none' }
+
+  // Nothing exists yet, so nothing is about to change and nobody is assigned.
+  if (isNew) return { kind: 'none' }
 
   // Nothing said until something changes. Checked FIRST, before any of the
   // per-shape branches, so it holds for all of them.

@@ -564,6 +564,10 @@ export function PackageForm({
     runCount: existing?.runCount ?? 1,
     // What it was saved with, so an untouched form says nothing.
     previous: existing?.sessionCount,
+    // Creating one: there's no schedule and nobody assigned, so there's no
+    // consequence to describe. `previous` is undefined here too and can't tell
+    // "unchanged" from "doesn't exist yet".
+    isNew: !existing,
   })
   const sessionDeltaMessage = sessionCountChangeMessage(sessionDelta, { hasAttendance })
   const perSessionAvailable = kind !== 'oneoff' && canPricePerSession(watchedSessionCount)
