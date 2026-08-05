@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
-  CalendarPlus, GraduationCap, Clock, Users, Video, MapPin, Check, CheckCircle2,
+  CalendarPlus, GraduationCap, Clock, Users, Video, Check, CheckCircle2,
   Loader2, ChevronLeft, ChevronRight, ArrowRight, CalendarDays, Repeat, Ticket, PartyPopper,
   Minus, Plus, ShoppingBag, Tag as TagIcon, X,
 } from 'lucide-react'
@@ -667,10 +667,13 @@ export function BookingWizard(props: {
                       title={p.name}
                       meta={<>
                         <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{p.durationMins} min</span>
-                        <span className="inline-flex items-center gap-1">
-                          {p.sessionType === 'VIRTUAL' ? <Video className="h-3 w-3" /> : <MapPin className="h-3 w-3" />}
-                          {p.sessionType === 'VIRTUAL' ? 'Virtual' : 'In person'}
-                        </span>
+                        {/* Only the exception is worth a line. Nearly everything
+                            a dog trainer sells happens in person, so saying so
+                            on every row is noise; "Virtual" is the fact that
+                            changes what a client turns up to. */}
+                        {p.sessionType === 'VIRTUAL' && (
+                          <span className="inline-flex items-center gap-1"><Video className="h-3 w-3" />Virtual</span>
+                        )}
                         {p.sessionCount > 1 && <span className="inline-flex items-center gap-1"><Repeat className="h-3 w-3" />{p.sessionCount} sessions</span>}
                       </>}
                       price={price(p.priceCents, currency) ? <span className="text-sm font-semibold text-slate-900">{price(p.priceCents, currency)}</span> : null}
@@ -979,10 +982,12 @@ function OfferingRow({ onClick, imageUrl, title, subtitle, meta, price }: {
         <div className="min-w-0 flex-1 p-4">
           <p className="text-[15px] font-semibold text-slate-900">{title}</p>
           {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
+          {/* Under the name, not out on the right: the price belongs to the
+              thing being sold, and reading it meant crossing the row. */}
+          {price && <div className="mt-0.5">{price}</div>}
           <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">{meta}</div>
         </div>
-        <div className="flex items-center gap-2 shrink-0 py-4 pr-4">
-          {price}
+        <div className="flex items-center shrink-0 py-4 pr-4">
           <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
         </div>
         {imageUrl && (
