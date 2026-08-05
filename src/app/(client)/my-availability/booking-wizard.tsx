@@ -1004,9 +1004,9 @@ function OfferingRow({ onClick, imageUrl, title, subtitle, meta, price }: {
           {price && <div className="mt-0.5">{price}</div>}
           <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">{meta}</div>
         </div>
-        <div className="flex items-center shrink-0 py-4 pr-4">
-          <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
-        </div>
+        {/* No arrow. The whole row is the button, and with a picture on the
+            right it was a second thing pointing the same way — on a row without
+            one it just sat in the space where the picture would be. */}
         {imageUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={imageUrl} alt="" className="w-24 self-stretch object-cover shrink-0" />
