@@ -527,6 +527,43 @@ export function withMembershipDefaults(partial: Partial<StepFields>): StepFields
   return { ...defaultsForKind(partial.kind ?? 'MESSAGE', DEFAULT_MEMBERSHIP_STEP_FIELDS), ...partial }
 }
 
+// ─── A journey's steps ───────────────────────────────────────────────────────
+// A Form's flow is PERSON-anchored: it starts when somebody submits the form
+// and every step after that is unlocked by finishing the one before. There is
+// no clock, so `offsetMinutes` means nothing and `direction` is inert — the
+// trigger column is what carries the anchor (see flowTriggerFor).
+export const DEFAULT_FORM_STEP_FIELDS: StepFields = {
+  ...DEFAULT_STEP_FIELDS,
+  trigger: 'ON_ENQUIRY_SUBMITTED',
+  offsetMinutes: 0,
+  // A journey's steps are sequential by nature: the point of "then this" is
+  // that it comes after. The trainer can still switch it off per step.
+  blocking: true,
+  // A journey has no cohort — the audience is the one person walking it.
+  audience: 'CUSTOM',
+  title: 'Thanks for getting in touch',
+  body: "Hi {{name}}, thanks for your enquiry — here's what happens next.",
+}
+
+/**
+ * One step of a journey, defaults filled in.
+ *
+ * The trigger is FORCED to a person trigger rather than defaulted, because the
+ * anchor is not the trainer's to get wrong: a step hanging off a Form with
+ * `trigger: null` would read as BEFORE_SESSION, land in the cron's scan, and
+ * fire against a timetable the form does not have.
+ */
+export function withFormDefaults(partial: Partial<StepFields>): StepFields {
+  const base = defaultsForKind(partial.kind ?? 'MESSAGE', DEFAULT_FORM_STEP_FIELDS)
+  const merged = { ...base, ...partial }
+  return {
+    ...merged,
+    trigger: personTriggerEnum.safeParse(partial.trigger).success
+      ? (partial.trigger as PersonTrigger)
+      : 'ON_ENQUIRY_SUBMITTED',
+  }
+}
+
 // Validator for a template's stored `steps` JSON when applying it to a run.
 export const templateStepsSchema = z.array(stepFieldsSchema)
 
