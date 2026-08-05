@@ -901,11 +901,17 @@ function Shell({ step, onBack, children }: {
           going back IS moving along this track, and on its own row above it it
           read as belonging to the page rather than to the steps. */}
       <div className="flex items-center gap-1">
-        {onBack && (
-          <button onClick={onBack} aria-label="Back" className="-ml-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100">
-            <ChevronLeft className="h-5 w-5" />
-          </button>
-        )}
+        {/* The slot is always here, with or without a button in it. Rendering
+            nothing on step 1 let the track start 36px further left and then
+            jump right the moment Back appeared — the bar has to hold still
+            between steps or it reads as the page redrawing itself. */}
+        <div className="-ml-1.5 h-9 w-9 shrink-0">
+          {onBack && (
+            <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100">
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+          )}
+        </div>
 
         {step !== null && (
         <div className="flex flex-1 items-center gap-2" aria-hidden="true">
