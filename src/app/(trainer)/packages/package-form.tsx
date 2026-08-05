@@ -1018,16 +1018,7 @@ export function PackageForm({
               type="number"
               // 0 here meant every session on the same day and time — the
               // generator now floors it at 1, so don't offer 0 either.
-              //
-              // …unless the field isn't on screen. A one-off is SAVED with
-              // weeksBetween 0 (submit zeroes the cadence), and this div is
-              // only `invisible` — a hidden control is still a candidate for
-              // constraint validation, so re-opening that offering left the
-              // browser refusing the submit and unable to focus the field to
-              // say why ("An invalid form control with name='weeksBetween' is
-              // not focusable"). Save changes did nothing, silently, for ever.
-              // The floor only means something while the trainer can see it.
-              min={oneOff ? 0 : 1}
+              min={1}
               // DISABLED when there is only one session, and that is load-bearing.
               //
               // A single-session offering is SAVED with weeksBetween = 0 (submit
