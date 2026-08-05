@@ -1399,7 +1399,18 @@ function WeekGrid({
                     the series follows its first session, so there is exactly
                     one thing to move. */}
                 {previewBlocks
-                  .filter((b) => ymdInTz(b.startIso, tz) === ds)
+                  .filter((b) => {
+                    const isFirst = previewBlocks[0]?.key === b.key
+                    // While it is being dragged, the first block belongs to the
+                    // column the pointer is over — NOT to the day it currently
+                    // sits on. It is absolutely positioned inside a column, so
+                    // rendering it in its home column meant it could never move
+                    // sideways: drag to another day and it simply snapped back,
+                    // which read as "you can't drag to a different day" even
+                    // though the drop was landing correctly.
+                    if (isFirst && ghostDrag) return ghostDrag.dayIndex === dayIndex
+                    return ymdInTz(b.startIso, tz) === ds
+                  })
                   .map((b) => {
                     const isFirst = previewBlocks[0]?.key === b.key
                     const draggableHere = !!onProposeTime && isFirst
@@ -1416,7 +1427,9 @@ function WeekGrid({
                             ? (e) => handleGhostPointerDown(e, b, dayIndex)
                             : undefined
                         }
-                        isDragging={beingDragged && ghostDrag?.dayIndex === dayIndex}
+                        // It only renders in the target column while dragging,
+                        // so being rendered at all is enough.
+                        isDragging={beingDragged}
                         dragTop={beingDragged ? ghostDrag?.currentTop ?? null : null}
                       />
                     )
