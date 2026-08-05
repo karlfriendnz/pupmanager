@@ -899,28 +899,35 @@ function Shell({ step, onBack, children }: {
   const labels = ['Choose', 'Details', 'Confirm']
   return (
     <div className="px-4 pt-5 pb-10 max-w-xl mx-auto w-full">
-      {/* Back sits on the same line as the track, immediately left of step 1 —
-          going back IS moving along this track, and on its own row above it it
-          read as belonging to the page rather than to the steps. */}
-      <div className="flex items-center gap-1">
-        {/* The slot is always here, with or without a button in it. Rendering
-            nothing on step 1 let the track start 36px further left and then
-            jump right the moment Back appeared — the bar has to hold still
-            between steps or it reads as the page redrawing itself. */}
-        <div className="-ml-1.5 h-9 w-9 shrink-0">
-          {onBack && (
-            <button onClick={onBack} aria-label="Back" className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100">
-              <ChevronLeft className="h-5 w-5" />
-            </button>
-          )}
-        </div>
-
-        {step !== null && (
-        <div className="flex flex-1 items-center gap-2" aria-hidden="true">
+      {/* The track starts hard at the left edge and never moves. There is no
+          separate Back button and no reserved slot for one: past step 1 the
+          FIRST node becomes the way back, so going back is a move along this
+          track rather than a control floating above it (Karl, 2026-08-06).
+          A reserved-but-empty slot was the earlier fix for the bar jumping;
+          this removes the need for one. */}
+      {step !== null && (
+        <div className="flex items-center gap-2">
           {labels.map((label, i) => {
             const n = (i + 1) as 1 | 2 | 3
             const active = n === step
             const doneStep = n < step
+            // The first node is Back once there is somewhere to go back to. It
+            // always steps back exactly one — from Confirm it returns to the
+            // time, not to the start.
+            const isBack = i === 0 && step > 1 && !!onBack
+            const node = isBack ? (
+              <button
+                onClick={onBack}
+                aria-label="Back"
+                className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-soft text-accent hover:bg-accent hover:text-accent-fg transition-colors"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </button>
+            ) : (
+              <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${active ? 'bg-accent text-accent-fg' : doneStep ? 'bg-accent-soft text-accent' : 'bg-slate-100 text-slate-400'}`}>
+                {doneStep ? <Check className="h-3 w-3" /> : n}
+              </span>
+            )
             return (
               // The last step takes no width of its own, so the bars before it
               // absorb the row and it finishes hard against the right edge.
@@ -928,9 +935,7 @@ function Shell({ step, onBack, children }: {
               // which read as the track stopping short.
               <div key={label} className={`flex items-center gap-2 ${i < labels.length - 1 ? 'flex-1' : 'flex-none'}`}>
                 <div className={`flex items-center gap-1.5 ${active || doneStep ? 'text-accent' : 'text-slate-300'}`}>
-                  <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${active ? 'bg-accent text-accent-fg' : doneStep ? 'bg-accent-soft text-accent' : 'bg-slate-100 text-slate-400'}`}>
-                    {doneStep ? <Check className="h-3 w-3" /> : n}
-                  </span>
+                  {node}
                   <span className="text-[11px] font-semibold uppercase tracking-wide hidden sm:inline">{label}</span>
                 </div>
                 {/* A hairline in slate-100 is invisible against this panel —
@@ -941,9 +946,8 @@ function Shell({ step, onBack, children }: {
               </div>
             )
           })}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="mt-6">{children}</div>
     </div>
@@ -1004,9 +1008,15 @@ function OfferingRow({ onClick, imageUrl, title, subtitle, meta, price }: {
           {price && <div className="mt-0.5">{price}</div>}
           <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500">{meta}</div>
         </div>
-        {/* No arrow. The whole row is the button, and with a picture on the
-            right it was a second thing pointing the same way — on a row without
-            one it just sat in the space where the picture would be. */}
+        {/* A picture anchors the right edge and says "there's more here" on its
+            own. Without one the row ended in empty white and read as a label
+            rather than something to tap, so it gets a chevron instead — one or
+            the other, never both. */}
+        {!imageUrl && (
+          <div className="flex items-center shrink-0 py-4 pr-4">
+            <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
+          </div>
+        )}
         {imageUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={imageUrl} alt="" className="w-24 self-stretch object-cover shrink-0" />
