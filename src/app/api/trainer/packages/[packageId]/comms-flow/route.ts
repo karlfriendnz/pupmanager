@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { guardPermission } from '@/lib/membership'
 import { COMMS_STARTER_STEPS } from '@/lib/comms-flows'
-import { stepCreateSchema, withDefaults, channelsForAudience } from '@/lib/comms-flow-steps'
+import { stepCreateSchema, withDefaults, channelsForAudience, payloadForWrite } from '@/lib/comms-flow-steps'
 
 // List + create the automated-message steps of a 1:1 package. Mirrors the
 // class-run comms-flow route; scoped to the trainer's own package and gated by
@@ -63,7 +63,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ package
 
   const base = withDefaults(parsed.data)
   // In-app is staff-only — a client's feed shouldn't mirror every push.
-  const fields = { ...base, channels: channelsForAudience(base.channels, base.audience) }
+  const fields = { ...base, channels: channelsForAudience(base.channels, base.audience), payload: payloadForWrite(base.payload) }
   const step = await prisma.commsFlowStep.create({ data: { packageId, order, ...fields } })
   return NextResponse.json(step, { status: 201 })
 }

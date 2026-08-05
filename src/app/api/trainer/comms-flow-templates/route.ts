@@ -56,6 +56,10 @@ export async function POST(req: Request) {
       // Leaving it out here silently dropped the email content on save, so a
       // template applied elsewhere fell back to the short push line.
       emailBody: true,
+      // What each step IS, and how it's configured. Same lesson as emailBody:
+      // a field left out of this select is a field the template quietly
+      // forgets, and the copy that comes back is not the flow that was saved.
+      kind: true, actor: true, trigger: true, blocking: true, payload: true,
     },
   })
   if (steps.length === 0) return NextResponse.json({ error: 'This flow has no messages to save' }, { status: 400 })

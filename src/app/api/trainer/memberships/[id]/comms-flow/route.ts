@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { guardPermission } from '@/lib/membership'
 import { MEMBERSHIP_STARTER_STEPS } from '@/lib/comms-flows'
-import { stepCreateSchema, withMembershipDefaults, channelsForAudience } from '@/lib/comms-flow-steps'
+import { stepCreateSchema, withMembershipDefaults, channelsForAudience, payloadForWrite } from '@/lib/comms-flow-steps'
 
 // List + create the automated-message steps of a membership. Mirrors the
 // class-run and 1:1-package routes, but the steps here anchor on the client's
@@ -67,7 +67,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const base = withMembershipDefaults(parsed.data)
   // In-app is staff-only — a client's feed shouldn't mirror every push.
-  const fields = { ...base, channels: channelsForAudience(base.channels, base.audience) }
+  const fields = { ...base, channels: channelsForAudience(base.channels, base.audience), payload: payloadForWrite(base.payload) }
   const step = await prisma.commsFlowStep.create({ data: { membershipId: id, order, ...fields } })
   return NextResponse.json(step, { status: 201 })
 }

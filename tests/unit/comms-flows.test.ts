@@ -56,6 +56,10 @@ function step(over: Record<string, unknown> = {}) {
   return {
     id: 'step1',
     classRunId: 'run1',
+    // Every row in the database is a MESSAGE — the column defaults to it. The
+    // engine routes on it, so a fixture without one is not a DB row.
+    kind: 'MESSAGE',
+    trigger: null,
     direction: 'BEFORE_SESSION',
     offsetMinutes: 1440,
     channels: ['PUSH', 'IN_APP'],
@@ -374,7 +378,7 @@ describe('processCommsFlows — staff audience', () => {
 
   it('a 1:1 package step goes to the session’s own trainer', async () => {
     h.stepFindMany.mockResolvedValue([{
-      id: 'pstep', classRunId: null, packageId: 'pkg1',
+      id: 'pstep', classRunId: null, packageId: 'pkg1', kind: 'MESSAGE', trigger: null,
       direction: 'BEFORE_SESSION', offsetMinutes: 1440, channels: ['PUSH'],
       audience: 'STAFF', customClientIds: [], important: false,
       title: 'You have {{name}} at {{time}}', body: '{{class}} with {{dog}}',
@@ -399,7 +403,7 @@ describe('processCommsFlows — staff audience', () => {
 
   it('a 1:1 package step with no assigned trainer falls back to the main trainer', async () => {
     h.stepFindMany.mockResolvedValue([{
-      id: 'pstep', classRunId: null, packageId: 'pkg1',
+      id: 'pstep', classRunId: null, packageId: 'pkg1', kind: 'MESSAGE', trigger: null,
       direction: 'BEFORE_SESSION', offsetMinutes: 1440, channels: ['PUSH'],
       audience: 'STAFF', customClientIds: [], important: false,
       title: 't', body: 'b',
@@ -421,7 +425,7 @@ describe('processCommsFlows — staff audience', () => {
 describe('processCommsFlows — 1:1 package scope', () => {
   it("sends to each session's own client (no enrolments involved)", async () => {
     h.stepFindMany.mockResolvedValue([{
-      id: 'pstep', classRunId: null, packageId: 'pkg1',
+      id: 'pstep', classRunId: null, packageId: 'pkg1', kind: 'MESSAGE', trigger: null,
       direction: 'BEFORE_SESSION', offsetMinutes: 1440, channels: ['IN_APP'],
       audience: 'ENROLLED', customClientIds: [], important: false,
       title: 'Hi {{name}} & {{dog}}', body: '{{class}} at {{time}}',
@@ -446,6 +450,7 @@ describe('processCommsFlows — 1:1 package scope', () => {
 
 const membershipStep = (over: Record<string, unknown> = {}) => ({
   id: 'mstep', classRunId: null, packageId: null, membershipId: 'mem1',
+  kind: 'MESSAGE', trigger: null,
   direction: 'AFTER_PURCHASE', offsetMinutes: 1440, channels: ['PUSH', 'IN_APP'],
   audience: 'ENROLLED', customClientIds: [], important: false,
   // Deliberately the PRE-RENAME spelling — this is the shape of every step row
@@ -552,5 +557,115 @@ describe('processCommsFlows — membership scope', () => {
     const where = h.purchaseFindMany.mock.calls[0][0].where
     expect(where.currentPeriodEnd).toBeDefined()
     expect(where.purchasedAt).toBeUndefined()
+  })
+})
+
+// ─── Flows widened past messages ────────────────────────────────────────────
+// A step is now one step of a FLOW, and a flow can be a person's journey
+// (enquiry → account → intake → choose an offering) as easily as a class's
+// reminders. This cron only ever delivers a MESSAGE on a clock. Every other
+// kind is something a person DOES, so the cron's correct behaviour is to do
+// nothing — and "nothing" has to mean nothing, not a half-rendered push.
+//
+// Nothing can create a non-MESSAGE step in phase 1. These tests exist so that
+// when phase 2 can, the routing is already proven rather than discovered.
+
+describe('processCommsFlows — routing by kind', () => {
+  const KINDS = ['FORM', 'UPLOAD', 'TASK', 'ACCOUNT', 'CHOOSE_OFFERING', 'APPROVAL'] as const
+
+  it.each(KINDS)('a %s step is a clean no-op — nothing sent, nothing recorded', async kind => {
+    h.stepFindMany.mockResolvedValue([step({ kind, title: null, body: null })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(0)
+    expect(res.skipped).toBe(1)
+    expect(h.sendPush).not.toHaveBeenCalled()
+    expect(h.sendEmail).not.toHaveBeenCalled()
+    expect(h.notificationCreate).not.toHaveBeenCalled()
+    expect(h.sendCreate).not.toHaveBeenCalled()
+    // It doesn't even go looking for recipients.
+    expect(h.sessionFindMany).not.toHaveBeenCalled()
+  })
+
+  it('skips the non-message steps and still delivers the message ones', async () => {
+    h.stepFindMany.mockResolvedValue([
+      step({ id: 'form1', kind: 'FORM', title: null, body: null }),
+      step({ id: 'msg1', kind: 'MESSAGE' }),
+    ])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res).toMatchObject({ steps: 2, sent: 1, skipped: 1 })
+    expect(h.sendCreate).toHaveBeenCalledWith({ data: { stepId: 'msg1', sessionId: 'sess1', userId: 'u1' } })
+  })
+
+  // A person-anchored MESSAGE is unlocked by finishing the previous step, not
+  // by a clock — so the FlowRun sends it, never this scan. Firing it here would
+  // send a welcome to somebody who never finished signing up.
+  it('leaves a person-anchored message to the run that owns it', async () => {
+    h.stepFindMany.mockResolvedValue([step({ kind: 'MESSAGE', trigger: 'ON_ENQUIRY_SUBMITTED' })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res).toMatchObject({ sent: 0, skipped: 1 })
+    expect(h.sendPush).not.toHaveBeenCalled()
+  })
+
+  // The whole point of the widening: today's reminders are untouched by it.
+  it('delivers an existing session reminder exactly as it did before', async () => {
+    h.stepFindMany.mockResolvedValue([step({ channels: ['PUSH', 'EMAIL', 'IN_APP'] })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(res.skipped).toBe(0)
+    expect(h.sendPush.mock.calls[0][1].alert).toEqual({
+      title: 'Hi Sam & Bailey',
+      body: 'Puppy Class at 12:00 am — Waggy Tails',
+    })
+    expect(h.notificationCreate.mock.calls[0][0].data).toMatchObject({ userId: 'u1', link: '/my-sessions' })
+    expect(h.sendEmail).toHaveBeenCalledTimes(1)
+  })
+})
+
+// A MESSAGE step cannot be saved without a title and a body — but the COLUMNS
+// are nullable now, and the one place a stray null would surface is the subject
+// line of a real client's email. "null" is four characters that must never ship.
+describe('renderCommsMessage — null copy', () => {
+  const VARS = { name: 'Sam', dog: 'Bailey', time: '6pm', date: 'Tue', class: 'Puppy Class', business: 'Waggy', location: 'Hall' }
+
+  it('renders an empty string, never the word "null"', () => {
+    const out = renderCommsMessage({ title: null, body: null }, VARS)
+    expect(out).toEqual({ title: '', body: '', emailBody: null })
+  })
+
+  it('never renders "undefined" either', () => {
+    const out = renderCommsMessage({ title: undefined as unknown as null, body: undefined as unknown as null }, VARS)
+    expect(out.title).toBe('')
+    expect(out.body).toBe('')
+  })
+
+  it('a null title does not stop the body rendering', () => {
+    const out = renderCommsMessage({ title: null, body: 'Hi {{name}}' }, VARS)
+    expect(out).toMatchObject({ title: '', body: 'Hi Sam' })
+  })
+
+  it('does not send the string "null" to a client', async () => {
+    h.stepFindMany.mockResolvedValue([step({ channels: ['PUSH', 'EMAIL'], title: null, body: null })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+
+    await processCommsFlows(NOW)
+
+    const push = h.sendPush.mock.calls[0]?.[1]
+    const email = h.renderEmail.mock.calls[0]?.[0]
+    for (const value of [push?.alert?.title, push?.alert?.body, email?.title, email?.body]) {
+      expect(String(value)).not.toContain('null')
+      expect(String(value)).not.toContain('undefined')
+    }
   })
 })

@@ -29,12 +29,19 @@ interface Step {
   audience: Audience
   customClientIds: string[]
   important: boolean
-  title: string
-  body: string
+  // NULLABLE on the server since flows widened past messages (a FORM or UPLOAD
+  // step has no copy). This screen only ever authors MESSAGE steps, so it keeps
+  // them non-empty — but it must not assume a step it LOADS has them, or the
+  // first non-message step in a flow blanks the whole editor with
+  // "cannot read properties of null".
+  title: string | null
+  body: string | null
   emailBody: string | null
   enabled: boolean
   order: number
 }
+/** What the screen shows for a step with no copy of its own. */
+const copyOf = (v: string | null | undefined) => v ?? ''
 interface TemplateSummary { id: string; name: string; stepCount: number }
 interface ClientOpt { id: string; name: string; dog?: string | null }
 
@@ -403,10 +410,10 @@ function TimelineStop({ step, first, last, busy, onEdit, onPreview, onToggle }: 
 
         <span className="min-w-0 flex-1">
           <span className="flex items-start gap-1.5">
-            <span className="min-w-0 text-sm font-medium text-slate-900 line-clamp-2">{step.title}</span>
+            <span className="min-w-0 text-sm font-medium text-slate-900 line-clamp-2">{copyOf(step.title)}</span>
             {step.important && <Star className="h-3.5 w-3.5 shrink-0 mt-0.5 text-slate-500" strokeWidth={1.75} aria-label="Always sends" />}
           </span>
-          <span className="mt-0.5 text-xs text-slate-500 line-clamp-2">{step.body}</span>
+          <span className="mt-0.5 text-xs text-slate-500 line-clamp-2">{copyOf(step.body)}</span>
         </span>
       </button>
 
@@ -414,9 +421,9 @@ function TimelineStop({ step, first, last, busy, onEdit, onPreview, onToggle }: 
         {/* On a phone the row has no width to spare — preview lives one tap in,
             on the message itself. */}
         <button type="button" onClick={onPreview} disabled={busy} title="Preview" className="hidden sm:block p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 disabled:opacity-60">
-          <Eye className="h-4 w-4" strokeWidth={1.75} /><span className="sr-only">Preview {step.title}</span>
+          <Eye className="h-4 w-4" strokeWidth={1.75} /><span className="sr-only">Preview {copyOf(step.title)}</span>
         </button>
-        <Switch checked={step.enabled} onChange={onToggle} disabled={busy} onColor="bg-slate-900" aria-label={step.enabled ? `Turn off ${step.title}` : `Turn on ${step.title}`} />
+        <Switch checked={step.enabled} onChange={onToggle} disabled={busy} onColor="bg-slate-900" aria-label={step.enabled ? `Turn off ${copyOf(step.title)}` : `Turn on ${copyOf(step.title)}`} />
       </div>
     </li>
   )
@@ -470,7 +477,7 @@ function StepSheet({ draft, clients, busy, isMembership = false, placeholders, o
   onPreview: () => void
   onCancel: () => void
 }) {
-  const canSave = draft.channels.length > 0 && draft.title.trim() && draft.body.trim()
+  const canSave = draft.channels.length > 0 && copyOf(draft.title).trim() && copyOf(draft.body).trim()
   const toStaff = draft.audience === 'STAFF'
   const channels = CHANNELS.filter(c => toStaff || !STAFF_ONLY_CHANNELS.includes(c.key))
   const audienceHint = AUDIENCES.find(a => a.key === draft.audience)?.hint
@@ -561,8 +568,8 @@ function StepSheet({ draft, clients, busy, isMembership = false, placeholders, o
 
         {/* WHAT */}
         <Field label="Message">
-          <input value={draft.title} onChange={e => onPatch({ title: e.target.value })} aria-label="Title" placeholder="Title (e.g. See you tomorrow 🐾)" className="w-full h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800" />
-          <textarea value={draft.body} onChange={e => onPatch({ body: e.target.value })} aria-label="Message" rows={4} placeholder="Your message…" className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800" />
+          <input value={copyOf(draft.title)} onChange={e => onPatch({ title: e.target.value })} aria-label="Title" placeholder="Title (e.g. See you tomorrow 🐾)" className="w-full h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800" />
+          <textarea value={copyOf(draft.body)} onChange={e => onPatch({ body: e.target.value })} aria-label="Message" rows={4} placeholder="Your message…" className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800" />
           <div className="mt-3">
             <p className="mb-1.5 text-xs font-medium text-slate-600">Insert a placeholder</p>
             <div className="flex flex-wrap gap-1.5">
@@ -570,7 +577,7 @@ function StepSheet({ draft, clients, busy, isMembership = false, placeholders, o
                 <button
                   key={token}
                   type="button"
-                  onClick={() => onPatch({ body: `${draft.body}${draft.body && !draft.body.endsWith(' ') ? ' ' : ''}${token}` })}
+                  onClick={() => onPatch({ body: `${copyOf(draft.body)}${copyOf(draft.body) && !copyOf(draft.body).endsWith(' ') ? ' ' : ''}${token}` })}
                   title={`Insert ${token}`}
                   className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                 >
@@ -625,8 +632,8 @@ function PreviewSheet({ step, clients, offering, onClose }: {
     ? { name: 'you', dog: null }
     : (pickable.find(c => c.id === who) ?? { name: SAMPLE['{{name}}'], dog: SAMPLE['{{dog}}'] })
 
-  const title = preview(step.title, person, offering)
-  const body = preview(step.body, person, offering)
+  const title = preview(copyOf(step.title), person, offering)
+  const body = preview(copyOf(step.body), person, offering)
   const emailHtml = step.emailBody ? preview(step.emailBody, person, offering) : null
 
   return (

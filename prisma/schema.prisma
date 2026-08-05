@@ -191,6 +191,9 @@ model User {
   // Stock the person themselves moved — a delivery booked in, a write-off.
   stockMovements StockMovement[]
 
+  // Flow journeys this person is walking through (sign-up, intake, booking).
+  flowRuns FlowRun[]
+
   @@map("users")
 }
 
@@ -781,6 +784,7 @@ model TrainerProfile {
   achievements       Achievement[]
   classRuns          ClassRun[]
   commsFlowTemplates CommsFlowTemplate[]
+  flowRuns           FlowRun[]
   discounts          Discount[]
   memberships        Membership[]
   waitlistEntries    WaitlistEntry[]
@@ -1289,6 +1293,7 @@ model ClientProfile {
   invoices             Invoice[]
   enquiry              Enquiry?
   stockMovements       StockMovement[]
+  flowRuns             FlowRun[]
 
   @@unique([userId, trainerId])
   @@index([userId])
@@ -1607,6 +1612,7 @@ model TrainingSession {
   packageSessionSlot       PackageSessionSlot?     @relation(fields: [packageSessionSlotId], references: [id], onDelete: SetNull)
   automationSends          BookingAutomationSend[]
   commsFlowSends           CommsFlowSend[]
+  flowStepCompletions      FlowStepCompletion[]
   paymentItem              PaymentItem?
   timeEntries              SessionTimeEntry[]
 
@@ -2169,6 +2175,7 @@ model Package {
   defaultTasks       PackageDefaultTask[]
   sessionPlans       PackageSessionPlan[]
   commsFlowSteps     CommsFlowStep[]
+  flowRuns           FlowRun[]
   bookingRequests    BookingRequest[]
   bookingPages       BookingPage[]
   tags               TagAssignment[]
@@ -3797,6 +3804,68 @@ enum CommsFlowAudience {
   STAFF
 }
 
+// ─── Flows, widened ──────────────────────────────────────────────────────────
+// A CommsFlowStep started life as "a timed message on an offering". It is now
+// one STEP of a flow, and a flow is either:
+//
+//   • SESSION/PURCHASE-anchored (everything that exists today) — steps fire on
+//     a clock relative to a session or a purchase, independently of each other,
+//     found by a stateless scan in the */5 cron. These need NO FlowRun row and
+//     must stay that way: the cron's cost is one query per step, not one row
+//     per person per flow.
+//   • PERSON-anchored (new) — steps run in SEQUENCE for one person, and step
+//     N+1 becomes available when step N is COMPLETED rather than when a timer
+//     expires. Karl, 2026-08-05: "a person goes through a contact form, then
+//     they get their account, then they enter pw, then they fill in the intake
+//     form, then they are redirected to a particular set of offerings to choose
+//     from, then the trainer gets a notification, the trainer accepts the time
+//     or moves the time." Those need a FlowRun to hold the cursor.
+//
+// Nothing creates a person-anchored flow yet — this is the shape, and the
+// engine's routing, landing ahead of the UI so phase 2 is additive.
+
+// What a step ASKS FOR. MESSAGE is every row that exists today.
+enum FlowStepKind {
+  MESSAGE // a timed message — title/body/emailBody, delivered by the cron
+  FORM // fill in a Form (payload.formId)
+  UPLOAD // upload something — a dog photo, a vet note
+  TASK // do a thing and tick it off
+  // The three the enquiry→account→intake→choose journey needs and the first
+  // four cannot express. Named after what the person DOES, not the screen.
+  ACCOUNT // set an email + password (the /form/[id]/account handover)
+  CHOOSE_OFFERING // pick from a set of offerings/packages
+  APPROVAL // accept, or move, what the other side proposed
+}
+
+// WHO performs a step. Karl's journey ends with the trainer accepting or moving
+// the time, so "the client does every step" was never true.
+enum FlowStepActor {
+  CLIENT
+  TRAINER
+}
+
+// WHAT STARTS a flow. The first four mirror CommsFlowDirection one-for-one and
+// are how every existing row is anchored — those rows leave `trigger` NULL and
+// are resolved from `direction` (see flowTriggerFor in lib/flow-steps.ts).
+// CommsFlowDirection is deliberately neither renamed nor deleted: existing rows,
+// the API, the editor and the engine all still read it.
+enum FlowTrigger {
+  BEFORE_SESSION
+  AFTER_SESSION
+  AFTER_PURCHASE
+  BEFORE_PERIOD_END
+  // Person-anchored. No session, no clock — the run advances as they finish.
+  ON_ENQUIRY_SUBMITTED
+  ON_SIGNUP
+  ON_BOOKING
+}
+
+enum FlowRunStatus {
+  ACTIVE
+  COMPLETED
+  ABANDONED
+}
+
 // One timed message in a class/drop-in/event's flow. channels reuses the
 // notification channel enum (push / email / in-app). title/body are plain text
 // with {{name}} {{dog}} {{time}} {{date}} {{class}} {{business}} {{location}}.
@@ -3810,6 +3879,24 @@ model CommsFlowStep {
   packageId       String?
   // A Membership — recipients are the clients holding an active purchase of it.
   membershipId    String?
+  // A Form — the steps of a PERSON-anchored journey, which starts from a public
+  // enquiry form rather than from anything with a timetable. This is the fourth
+  // parent, and the only one a person-anchored step ever has.
+  formId          String?
+  // What this step asks for. Every row that existed before this column is a
+  // MESSAGE, which is exactly what the default is for.
+  kind            FlowStepKind          @default(MESSAGE)
+  // Who does it. Client unless a trainer has to accept/reschedule.
+  actor           FlowStepActor         @default(CLIENT)
+  // NULL on every session/purchase-anchored step: its trigger IS `direction`,
+  // and duplicating it into a second column is how the two drift. Set only on a
+  // person-anchored step, where `direction` means nothing. Read it through
+  // flowTriggerFor(step), never raw.
+  trigger         FlowTrigger?
+  // "Wait until they've done this before showing the next." Only meaningful in
+  // a person-anchored run, where steps are sequential. Off = the old behaviour,
+  // where every step is independent.
+  blocking        Boolean               @default(false)
   direction       CommsFlowDirection    @default(BEFORE_SESSION)
   offsetMinutes   Int                   @default(1440)
   channels        NotificationChannel[]
@@ -3820,25 +3907,40 @@ model CommsFlowStep {
   // (cancellations, venue changes). Off by default — routine reminders respect
   // the client's mute (User.notifyPush / User.productEmailOptOut).
   important       Boolean               @default(false)
-  title           String
-  body            String                @db.Text
+  // NULLABLE since flows widened past messages: a FORM/UPLOAD/TASK step has no
+  // message copy, and inventing an empty string for it would make "did the
+  // trainer write anything" unanswerable. A MESSAGE step still requires both —
+  // enforced in stepFieldsSchema (lib/comms-flow-steps.ts), because the DB
+  // cannot express "required, but only for one kind".
+  title           String?
+  body            String?               @db.Text
   // Optional rich (HTML) body used only for the EMAIL channel — authored with
   // the same editor as email templates. Push/in-app keep the plain `body`.
   // Null = fall back to `body` for email too.
   emailBody       String?               @db.Text
+  // Kind-specific configuration: which form to fill, what to upload, which
+  // offerings to choose from. MESSAGE keeps using title/body/emailBody and
+  // leaves this null — moving message copy in here would be churn for nothing.
+  payload         Json?
   enabled         Boolean               @default(true)
   order           Int                   @default(0)
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
 
-  classRun   ClassRun?       @relation(fields: [classRunId], references: [id], onDelete: Cascade)
-  package    Package?        @relation(fields: [packageId], references: [id], onDelete: Cascade)
-  membership Membership?     @relation(fields: [membershipId], references: [id], onDelete: Cascade)
-  sends      CommsFlowSend[]
+  classRun    ClassRun?            @relation(fields: [classRunId], references: [id], onDelete: Cascade)
+  package     Package?             @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  membership  Membership?          @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  form        Form?                @relation("FormFlowSteps", fields: [formId], references: [id], onDelete: Cascade)
+  sends       CommsFlowSend[]
+  completions FlowStepCompletion[]
+  // Runs currently parked on this step. SetNull, not Cascade: deleting one step
+  // of a journey must not delete the people walking through it.
+  currentOf   FlowRun[]
 
   @@index([classRunId])
   @@index([packageId])
   @@index([membershipId])
+  @@index([formId])
   @@map("comms_flow_steps")
 }
 
@@ -3880,6 +3982,110 @@ model CommsFlowTemplate {
 
   @@index([trainerId])
   @@map("comms_flow_templates")
+}
+
+/// One person's journey through a PERSON-anchored flow, and the cursor that says
+/// where they are up to.
+///
+/// A session-anchored flow has no run row and never will — those steps are
+/// found by a stateless scan of upcoming sessions, which is what lets one cron
+/// tick cover every trainer. A run exists only where "which step is this person
+/// up to" is a real question, i.e. where the steps are sequential.
+///
+/// The three identity columns are all optional because a journey starts BEFORE
+/// the person exists in the system: an enquiry is written first (so an abandoned
+/// journey still leaves the trainer a name and a phone number — see
+/// lib/form-continuation.ts), the User arrives at the account step, and the
+/// ClientProfile at the same moment. A run fills them in as it goes.
+model FlowRun {
+  id        String @id @default(cuid())
+  // The tenant. A run belongs to one business, always, from the first step.
+  trainerId String
+
+  // WHICH flow — the same scope a step carries. A journey's steps hang off the
+  // Form it starts from; an offering-anchored journey off the Package.
+  formId    String?
+  packageId String?
+
+  // WHAT started it. Person-anchored triggers only — a session-anchored flow
+  // has no run.
+  trigger FlowTrigger
+
+  // WHO is walking through it, as far as we know yet.
+  userId    String?
+  clientId  String?
+  enquiryId String?
+
+  status        FlowRunStatus @default(ACTIVE)
+  // The step they are parked on. Derived from the completions (see
+  // nextStepFor / advanceFlowRun in lib/flow-steps.ts) and stored so a screen
+  // can ask one question instead of recomputing the whole flow.
+  currentStepId String?
+  // Anything the run needs to carry between steps that isn't a completion —
+  // the offering they picked, the redirect they came in on.
+  context       Json?
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  trainer     TrainerProfile       @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  form        Form?                @relation("FormFlowRuns", fields: [formId], references: [id], onDelete: Cascade)
+  package     Package?             @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  user        User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client      ClientProfile?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  enquiry     Enquiry?             @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  currentStep CommsFlowStep?       @relation(fields: [currentStepId], references: [id], onDelete: SetNull)
+  completions FlowStepCompletion[]
+
+  @@index([trainerId])
+  @@index([formId])
+  @@index([packageId])
+  @@index([userId])
+  @@index([clientId])
+  @@index([enquiryId])
+  @@index([currentStepId])
+  @@index([status])
+  @@map("flow_runs")
+}
+
+/// One row per (step, anchor, person) already COMPLETED — the sibling of
+/// CommsFlowSend, and the seam the rest of the flow builder hangs off.
+///
+/// CommsFlowSend answers "did we send this to them"; this answers "did they do
+/// it". Same idiom deliberately: exactly one anchor is set, the unique index on
+/// that anchor is what makes a double-submit idempotent, and a conflict is
+/// swallowed rather than raised (see recordStepCompletion).
+///
+/// Nothing writes to it in phase 1 except the tests. That is the point.
+model FlowStepCompletion {
+  id          String   @id @default(cuid())
+  stepId      String
+  // Exactly one anchor, matching how the step is anchored:
+  //   runId      — a person-anchored journey
+  //   sessionId  — a session-anchored step (a form due at each class)
+  //   purchaseId — a purchase-anchored step
+  runId       String?
+  sessionId   String?
+  purchaseId  String?
+  userId      String // the person who did it — User.id, as in CommsFlowSend
+  completedAt DateTime @default(now())
+  // What they actually did, when the doing produced something: the answers, the
+  // uploaded URL, which offering they picked.
+  result      Json?
+
+  step     CommsFlowStep       @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  run      FlowRun?            @relation(fields: [runId], references: [id], onDelete: Cascade)
+  session  TrainingSession?    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  purchase MembershipPurchase? @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  @@unique([stepId, sessionId, userId])
+  @@unique([stepId, purchaseId, userId])
+  @@unique([stepId, runId, userId])
+  @@index([runId])
+  @@index([sessionId])
+  @@index([purchaseId])
+  @@map("flow_step_completions")
 }
 
 // ─── System-wide discounts ───────────────────────────────────────────────────
@@ -4253,10 +4459,11 @@ model MembershipPurchase {
   // Cleared the moment a payment succeeds.
   accessGraceUntil DateTime?
 
-  membership     Membership          @relation(fields: [membershipId], references: [id], onDelete: Cascade)
-  plan           MembershipPlan?     @relation(fields: [planId], references: [id], onDelete: SetNull)
-  commsFlowSends CommsFlowSend[]
-  invoices       MembershipInvoice[]
+  membership          Membership           @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  plan                MembershipPlan?      @relation(fields: [planId], references: [id], onDelete: SetNull)
+  commsFlowSends      CommsFlowSend[]
+  flowStepCompletions FlowStepCompletion[]
+  invoices            MembershipInvoice[]
 
   @@index([membershipId])
   @@index([trainerId])
@@ -4600,6 +4807,10 @@ model Form {
   // enquiry form with it.
   continueIntakeForm Form?           @relation("FormContinuationIntake", fields: [continueIntakeFormId], references: [id], onDelete: SetNull)
   continuationOf     Form[]          @relation("FormContinuationIntake")
+  // The person-anchored journey published on this form, and the people
+  // currently walking through it.
+  flowSteps          CommsFlowStep[] @relation("FormFlowSteps")
+  flowRuns           FlowRun[]       @relation("FormFlowRuns")
 
   @@unique([trainerId, slug])
   @@index([trainerId])
@@ -4784,6 +4995,8 @@ model Enquiry {
   unifiedForm   Form?            @relation("EnquiryUnifiedForm", fields: [unifiedFormId], references: [id], onDelete: SetNull)
   clientProfile ClientProfile?   @relation(fields: [clientProfileId], references: [id], onDelete: SetNull)
   messages      EnquiryMessage[]
+  // The sign-up journey this enquiry kicked off, if the form publishes one.
+  flowRuns      FlowRun[]
 
   @@index([trainerId, status])
   @@index([trainerId, createdAt])

@@ -248,6 +248,8 @@ const TENANT_EXEMPT: Record<string, string> = {
   ClientReminderSent: 'AUDIT GAP: sessionId/userId are plain columns with no FK',
   CommsFlowStep: 'AUDIT GAP: all three parents (classRun/package/membership) are optional, so a step can belong to nothing',
   CommsFlowSend: 'AUDIT GAP: inherits CommsFlowStep — the send ledger has no tenant column',
+  FlowStepCompletion:
+    'AUDIT GAP: the mirror of CommsFlowSend ("they did it" vs "we sent it") and inherits the same gap — its only required relation is to CommsFlowStep, which is itself tenant-less. Fix both together or neither.',
   TrainerProfile: 'IS the tenant — its own id is the trainerId everything else carries',
 }
 
@@ -493,6 +495,11 @@ const SETNULL_RELATIONS = [
   'StockMovement.variant',
   'TimeEntry.rate',
   'TimeEntry.client',
+  // A flow run's cursor clears when the step it points at is deleted. Cascade
+  // would delete the PEOPLE walking through the journey because a trainer
+  // removed one step of it; nextStepFor() recomputes the cursor from the
+  // completions, so a null one is recoverable and an absent run is not.
+  'FlowRun.currentStep',
   // Staff assignment clears when the staff member leaves; the work stays.
   'ClientProfile.assignedTrainer',
   'TrainerTodo.assignedTo',

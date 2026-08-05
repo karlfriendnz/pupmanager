@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { guardPermission } from '@/lib/membership'
-import { templateStepsSchema, channelsForAudience } from '@/lib/comms-flow-steps'
+import { templateStepsSchema, channelsForAudience, payloadForWrite } from '@/lib/comms-flow-steps'
 
 // Apply a saved template's messages onto this run, appended after any existing
 // steps. Both the run and the template must belong to the trainer.
@@ -38,7 +38,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   let order = (last?.order ?? -1) + 1
 
   await prisma.commsFlowStep.createMany({
-    data: stepsParsed.data.map(s => ({ classRunId: runId, order: order++, ...s, channels: channelsForAudience(s.channels, s.audience) })),
+    data: stepsParsed.data.map(s => ({
+      classRunId: runId,
+      order: order++,
+      ...s,
+      channels: channelsForAudience(s.channels, s.audience),
+      // The kind's own configuration travels with the step; `unknown` off the
+      // template JSON has to be narrowed before Prisma will take it.
+      payload: payloadForWrite(s.payload),
+    })),
   })
   const steps = await prisma.commsFlowStep.findMany({
     where: { classRunId: runId },

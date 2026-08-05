@@ -15,6 +15,7 @@ import { sendPush } from './push'
 import { sendEmail, fromTrainer } from './email'
 import { richTextToPlain } from './rich-text'
 import { renderClientNotificationEmail } from './client-notification-email'
+import { flowAnchorFor } from './flow-steps'
 import type { NotificationChannel } from '@/generated/prisma'
 
 // Placeholders a trainer can drop into a step's title/body.
@@ -66,14 +67,20 @@ function fill(template: string, vars: CommsVars): string {
 }
 
 /** Render a step's title + body (+ optional rich email body) with the
- *  session/recipient variables filled in. */
+ *  session/recipient variables filled in.
+ *
+ *  title/body are NULLABLE since flows widened past messages — a FORM or UPLOAD
+ *  step has no copy at all. They collapse to an empty string here rather than
+ *  being interpolated: `String(null)` is the four characters "null", and the
+ *  one place that would ever be visible is the subject line of a real client's
+ *  email. */
 export function renderCommsMessage(
-  step: { title: string; body: string; emailBody?: string | null },
+  step: { title: string | null; body: string | null; emailBody?: string | null },
   vars: CommsVars,
 ): { title: string; body: string; emailBody: string | null } {
   return {
-    title: fill(step.title, vars),
-    body: fill(step.body, vars),
+    title: fill(step.title ?? '', vars),
+    body: fill(step.body ?? '', vars),
     emailBody: step.emailBody ? fill(step.emailBody, vars) : null,
   }
 }
@@ -299,7 +306,9 @@ async function staffResolver(companyId: string, classRunId: string | null) {
   }
 }
 
-export async function processCommsFlows(now: Date = new Date()): Promise<{ steps: number; sent: number }> {
+export async function processCommsFlows(
+  now: Date = new Date(),
+): Promise<{ steps: number; sent: number; skipped: number }> {
   const steps = await prisma.commsFlowStep.findMany({
     where: { enabled: true, channels: { isEmpty: false } },
     include: {
@@ -310,7 +319,44 @@ export async function processCommsFlows(now: Date = new Date()): Promise<{ steps
   })
 
   let sent = 0
+  let skipped = 0
   for (const step of steps) {
+    // ─── Route by kind ──────────────────────────────────────────────────────
+    // A flow step is no longer necessarily a message. MESSAGE keeps the path
+    // below, unchanged. The rest are things a PERSON does — fill a form, upload
+    // a photo, accept a time — so this cron has nothing to push and nothing to
+    // wait for, and its correct behaviour is to leave them alone. They are
+    // unreachable in phase 1 (nothing can create one), but the branch exists
+    // and is tested so phase 2 is additive rather than a rewrite of this loop.
+    //
+    // The same goes for a person-anchored MESSAGE: it is unlocked by finishing
+    // the previous step, not by a clock, so it is the run that sends it.
+    switch (step.kind) {
+      case 'MESSAGE':
+        // Person-anchored message steps are driven by the FlowRun, not by time.
+        if (flowAnchorFor(step) === 'PERSON') {
+          skipped++
+          continue
+        }
+        break
+      case 'FORM':
+      case 'UPLOAD':
+      case 'TASK':
+      case 'ACCOUNT':
+      case 'CHOOSE_OFFERING':
+      case 'APPROVAL':
+        skipped++
+        continue
+      default: {
+        // A kind added to the enum and not handled here is a compile error,
+        // not a message silently going nowhere in production.
+        const unhandled: never = step.kind
+        void unhandled
+        skipped++
+        continue
+      }
+    }
+
     // Membership steps anchor on a purchase, not a session — different shape
     // entirely, so they run through their own pass.
     if (step.membershipId) {
@@ -445,7 +491,7 @@ export async function processCommsFlows(now: Date = new Date()): Promise<{ steps
     }
   }
 
-  return { steps: steps.length, sent }
+  return { steps: steps.length, sent, skipped }
 }
 
 /**
@@ -471,8 +517,9 @@ async function processMembershipStep(
     audience: string
     customClientIds: string[]
     important: boolean
-    title: string
-    body: string
+    // Nullable since flows widened past messages — see renderCommsMessage.
+    title: string | null
+    body: string | null
     emailBody: string | null
   },
   membership: { name: string; trainerId: string; trainer: TrainerBrand },
