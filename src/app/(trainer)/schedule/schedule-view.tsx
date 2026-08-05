@@ -3327,6 +3327,12 @@ export function ScheduleView({
     clientName: string | null
     packageName: string
     blocks: RequestPreviewBlock[]
+    /** The trainer's own counter-offer is live — the ball is with the client. */
+    awaitingClient?: boolean
+    /** The client's live counter-offer, when there is one. Approving it books
+     *  the times the ghosts are showing, through the route that re-checks the
+     *  diary first. */
+    clientProposalId?: string | null
   } | null
 }) {
   // Mirror the initially-rendered week into local state. Week navigation
@@ -4163,6 +4169,8 @@ export function ScheduleView({
             clashCount={previewClashes.size}
             focusDate={selectedDate}
             onSuggestAnother={() => setProposeAt({ iso: '', date: selectedDate })}
+            awaitingClient={previewRequest.awaitingClient}
+            clientProposalId={previewRequest.clientProposalId}
           />
         </div>
       )}

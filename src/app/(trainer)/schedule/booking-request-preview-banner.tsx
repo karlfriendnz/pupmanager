@@ -18,6 +18,8 @@ export function BookingRequestPreviewBanner({
   clashCount,
   focusDate,
   onSuggestAnother,
+  awaitingClient = false,
+  clientProposalId = null,
 }: {
   requestId: string
   clientName: string | null
@@ -32,22 +34,39 @@ export function BookingRequestPreviewBanner({
    *  a gesture that only exists as a gesture is a feature some people cannot
    *  reach. */
   onSuggestAnother?: () => void
+  /** The trainer's own counter-offer is the live one, so the ball is in the
+   *  client's court and there is nothing here to approve — only to replace. */
+  awaitingClient?: boolean
+  /** Set when the live offer came from the CLIENT. Approving THAT goes through
+   *  the proposal route, which books the times on the table and re-checks the
+   *  diary first; the request's blanket confirm would book the hour the client
+   *  originally asked for, which is not what the ghosts below are showing. */
+  clientProposalId?: string | null
 }) {
   const router = useRouter()
   const [pending, setPending] = useState<'CONFIRM' | 'DECLINE' | null>(null)
-  const [error, setError] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function act(action: 'CONFIRM' | 'DECLINE') {
     setPending(action)
-    setError(false)
+    setError(null)
     try {
-      const res = await fetch(`/api/booking-requests/${requestId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      })
+      // Approving the CLIENT's counter-offer books the times on the table, and
+      // the proposal route re-checks the diary before it does. Only a request
+      // with no live counter-offer goes through the blanket confirm.
+      const res =
+        action === 'CONFIRM' && clientProposalId
+          ? await fetch(`/api/booking-proposals/${clientProposalId}/approve`, { method: 'POST' })
+          : await fetch(`/api/booking-requests/${requestId}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action }),
+            })
       if (!res.ok) {
-        setError(true)
+        // The refusals here are worth reading — "that hour has been booked
+        // since" tells the trainer what to do next, and "failed" does not.
+        const body = await res.json().catch(() => ({}))
+        setError(typeof body?.error === 'string' ? body.error : 'That didn’t go through. Try again.')
         setPending(null)
         return
       }
@@ -55,7 +74,7 @@ export function BookingRequestPreviewBanner({
       router.push(`/schedule?date=${focusDate}`)
       router.refresh()
     } catch {
-      setError(true)
+      setError('That didn’t go through. Try again.')
       setPending(null)
     }
   }
@@ -88,10 +107,17 @@ export function BookingRequestPreviewBanner({
           <p className="mt-0.5 text-sm text-slate-500">
             {sessionCount} proposed session{sessionCount === 1 ? '' : 's'}, shown as dashed blocks below.
           </p>
-          {onSuggestAnother && (
+          {awaitingClient ? (
             <p className="mt-0.5 text-sm text-slate-500">
-              Doesn&rsquo;t suit? Drag the first block, or tap an empty slot, to suggest another time.
+              You suggested this time — waiting for {clientName ?? 'them'} to reply. You can suggest
+              a different one instead.
             </p>
+          ) : (
+            onSuggestAnother && (
+              <p className="mt-0.5 text-sm text-slate-500">
+                Doesn&rsquo;t suit? Drag the first block, or tap an empty slot, to suggest another time.
+              </p>
+            )
           )}
           {clashCount > 0 && (
             <p className="mt-1 flex items-start gap-1.5 text-sm font-medium text-amber-700">
@@ -101,7 +127,7 @@ export function BookingRequestPreviewBanner({
               </span>
             </p>
           )}
-          {error && <p className="mt-1 text-sm text-red-600">That didn&rsquo;t go through. Try again.</p>}
+          {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
         </div>
       </div>
 
@@ -137,6 +163,11 @@ export function BookingRequestPreviewBanner({
             : <X className="h-4 w-4" strokeWidth={1.75} aria-hidden />}
           Decline
         </button>
+        {/* No Approve while the trainer's own suggestion is the live one —
+            there is nothing on the table that is theirs to accept, and a button
+            that books the hour they are still waiting on an answer for is the
+            "superseded card" bug wearing different clothes. */}
+        {!awaitingClient && (
         <button
           type="button"
           onClick={() => act('CONFIRM')}
@@ -148,6 +179,7 @@ export function BookingRequestPreviewBanner({
             : <Check className="h-4 w-4" strokeWidth={1.75} aria-hidden />}
           Approve
         </button>
+        )}
       </div>
     </div>
   )
