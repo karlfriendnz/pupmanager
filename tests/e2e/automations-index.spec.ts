@@ -134,6 +134,86 @@ test.describe('Settings → Automations', () => {
     }
   })
 
+  // Karl, on the finished index: "why can't i do this from the automations
+  // page?" There is nothing to CREATE — a flow is steps hanging off something
+  // that already exists — so this proves the three things that follow from
+  // that: the picker offers the owners, choosing an empty one opens the editor
+  // and writes NOTHING, and choosing one that already has a flow opens that
+  // flow rather than starting a second.
+  test('starts a new automation by picking what it runs on', async ({ page }) => {
+    const prisma = await makePrisma()
+    const cleanup: Array<() => Promise<unknown>> = []
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+
+      const makeClass = async (name: string): Promise<string> => {
+        const res = await page.request.post('/api/packages', {
+          data: {
+            name, sessionCount: 2, weeksBetween: 1, durationMins: 60,
+            isGroup: true, capacity: 8, startAt: inDays(12).toISOString(),
+          },
+        })
+        expect(res.status(), await res.text()).toBe(201)
+        const b = await res.json()
+        cleanup.push(() => prisma.commsFlowStep.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
+        cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
+        cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
+        cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+        return b.classRunId as string
+      }
+
+      const bareRun = await makeClass('E2E Picker Nothing Automated')
+      const busyRun = await makeClass('E2E Picker Already Automated')
+
+      const res = await page.request.post(`/api/trainer/class-runs/${busyRun}/comms-flow`, {
+        data: {
+          direction: 'BEFORE_SESSION', offsetMinutes: 1440, channels: ['PUSH'],
+          audience: 'ENROLLED', customClientIds: [], important: false, enabled: true,
+          title: 'E2E Picker existing step', body: 'Already here.',
+        },
+      })
+      expect(res.status(), await res.text()).toBe(201)
+
+      await page.goto('/settings?tab=automations')
+      const panel = page.locator('[data-review-scope="Tab: Automations"]')
+
+      // A class with no steps is NOT in the list — there is nothing to list.
+      await expect(panel.getByText('E2E Picker Already Automated')).toBeVisible()
+      await expect(panel.getByText('E2E Picker Nothing Automated')).toHaveCount(0)
+
+      // ── The picker ────────────────────────────────────────────────────────
+      await panel.getByRole('button', { name: 'New automation' }).click()
+      const picker = page.getByRole('dialog')
+      await expect(picker).toBeVisible()
+      // Both are offered — the one that already has a flow says so rather than
+      // vanishing, because a missing class explains nothing.
+      await expect(picker.getByRole('button', { name: /E2E Picker Nothing Automated/ })).toBeVisible()
+      await expect(picker.getByRole('button', { name: /E2E Picker Already Automated/ }))
+        .toContainText('Already has one')
+
+      // ── Choosing an empty one opens the editor and writes nothing ─────────
+      await picker.getByRole('button', { name: /E2E Picker Nothing Automated/ }).click()
+      await expect(page.getByRole('dialog')).toHaveCount(0)
+      await expect(panel.getByText('E2E Picker Nothing Automated')).toBeVisible()
+      await expect(panel.getByRole('button', { name: /add (a )?step/i }).first()).toBeVisible()
+      // The whole point: a flow is its steps, so picking one creates no row.
+      expect(
+        await prisma.commsFlowStep.count({ where: { classRunId: bareRun } }),
+        'picking an owner should not write anything until the first step',
+      ).toBe(0)
+
+      // ── Choosing one that already has a flow opens THAT flow ──────────────
+      await panel.getByRole('button', { name: 'New automation' }).click()
+      await page.getByRole('dialog').getByRole('button', { name: /E2E Picker Already Automated/ }).click()
+      await expect(panel.getByText('E2E Picker existing step').first()).toBeVisible()
+      // Not a second one, and nothing wiped.
+      expect(await prisma.commsFlowStep.count({ where: { classRunId: busyRun } })).toBe(1)
+    } finally {
+      for (const undo of cleanup.reverse()) await undo()
+      await prisma.$disconnect()
+    }
+  })
+
   // "Off" is DERIVED on the server from the steps, so an edit made here has to
   // re-derive it. A trainer switching the last step off must see the flow flip.
   test('a change written from Settings re-derives the Off flag', async ({ page }) => {

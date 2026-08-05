@@ -4,11 +4,15 @@ import { resolve } from 'node:path'
 
 import {
   buildFlowIndex,
+  buildOwnerChoices,
+  groupOwnerChoicesBySection,
   summariseFlow,
   orderFlowSteps,
   groupFlowsBySection,
   flowIndexHeadline,
   flowEditorTarget,
+  flowSectionLabel,
+  ownerKey,
   FLOW_OWNER_SECTIONS,
   FLOW_OWNER_PERMISSION,
   type FlowOwner,
@@ -385,5 +389,130 @@ describe('the old top-level route', () => {
     // stale row here fails tests/unit/nav-labels.test.ts.
     expect(file('src/components/shared/app-shell.tsx')).not.toContain("'/automations'")
     expect(file('src/lib/nav-labels.ts')).not.toContain("'/automations'")
+  })
+})
+
+// ── Starting one ─────────────────────────────────────────────────────────────
+//
+// Karl, on the finished index: "why can't i do this from the automations page?"
+//
+// The thing to keep straight is that there is nothing to CREATE. A flow is steps
+// hanging off a class, a package, a membership or a form — it has no row and no
+// id of its own — so "new" is a picker of owners and then the same editor, and
+// the three ways it can go wrong are: offering an owner whose routes will refuse
+// the first step, starting a SECOND flow on something that already has one, and
+// leaving the placeholder on screen after the real row arrives.
+
+const CLASS_RUN = owner({ kind: 'CLASS', id: 'run-1', name: 'Puppy Class' })
+const PACKAGE = owner({ kind: 'PACKAGE', id: 'pkg-1', name: 'Ada 1:1', href: '/packages/pkg-1' })
+const FORM = owner({ kind: 'FORM', id: 'form-1', name: 'Intake', href: '/forms/client/form-1' })
+
+describe('what a new automation can hang off', () => {
+  it('offers only owners this person could also save a step on', () => {
+    const choices = buildOwnerChoices(
+      [CLASS_RUN, PACKAGE, FORM],
+      [],
+      // A staff member who may edit offerings but not classes or settings.
+      kind => FLOW_OWNER_PERMISSION[kind] === 'packages.manage',
+    )
+    expect(choices.map(c => c.owner.id)).toEqual(['pkg-1'])
+  })
+
+  it('offers everything when nothing is withheld', () => {
+    const choices = buildOwnerChoices([CLASS_RUN, PACKAGE, FORM], [])
+    expect(choices).toHaveLength(3)
+    expect(choices.every(c => !c.hasFlow)).toBe(true)
+  })
+
+  // Filtering it out would mean the one class a trainer is looking for is
+  // missing with no explanation. Marked, the row says why and still opens it.
+  it('still lists an owner that already has a flow, marked', () => {
+    const flows = buildFlowIndex([{ owner: CLASS_RUN, steps: [step()] }])
+    const choices = buildOwnerChoices([CLASS_RUN, PACKAGE], flows)
+    expect(choices.find(c => c.owner.id === 'run-1')?.hasFlow).toBe(true)
+    expect(choices.find(c => c.owner.id === 'pkg-1')?.hasFlow).toBe(false)
+  })
+
+  // The key is what makes "already has one" a lookup rather than a guess — and
+  // an id alone is only unique within its own table.
+  it('tells two owners apart by kind as well as id', () => {
+    expect(ownerKey({ kind: 'CLASS', id: 'x' })).not.toBe(ownerKey({ kind: 'FORM', id: 'x' }))
+    const flows = buildFlowIndex([{ owner: owner({ kind: 'FORM', id: 'run-1' }), steps: [step()] }])
+    // Same id, different kind: the class must NOT be marked as having a flow.
+    expect(buildOwnerChoices([CLASS_RUN], flows)[0].hasFlow).toBe(false)
+  })
+
+  it('reads in the same order and under the same headings as the list', () => {
+    const choices = buildOwnerChoices([FORM, PACKAGE, CLASS_RUN], [])
+    const sections = groupOwnerChoicesBySection(choices)
+    expect(sections.map(s => s.label)).toEqual(['Group classes', '1:1 sessions', 'Forms'])
+    // The same labels the list's own sections use — one source, so a trainer who
+    // picked something under "Group classes" finds it under "Group classes".
+    for (const s of sections) expect(s.label).toBe(flowSectionLabel(s.kind))
+  })
+
+  it('sorts by name inside a section, like the list does', () => {
+    const zed = owner({ kind: 'CLASS', id: 'run-2', name: 'Zoomies' })
+    const abe = owner({ kind: 'CLASS', id: 'run-3', name: 'Adolescents' })
+    expect(buildOwnerChoices([zed, abe], []).map(c => c.owner.name)).toEqual(['Adolescents', 'Zoomies'])
+  })
+
+  it('skips a section with nothing in it', () => {
+    expect(groupOwnerChoicesBySection(buildOwnerChoices([PACKAGE], []))).toHaveLength(1)
+  })
+})
+
+describe('the picker, on screen', () => {
+  const panel = file('src/app/(trainer)/settings/automations-panel.tsx')
+  const tab = file('src/app/(trainer)/settings/automations-tab.tsx')
+
+  it('takes the whole screen rather than hanging off a corner', () => {
+    // AGENTS.md: more than ~3 choices is a full screen. FullScreenSheet is the
+    // house one, and carries the body-scroll lock and no-scrollbar with it, so
+    // a hand-rolled overlay here would be the two-scrollbars bug waiting.
+    expect(panel).toContain('FullScreenSheet')
+    expect(panel).toContain('New automation')
+  })
+
+  it('opens the SAME editor, pointed by the same map the rows use', () => {
+    // Two mounts, one editor. A second "add step" flow is the thing this screen
+    // exists not to have.
+    expect(panel.match(/<CommsFlowEditor/g) ?? []).toHaveLength(2)
+    expect(panel.match(/flowEditorTarget\(/g) ?? []).toHaveLength(2)
+  })
+
+  it('opens an existing flow instead of starting a second one', () => {
+    // The one behavioural rule that cannot be expressed in the pure model: a
+    // chosen owner already in the list expands its row and sets no placeholder.
+    const choose = panel.slice(panel.indexOf('function choose('), panel.indexOf('const onChanged ='))
+    expect(choose).toContain('existing.has(key)')
+    expect(choose).toContain('setPending(null)')
+  })
+
+  it('hands the placeholder over to the real row once a step lands', () => {
+    // Otherwise the new flow shows twice — once as the placeholder, once as the
+    // refreshed server row — and only one of them carries the Off flag.
+    expect(panel).toContain('existing.has(ownerKey(pending))')
+    expect(panel).toContain('setPending(null)')
+    // Through the refresh that already existed, not a second freshness path.
+    expect(panel).toContain('router.refresh()')
+  })
+
+  it('the tab filters the picker by the same permission as the list', () => {
+    expect(tab).toContain('FLOW_OWNER_PERMISSION[kind]')
+    expect(tab).toContain('buildOwnerChoices(candidates, flows, allow)')
+  })
+
+  // A group package's flow hangs off its RUN, not off the package — the package
+  // page mounts the editor on exactly that condition. Offering both would give a
+  // trainer two doors to one class, writing to two different trees.
+  it('offers 1:1 packages only, matching where the editor actually mounts', () => {
+    expect(tab).toContain('isGroup: false')
+    expect(file('src/app/(trainer)/packages/[packageId]/package-detail.tsx')).toContain('!pkg.isGroup')
+  })
+
+  // A finished or called-off run cannot send anything.
+  it('leaves out runs that are over', () => {
+    expect(tab).toContain("status: { notIn: ['COMPLETED', 'CANCELLED'] }")
   })
 })

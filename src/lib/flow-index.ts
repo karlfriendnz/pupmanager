@@ -134,6 +134,15 @@ export const FLOW_OWNER_PERMISSION: Record<FlowOwnerKind, PermissionKey> = {
   FORM: 'settings.edit',
 }
 
+/**
+ * One flow's identity: what it hangs off. A step carries no key of its own that
+ * means anything to a screen, and an id is only unique within its own table —
+ * a package id and a form id can collide.
+ */
+export function ownerKey(owner: Pick<FlowOwner, 'kind' | 'id'>): string {
+  return `${owner.kind}:${owner.id}`
+}
+
 /** The heading each kind sits under, and the order the sections read in. */
 export const FLOW_OWNER_SECTIONS: { kind: FlowOwnerKind; label: string }[] = [
   { kind: 'CLASS', label: 'Group classes' },
@@ -224,6 +233,69 @@ export function groupFlowsBySection(
 ): { kind: FlowOwnerKind; label: string; flows: IndexedFlow[] }[] {
   return FLOW_OWNER_SECTIONS.map(s => ({ ...s, flows: flows.filter(f => f.owner.kind === s.kind) }))
     .filter(s => s.flows.length > 0)
+}
+
+/** The heading a single kind sits under — the picker groups by the same list. */
+export function flowSectionLabel(kind: FlowOwnerKind): string {
+  return FLOW_OWNER_SECTIONS.find(s => s.kind === kind)?.label ?? ''
+}
+
+// ─── Starting a new one ──────────────────────────────────────────────────────
+//
+// Karl, looking at the index: "why can't i do this from the automations page?"
+// He could edit every automation here and start none, which is a strange half
+// of a screen.
+//
+// An automation is not a thing you create — it is steps hanging off something
+// you already have. So "new" is really "pick the class, package, membership or
+// form, then open the editor on it", and NOTHING is written until the first step
+// is saved. That is why an owner with no steps yet cannot be told apart from one
+// that never will be, and why this list has to be built from the owners rather
+// than from the flows.
+
+export interface FlowOwnerChoice {
+  owner: FlowOwner
+  /**
+   * It already has a flow. Deliberately still OFFERED rather than filtered out:
+   * a trainer looking for "the puppy class" should find it where they expect
+   * and not have to work out that its absence means it already has one. Picking
+   * it opens the flow it has — it never starts a second one, because a flow has
+   * no identity beyond its owner (see `ownerKey`).
+   */
+  hasFlow: boolean
+}
+
+/**
+ * Everything a new automation could hang off, in the order the screen reads.
+ *
+ * `allow` is the permission test, taken as a predicate so this stays pure. It is
+ * the SAME rule the list applies (FLOW_OWNER_PERMISSION): offering someone an
+ * owner whose routes will 403 on the first step is the failure the list already
+ * avoids, and a picker that does it is worse — they have chosen before they find
+ * out.
+ */
+export function buildOwnerChoices(
+  owners: FlowOwner[],
+  flows: IndexedFlow[],
+  allow: (kind: FlowOwnerKind) => boolean = () => true,
+): FlowOwnerChoice[] {
+  const withFlows = new Set(flows.map(f => ownerKey(f.owner)))
+  return owners
+    .filter(o => allow(o.kind))
+    .map(owner => ({ owner, hasFlow: withFlows.has(ownerKey(owner)) }))
+    .sort((a, b) => {
+      const section = (SECTION_ORDER.get(a.owner.kind) ?? 99) - (SECTION_ORDER.get(b.owner.kind) ?? 99)
+      if (section !== 0) return section
+      return a.owner.name.localeCompare(b.owner.name, 'en-NZ')
+    })
+}
+
+/** The choices in each section, in the section order, skipping empty sections. */
+export function groupOwnerChoicesBySection(
+  choices: FlowOwnerChoice[],
+): { kind: FlowOwnerKind; label: string; choices: FlowOwnerChoice[] }[] {
+  return FLOW_OWNER_SECTIONS.map(s => ({ ...s, choices: choices.filter(c => c.owner.kind === s.kind) }))
+    .filter(s => s.choices.length > 0)
 }
 
 /** The one-line count under the page title: "6 automations · 1 off · 2 need setting up". */

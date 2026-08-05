@@ -5,6 +5,7 @@ import { runKind, runHref, type RunKindPackage } from '@/lib/run-kind'
 import { safeFlowStepPayload, type FlowStepKind } from '@/lib/comms-flow-steps'
 import {
   buildFlowIndex,
+  buildOwnerChoices,
   FLOW_OWNER_PERMISSION,
   type FlowOwner,
   type FlowOwnerKind,
@@ -31,6 +32,11 @@ import { AutomationsPanel } from './automations-panel'
  * NO second editor. The panel mounts `CommsFlowEditor` — the same component,
  * with the same props, writing to the same four CRUD trees as the offering
  * pages, which keep theirs exactly where they are.
+ *
+ * It also STARTS one (Karl, on the finished index: "why can't i do this from
+ * the automations page?"). There is nothing to create — a flow is its steps —
+ * so the second query below fetches what a flow could hang off, and picking one
+ * opens the same editor on it. Nothing is written until the first step saves.
  */
 
 /** The four shapes a run can take, mapped to the section it is listed under. */
@@ -167,7 +173,58 @@ export async function AutomationsTab({
     byOwner.set(key, entry)
   }
 
-  return <AutomationsPanel flows={buildFlowIndex([...byOwner.values()], names)} />
+  const flows = buildFlowIndex([...byOwner.values()], names)
+
+  // ── What a NEW automation could hang off ──────────────────────────────────
+  // Karl: "why can't i do this from the automations page?" Nothing is created
+  // by picking one — a flow IS its steps, so this only decides which editor to
+  // open. See buildOwnerChoices.
+  //
+  // Each query is skipped outright for someone who could not save a step on
+  // that kind, so the rows never leave the database, and buildOwnerChoices
+  // applies the same rule again over the top.
+  const allow = (kind: FlowOwnerKind) => can(FLOW_OWNER_PERMISSION[kind], role, permissions)
+
+  const [runs, oneToOnes, memberships, forms] = await Promise.all([
+    allow('CLASS')
+      ? prisma.classRun.findMany({
+          // A finished or called-off run cannot send anything, so offering it is
+          // offering a thing that will never fire.
+          where: { trainerId, status: { notIn: ['COMPLETED', 'CANCELLED'] } },
+          orderBy: { name: 'asc' },
+          select: { id: true, name: true, package: { select: { isEvent: true, allowDropIn: true, isPuppySchool: true } } },
+        })
+      : [],
+    allow('PACKAGE')
+      // 1:1 packages only. A GROUP package's flow hangs off its run, not off the
+      // package — the offering page mounts the editor on exactly this condition.
+      ? prisma.package.findMany({
+          where: { trainerId, isGroup: false },
+          orderBy: { name: 'asc' },
+          select: { id: true, name: true },
+        })
+      : [],
+    allow('MEMBERSHIP')
+      ? prisma.membership.findMany({ where: { trainerId }, orderBy: { name: 'asc' }, select: { id: true, name: true } })
+      : [],
+    allow('FORM')
+      ? prisma.form.findMany({ where: { trainerId }, orderBy: { name: 'asc' }, select: { id: true, name: true } })
+      : [],
+  ])
+
+  const candidates: FlowOwner[] = [
+    ...runs.map(r => ({
+      kind: RUN_KIND_SECTION[runKind(r.package)],
+      id: r.id,
+      name: r.name,
+      href: runHref(r.id, r.package),
+    })),
+    ...oneToOnes.map(p => ({ kind: 'PACKAGE' as const, id: p.id, name: p.name, href: `/packages/${p.id}` })),
+    ...memberships.map(m => ({ kind: 'MEMBERSHIP' as const, id: m.id, name: m.name, href: '/memberships' })),
+    ...forms.map(f => ({ kind: 'FORM' as const, id: f.id, name: f.name, href: `/forms/client/${f.id}` })),
+  ]
+
+  return <AutomationsPanel flows={flows} choices={buildOwnerChoices(candidates, flows, allow)} />
 }
 
 type StepRow = {
