@@ -64,6 +64,7 @@ import { DndArea } from '@/components/shared/dnd-area'
 import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
 import { isRichTextEmpty } from '@/lib/rich-text'
 import { sortStepsByTime, channelsForAudience, type FlowStepKind, type FlowStepActor } from '@/lib/comms-flow-steps'
+import { canWaitForCompletion } from '@/lib/flow-anchors'
 import {
   flowStepSummary,
   flowStepKindsFor,
@@ -873,9 +874,12 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
           </Field>
         )}
 
-        {/* WAIT — the blocking column, phrased as what it means. It only means
-            anything in a sequence, so it only appears in one. */}
-        {sequenced && (
+        {/* WAIT — the blocking column, phrased as what it means.
+            Only in a sequence (nothing else has a "next step"), and only for a
+            kind the app can actually see finish: a wall comes down when a
+            completion is written, and a step nothing writes one for would park
+            every person on it for ever. See canWaitForCompletion. */}
+        {sequenced && canWaitForCompletion(draft.kind) && (
           <label className="flex items-start gap-2.5 cursor-pointer">
             <Switch checked={draft.blocking} onChange={() => onPatch({ blocking: !draft.blocking })} onColor="bg-slate-900" className="mt-0.5" aria-label="Wait for this step" />
             <span className="text-sm text-slate-700">

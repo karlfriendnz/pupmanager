@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { guardPermission } from '@/lib/membership'
-import { stepCreateSchema, withFormDefaults, channelsForAudience, payloadForWrite } from '@/lib/comms-flow-steps'
+import { stepCreateSchema, withFormDefaults, channelsForAudience, payloadForWrite, sentFieldsOnly } from '@/lib/comms-flow-steps'
 
 // List + create the steps of a FORM's flow — the fourth parent a step can hang
 // off, and the only PERSON-anchored one.
@@ -36,7 +36,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ formId:
   const { formId } = await params
   if (!(await ownedForm(ctx.companyId, formId))) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const parsed = stepCreateSchema.safeParse(await req.json().catch(() => ({})))
+  const raw = await req.json().catch(() => ({}))
+  const parsed = stepCreateSchema.safeParse(raw)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
   const last = await prisma.commsFlowStep.findFirst({
@@ -45,10 +46,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ formId:
     select: { order: true },
   })
 
+  // Only the fields actually posted: zod's `.partial()` keeps every
+  // `.default()`, so `{ kind: 'ACCOUNT' }` arrives carrying `blocking: false`
+  // and would override the per-kind default the step is supposed to start with.
+  //
   // withFormDefaults FORCES a person trigger. A step on a form with
   // `trigger: null` would read as BEFORE_SESSION, land in the cron's scan, and
   // fire against a timetable a form does not have.
-  const base = withFormDefaults(parsed.data)
+  const base = withFormDefaults(sentFieldsOnly(raw, parsed.data))
   const fields = {
     ...base,
     channels: channelsForAudience(base.channels, base.audience),

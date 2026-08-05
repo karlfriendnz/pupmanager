@@ -18,6 +18,8 @@ import {
   payloadForWrite,
   personTriggerEnum,
   flowTriggerEnum,
+  sentFieldsOnly,
+  withFormDefaults,
   flowStepKindEnum,
   safeFlowStepPayload,
   flowStepConfigProblem,
@@ -27,6 +29,7 @@ import {
   homeworkTimingEnum,
   type Channel,
 } from '@/lib/comms-flow-steps'
+import { canWaitForCompletion } from '@/lib/flow-anchors'
 
 // The two rules the comms-flow screen and its routes both depend on:
 //   • in-app is a STAFF-only channel
@@ -478,5 +481,42 @@ describe('defaultsForKind', () => {
     // …and still fills a message the way it always did.
     expect(withDefaults({}).title).toBe(DEFAULT_STEP_FIELDS.title)
     expect(withMembershipDefaults({}).title).toBe(DEFAULT_MEMBERSHIP_STEP_FIELDS.title)
+  })
+})
+
+describe('sentFieldsOnly — the defaults zod leaves behind', () => {
+  it('keeps only the keys the caller actually put in the body', () => {
+    const raw = { enabled: false }
+    const parsed = stepPatchSchema.parse(raw)
+    // Proof of the trap this exists for: zod materialised three keys nobody sent.
+    expect(parsed).toHaveProperty('kind', 'MESSAGE')
+    expect(parsed).toHaveProperty('actor', 'CLIENT')
+    expect(parsed).toHaveProperty('blocking', false)
+    // …and the filter puts it back to what was meant.
+    expect(sentFieldsOnly(raw, parsed)).toEqual({ enabled: false })
+  })
+
+  it('passes a real field through untouched, false and null included', () => {
+    const raw = { title: 'Hi', important: false, emailBody: null }
+    expect(sentFieldsOnly(raw, stepPatchSchema.parse(raw))).toEqual(raw)
+  })
+
+  it('a body that is not an object yields nothing to write', () => {
+    expect(sentFieldsOnly(null, { kind: 'MESSAGE' })).toEqual({})
+    expect(sentFieldsOnly('nope', { kind: 'MESSAGE' })).toEqual({})
+  })
+})
+
+describe('canWaitForCompletion — what may block a journey', () => {
+  it('is true only for the kind something actually ticks off today', () => {
+    expect(canWaitForCompletion('ACCOUNT')).toBe(true)
+    for (const kind of flowStepKindEnum.options.filter(k => k !== 'ACCOUNT')) {
+      expect(canWaitForCompletion(kind), kind).toBe(false)
+    }
+  })
+
+  it('withFormDefaults refuses to create a wall nothing can take down', () => {
+    expect(withFormDefaults({ kind: 'FORM', blocking: true }).blocking).toBe(false)
+    expect(withFormDefaults({ kind: 'ACCOUNT' }).blocking).toBe(true)
   })
 })

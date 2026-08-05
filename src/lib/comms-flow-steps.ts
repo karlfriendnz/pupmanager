@@ -3,6 +3,7 @@
 // drift. (Send-side logic lives in comms-flows.ts; the flow-engine primitives —
 // trigger resolution, sequencing, the completion ledger — live in flow-steps.ts.)
 import { z } from 'zod'
+import { canWaitForCompletion } from './flow-anchors'
 // Type-only, so it is erased before this module reaches the browser (the
 // comms-flow editor is a 'use client' component and imports from here).
 import type { Prisma } from '@/generated/prisma'
@@ -461,6 +462,27 @@ export const stepPatchSchema = stepFieldsBase
   .partial()
   .superRefine((s, ctx) => refineStep(s, ctx, { requireMessageCopy: false }))
 
+/**
+ * Only the fields the caller ACTUALLY SENT.
+ *
+ * `.partial()` makes a key optional; it does NOT remove its `.default()`. So
+ * `stepPatchSchema.parse({ enabled: false })` comes back carrying
+ * `kind: 'MESSAGE'`, `actor: 'CLIENT'` and `blocking: false` — three facts the
+ * caller never stated. Written straight to Prisma, flicking a FORM step's
+ * on/off switch would quietly turn it into a message step, with its payload
+ * still in the column and nothing to read it.
+ *
+ * Harmless while every row was a MESSAGE authored by a CLIENT, which is why it
+ * survived phases 1 and 2. It stops being harmless the moment a flow can hold
+ * anything else, so the filter lives here — one place, used by every route that
+ * patches a step.
+ */
+export function sentFieldsOnly<T extends object>(raw: unknown, parsed: T): Partial<T> {
+  if (!raw || typeof raw !== 'object') return {}
+  const sent = new Set(Object.keys(raw as Record<string, unknown>))
+  return Object.fromEntries(Object.entries(parsed).filter(([k]) => sent.has(k))) as Partial<T>
+}
+
 // A sensible default when a trainer taps "Add message".
 export const DEFAULT_STEP_FIELDS: StepFields = {
   kind: 'MESSAGE',
@@ -554,14 +576,28 @@ export const DEFAULT_FORM_STEP_FIELDS: StepFields = {
  * fire against a timetable the form does not have.
  */
 export function withFormDefaults(partial: Partial<StepFields>): StepFields {
-  const base = defaultsForKind(partial.kind ?? 'MESSAGE', DEFAULT_FORM_STEP_FIELDS)
+  const kind = partial.kind ?? 'MESSAGE'
+  const base = defaultsForKind(kind, DEFAULT_FORM_STEP_FIELDS)
   const merged = { ...base, ...partial }
   return {
     ...merged,
     trigger: personTriggerEnum.safeParse(partial.trigger).success
       ? (partial.trigger as PersonTrigger)
       : 'ON_ENQUIRY_SUBMITTED',
+    // A wall only comes down when a FlowStepCompletion is written, and today
+    // only the ACCOUNT step gets one. `defaultsForKind` turns blocking ON for
+    // every kind a person has to DO — right in principle, and a permanent stall
+    // in practice for the kinds nothing ticks off yet. See canWaitForCompletion.
+    blocking: canWaitForCompletion(kind) && (partial.blocking ?? merged.blocking),
   }
+}
+
+/** The same rule for a PATCH: whatever the browser sends, a step that cannot be
+ *  finished cannot be waited for. Validation in the browser is not validation
+ *  (AGENTS.md bug #3). */
+export function formStepBlocking(kind: FlowStepKind, blocking: boolean | undefined): boolean | undefined {
+  if (blocking === undefined) return undefined
+  return canWaitForCompletion(kind) && blocking
 }
 
 // Validator for a template's stored `steps` JSON when applying it to a run.

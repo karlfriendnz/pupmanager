@@ -119,6 +119,28 @@ export function isCronDelivered(step: {
   return step.kind === 'MESSAGE' && isCronRunnable(step)
 }
 
+/**
+ * Can the app currently tell when somebody has FINISHED this kind of step?
+ *
+ * `blocking` is a wall: `availableSteps` offers nothing past an unfinished
+ * blocking step, and the only thing that takes a wall down is a
+ * FlowStepCompletion row. So a blocking step of a kind nothing writes a
+ * completion for is not "a step that waits" — it is a journey that stops dead,
+ * with the person on the far side of it never hearing from anybody again.
+ *
+ * Today exactly one kind gets ticked off: ACCOUNT, by
+ * `completeAccountStepForEnquiry` when the continuation token is spent. The
+ * others are asked for and delivered, but nothing yet records the answer coming
+ * back — so they must not be allowed to block, in the builder OR in the route.
+ *
+ * This is the single place that fact lives. When the client-side tick-off
+ * lands for forms, uploads and homework, adding them here opens the toggle,
+ * the API and the summary line in one edit.
+ */
+export function canWaitForCompletion(kind: FlowStepKind): boolean {
+  return kind === 'ACCOUNT'
+}
+
 // ─── Sequencing ─────────────────────────────────────────────────────────────
 
 export interface SequencedStep {

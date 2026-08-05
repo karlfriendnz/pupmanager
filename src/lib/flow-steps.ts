@@ -21,6 +21,7 @@ export {
   isClockRunnable,
   isCronRunnable,
   isCronDelivered,
+  canWaitForCompletion,
   availableSteps,
   nextStepFor,
 } from './flow-anchors'

@@ -180,3 +180,68 @@ describe('reorder — the order IS the behaviour, so it is persisted', () => {
     expect(await res.json()).toEqual([{ id: 'b', order: 0 }, { id: 'a', order: 1 }])
   })
 })
+
+// A wall only comes down when a FlowStepCompletion is written, and today only
+// the ACCOUNT step gets one. A blocking step of any other kind would not
+// "wait" — it would park every person on it for ever, with nobody told.
+describe('a step nothing can tick off cannot be made to wait', () => {
+  it('POST refuses to create a blocking FORM step, however it was asked for', async () => {
+    await POST(req({ kind: 'FORM', blocking: true }), { params: params() })
+    expect(h.stepCreate.mock.calls[0][0].data.blocking).toBe(false)
+  })
+
+  it('POST keeps an ACCOUNT step blocking — that one really is a wall', async () => {
+    await POST(req({ kind: 'ACCOUNT' }), { params: params() })
+    expect(h.stepCreate.mock.calls[0][0].data.blocking).toBe(true)
+  })
+
+  it('a MESSAGE never blocks — there is nothing to wait for', async () => {
+    await POST(req({ kind: 'MESSAGE', blocking: true }), { params: params() })
+    expect(h.stepCreate.mock.calls[0][0].data.blocking).toBe(false)
+  })
+
+  it('PATCH strips it too — the browser hiding the toggle is not the check', async () => {
+    h.stepFindFirst.mockResolvedValue({ id: 's1', audience: 'CUSTOM', channels: ['PUSH'], kind: 'UPLOAD' })
+    await PATCH(req({ blocking: true }), { params: params({ stepId: 's1' }) })
+    expect(h.stepUpdate.mock.calls[0][0].data.blocking).toBe(false)
+  })
+
+  it('PATCH lets an ACCOUNT step keep its wall', async () => {
+    h.stepFindFirst.mockResolvedValue({ id: 's1', audience: 'CUSTOM', channels: ['PUSH'], kind: 'ACCOUNT' })
+    await PATCH(req({ blocking: true }), { params: params({ stepId: 's1' }) })
+    expect(h.stepUpdate.mock.calls[0][0].data.blocking).toBe(true)
+  })
+
+  it('a PATCH that never mentions blocking does not write it', async () => {
+    h.stepFindFirst.mockResolvedValue({ id: 's1', audience: 'CUSTOM', channels: ['PUSH'], kind: 'ACCOUNT' })
+    await PATCH(req({ enabled: false }), { params: params({ stepId: 's1' }) })
+    expect('blocking' in h.stepUpdate.mock.calls[0][0].data).toBe(false)
+  })
+})
+
+// Zod's `.partial()` makes a key optional; it does NOT drop its `.default()`.
+// So a patch meaning "turn this off" parses as { enabled:false, kind:'MESSAGE',
+// actor:'CLIENT', blocking:false } — three facts nobody stated. Written
+// straight through, flicking a FORM step's switch would turn it into a message
+// step with an orphaned payload and nothing to read it.
+describe('a patch writes only what was sent', () => {
+  beforeEach(() => {
+    h.stepFindFirst.mockResolvedValue({ id: 's1', audience: 'CUSTOM', channels: ['PUSH'], kind: 'FORM' })
+  })
+
+  it('does not stamp kind, actor or blocking onto an enabled-only toggle', async () => {
+    await PATCH(req({ enabled: false }), { params: params({ stepId: 's1' }) })
+    const data = h.stepUpdate.mock.calls[0][0].data
+    expect(data).toEqual({ enabled: false })
+  })
+
+  it('still writes the fields that WERE sent', async () => {
+    await PATCH(req({ kind: 'FORM', title: 'Fill this in', payload: { formId: 'f1' } }), {
+      params: params({ stepId: 's1' }),
+    })
+    const data = h.stepUpdate.mock.calls[0][0].data
+    expect(data.kind).toBe('FORM')
+    expect(data.title).toBe('Fill this in')
+    expect(data.payload).toEqual({ formId: 'f1' })
+  })
+})

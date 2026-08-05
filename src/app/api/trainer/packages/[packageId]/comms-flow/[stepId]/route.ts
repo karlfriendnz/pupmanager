@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { guardPermission } from '@/lib/membership'
-import { stepPatchSchema, stepWriteData } from '@/lib/comms-flow-steps'
+import { stepPatchSchema, stepWriteData, sentFieldsOnly } from '@/lib/comms-flow-steps'
 
 // Update / delete one comms-flow step on a 1:1 package. The step must belong to
 // a package the trainer owns.
@@ -19,10 +19,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ packag
   const existing = await ownedStep(ctx.companyId, packageId, stepId)
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const parsed = stepPatchSchema.safeParse(await req.json().catch(() => ({})))
+  const raw = await req.json().catch(() => ({}))
+  const parsed = stepPatchSchema.safeParse(raw)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
-  const step = await prisma.commsFlowStep.update({ where: { id: stepId }, data: stepWriteData(parsed.data, existing.audience, existing.channels) })
+  const step = await prisma.commsFlowStep.update({ where: { id: stepId }, data: stepWriteData(sentFieldsOnly(raw, parsed.data), existing.audience, existing.channels) })
   return NextResponse.json(step)
 }
 
