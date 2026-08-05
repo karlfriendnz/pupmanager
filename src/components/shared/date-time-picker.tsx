@@ -117,9 +117,12 @@ function MonthGrid({ selected, onPick }: { selected: Date | null; onPick: (d: Da
   return (
     <div className="absolute z-50 mt-1 w-72 rounded-2xl border border-slate-200 bg-white p-3 shadow-lg shadow-slate-900/10">
       <div className="flex items-center justify-between mb-2">
-        <button type="button" onClick={() => shift(-1)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><ChevronLeft className="h-4 w-4" /></button>
+        {/* Named, because an icon-only button is an unlabelled one: a screen
+            reader read "button, button" either side of the month, and nothing
+            could ask for either of them by name. */}
+        <button type="button" aria-label="Previous month" onClick={() => shift(-1)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><ChevronLeft className="h-4 w-4" /></button>
         <span className="text-sm font-semibold text-slate-800">{MONTHS[view.month]} {view.year}</span>
-        <button type="button" onClick={() => shift(1)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><ChevronRight className="h-4 w-4" /></button>
+        <button type="button" aria-label="Next month" onClick={() => shift(1)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><ChevronRight className="h-4 w-4" /></button>
       </div>
       <div className="grid grid-cols-7 gap-0.5 mb-1">
         {DAY_LABELS.map(d => <span key={d} className="text-center text-[11px] font-medium text-slate-400 py-1">{d}</span>)}

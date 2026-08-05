@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { Button } from '@/components/ui/button'
 import { XeroAccountField } from '@/components/shared/xero-account-field'
 import { RemoveSessionsDialog } from './remove-sessions-dialog'
+import { ConfirmSheet } from '@/components/shared/confirm-sheet'
 import { RequirePaymentField } from '@/components/shared/require-payment-field'
 import { BufferField } from '@/components/shared/buffer-field'
 import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
@@ -332,10 +333,10 @@ export function PackageForm({
   // "What are you setting up?" chooser — just the fields, plus Delete/Clone.
   const stepped = !existing
   const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [cloning, setCloning] = useState(false)
   async function handleDelete() {
     if (!existing || deleting) return
-    if (!confirm('Delete this offering? This can’t be undone.')) return
     setDeleting(true)
     const res = await fetch(`/api/packages/${existing.id}`, { method: 'DELETE' })
     // The route says both where to land (a daycare goes back to /doggy-daycare,
@@ -348,6 +349,7 @@ export function PackageForm({
     else {
       setError(typeof body?.error === 'string' ? body.error : 'Could not delete this offering.')
       setDeleting(false)
+      setConfirmDelete(false)
     }
   }
   async function handleClone() {
@@ -1016,7 +1018,16 @@ export function PackageForm({
               type="number"
               // 0 here meant every session on the same day and time — the
               // generator now floors it at 1, so don't offer 0 either.
-              min={1}
+              //
+              // …unless the field isn't on screen. A one-off is SAVED with
+              // weeksBetween 0 (submit zeroes the cadence), and this div is
+              // only `invisible` — a hidden control is still a candidate for
+              // constraint validation, so re-opening that offering left the
+              // browser refusing the submit and unable to focus the field to
+              // say why ("An invalid form control with name='weeksBetween' is
+              // not focusable"). Save changes did nothing, silently, for ever.
+              // The floor only means something while the trainer can see it.
+              min={oneOff ? 0 : 1}
               // DISABLED when there is only one session, and that is load-bearing.
               //
               // A single-session offering is SAVED with weeksBetween = 0 (submit
@@ -1630,12 +1641,28 @@ export function PackageForm({
             <button type="button" onClick={handleClone} disabled={cloning} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
               {cloning ? 'Cloning…' : 'Clone'}
             </button>
-            <button type="button" onClick={handleDelete} disabled={deleting} className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 px-3.5 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50">
+            <button type="button" onClick={() => setConfirmDelete(true)} disabled={deleting} className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 px-3.5 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50">
               {deleting ? 'Deleting…' : 'Delete'}
             </button>
           </div>
         </div>
         </>
+      )}
+
+      {/* The same confirmation the offering's own screen uses, rather than
+          window.confirm — which is the one dialog a phone renders worst, and
+          which made one action wear two different faces depending on which of
+          the two screens you deleted from. */}
+      {confirmDelete && existing && (
+        <ConfirmSheet
+          title={`Delete “${existing.name}”?`}
+          body="This offering and everything on it goes. This can’t be undone."
+          confirmLabel="Delete"
+          danger
+          busy={deleting}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={handleDelete}
+        />
       )}
 
       {removeOpen && (

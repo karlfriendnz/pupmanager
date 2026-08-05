@@ -25,13 +25,23 @@
  *
  * EVERY SELECTOR IN HERE WAS READ OFF THE COMPONENT, never guessed. Four
  * earlier attempts at this file died on invented button names, and the truths
- * only reading finds are the ones that matter: "Add product" is a LINK; the
- * add-client fields carry placeholders instead of labels so getByLabel finds
- * nothing; the product's delete confirm is a custom dialog, so page.on('dialog')
- * does nothing and the row quietly survives; the email-template delete really IS
- * window.confirm. A red test in a suite Karl pushes on is worse than an honest
- * gap — so if a screen can't do the job, it is written up in docs/audit-trainer.md
- * rather than asserted here.
+ * only reading finds are the ones that matter: "Add product" is a LINK, not a
+ * button; a delete confirm is a custom sheet, so page.on('dialog') does nothing
+ * and the row quietly survives; a settings tab you aren't on is still in the
+ * DOM, just `hidden`. A red test in a suite Karl pushes on is worse than an
+ * honest gap — so if a screen can't do the job, it is written up rather than
+ * asserted here.
+ *
+ * Writing it also found four things worth fixing, which are fixed:
+ *   • a one-session offering could never be saved from its edit screen (an
+ *     invisible-but-validated "Weeks between" field silently blocked the
+ *     submit). The 1:1 and event jobs below are the guards on that.
+ *   • two screens deleted through window.confirm while the rest of the app used
+ *     the house sheet — one action, two faces.
+ *   • the add-client, location and email-template fields had loose <label>s
+ *     that named nothing. They carry htmlFor/id now, and the jobs below ask for
+ *     them BY NAME, which is what keeps it true.
+ *   • the calendar's month arrows had no accessible name at all.
  */
 import { test, expect, type Page } from '@playwright/test'
 import { PrismaPg } from '@prisma/adapter-pg'
@@ -202,11 +212,15 @@ test.describe('the jobs a trainer does every day', () => {
 
       const sheet = page.getByRole('dialog', { name: 'New client' })
       await expect(sheet).toBeVisible({ timeout: 20_000 })
-      await sheet.getByPlaceholder('Jane Smith').fill(name)
+      // getByLabel, not getByPlaceholder: these fields had loose <label>s that
+      // named nothing, and now carry htmlFor/id like the rest of the app. Asked
+      // for by NAME here on purpose — that is what proves the association is
+      // real, and it fails the moment someone drops the htmlFor again.
+      await sheet.getByLabel('Client name').fill(name)
       // Contact · Dogs · Invitation email are TABS, not wizard steps — the dog
       // is one tap away and the save works from any of them.
       await sheet.getByRole('button', { name: 'Dogs', exact: true }).click()
-      await sheet.getByPlaceholder('Buddy').fill(dogName)
+      await sheet.getByLabel("Dog's name").fill(dogName)
       // No email on purpose: with one, "Send invitation email" is ticked by
       // default and a real send would be attempted.
       await sheet.getByRole('button', { name: 'Create client' }).click()
@@ -488,25 +502,6 @@ test.describe('the jobs a trainer does every day', () => {
       // Only the LAST step's button may save — an Enter keypress or a mid-flow
       // Next can never create the offering behind the trainer's back.
       await page.getByRole('button', { name: 'Next' }).click()
-
-      // FOUR sessions, not the wizard's default of one, and the reason is a
-      // bug rather than a preference:
-      //
-      //   A single-session offering is saved with weeksBetween = 0 (the submit
-      //   zeroes the cadence — a one-off has none). Reopening it renders the
-      //   "Weeks between" input, which carries min={1}, inside a container that
-      //   is only `invisible`. A hidden control still counts for constraint
-      //   validation, so the browser refuses the submit and cannot focus the
-      //   field to say why: "An invalid form control with name='weeksBetween'
-      //   is not focusable". Save changes does nothing, silently, forever.
-      //
-      // Verified in isolation against BOTH shapes (one-session: no request at
-      // all; four-session: PATCH 200). Not asserted here on purpose — baking
-      // the gap into a test makes fixing it fail the suite. Written up instead.
-      // The label carries no htmlFor, so the select is reached through it.
-      await page.getByText('Number of sessions', { exact: true }).locator('..')
-        .getByRole('combobox').selectOption('4')
-
       await page.getByRole('button', { name: 'Next' }).click()
       await page.getByRole('button', { name: 'Next' }).click()
       await page.getByRole('button', { name: 'Create offering' }).click()
@@ -525,6 +520,16 @@ test.describe('the jobs a trainer does every day', () => {
 
       // ── Edit ────────────────────────────────────────────────────────────────
       // Editing drops the wizard: every card at once, one Save changes.
+      //
+      // This is left on the wizard's DEFAULT of one session on purpose, because
+      // that shape used to be uneditable and this is the guard on the fix. A
+      // one-off is saved with weeksBetween = 0 (the submit zeroes the cadence);
+      // re-opening it rendered the "Weeks between" input — min={1} — inside a
+      // container that is only `invisible`, and a hidden control is still a
+      // candidate for constraint validation. The browser refused the submit and
+      // could not focus the field to say why ("An invalid form control with
+      // name='weeksBetween' is not focusable"), so Save changes did nothing at
+      // all, with no message. If that ever comes back, this line goes red.
       const renamed = `${name} renamed`
       await page.goto(`/packages/${id}/edit`)
       await page.getByLabel('Name', { exact: true }).fill(renamed)
@@ -570,24 +575,22 @@ test.describe('the jobs a trainer does every day', () => {
       await page.getByLabel('Name', { exact: true }).fill(name)
       await page.getByRole('button', { name: 'Next' }).click()
 
-      // The schedule step. Ten days out so the class is never already Past —
-      // and one tap forward if that lands in next month, since the calendar's
-      // month arrows carry no accessible name to ask for by name.
+      // The schedule step. Ten days out so the class is never already Past, and
+      // one tap forward when that lands in next month — the month arrows are
+      // asked for by name, which they now have.
       const target = new Date(Date.now() + 10 * 864e5)
       const dateField = page.getByRole('button', { name: 'Pick a date' })
       const datePicker = dateField.locator('..')
       await dateField.click()
       if (target.getMonth() !== new Date().getMonth()) {
-        // [0] is the field itself, [1] the previous-month arrow, [2] the next.
-        await datePicker.getByRole('button').nth(2).click()
+        await datePicker.getByRole('button', { name: 'Next month' }).click()
       }
       await datePicker.getByRole('button', { name: String(target.getDate()), exact: true }).click()
       // No time set on purpose: picking a day with nothing in the box defaults
       // to 9am, which is what a trainer who never opened the time wheel gets.
 
-      // Six weekly sessions — a real course, and it also steps around the
-      // weeksBetween=0 trap described in the 1:1 job above, which locks a
-      // one-session offering out of its own edit screen.
+      // Six weekly sessions — a real course rather than the default of one.
+      // The label carries no htmlFor, so the select is reached through it.
       await page.getByText('Number of sessions', { exact: true }).locator('..')
         .getByRole('combobox').selectOption('6')
 
@@ -633,6 +636,227 @@ test.describe('the jobs a trainer does every day', () => {
         .poll(async () => await prisma.classRun.count({ where: { id: runId } }), { timeout: 20_000 })
         .toBe(0)
     } finally {
+      if (packageId) await prisma.package.deleteMany({ where: { id: packageId } }).catch(() => {})
+      await prisma.$disconnect()
+    }
+  })
+
+  test('put on a one-off event, rename it, then delete it', async ({ page }) => {
+    // The same wizard as a class, but an event has NO cadence — it is always one
+    // session — which is exactly the shape that used to be locked out of its own
+    // edit screen (see the 1:1 job). So this job is both a real day's work and
+    // the second guard on that fix.
+    test.setTimeout(180_000)
+    const prisma = await makePrisma()
+    const name = `Everyday event ${stamp()}`
+    let packageId = ''
+    let runId = ''
+    try {
+      await signIn(page)
+      const trainer = await ownerTrainer(prisma)
+
+      // ── Create ──────────────────────────────────────────────────────────────
+      await page.goto('/events')
+      await page.getByRole('link', { name: 'New event' }).first().click()
+      await page.getByLabel('Name', { exact: true }).fill(name)
+      await page.getByRole('button', { name: 'Next' }).click()
+
+      // An event's date and time are stacked and labelled, rather than the
+      // class's single "first session" row.
+      const target = new Date(Date.now() + 12 * 864e5)
+      const dateField = page.getByRole('button', { name: 'Pick a date' })
+      const datePicker = dateField.locator('..')
+      await dateField.click()
+      if (target.getMonth() !== new Date().getMonth()) {
+        await datePicker.getByRole('button', { name: 'Next month' }).click()
+      }
+      await datePicker.getByRole('button', { name: String(target.getDate()), exact: true }).click()
+
+      await page.getByRole('button', { name: 'Next' }).click()
+      await page.getByRole('button', { name: 'Next' }).click()
+      // No ticket types: the editor always keeps one empty row to type into, and
+      // the blanks are dropped rather than failing the save.
+      await page.getByRole('button', { name: 'Create offering' }).click()
+
+      const run = await until(
+        () => prisma.classRun.findFirst({ where: { trainerId: trainer.id, name } }),
+        'the event never reached the database',
+      )
+      runId = run.id
+      packageId = run.packageId
+      // What it IS, said outright and stored — not re-derived from its shape.
+      // A one-session CLASS used to turn into an event the moment it was saved.
+      const pkg = await prisma.package.findUnique({ where: { id: packageId } })
+      expect(pkg?.isEvent, 'the offering was created from "New event" but was not saved as one').toBe(true)
+
+      await page.goto('/events')
+      await expect(
+        page.getByText(name).first(),
+        'the event saved, but it is not on the events screen',
+      ).toBeVisible({ timeout: 20_000 })
+
+      // ── Edit ────────────────────────────────────────────────────────────────
+      const renamed = `${name} renamed`
+      await page.goto(`/packages/${packageId}/edit`)
+      await page.getByLabel('Name', { exact: true }).fill(renamed)
+      await page.getByRole('button', { name: 'Save changes' }).click()
+      await expect
+        .poll(async () => (await prisma.classRun.findUnique({ where: { id: runId } }))?.name, { timeout: 20_000 })
+        .toBe(renamed)
+      // Still an event afterwards. Re-saving used to be able to change what an
+      // offering was, which moved it off the list the trainer found it on.
+      await expect
+        .poll(async () => (await prisma.package.findUnique({ where: { id: packageId } }))?.isEvent, { timeout: 20_000 })
+        .toBe(true)
+
+      // ── Delete ──────────────────────────────────────────────────────────────
+      await page.goto(`/events/${runId}`)
+      await page.getByRole('button', { name: 'More actions for this event' }).click()
+      await page.getByRole('button', { name: /delete this event/i }).click()
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Delete', exact: true }).click()
+      await expect
+        .poll(async () => await prisma.classRun.count({ where: { id: runId } }), { timeout: 20_000 })
+        .toBe(0)
+    } finally {
+      if (packageId) await prisma.package.deleteMany({ where: { id: packageId } }).catch(() => {})
+      await prisma.$disconnect()
+    }
+  })
+
+  test('build an intake form, reword it, then delete it', async ({ page }) => {
+    test.setTimeout(180_000)
+    const prisma = await makePrisma()
+    const name = `Everyday form ${stamp()}`
+    let id = ''
+    try {
+      await signIn(page)
+      const trainer = await ownerTrainer(prisma)
+
+      // ── Create ──────────────────────────────────────────────────────────────
+      // "New form" asks what it is FOR first — intake, website enquiry, or a
+      // session form — because those are three different jobs, not one form
+      // with a flag.
+      await page.goto('/settings?tab=forms')
+      await page.getByRole('button', { name: 'New form' }).click()
+      await page.getByRole('link', { name: /Intake form/ }).click()
+      await page.getByLabel('Form name').fill(name)
+      // A new form opens with one blank question, and it must be given words:
+      // saving without them is refused in a sentence ("Every question needs a
+      // label") rather than saving a form that asks nothing.
+      await page.getByRole('textbox', { name: 'Question 1' }).fill('What are you hoping to work on?')
+      await page.getByRole('button', { name: 'Create form' }).click()
+
+      const made = await until(
+        () => prisma.form.findFirst({ where: { trainerId: trainer.id, name } }),
+        'the form never reached the database',
+      )
+      id = made.id
+
+      await page.waitForURL('**/settings?tab=forms', { timeout: 20_000 })
+      await expect(
+        page.getByText(name).first(),
+        'the form saved, but it is not listed on the Forms tab it returns you to',
+      ).toBeVisible({ timeout: 20_000 })
+
+      // ── Edit ────────────────────────────────────────────────────────────────
+      const renamed = `${name} reworded`
+      await page.goto(`/forms/client/${id}`)
+      await page.getByLabel('Form name').fill(renamed)
+      await page.getByRole('button', { name: 'Save changes' }).click()
+      await expect
+        .poll(async () => (await prisma.form.findUnique({ where: { id } }))?.name, { timeout: 20_000 })
+        .toBe(renamed)
+
+      // ── Delete ──────────────────────────────────────────────────────────────
+      // Delete sits at the far LEFT of the footer, away from Cancel and Save,
+      // and turns into its own two-button confirm in place.
+      await page.goto(`/forms/client/${id}`)
+      await page.getByRole('button', { name: 'Delete', exact: true }).click()
+      await page.getByRole('button', { name: 'Confirm delete' }).click()
+      await expect
+        .poll(async () => await prisma.form.count({ where: { id } }), { timeout: 20_000 })
+        .toBe(0)
+    } finally {
+      if (id) await prisma.form.deleteMany({ where: { id } }).catch(() => {})
+      await prisma.$disconnect()
+    }
+  })
+
+  test('enrol a client onto a class, then take them off it', async ({ page }) => {
+    // The class itself is a fixture — building one through the wizard is its own
+    // job, tested above. What is clicked here is the enrolment: the two-step
+    // Who / What panel, and the withdrawal off the roster.
+    test.setTimeout(180_000)
+    const prisma = await makePrisma()
+    const mark = stamp()
+    let packageId = ''
+    let runId = ''
+    try {
+      await signIn(page)
+      const trainer = await ownerTrainer(prisma)
+      const pkg = await prisma.package.create({
+        data: {
+          trainerId: trainer.id, name: `Everyday roster class ${mark}`,
+          sessionCount: 4, weeksBetween: 1, durationMins: 60, isGroup: true, capacity: 8,
+        },
+      })
+      packageId = pkg.id
+      const run = await prisma.classRun.create({
+        data: {
+          trainerId: trainer.id, packageId: pkg.id, name: pkg.name,
+          startDate: new Date(Date.now() + 7 * 864e5), status: 'SCHEDULED',
+        },
+      })
+      runId = run.id
+
+      // ── Enrol ───────────────────────────────────────────────────────────────
+      await page.goto(`/classes/${runId}`)
+      await page.getByRole('button', { name: /^Clients/ }).click()
+      await page.getByRole('button', { name: 'Enrol client' }).click()
+
+      const modal = page.getByRole('heading', { name: 'Enrol a client' })
+      await expect(modal).toBeVisible({ timeout: 20_000 })
+      // Step 1 is WHO. Nobody is picked up front on purpose — a pre-selected
+      // first name is the wrong client by default, and one stray Enter enrols
+      // them. Choosing IS the step, so this moves straight to step 2.
+      await page.getByLabel('Search clients').fill(SEED.client.name)
+      await page.getByRole('button', { name: new RegExp(SEED.client.name) }).click()
+      // Untick the email — the send is stubbed in this suite, but a test should
+      // not be asking to email anybody.
+      await page.getByLabel(/Notify the client/).uncheck()
+      await page.getByRole('button', { name: 'Enrol', exact: true }).click()
+
+      const enrolment = await until(
+        () => prisma.classEnrollment.findFirst({ where: { classRunId: runId, clientId: SEED.assignedClientId } }),
+        'the enrolment never reached the database',
+      )
+      expect(enrolment.status, 'enrolling produced a row that is not actually enrolled').not.toBe('WITHDRAWN')
+
+      await page.goto(`/classes/${runId}`)
+      await page.getByRole('button', { name: /^Clients/ }).click()
+      // `visible: true` because every tab's panel is in the DOM at once — the
+      // one you aren't on is `hidden`, so an unfiltered match finds the client
+      // in the Details tab's snapshot and proves nothing about the roster.
+      await expect(
+        page.getByText(SEED.client.name).filter({ visible: true }).first(),
+        'the enrolment saved, but the roster does not show them on it',
+      ).toBeVisible({ timeout: 20_000 })
+
+      // ── Withdraw ────────────────────────────────────────────────────────────
+      // NOTE (for docs/audit-trainer.md): one click, no confirmation — the only
+      // destructive action in this file that doesn't ask. Everything else on a
+      // trainer screen opens a sheet and says what goes.
+      await page.getByRole('button', { name: 'Withdraw', exact: true }).click()
+      await expect
+        .poll(async () => {
+          const row = await prisma.classEnrollment.findFirst({ where: { classRunId: runId, clientId: SEED.assignedClientId } })
+          return row ? row.status : 'gone'
+        }, { timeout: 20_000 })
+        .toMatch(/WITHDRAWN|gone/)
+    } finally {
+      if (runId) await prisma.classEnrollment.deleteMany({ where: { classRunId: runId } }).catch(() => {})
+      if (runId) await prisma.trainingSession.deleteMany({ where: { classRunId: runId } }).catch(() => {})
+      if (runId) await prisma.classRun.deleteMany({ where: { id: runId } }).catch(() => {})
       if (packageId) await prisma.package.deleteMany({ where: { id: packageId } }).catch(() => {})
       await prisma.$disconnect()
     }
@@ -686,10 +910,11 @@ test.describe('the jobs a trainer does every day', () => {
         .toBe('Welcome along — a few first steps')
 
       // ── Delete ──────────────────────────────────────────────────────────────
-      // This one really IS window.confirm — the one dialog a phone renders
+      // The house sheet, like every other destructive action. This was the last
+      // window.confirm on a trainer screen — the one dialog a phone renders
       // worst, and the odd one out among the app's confirmations.
-      page.once('dialog', d => d.accept())
       await page.getByRole('button', { name: 'Delete', exact: true }).click()
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Delete', exact: true }).click()
       await expect
         .poll(async () => await prisma.emailTemplate.count({ where: { id } }), { timeout: 20_000 })
         .toBe(0)
@@ -709,15 +934,13 @@ test.describe('the jobs a trainer does every day', () => {
       const trainer = await ownerTrainer(prisma)
 
       // ── Create ──────────────────────────────────────────────────────────────
-      // "Add location" is the name of BOTH the dashed trigger and the form's
-      // save button — they are never on screen together, which is the only
-      // reason asking for it by name works.
+      // "Add location" opens the form; "Save location" submits it. They used to
+      // share one name, so the screen had two different controls answering to
+      // the same words and only the order they appear in told them apart.
       await page.goto('/settings?tab=locations')
       await page.getByRole('button', { name: 'Add location' }).click()
-      // The fields carry loose <label>s with no htmlFor, so getByLabel finds
-      // nothing here either — it is the placeholder or nothing.
-      await page.getByPlaceholder('The training field').fill(name)
-      await page.getByRole('button', { name: 'Add location' }).click()
+      await page.getByLabel('Name', { exact: true }).fill(name)
+      await page.getByRole('button', { name: 'Save location' }).click()
 
       const made = await until(
         () => prisma.location.findFirst({ where: { trainerId: trainer.id, name } }),
@@ -734,7 +957,7 @@ test.describe('the jobs a trainer does every day', () => {
       // ── Edit ────────────────────────────────────────────────────────────────
       const renamed = `${name} corrected`
       await row().getByRole('button', { name: 'Edit location' }).click()
-      await page.getByPlaceholder('The training field').fill(renamed)
+      await page.getByLabel('Name', { exact: true }).fill(renamed)
       await page.getByRole('button', { name: 'Save changes' }).click()
       await expect
         .poll(async () => (await prisma.location.findUnique({ where: { id } }))?.name, { timeout: 20_000 })

@@ -180,9 +180,14 @@ export function LocationsPanel({ locations, region }: { locations: LocationRow[]
         <div className="rounded-2xl border border-slate-200 bg-white p-5 flex flex-col gap-4">
           <h3 className="text-sm font-semibold text-slate-900">{draft.id ? 'Edit location' : 'Add location'}</h3>
 
+          {/* htmlFor/id, not a loose <label>: without the association a screen
+              reader reads an unnamed box, tapping the label doesn't focus it,
+              and the review widget can't name what a comment is pinned to
+              (AGENTS.md). Same fix as the client form's fields. */}
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Name</label>
+            <label htmlFor="location-name" className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Name</label>
             <Input
+              id="location-name"
               value={draft.name}
               onChange={e => patch({ name: e.target.value })}
               placeholder="The training field"
@@ -224,8 +229,9 @@ export function LocationsPanel({ locations, region }: { locations: LocationRow[]
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Description <span className="normal-case font-normal tracking-normal text-slate-400">· optional</span></label>
+            <label htmlFor="location-description" className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Description <span className="normal-case font-normal tracking-normal text-slate-400">· optional</span></label>
             <textarea
+              id="location-description"
               value={draft.description}
               onChange={e => patch({ description: e.target.value })}
               rows={3}
@@ -237,9 +243,13 @@ export function LocationsPanel({ locations, region }: { locations: LocationRow[]
           {error && <p className="text-sm text-rose-600">{error}</p>}
 
           <div className="flex items-center gap-3 pt-1">
+            {/* "Save location", never "Add location" — that was the name of
+                the button that OPENED this form as well as the one that
+                submits it, so the screen had two different controls answering
+                to one name. */}
             <Button type="button" onClick={save} loading={saving}>
               {!saving && <Check className="h-4 w-4" />}
-              {draft.id ? 'Save changes' : 'Add location'}
+              {draft.id ? 'Save changes' : 'Save location'}
             </Button>
             <button
               type="button"

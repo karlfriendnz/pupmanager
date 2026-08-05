@@ -30,20 +30,23 @@ function Req({ on }: { on: boolean }) {
   return on ? <span className="text-red-500 ml-1">*</span> : null
 }
 
-function CustomFieldInput({ field, value, onChange }: { field: CustomField; value: string; onChange: (v: string) => void }) {
+function CustomFieldInput({ field, value, onChange, inputId }: { field: CustomField; value: string; onChange: (v: string) => void; inputId: string }) {
   const cls = 'h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent'
   return (
     <div>
-      <label className="text-sm font-medium text-slate-700 block mb-1.5">{field.label}<Req on={field.required} /></label>
+      {/* Tied to its control, like every other field on this form. The id must
+          be unique on the page — a DOG field is rendered once per dog — which
+          is what the caller's `fieldId:dogIndex` key is for. */}
+      <label htmlFor={inputId} className="text-sm font-medium text-slate-700 block mb-1.5">{field.label}<Req on={field.required} /></label>
       {field.type === 'DROPDOWN' ? (
-        <select value={value} onChange={e => onChange(e.target.value)} className={cls}>
+        <select id={inputId} value={value} onChange={e => onChange(e.target.value)} className={cls}>
           <option value="">Select…</option>
           {field.options.map(o => <option key={o} value={o}>{o}</option>)}
         </select>
       ) : field.type === 'NUMBER' ? (
-        <input type="number" value={value} onChange={e => onChange(e.target.value)} className={cls} />
+        <input id={inputId} type="number" value={value} onChange={e => onChange(e.target.value)} className={cls} />
       ) : (
-        <textarea value={value} onChange={e => onChange(e.target.value)} rows={2} className="w-full min-h-[3rem] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-accent" />
+        <textarea id={inputId} value={value} onChange={e => onChange(e.target.value)} rows={2} className="w-full min-h-[3rem] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-accent" />
       )}
     </div>
   )
@@ -241,19 +244,24 @@ export function CreateClientForm({
           {error && <Alert variant="error">{error}</Alert>}
           {done && <Alert variant="success">Client created — opening their profile…</Alert>}
 
-          {/* ── Contact ────────────────────────────────────────────────── */}
+          {/* ── Contact ──────────────────────────────────────────────────
+              Every label carries htmlFor and every field the matching id. They
+              were loose <label>s: the box beside them had no name at all, so a
+              screen reader announced an unnamed field, tapping the label didn't
+              focus it, and the review widget couldn't say which field a comment
+              was pinned to (AGENTS.md asks for exactly this). */}
           <div className={step === 'contact' ? 'flex flex-col gap-4' : 'hidden'}>
             <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1.5">Client name<Req on /></label>
-              <Input value={name} onChange={e => setName(e.target.value)} placeholder="Jane Smith" />
+              <label htmlFor="new-client-name" className="text-sm font-medium text-slate-700 block mb-1.5">Client name<Req on /></label>
+              <Input id="new-client-name" value={name} onChange={e => setName(e.target.value)} placeholder="Jane Smith" />
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1.5">Email</label>
-              <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="jane@example.com (optional)" />
+              <label htmlFor="new-client-email" className="text-sm font-medium text-slate-700 block mb-1.5">Email</label>
+              <Input id="new-client-email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="jane@example.com (optional)" />
             </div>
             <div>
-              <label className="text-sm font-medium text-slate-700 block mb-1.5">Phone</label>
-              <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="021 234 5678" />
+              <label htmlFor="new-client-phone" className="text-sm font-medium text-slate-700 block mb-1.5">Phone</label>
+              <Input id="new-client-phone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="021 234 5678" />
             </div>
             <div>
               <label className="text-sm font-medium text-slate-700 block mb-1.5">Address</label>
@@ -269,7 +277,7 @@ export function CreateClientForm({
               />
             </div>
             {ownerFields.map(f => (
-              <CustomFieldInput key={f.id} field={f} value={customValues[f.id] ?? ''} onChange={v => setCustom(f.id, v)} />
+              <CustomFieldInput key={f.id} inputId={`ncf-${f.id}`} field={f} value={customValues[f.id] ?? ''} onChange={v => setCustom(f.id, v)} />
             ))}
           </div>
 
@@ -284,8 +292,11 @@ export function CreateClientForm({
                   )}
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-slate-700 block mb-1.5">Name</label>
-                  <Input value={dog.name} onChange={e => updateDog(i, { name: e.target.value })} placeholder="Buddy" />
+                  {/* "Dog's name", not "Name" — the same word already labels the
+                      owner one tab over, and a field is only named if its name
+                      says which of the two it is. */}
+                  <label htmlFor={`new-dog-name-${i}`} className="text-sm font-medium text-slate-700 block mb-1.5">Dog&apos;s name</label>
+                  <Input id={`new-dog-name-${i}`} value={dog.name} onChange={e => updateDog(i, { name: e.target.value })} placeholder="Buddy" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -293,20 +304,20 @@ export function CreateClientForm({
                     <BreedSelect value={dog.breed} onChange={v => updateDog(i, { breed: v })} />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-slate-700 block mb-1.5">Weight (kg)</label>
-                    <input type="number" step="0.1" value={dog.weight} onChange={e => updateDog(i, { weight: e.target.value })} className={fieldInput} />
+                    <label htmlFor={`new-dog-weight-${i}`} className="text-sm font-medium text-slate-700 block mb-1.5">Weight (kg)</label>
+                    <input id={`new-dog-weight-${i}`} type="number" step="0.1" value={dog.weight} onChange={e => updateDog(i, { weight: e.target.value })} className={fieldInput} />
                   </div>
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-slate-700 block mb-1.5">Date of birth</label>
-                  <input type="date" value={dog.dob} onChange={e => updateDog(i, { dob: e.target.value })} className={fieldInput} />
+                  <label htmlFor={`new-dog-dob-${i}`} className="text-sm font-medium text-slate-700 block mb-1.5">Date of birth</label>
+                  <input id={`new-dog-dob-${i}`} type="date" value={dog.dob} onChange={e => updateDog(i, { dob: e.target.value })} className={fieldInput} />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-slate-700 block mb-1.5">Notes</label>
-                  <textarea value={dog.notes} onChange={e => updateDog(i, { notes: e.target.value })} rows={2} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-accent" />
+                  <label htmlFor={`new-dog-notes-${i}`} className="text-sm font-medium text-slate-700 block mb-1.5">Notes</label>
+                  <textarea id={`new-dog-notes-${i}`} value={dog.notes} onChange={e => updateDog(i, { notes: e.target.value })} rows={2} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-accent" />
                 </div>
                 {dogFields.map(f => (
-                  <CustomFieldInput key={`${f.id}:${i}`} field={f} value={customValues[`${f.id}:${i}`] ?? ''} onChange={v => setCustom(`${f.id}:${i}`, v)} />
+                  <CustomFieldInput key={`${f.id}:${i}`} inputId={`ncf-${f.id}-${i}`} field={f} value={customValues[`${f.id}:${i}`] ?? ''} onChange={v => setCustom(`${f.id}:${i}`, v)} />
                 ))}
               </div>
             ))}

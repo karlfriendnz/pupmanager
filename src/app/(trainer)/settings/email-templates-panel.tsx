@@ -9,6 +9,7 @@ import { emailBodyToHtml, htmlHasText } from '@/lib/email-html'
 import { CLIENT_EMAIL_PLACEHOLDER_OPTIONS } from '@/lib/placeholder-labels'
 import { PlaceholderButtons, insertTokenAtCursor } from '@/components/shared/placeholder-buttons'
 import { EmailBodyBuilder, serializeBlocks, type EmailBlock } from '@/components/shared/email-body-builder'
+import { ConfirmSheet } from '@/components/shared/confirm-sheet'
 
 type Template = {
   id: string
@@ -95,6 +96,9 @@ export function EmailTemplatesPanel() {
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Deleting a template asks in the house sheet, not window.confirm — see the
+  // sheet's own note on why that dialog is the wrong one, especially on a phone.
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   // A system email is one of ours; everything else is a template the trainer
   // wrote. The difference drives what the editor shows and where Save goes.
@@ -279,7 +283,7 @@ export function EmailTemplatesPanel() {
 
   async function remove() {
     if (!draft?.id) { setDraft(null); return }
-    if (!confirm(`Delete template "${draft.name}"?`)) return
+    setConfirmDelete(false)
     setSaving(true)
     try {
       const res = await fetch(`/api/email-templates/${draft.id}`, { method: 'DELETE' })
@@ -378,23 +382,23 @@ export function EmailTemplatesPanel() {
             ) : (
               <>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="Name">
-                    <input value={draft.name} onChange={e => patch({ name: e.target.value })} className={inputCls} placeholder="Welcome to the pack" />
+                  <Field htmlFor="template-name" label="Name">
+                    <input id="template-name" value={draft.name} onChange={e => patch({ name: e.target.value })} className={inputCls} placeholder="Welcome to the pack" />
                   </Field>
-                  <Field label="Category" hint="optional">
-                    <input value={draft.category} onChange={e => patch({ category: e.target.value })} className={inputCls} placeholder="Onboarding" />
+                  <Field htmlFor="template-category" label="Category" hint="optional">
+                    <input id="template-category" value={draft.category} onChange={e => patch({ category: e.target.value })} className={inputCls} placeholder="Onboarding" />
                   </Field>
                 </div>
-                <Field label="Subject">
-                  <input ref={subjectRef} value={draft.subject} onFocus={() => { lastFocused.current = 'subject' }} onChange={e => patch({ subject: e.target.value })} className={inputCls} placeholder="A warm welcome to the pack" />
+                <Field htmlFor="template-subject" label="Subject">
+                  <input id="template-subject" ref={subjectRef} value={draft.subject} onFocus={() => { lastFocused.current = 'subject' }} onChange={e => patch({ subject: e.target.value })} className={inputCls} placeholder="A warm welcome to the pack" />
                 </Field>
               </>
             )}
             {/* A system email keeps its subject editable unless the sender
                 composes one (the invite builds its own from the business name). */}
             {isSystem && draft.subjectEditable !== false && (
-              <Field label="Subject">
-                <input ref={subjectRef} value={draft.subject} onFocus={() => { lastFocused.current = 'subject' }} onChange={e => patch({ subject: e.target.value })} className={inputCls} />
+              <Field htmlFor="system-email-subject" label="Subject">
+                <input id="system-email-subject" ref={subjectRef} value={draft.subject} onFocus={() => { lastFocused.current = 'subject' }} onChange={e => patch({ subject: e.target.value })} className={inputCls} />
               </Field>
             )}
             <div onFocusCapture={() => { lastFocused.current = 'body' }}>
@@ -435,7 +439,7 @@ export function EmailTemplatesPanel() {
                   </button>
                 )
               ) : (
-                <button type="button" onClick={remove} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50">
+                <button type="button" onClick={() => (draft.id ? setConfirmDelete(true) : remove())} disabled={saving} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50">
                   <Trash2 className="h-4 w-4" /> {draft.id ? 'Delete' : 'Discard'}
                 </button>
               )}
@@ -520,16 +524,30 @@ export function EmailTemplatesPanel() {
           </div>
         )}
       </div>
+
+      {confirmDelete && draft && (
+        <ConfirmSheet
+          title={`Delete “${draft.name}”?`}
+          body="The template goes for good. Emails already sent with it are untouched."
+          confirmLabel="Delete"
+          danger
+          busy={saving}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={remove}
+        />
+      )}
     </section>
   )
 }
 
 const inputCls = 'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent'
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+/** A labelled row. `htmlFor` is required, and the caller puts the same id on the
+ *  control — a label floating above an unnamed box is not a label. */
+function Field({ htmlFor, label, hint, children }: { htmlFor: string; label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
+      <label htmlFor={htmlFor} className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
         {label}{hint && <span className="ml-1.5 normal-case font-normal tracking-normal text-slate-400">· {hint}</span>}
       </label>
       {children}
