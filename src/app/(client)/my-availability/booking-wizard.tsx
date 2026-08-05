@@ -1065,7 +1065,12 @@ function SessionTimeStep({ pkg, availableDates, timeOptions, date, time, onDate,
                 {timeOptions.map(t => {
                   const on = t === time
                   return (
-                    <button key={t} onClick={() => onTime(t)} className={`rounded-xl py-2.5 text-sm font-semibold tabular-nums border transition-colors ${on ? 'bg-accent border-accent text-accent-fg' : 'border-accent/30 text-accent hover:bg-accent-soft'}`}>
+                    // Picking the time IS the decision, so it moves on. The
+                    // Continue button under it asked the client to confirm a
+                    // choice they had just made, and nothing on this step can
+                    // change after it — there is still a Confirm step, and Back
+                    // is on the track above.
+                    <button key={t} onClick={() => { onTime(t); onContinue() }} className={`rounded-xl py-2.5 text-sm font-semibold tabular-nums border transition-colors ${on ? 'bg-accent border-accent text-accent-fg' : 'border-accent/30 text-accent hover:bg-accent-soft'}`}>
                       {fmtTimeLabel(t)}
                     </button>
                   )
@@ -1076,11 +1081,6 @@ function SessionTimeStep({ pkg, availableDates, timeOptions, date, time, onDate,
         </>
       )}
 
-      {!noDays && (
-        <StickyCta disabled={!time} onClick={onContinue}>
-          {time ? `Continue · ${fmtTimeLabel(time)}` : 'Pick a time'}
-        </StickyCta>
-      )}
     </div>
   )
 }
