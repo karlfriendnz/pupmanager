@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { listClientMessageThreads } from '@/lib/client-message-threads'
+import { THREAD_PROPOSAL_SELECT, toThreadProposal } from '@/lib/thread-proposal'
 import { MessageThread } from './message-thread'
 import { MessagesList } from './messages-list'
 import { GroupThread } from './group-thread'
@@ -91,7 +92,12 @@ export default async function ClientMessagesPage({
 
   const messages = await prisma.message.findMany({
     where: { clientId: clientProfile.id, channel: 'TRAINER_CLIENT' },
-    include: { sender: { select: { name: true } } },
+    include: {
+      sender: { select: { name: true } },
+      // Null on all but a counter-offer; those render as an Approve /
+      // Suggest-another card so the client can answer where they are already.
+      bookingProposal: { select: THREAD_PROPOSAL_SELECT },
+    },
     orderBy: { createdAt: 'asc' },
   })
 
@@ -146,6 +152,7 @@ export default async function ClientMessagesPage({
           senderId: m.senderId,
           createdAt: m.createdAt.toISOString(),
           sender: m.sender,
+          proposal: toThreadProposal(m.bookingProposal),
         }))}
       />
     </div>

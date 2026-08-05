@@ -17,6 +17,7 @@ export function BookingRequestPreviewBanner({
   sessionCount,
   clashCount,
   focusDate,
+  onSuggestAnother,
 }: {
   requestId: string
   clientName: string | null
@@ -26,6 +27,11 @@ export function BookingRequestPreviewBanner({
   clashCount: number
   /** YYYY-MM-DD to return to after acting / dismissing. */
   focusDate: string
+  /** Opens the counter-offer composer with no time chosen yet. The keyboard /
+   *  screen-reader route to the same thing the ghost drag and the slot tap do —
+   *  a gesture that only exists as a gesture is a feature some people cannot
+   *  reach. */
+  onSuggestAnother?: () => void
 }) {
   const router = useRouter()
   const [pending, setPending] = useState<'CONFIRM' | 'DECLINE' | null>(null)
@@ -82,6 +88,11 @@ export function BookingRequestPreviewBanner({
           <p className="mt-0.5 text-sm text-slate-500">
             {sessionCount} proposed session{sessionCount === 1 ? '' : 's'}, shown as dashed blocks below.
           </p>
+          {onSuggestAnother && (
+            <p className="mt-0.5 text-sm text-slate-500">
+              Doesn&rsquo;t suit? Drag the first block, or tap an empty slot, to suggest another time.
+            </p>
+          )}
           {clashCount > 0 && (
             <p className="mt-1 flex items-start gap-1.5 text-sm font-medium text-amber-700">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" strokeWidth={1.75} aria-hidden />
@@ -104,6 +115,17 @@ export function BookingRequestPreviewBanner({
         >
           Close
         </button>
+        {onSuggestAnother && (
+          <button
+            type="button"
+            data-testid="preview-suggest-another"
+            onClick={onSuggestAnother}
+            disabled={pending !== null}
+            className="min-h-11 flex-1 px-2 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Suggest a time
+          </button>
+        )}
         <button
           type="button"
           onClick={() => act('DECLINE')}

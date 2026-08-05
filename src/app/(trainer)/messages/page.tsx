@@ -7,6 +7,7 @@ import { MessagesView, type ClientRow, type GroupRow } from './messages-view'
 import type { AudienceOption } from './group-composer'
 import type { Metadata } from 'next'
 import { addonSettingsHref } from '@/lib/configurable-features'
+import { THREAD_PROPOSAL_SELECT, toThreadProposal } from '@/lib/thread-proposal'
 
 export const metadata: Metadata = { title: 'Messages' }
 
@@ -338,7 +339,11 @@ async function loadAudiences(trainerId: string): Promise<{
 async function loadMessages(clientId: string, trainerId: string) {
   const msgs = await prisma.message.findMany({
     where: { clientId, channel: 'TRAINER_CLIENT', client: { trainerId } },
-    include: { sender: { select: { name: true, email: true } } },
+    include: {
+      sender: { select: { name: true, email: true } },
+      // Null on all but a counter-offer; those render as a card in the thread.
+      bookingProposal: { select: THREAD_PROPOSAL_SELECT },
+    },
     orderBy: { createdAt: 'asc' },
   })
   return msgs.map(m => ({
@@ -350,5 +355,6 @@ async function loadMessages(clientId: string, trainerId: string) {
     // literally "the client has read this".
     readAt: m.readAt ? m.readAt.toISOString() : null,
     sender: { name: m.sender.name, email: m.sender.email ?? '' },
+    proposal: toThreadProposal(m.bookingProposal),
   }))
 }

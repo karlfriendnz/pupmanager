@@ -1,5 +1,6 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { THREAD_PROPOSAL_SELECT, toThreadProposal } from '@/lib/thread-proposal'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -94,7 +95,12 @@ export async function GET(req: Request) {
               },
               orderBy: { createdAt: 'asc' },
               // Name only — never leak the trainer's private User.email to clients.
-              include: { sender: { select: { name: true } } },
+              // The proposal rides along so a counter-offer arrives as a live
+              // card, not a bubble that only becomes one on the next reload.
+              include: {
+                sender: { select: { name: true } },
+                bookingProposal: { select: THREAD_PROPOSAL_SELECT },
+              },
             })
             if (fresh.length > 0) {
               lastSeenAt = fresh[fresh.length - 1].createdAt
@@ -106,6 +112,7 @@ export async function GET(req: Request) {
                   createdAt: m.createdAt.toISOString(),
                   readAt: m.readAt ? m.readAt.toISOString() : null,
                   sender: { name: m.sender.name },
+                  proposal: toThreadProposal(m.bookingProposal),
                 })
               }
             }

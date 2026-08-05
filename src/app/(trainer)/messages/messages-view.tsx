@@ -11,6 +11,7 @@ import { PhoneRowList } from '@/components/shared/flat-list'
 import { MessageThread } from './[clientId]/message-thread'
 import { SetPageImmersive } from '@/components/shared/page-title'
 import { GroupComposer, type AudienceOption, type PickableClient } from './group-composer'
+import type { ThreadProposalDto } from '@/lib/thread-proposal'
 import { GroupThread } from './group-thread'
 
 export interface ClientRow {
@@ -38,6 +39,8 @@ export interface ThreadMessage {
   createdAt: string
   readAt: string | null
   sender: { name: string | null; email: string }
+  /** Set only when this message IS a counter-offer on a booking request. */
+  proposal?: ThreadProposalDto | null
 }
 
 export interface SelectedClient {

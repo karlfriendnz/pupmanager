@@ -148,16 +148,36 @@ export default async function SchedulePage({
         include: {
           package: { select: { name: true, sessionCount: true, durationMins: true } },
           client: { select: { user: { select: { name: true } } } },
+          // The negotiation so far. The ghosts must show the time currently on
+          // the table, not the one the client first asked for — after a couple
+          // of rounds those are different, and previewing a superseded hour
+          // would have the trainer approving something nobody offered.
+          proposals: { orderBy: { createdAt: 'desc' }, take: 1 },
         },
       })
     : null
-  const previewBlocks = previewRow ? buildPreviewBlocks(previewRow.sessionDates, previewRow.package) : []
+  const latestProposal = previewRow?.proposals[0] ?? null
+  const previewBlocks = previewRow
+    ? buildPreviewBlocks(latestProposal?.sessionDates ?? previewRow.sessionDates, previewRow.package)
+    : []
   const previewRequest = previewRow
     ? {
         id: previewRow.id,
         clientName: previewRow.client.user.name ?? 'Client',
         packageName: previewRow.package.name,
         blocks: previewBlocks,
+        // Whose turn it is. An OPEN proposal the TRAINER made is waiting on the
+        // client, so there is nothing for the trainer to approve — only to
+        // replace. Derived, so an existing request with no proposals reads back
+        // as exactly today's behaviour.
+        awaitingClient:
+          latestProposal?.status === 'OPEN' && latestProposal.proposedBy === 'TRAINER',
+        // A live offer from the CLIENT is approved through the proposal route
+        // (which re-checks the diary), not the request's blanket confirm.
+        clientProposalId:
+          latestProposal?.status === 'OPEN' && latestProposal.proposedBy === 'CLIENT'
+            ? latestProposal.id
+            : null,
       }
     : null
 

@@ -4,6 +4,7 @@ import { guardPermission } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { safeEvaluate } from '@/lib/achievements'
 import { notifyMessageRecipient } from '@/lib/notify-message-recipient'
+import { THREAD_PROPOSAL_SELECT } from '@/lib/thread-proposal'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -44,7 +45,12 @@ export async function GET(req: Request) {
     where: { clientId, channel: 'TRAINER_CLIENT' },
     // Only the sender's display name — never User.email (the trainer's PRIVATE
     // sign-in address). Clients must only ever see publicEmail, not this one.
-    include: { sender: { select: { name: true } } },
+    // bookingProposal is null on all but the handful of messages that ARE a
+    // counter-offer; those render as an Approve / Suggest-another card.
+    include: {
+      sender: { select: { name: true } },
+      bookingProposal: { select: THREAD_PROPOSAL_SELECT },
+    },
     orderBy: { createdAt: 'asc' },
   })
 

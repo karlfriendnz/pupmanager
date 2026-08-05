@@ -5,12 +5,16 @@ import { Button } from '@/components/ui/button'
 import { Send, Mail, X, Check, CheckCheck } from 'lucide-react'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { htmlHasText } from '@/lib/email-html'
+import { BookingProposalCard } from '@/components/shared/booking-proposal-card'
+import { latestProposalIds, type ThreadProposalDto } from '@/lib/thread-proposal'
 
 interface Message {
   id: string
   body: string
   senderId: string
   createdAt: string
+  /** Set only when this message IS a counter-offer on a booking request. */
+  proposal?: ThreadProposalDto | null
   // Stamped when the OTHER party opens the thread, so on our own messages it
   // is the client's read receipt. Null on an optimistic row until the POST
   // comes back.
@@ -54,6 +58,12 @@ export function MessageThread({
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Which counter-offers are still live. Presentation only — the approve route
+  // refuses a superseded one regardless (see BookingProposalCard).
+  const liveProposalIds = latestProposalIds(
+    messages.map(m => m.proposal).filter((p): p is ThreadProposalDto => !!p),
+  )
 
   // Opening the thread marks it read (server-side on load) — nudge the nav badge
   // to recount so it clears without waiting for the poll interval.
@@ -203,6 +213,19 @@ export function MessageThread({
         )}
         {messages.map(msg => {
           const isMine = msg.senderId === currentUserId
+          // A counter-offer renders as a card instead of a bubble — the times
+          // and the two actions, in the run of the conversation.
+          if (msg.proposal) {
+            return (
+              <BookingProposalCard
+                key={msg.id}
+                proposal={msg.proposal}
+                viewerParty="TRAINER"
+                isLatest={liveProposalIds.has(msg.proposal.id)}
+                mine={isMine}
+              />
+            )
+          }
           return (
             <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
               <div data-testid="message-bubble" data-mine={isMine ? 'true' : 'false'} className={`max-w-xs md:max-w-sm rounded-2xl px-4 py-2.5 text-sm ${

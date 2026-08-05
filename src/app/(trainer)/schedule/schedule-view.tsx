@@ -27,6 +27,7 @@ import { occupiedEndMs } from '@/lib/buffer'
 import { runSessionHref, type RunKindPackage } from '@/lib/run-kind'
 import { previewClashKeys, type PreviewBlock as RequestPreviewBlock } from '@/lib/booking-request-preview'
 import { BookingRequestPreviewBanner } from './booking-request-preview-banner'
+import { ProposeTimeSheet } from '@/components/shared/propose-time-sheet'
 import { ClassFormModal } from '../classes/class-form-modal'
 import { ScheduleSettings } from './schedule-settings'
 import { ScheduleReport } from './schedule-report'
@@ -674,32 +675,55 @@ function SessionBlock({
 
 // A proposed session from a pending booking request, painted as a dashed,
 // tinted overlay so the trainer sees exactly where the request's sessions
-// would land before approving. Never a real session — non-interactive
-// (pointer-events pass through to the column so slot-clicks still work).
+// would land before approving. Never a real session.
 // Indigo = matches the request panel; amber when it overlaps an existing
 // session so clashes jump out.
+//
+// The FIRST block is draggable when the trainer is previewing (`onPointerDown`
+// is passed only for it) — dropping it somewhere else is how they counter-offer
+// a different time. Every other block stays `pointer-events-none` so taps fall
+// through to the column: the series follows its first session, so there is only
+// ever one thing to move (see lib/booking-negotiation).
 function PreviewGhostBlock({
   block,
   clashes,
   startHour,
   pxPerHour,
+  onPointerDown,
+  dragTop,
+  isDragging,
 }: {
   block: RequestPreviewBlock
   clashes: boolean
   startHour: number
   pxPerHour: number
+  /** Only the draggable (first) block gets one. */
+  onPointerDown?: (e: React.PointerEvent) => void
+  dragTop?: number | null
+  isDragging?: boolean
 }) {
   const tz = useContext(SchedTz)
-  const top = sessionTop(block.startIso, tz, startHour, pxPerHour)
+  const top = isDragging && dragTop != null
+    ? dragTop
+    : sessionTop(block.startIso, tz, startHour, pxPerHour)
   const height = sessionHeight(block.durationMins, pxPerHour)
   const tone = clashes
     ? 'border-amber-500 bg-amber-100/70 text-amber-800'
     : 'border-indigo-500 bg-indigo-100/70 text-indigo-800'
+  const draggable = !!onPointerDown
   return (
     <div
-      className={`absolute left-0.5 right-0.5 z-20 rounded-lg border-2 border-dashed px-2 overflow-hidden pointer-events-none ${tone}`}
+      data-testid={draggable ? 'preview-ghost-draggable' : 'preview-ghost'}
+      onPointerDown={onPointerDown}
+      className={`absolute left-0.5 right-0.5 z-20 rounded-lg border-2 border-dashed px-2 overflow-hidden ${tone} ${
+        draggable ? 'cursor-grab touch-none select-none' : 'pointer-events-none'
+      } ${isDragging ? 'opacity-90 shadow-lg' : ''}`}
       style={{ top, height }}
-      title={`Proposed: ${block.title} · ${fmtTime(block.startIso, tz)}${clashes ? ' · clashes with an existing session' : ''}`}
+      title={
+        draggable
+          ? `Proposed: ${block.title} · ${fmtTime(block.startIso, tz)} — drag to suggest another time`
+          : `Proposed: ${block.title} · ${fmtTime(block.startIso, tz)}${clashes ? ' · clashes with an existing session' : ''}`
+      }
     >
       <div className="flex items-center gap-1 pt-1">
         <p className="text-[10px] font-semibold leading-tight truncate flex-1">
@@ -744,6 +768,7 @@ function WeekGrid({
   forceFullWeek = false,
   previewBlocks = [],
   previewClashes,
+  onProposeTime,
 }: {
   weekDays: Date[]
   sessions: Session[]
@@ -757,6 +782,12 @@ function WeekGrid({
   // existing session, so they render in the warning tone.
   previewBlocks?: RequestPreviewBlock[]
   previewClashes?: Set<string>
+  // Set ONLY while a booking request is being previewed. Both interactions land
+  // here: dragging the first ghost block (desktop — a pointer has hover and a
+  // precise drop) and tapping an empty slot (phone/iPad — a drag gesture fights
+  // page scroll on touch, and neither has hover, so a tap equivalent is not
+  // optional). Same argument shape either way, so the two cannot diverge.
+  onProposeTime?: (dateStr: string, time: string) => void
   onSlotClick: (dateStr: string, time: string) => void
   onSessionClick: (s: Session) => void
   onSessionDrop: (sessionId: string, newIso: string) => void
@@ -1082,6 +1113,80 @@ function WeekGrid({
     }
   }, [dragging])
 
+  // ── Counter-offer drag (the proposed session's ghost block) ────────────────
+  //
+  // Deliberately the SAME pointer machinery the session drag above uses —
+  // column detection by X, 15-minute snap, `touch-action: none` while held —
+  // rather than a dnd-kit overlay. This grid already owns pointer capture on
+  // itself; a second drag system layered over the same surface would have two
+  // things arbitrating one gesture, which is how a drag ends up moving the week
+  // instead of the block. Karl's rule is drag-and-drop over chevrons, and this
+  // is drag-and-drop; it just reuses the drag the grid already has.
+  const [ghostDrag, setGhostDrag] = useState<{
+    dayIndex: number
+    offsetY: number
+    currentTop: number
+    durationMins: number
+    moved: boolean
+  } | null>(null)
+
+  const handleGhostPointerDown = useCallback((e: React.PointerEvent, block: RequestPreviewBlock, dayIndex: number) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    // Touch keeps its tap-a-slot path (below) — a drag from a finger on this
+    // grid competes with the page scroll and the day swipe, and there is no
+    // hover to advertise that the ghost is grabbable in the first place.
+    if (e.pointerType === 'touch') return
+    e.preventDefault()
+    e.stopPropagation()
+    const el = e.currentTarget as HTMLElement
+    try { el.setPointerCapture(e.pointerId) } catch {}
+    const rect = el.getBoundingClientRect()
+    setGhostDrag({
+      dayIndex,
+      offsetY: e.clientY - rect.top,
+      currentTop: sessionTop(block.startIso, tz, startHour, pxPerHour),
+      durationMins: block.durationMins,
+      moved: false,
+    })
+  }, [tz, startHour, pxPerHour])
+
+  const handleGhostPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!ghostDrag || !gridRef.current) return
+    e.preventDefault()
+    const cols = Array.from(gridRef.current.querySelectorAll('[data-day-col]')) as HTMLElement[]
+    let targetColIndex = ghostDrag.dayIndex
+    for (let i = 0; i < cols.length; i++) {
+      const r = cols[i].getBoundingClientRect()
+      if (e.clientX >= r.left && e.clientX <= r.right) { targetColIndex = i; break }
+    }
+    const col = cols[targetColIndex]
+    if (!col) return
+    const colRect = col.getBoundingClientRect()
+    const rawY = e.clientY - colRect.top - ghostDrag.offsetY
+    const step = pxPerHour / (60 / SNAP_MINS)
+    const snapped = Math.round(rawY / step) * step
+    const clamped = Math.max(0, Math.min(snapped, (endHour - startHour - ghostDrag.durationMins / 60) * pxPerHour))
+    setGhostDrag(prev => prev ? { ...prev, dayIndex: targetColIndex, currentTop: clamped, moved: true } : null)
+  }, [ghostDrag, pxPerHour, startHour, endHour])
+
+  const handleGhostPointerUp = useCallback(() => {
+    if (!ghostDrag) return
+    const wasMoved = ghostDrag.moved
+    const day = visibleDays[ghostDrag.dayIndex]
+    const time = yToTime(ghostDrag.currentTop, startHour, endHour, pxPerHour)
+    setGhostDrag(null)
+    // A click that never moved is not a counter-offer; it would open the
+    // composer on the time already proposed, which says nothing.
+    if (wasMoved && day) onProposeTime?.(toDateStr(day), time)
+  }, [ghostDrag, visibleDays, startHour, endHour, pxPerHour, onProposeTime])
+
+  useEffect(() => {
+    if (!ghostDrag) return
+    function onGlobalEnd() { setGhostDrag(null) }
+    document.addEventListener('pointercancel', onGlobalEnd)
+    return () => { document.removeEventListener('pointercancel', onGlobalEnd) }
+  }, [ghostDrag])
+
   function handleColumnClick(e: React.MouseEvent, dayDate: Date, dayIndex: number) {
     // Ignore if clicking on a session block
     if ((e.target as HTMLElement).closest('[data-session]')) return
@@ -1092,6 +1197,12 @@ function WeekGrid({
     const rect = col.getBoundingClientRect()
     const y    = e.clientY - rect.top
     const time = yToTime(y, startHour, endHour, pxPerHour)
+    // While previewing a request, an empty slot means "how about this instead" —
+    // the tap equivalent of the ghost drag, and the ONLY path on a phone.
+    if (onProposeTime) {
+      onProposeTime(toDateStr(dayDate), time)
+      return
+    }
     onSlotClick(toDateStr(dayDate), time)
   }
 
@@ -1195,14 +1306,14 @@ function WeekGrid({
           style={{
             gridTemplateColumns: `48px repeat(${visibleDays.length}, 1fr)`,
             height: totalHeight,
-            touchAction: dragging ? 'none' : undefined,
+            touchAction: dragging || ghostDrag ? 'none' : undefined,
             // Follow the finger during a full-week swipe (clamped so it never
             // slides fully off-screen); spring back / reset once released.
             transform: weekDragDx ? `translateX(${Math.max(-140, Math.min(140, weekDragDx))}px)` : undefined,
             transition: weekDragging ? 'none' : 'transform 0.2s ease-out',
           }}
-          onPointerMove={dragging ? handlePointerMove : undefined}
-          onPointerUp={dragging ? handlePointerUp : undefined}
+          onPointerMove={dragging ? handlePointerMove : ghostDrag ? handleGhostPointerMove : undefined}
+          onPointerUp={dragging ? handlePointerUp : ghostDrag ? handleGhostPointerUp : undefined}
         >
           {/* Time labels */}
           <div className="relative border-r border-slate-100 pointer-events-none">
@@ -1283,18 +1394,33 @@ function WeekGrid({
                   />
                 ))}
 
-                {/* Booking-request preview ghosts for this day (dashed overlay). */}
+                {/* Booking-request preview ghosts for this day (dashed overlay).
+                    The first block of the whole series is the draggable one —
+                    the series follows its first session, so there is exactly
+                    one thing to move. */}
                 {previewBlocks
                   .filter((b) => ymdInTz(b.startIso, tz) === ds)
-                  .map((b) => (
-                    <PreviewGhostBlock
-                      key={b.key}
-                      block={b}
-                      clashes={previewClashes?.has(b.key) ?? false}
-                      startHour={startHour}
-                      pxPerHour={pxPerHour}
-                    />
-                  ))}
+                  .map((b) => {
+                    const isFirst = previewBlocks[0]?.key === b.key
+                    const draggableHere = !!onProposeTime && isFirst
+                    const beingDragged = draggableHere && !!ghostDrag
+                    return (
+                      <PreviewGhostBlock
+                        key={b.key}
+                        block={b}
+                        clashes={previewClashes?.has(b.key) ?? false}
+                        startHour={startHour}
+                        pxPerHour={pxPerHour}
+                        onPointerDown={
+                          draggableHere
+                            ? (e) => handleGhostPointerDown(e, b, dayIndex)
+                            : undefined
+                        }
+                        isDragging={beingDragged && ghostDrag?.dayIndex === dayIndex}
+                        dragTop={beingDragged ? ghostDrag?.currentTop ?? null : null}
+                      />
+                    )
+                  })}
 
                 {/* Sessions that belong to this day */}
                 {daySessions.map((s) => {
@@ -3736,6 +3862,20 @@ export function ScheduleView({
     setActiveSession(prev => prev?.id === id ? { ...prev, status } : prev)
   }
 
+  // ── Counter-offering a booking request from the calendar ──────────────────
+  //
+  // Both interactions (drag the ghost, tap an empty slot) land on the same
+  // handler and open the same composer, pre-filled with the time. Two entry
+  // points, one screen — the copy Karl signs off then exists once.
+  const [proposeAt, setProposeAt] = useState<{ iso: string; date: string } | null>(null)
+
+  const handleProposeTime = useCallback((dateStr: string, time: string) => {
+    const [h, m] = time.split(':').map(Number)
+    const [y, mo, d] = dateStr.split('-').map(Number)
+    const at = new Date(y, mo - 1, d, h, m, 0, 0)
+    setProposeAt({ iso: at.toISOString(), date: dateStr })
+  }, [])
+
   async function handleAddAvail(slot: AvailSlot) {
     setAvailSlots(prev => [...prev, slot])
   }
@@ -4022,8 +4162,26 @@ export function ScheduleView({
             sessionCount={previewBlocks.length}
             clashCount={previewClashes.size}
             focusDate={selectedDate}
+            onSuggestAnother={() => setProposeAt({ iso: '', date: selectedDate })}
           />
         </div>
+      )}
+
+      {/* The counter-offer composer. Opened by a ghost drag, a slot tap, or the
+          banner's "Suggest another time" — all three, one sheet. */}
+      {previewRequest && proposeAt && (
+        <ProposeTimeSheet
+          requestId={previewRequest.id}
+          initialStartIso={proposeAt.iso || null}
+          initialDate={proposeAt.date}
+          onClose={() => setProposeAt(null)}
+          onSent={() => {
+            // The request is now waiting on the CLIENT, so the preview has
+            // nothing left to approve — drop back to the plain day.
+            router.push(`/schedule?date=${selectedDate}`)
+            router.refresh()
+          }}
+        />
       )}
 
       {/* Mobile-only search field, revealed by the search icon-button above.
@@ -4087,6 +4245,9 @@ export function ScheduleView({
             forceFullWeek={view === 'week' || view === 'day'}
             previewBlocks={previewBlocks}
             previewClashes={previewClashes}
+            // Only while previewing — otherwise a tap on an empty slot must
+            // keep meaning "add something here".
+            onProposeTime={previewRequest ? handleProposeTime : undefined}
           />
         ) : (
           <div className="h-full" data-testid="day-swipe" onTouchStart={handleDayTouchStart} onTouchEnd={handleDayTouchEnd}>
