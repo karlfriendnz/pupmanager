@@ -3,6 +3,7 @@ import { guardPermission, ownsATrainerAccount } from '@/lib/membership'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
 import { extraClientDogs } from '@/lib/dogs'
+import { parseDobInput } from '@/lib/date-of-birth'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -240,6 +241,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ client
   }
 
   if (dog !== undefined) {
+    // The birthday is validated on the SERVER, not just by the three selects on
+    // screen (AGENTS.md bug #3). A bare `new Date(dog.dob)` used to hand Prisma
+    // an Invalid Date for anything that wasn't one.
+    const dobParsed = parseDobInput(dog?.dob)
+    if (!dobParsed.ok) {
+      return NextResponse.json({ error: 'Dog date of birth: enter a real date of birth' }, { status: 400 })
+    }
     if (client.dogId) {
       await prisma.dog.update({
         where: { id: client.dogId },
@@ -247,7 +255,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ client
           name: dog!.name,
           breed: dog!.breed ?? null,
           weight: dog!.weight ?? null,
-          dob: dog!.dob ? new Date(dog!.dob) : null,
+          dob: dobParsed.value,
           notes: dog!.notes ?? null,
         },
       })
@@ -257,7 +265,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ client
           name: dog.name,
           breed: dog.breed ?? null,
           weight: dog.weight ?? null,
-          dob: dog.dob ? new Date(dog.dob) : null,
+          dob: dobParsed.value,
           notes: dog.notes ?? null,
         },
       })

@@ -38,6 +38,17 @@ async function passIntakeGate(page: Page) {
   await expect(gate).toHaveCount(0, { timeout: 20_000 })
 }
 
+/**
+ * Pick a birthday on the shared three-select control
+ * (components/shared/date-of-birth-field.tsx). Each select carries its own real
+ * <label>, which is what makes this findable — and what the review widget reads.
+ */
+async function setDateOfBirth(page: Page, parts: { day?: string; month?: string; year?: string }) {
+  if (parts.day) await page.getByLabel('Date of birth — day').selectOption(parts.day)
+  if (parts.month) await page.getByLabel('Date of birth — month').selectOption({ label: parts.month })
+  if (parts.year) await page.getByLabel('Date of birth — year').selectOption(parts.year)
+}
+
 async function makePrisma() {
   const { PrismaClient } = await import('../../src/generated/prisma/index.js')
   return new PrismaClient({ adapter: new PrismaPg({ connectionString: TEST_DATABASE_URL }) })
@@ -63,7 +74,9 @@ test.describe('client adds a dog on /my-dogs', () => {
       // The breed combobox drops its list open over the fields below it.
       await page.getByLabel('Breed').press('Escape')
       await page.getByLabel('Weight (kg)').fill('18.5')
-      await page.getByLabel('Date of birth').fill('2021-04-02')
+      // Date of BIRTH is three selects — day, month NAME, year — never the
+      // native date picker, which makes you page back through the years.
+      await setDateOfBirth(page, { day: '2', month: 'April', year: '2021' })
       await page.getByRole('button', { name: 'Add dog', exact: true }).click()
 
       // Saved — the sheet stays open so a photo can go on straight away.
@@ -105,7 +118,7 @@ test.describe('client adds a dog on /my-dogs', () => {
       await page.getByRole('button', { name: `Edit ${name}` }).click()
       await expect(page.getByRole('dialog')).toBeVisible()
       await page.getByLabel('Weight (kg)').fill('9.4')
-      await page.getByLabel('Date of birth').fill('2023-06-15')
+      await setDateOfBirth(page, { day: '15', month: 'June', year: '2023' })
       await page.getByRole('button', { name: 'Save changes' }).click()
 
       await page.reload()
@@ -115,6 +128,48 @@ test.describe('client adds a dog on /my-dogs', () => {
       expect(after?.dob?.toISOString().slice(0, 10)).toBe('2023-06-15')
     } finally {
       if (dogId) await prisma.dog.deleteMany({ where: { id: dogId } })
+      await prisma.$disconnect()
+    }
+  })
+
+  test('date of birth is three dropdowns: no native picker, no half-picked date, no 29 February in a common year', async ({ page }) => {
+    const prisma = await makePrisma()
+    const name = `Feb ${Date.now()}`
+    try {
+      await login(page, SEED.client.email, SEED.client.password, '/home')
+      await page.goto('/my-dogs')
+      await page.getByRole('button', { name: /Add (a|another) dog/ }).click()
+      const sheet = page.getByRole('dialog')
+      await expect(sheet).toBeVisible()
+
+      // 1 · The thing Karl asked for: the native date picker is gone.
+      await expect(sheet.locator('input[type="date"]')).toHaveCount(0)
+      await expect(page.getByLabel('Date of birth — day')).toBeVisible()
+      await expect(page.getByLabel('Date of birth — month')).toBeVisible()
+      await expect(page.getByLabel('Date of birth — year')).toBeVisible()
+
+      await page.getByLabel('Name').fill(name)
+
+      // 2 · A day and a month with no year is REFUSED, not quietly saved as
+      //     "no birthday" (AGENTS.md bugs #1 and #3). 29 February is offered
+      //     while the year is unknown, because it is a real birthday.
+      await setDateOfBirth(page, { day: '29', month: 'February' })
+      await page.getByRole('button', { name: 'Add dog', exact: true }).click()
+      await expect(page.getByText('Finish the date of birth — pick a day, a month and a year.')).toBeVisible()
+      expect(await prisma.dog.count({ where: { name } })).toBe(0)
+
+      // 3 · Choosing a common year clamps the 29th back to the 28th ON SCREEN,
+      //     so an impossible date can never be submitted.
+      await setDateOfBirth(page, { year: '2023' })
+      await expect(page.getByLabel('Date of birth — day')).toHaveValue('28')
+      await page.getByRole('button', { name: 'Add dog', exact: true }).click()
+      await expect(page.getByText(`${name} added.`)).toBeVisible({ timeout: 15_000 })
+
+      const rows = await prisma.dog.findMany({ where: { name } })
+      expect(rows).toHaveLength(1)
+      expect(rows[0].dob?.toISOString().slice(0, 10)).toBe('2023-02-28')
+    } finally {
+      await prisma.dog.deleteMany({ where: { name } })
       await prisma.$disconnect()
     }
   })

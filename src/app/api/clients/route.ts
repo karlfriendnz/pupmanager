@@ -11,6 +11,7 @@ import { renderClientInviteEmail } from '@/lib/client-invite-email'
 import { ensureTrainerSlug, clientInviteUrl } from '@/lib/slug'
 import { safeEvaluate } from '@/lib/achievements'
 import { findOrJoinClient, type DogInput } from '@/lib/client-upsert'
+import { parseDobInput } from '@/lib/date-of-birth'
 
 export const runtime = 'nodejs'
 
@@ -218,13 +219,17 @@ export async function POST(req: Request) {
 
   // Only the named dogs get created (quick-add usually has none).
   const dogInputs = (data.dogs ?? []).filter(d => d.name?.trim())
-  const dogPayload: DogInput[] = dogInputs.map(d => ({
-    name: d.name!.trim(),
-    breed: d.breed,
-    weight: d.weight,
-    dob: d.dob ? new Date(d.dob) : null,
-    notes: d.notes,
-  }))
+  // A birthday is checked here, not just on screen (AGENTS.md bug #3). This used
+  // to be a bare `new Date(d.dob)`, so anything that wasn't a date — including a
+  // half-picked one — reached Prisma as Invalid Date and 500'd the create.
+  const dogPayload: DogInput[] = []
+  for (const d of dogInputs) {
+    const dob = parseDobInput(d.dob)
+    if (!dob.ok) {
+      return NextResponse.json({ error: `Dog date of birth: enter a real date of birth` }, { status: 400 })
+    }
+    dogPayload.push({ name: d.name!.trim(), breed: d.breed, weight: d.weight, dob: dob.value, notes: d.notes })
+  }
   const profileStatus = isQuick ? QUICK_ADD_FOLLOW_UP_STATUS : 'ACTIVE'
 
   const { clientProfileId, dogIds } = await prisma.$transaction(async (tx) => {

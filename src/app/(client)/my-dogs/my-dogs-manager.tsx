@@ -9,6 +9,8 @@ import { Alert } from '@/components/ui/alert'
 import { BreedSelect } from '@/components/shared/breed-select'
 import { DogPhotoUpload } from '@/components/shared/dog-photo-upload'
 import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
+import { DateOfBirthField } from '@/components/shared/date-of-birth-field'
+import { dateOfBirthError } from '@/lib/date-of-birth'
 
 /**
  * /my-dogs — the one place a dog owner's dogs live.
@@ -106,10 +108,11 @@ export function MyDogsManager({ dogs }: { dogs: ClientDog[] }) {
       setError(`Weight must be between 0 and ${MAX_WEIGHT} kg.`)
       return
     }
-    if (draft.dob && new Date(`${draft.dob}T00:00:00.000Z`).getTime() > Date.now()) {
-      setError('Date of birth cannot be in the future.')
-      return
-    }
+    // Covers "in the future", "before 1970" AND "day and month picked, no year"
+    // — the same rules POST /api/my/dogs and PATCH /api/dogs/[dogId] apply, from
+    // the same module, so the two ends can't drift.
+    const dobProblem = dateOfBirthError(draft.dob)
+    if (dobProblem) { setError(dobProblem); return }
 
     setSaving(true)
     setError(null)
@@ -263,26 +266,24 @@ export function MyDogsManager({ dogs }: { dogs: ClientDog[] }) {
               onChange={e => patch({ name: e.target.value })}
             />
             <BreedSelect label="Breed" value={draft.breed} onChange={v => patch({ breed: v })} />
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Weight (kg)"
-                type="number"
-                min={0}
-                max={MAX_WEIGHT}
-                step="0.1"
-                inputMode="decimal"
-                placeholder="12.5"
-                value={draft.weight}
-                onChange={e => patch({ weight: e.target.value })}
-              />
-              <Input
-                label="Date of birth"
-                type="date"
-                max={new Date().toISOString().slice(0, 10)}
-                value={draft.dob}
-                onChange={e => patch({ dob: e.target.value })}
-              />
-            </div>
+            <Input
+              label="Weight (kg)"
+              type="number"
+              min={0}
+              max={MAX_WEIGHT}
+              step="0.1"
+              inputMode="decimal"
+              placeholder="12.5"
+              value={draft.weight}
+              onChange={e => patch({ weight: e.target.value })}
+            />
+            {/* Its own row, not half a two-column grid: three selects need the
+                full width of a 390px screen. */}
+            <DateOfBirthField
+              idPrefix="my-dog"
+              value={draft.dob}
+              onChange={v => patch({ dob: v })}
+            />
             {draft.id ? (
               <DogPhotoUpload
                 dogId={draft.id}

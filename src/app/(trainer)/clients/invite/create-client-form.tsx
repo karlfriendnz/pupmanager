@@ -9,6 +9,8 @@ import { Alert } from '@/components/ui/alert'
 import { Plus, Trash2 } from 'lucide-react'
 import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
 import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
+import { DateOfBirthField } from '@/components/shared/date-of-birth-field'
+import { dateOfBirthError } from '@/lib/date-of-birth'
 
 export type CustomField = {
   id: string
@@ -142,6 +144,14 @@ export function CreateClientForm({
   }
 
   async function submit() {
+    // A half-picked birthday never leaves as a blank. `dob` carries a sentinel
+    // while only some of the three selects are set, so it is caught here and
+    // refused by the route too (AGENTS.md bugs #1 and #3).
+    for (const d of namedDogs) {
+      const problem = dateOfBirthError(d.dob, { label: `${d.name.trim() || 'Dog'} date of birth` })
+      if (problem) { setError(problem); setStep('dogs'); return }
+    }
+
     setBusy(true); setError(null)
     try {
       const customValuesPayload = customFields.flatMap(cf => {
@@ -308,10 +318,11 @@ export function CreateClientForm({
                     <input id={`new-dog-weight-${i}`} type="number" step="0.1" value={dog.weight} onChange={e => updateDog(i, { weight: e.target.value })} className={fieldInput} />
                   </div>
                 </div>
-                <div>
-                  <label htmlFor={`new-dog-dob-${i}`} className="text-sm font-medium text-slate-700 block mb-1.5">Date of birth</label>
-                  <input id={`new-dog-dob-${i}`} type="date" value={dog.dob} onChange={e => updateDog(i, { dob: e.target.value })} className={fieldInput} />
-                </div>
+                <DateOfBirthField
+                  idPrefix={`new-dog-${i}`}
+                  value={dog.dob}
+                  onChange={v => updateDog(i, { dob: v })}
+                />
                 <div>
                   <label htmlFor={`new-dog-notes-${i}`} className="text-sm font-medium text-slate-700 block mb-1.5">Notes</label>
                   <textarea id={`new-dog-notes-${i}`} value={dog.notes} onChange={e => updateDog(i, { notes: e.target.value })} rows={2} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-accent" />

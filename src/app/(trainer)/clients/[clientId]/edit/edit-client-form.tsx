@@ -9,6 +9,8 @@ import { BreedSelect } from '@/components/shared/breed-select'
 import { Plus, Trash2, ChevronDown, ChevronUp } from 'lucide-react'
 import { DogPhotoUpload } from '@/components/shared/dog-photo-upload'
 import { PlaceAutocomplete } from '@/components/maps/place-autocomplete'
+import { DateOfBirthField } from '@/components/shared/date-of-birth-field'
+import { dateOfBirthError } from '@/lib/date-of-birth'
 
 type Tab = 'dogs' | 'details'
 
@@ -183,6 +185,14 @@ export function EditClientForm({ clientId, initialName, initialEmail, initialPho
   }
 
   async function handleSave() {
+    // A half-picked birthday (day + month, no year) is refused here AND by every
+    // route below — the field emits a sentinel rather than '' so it can never be
+    // quietly dropped on the way out (AGENTS.md bugs #1 and #3).
+    for (const dog of dogs) {
+      const problem = dateOfBirthError(dog.dob, { label: `${dog.name || 'Dog'} date of birth` })
+      if (problem) { setError(problem); return }
+    }
+
     setSaving(true)
     setError(null)
 
@@ -331,15 +341,11 @@ export function EditClientForm({ clientId, initialName, initialEmail, initialPho
                     <BreedSelect label="Breed" value={dog.breed} onChange={v => updateDog(i, 'breed', v)} />
                     <Input label="Weight (kg)" type="number" value={dog.weight} onChange={e => updateDog(i, 'weight', e.target.value)} />
                   </div>
-                  <div>
-                    <label className="text-sm font-medium text-slate-700 block mb-1.5">Date of birth</label>
-                    <input
-                      type="date"
-                      value={dog.dob}
-                      onChange={e => updateDog(i, 'dob', e.target.value)}
-                      className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                  <DateOfBirthField
+                    idPrefix={`edit-dog-${i}`}
+                    value={dog.dob}
+                    onChange={v => updateDog(i, 'dob', v)}
+                  />
                   <div>
                     <label className="text-sm font-medium text-slate-700 block mb-1.5">Notes</label>
                     <textarea

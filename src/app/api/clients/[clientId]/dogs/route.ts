@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
 import { mergeClientDogsFlagged } from '@/lib/dogs'
+import { parseDobInput } from '@/lib/date-of-birth'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -41,12 +42,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ clientI
   const parsed = schema.safeParse(body)
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
+  // Whatever the three date-of-birth selects refuse, this route refuses too
+  // (AGENTS.md bug #3) — including a half-picked date, which arrives as a
+  // sentinel rather than an empty string precisely so it can't be dropped.
+  const dob = parseDobInput(parsed.data.dob)
+  if (!dob.ok) return NextResponse.json({ error: 'Enter a real date of birth' }, { status: 400 })
+
   const dog = await prisma.dog.create({
     data: {
       name: parsed.data.name,
       breed: parsed.data.breed ?? null,
       weight: parsed.data.weight ?? null,
-      dob: parsed.data.dob ? new Date(parsed.data.dob) : null,
+      dob: dob.value,
       notes: parsed.data.notes ?? null,
       clientProfileId: clientId,
     },

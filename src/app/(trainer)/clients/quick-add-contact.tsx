@@ -8,6 +8,8 @@ import { BreedSelect } from '@/components/shared/breed-select'
 import { ModalPortal } from '@/components/shared/modal-portal'
 import { QUICK_ADD_KEYS } from '@/lib/client-fields'
 import type { ClientFieldKey } from '@/lib/client-fields'
+import { DateOfBirthField } from '@/components/shared/date-of-birth-field'
+import { dateOfBirthError } from '@/lib/date-of-birth'
 
 type QuickCustomField = {
   id: string; label: string; type: 'TEXT' | 'NUMBER' | 'DROPDOWN'
@@ -116,6 +118,8 @@ export function QuickAddModal() {
 
   async function submit() {
     if (!cfg) return
+    const dobProblem = dateOfBirthError(values.dogDob)
+    if (dobProblem) { setError(dobProblem); return }
     setBusy(true); setError(null)
     try {
       const dog = {
@@ -167,7 +171,19 @@ export function QuickAddModal() {
             ) : (
               <>
                 {error && <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
-                {builtinShown.map(f => (
+                {builtinShown.map(f => f.type === 'date' ? (
+                  // A birthday is three selects, never the native date picker —
+                  // one shared component so this can't drift from the client and
+                  // trainer dog forms. (Only name/phone/email reach quick-add
+                  // today; this keeps the branch honest if that list changes.)
+                  <DateOfBirthField
+                    key={f.key}
+                    idPrefix={`quick-${f.key}`}
+                    label={f.label}
+                    value={values[f.key] ?? ''}
+                    onChange={val => setValues(v => ({ ...v, [f.key]: val }))}
+                  />
+                ) : (
                   <div key={f.key}>
                     {/* Only the name. The others were starred while the server
                         would happily save without them — and the whole point of
@@ -182,7 +198,7 @@ export function QuickAddModal() {
                       ? <BreedSelect id={f.key} value={values[f.key] ?? ''} onChange={val => setValues(v => ({ ...v, [f.key]: val }))} />
                       : f.type === 'textarea'
                       ? <textarea id={f.key} value={values[f.key] ?? ''} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} rows={2} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-accent" />
-                      : <input id={f.key} type={f.type === 'number' ? 'number' : f.type === 'date' ? 'date' : 'text'} value={values[f.key] ?? ''} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} className={inputCls} />}
+                      : <input id={f.key} type={f.type === 'number' ? 'number' : 'text'} value={values[f.key] ?? ''} onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))} className={inputCls} />}
                   </div>
                 ))}
                 {customShown.map(f => (

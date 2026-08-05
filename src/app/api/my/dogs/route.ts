@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
+import { parseDobInput } from '@/lib/date-of-birth'
 import { z } from 'zod'
 
 // Whatever the form on /my-dogs refuses, this route refuses too (AGENTS.md
@@ -18,20 +19,16 @@ const schema = z.object({
   // Sane bounds: the heaviest dog on record is ~155 kg. An unbounded Float is
   // how a fat-fingered "705" ends up on a roster.
   weight: z.number().positive().max(200).nullish(),
-  // Date-only, as the <input type="date"> sends it.
+  // Date-only, as the three date-of-birth selects send it.
   dob: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
 })
 
-/** A yyyy-mm-dd string as a real date, or null if it isn't one we'll accept. */
-function parseDob(value: string | null | undefined): { ok: true; value: Date | null } | { ok: false } {
-  if (value == null || value === '') return { ok: true, value: null }
-  const dob = new Date(`${value}T00:00:00.000Z`)
-  if (Number.isNaN(dob.getTime())) return { ok: false }
-  // A dog cannot have been born tomorrow, and one born in 1900 is a typo.
-  if (dob.getTime() > Date.now()) return { ok: false }
-  if (dob.getUTCFullYear() < 1970) return { ok: false }
-  return { ok: true, value: dob }
-}
+/**
+ * A dog cannot have been born tomorrow, and one born in 1900 is a typo. Both
+ * rules — plus "2021-02-31 is not a day" — live in lib/date-of-birth so the
+ * three selects on screen and this route can never disagree.
+ */
+const parseDob = (value: string | null | undefined) => parseDobInput(value)
 
 export async function POST(req: Request) {
   // Tenancy comes from the session + the active-trainer cookie, never from the

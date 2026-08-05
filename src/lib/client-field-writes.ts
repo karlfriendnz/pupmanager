@@ -1,4 +1,5 @@
 import { CLIENT_FIELDS, type ClientFieldKey } from '@/lib/client-fields'
+import { parseDobInput } from '@/lib/date-of-birth'
 import type { Question } from '@/lib/session-form-builder'
 
 /**
@@ -78,9 +79,12 @@ export function collectClientFieldWrites(
     }
     if (target.column === 'dob') {
       // Date-only, at UTC midnight, so a birthday doesn't slip a day across
-      // timezones the way `new Date(value)` on a local string does.
-      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value)
-      if (m) out.dog.dob = new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00.000Z`)
+      // timezones the way `new Date(value)` on a local string does. Shared with
+      // the three date-of-birth selects and every dog route, so a birthday that
+      // only LOOKS real ("2021-02-31", which raw `new Date` rolls to 3 March) is
+      // dropped rather than stored as a different day.
+      const parsed = parseDobInput(value.slice(0, 10))
+      if (parsed.ok && parsed.value) out.dog.dob = parsed.value
       continue
     }
     out.dog[target.column] = value

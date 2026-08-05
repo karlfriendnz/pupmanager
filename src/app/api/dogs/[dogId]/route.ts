@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { dogBelongsToAnyClient } from '@/lib/dog-access'
+import { parseDobInput } from '@/lib/date-of-birth'
 import { z } from 'zod'
 
 // Same rules the /my-dogs add form enforces on screen, restated here — the
@@ -10,7 +11,8 @@ const patchSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   breed: z.string().trim().max(80).nullable().optional(),
   weight: z.number().positive().max(200).nullable().optional(),
-  // Date-only ("1970-01-01"), as <input type="date"> sends it. Null clears it.
+  // Date-only ("1970-01-01") — the shape the three date-of-birth selects emit.
+  // Null clears it. `parseDobInput` below is the real check.
   dob: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
 })
 
@@ -42,15 +44,13 @@ export async function PATCH(
   const { dob, ...rest } = parsed.data
   let dobValue: Date | null | undefined
   if (dob !== undefined) {
-    if (dob === null) {
-      dobValue = null
-    } else {
-      const parsedDob = new Date(`${dob}T00:00:00.000Z`)
-      if (Number.isNaN(parsedDob.getTime()) || parsedDob.getTime() > Date.now() || parsedDob.getUTCFullYear() < 1970) {
-        return NextResponse.json({ error: 'Enter a real date of birth' }, { status: 400 })
-      }
-      dobValue = parsedDob
-    }
+    // One parser, shared with the three date-of-birth selects on screen, so the
+    // two ends can't disagree about what a birthday is. It also rejects a date
+    // that only LOOKS real — "2021-02-31" rolls over to 3 March in raw
+    // `new Date()`, which used to store a different day than was picked.
+    const result = parseDobInput(dob)
+    if (!result.ok) return NextResponse.json({ error: 'Enter a real date of birth' }, { status: 400 })
+    dobValue = result.value
   }
 
   const dog = await prisma.dog.update({

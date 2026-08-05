@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
+import { parseDobInput } from '@/lib/date-of-birth'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -33,13 +34,18 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ client
   })
   if (!owned) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
+  // Same birthday rules as the three selects on screen — restated here because
+  // the browser's validation is not validation (AGENTS.md bug #3).
+  const dob = parseDobInput(parsed.data.dob)
+  if (!dob.ok) return NextResponse.json({ error: 'Enter a real date of birth' }, { status: 400 })
+
   const dog = await prisma.dog.update({
     where: { id: dogId },
     data: {
       name: parsed.data.name,
       breed: parsed.data.breed ?? null,
       weight: parsed.data.weight ?? null,
-      dob: parsed.data.dob ? new Date(parsed.data.dob) : null,
+      dob: dob.value,
       notes: parsed.data.notes ?? null,
     },
   })
