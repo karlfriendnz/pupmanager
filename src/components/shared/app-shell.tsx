@@ -607,8 +607,15 @@ function ClientShell({ children, trainerLogo, businessName, clientNavHints, unre
 
           <div className="px-5 pb-6 text-center">
             {trainerLogo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={trainerLogo} alt={businessName ?? ''} className="h-10 w-auto max-w-[200px] object-contain mx-auto" />
+              // On a white header a logo shows itself. This sheet is painted in
+              // the trainer's own colour, and most logos are drawn in that same
+              // colour — so it was rendering invisibly against it. The white
+              // tile is what the top-bar brand mark already does for the same
+              // reason; it carries a light logo as well as a dark one.
+              <span className="inline-flex items-center justify-center rounded-2xl bg-white px-4 py-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={trainerLogo} alt={businessName ?? ''} className="h-10 w-auto max-w-[200px] object-contain" />
+              </span>
             ) : (
               <p className="font-display text-2xl font-extrabold">{businessName ?? 'PupManager'}</p>
             )}
