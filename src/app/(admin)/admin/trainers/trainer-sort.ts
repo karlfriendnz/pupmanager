@@ -111,6 +111,20 @@ export function parseSort(sort?: string, dir?: string): SortState | null {
 }
 
 /**
+ * What a tab sorts by before anyone clicks a heading.
+ *
+ * In Trial used to arrive in the query's own order — trial ending soonest — but
+ * the question actually being asked of that tab is "who just signed up", and
+ * answering it meant clicking Joined every single visit (Karl, 2026-08-06).
+ *
+ * A tab with no entry keeps the query's order, which is still the right default
+ * everywhere else.
+ */
+const TAB_DEFAULT_SORT: Record<string, SortState> = {
+  trial: { key: 'joined', dir: 'desc' },
+}
+
+/**
  * `parseSort`, but a sort on a column this tab HIDES falls back to the tab's
  * default order. Sort by Value on Churned, switch to In Trial (where Value is
  * hidden), and an invisible sort key would look like the rows had shuffled
@@ -119,8 +133,16 @@ export function parseSort(sort?: string, dir?: string): SortState | null {
  */
 export function resolveSort(sort?: string, dir?: string, tab?: string): SortState | null {
   const state = parseSort(sort, dir)
-  if (!state || isColumnHidden(state.key, tab)) return null
+  if (!state || isColumnHidden(state.key, tab)) return tabDefaultSort(tab)
   return state
+}
+
+/** The tab's own default, or null to keep the query's order. Never returns a
+ *  column the tab hides — that would sort by something invisible. */
+function tabDefaultSort(tab?: string): SortState | null {
+  const fallback = tab ? TAB_DEFAULT_SORT[tab] : undefined
+  if (!fallback || isColumnHidden(fallback.key, tab)) return null
+  return fallback
 }
 
 /** Direction a header link should request: flip the active column, else its default. */

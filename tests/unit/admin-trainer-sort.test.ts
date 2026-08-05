@@ -256,7 +256,9 @@ describe('resolveSort — sorting and per-tab columns together', () => {
     // Sort by Value on Churned, then switch to In Trial (Value hidden there):
     // keeping it would look like the rows had shuffled themselves.
     expect(resolveSort('value', 'desc', 'churned')).toBeNull()
-    expect(resolveSort('value', 'desc', 'trial')).toBeNull()
+    // In Trial has its own default, so a hidden column falls back to THAT
+    // rather than to the query's order.
+    expect(resolveSort('value', 'desc', 'trial')).toEqual({ key: 'joined', dir: 'desc' })
     expect(resolveSort('trialEnds', 'asc', 'paying')).toBeNull()
     expect(resolveSort('likely', 'desc', 'paying')).toBeNull()
     expect(resolveSort('onboarding', 'desc', 'paying')).toBeNull()
@@ -268,7 +270,19 @@ describe('resolveSort — sorting and per-tab columns together', () => {
     expect(resolveSort('trialEnds', undefined, 'trial')).toEqual({ key: 'trialEnds', dir: 'asc' })
   })
 
-  it('is still null when there was no sort to begin with', () => {
-    expect(resolveSort(undefined, undefined, 'trial')).toBeNull()
+  // In Trial answers "who just signed up", so it leads with the newest join
+  // without anyone clicking Joined first (Karl, 2026-08-06).
+  it('defaults In Trial to newest joined first', () => {
+    expect(resolveSort(undefined, undefined, 'trial')).toEqual({ key: 'joined', dir: 'desc' })
+  })
+
+  it('leaves every other tab in the query order', () => {
+    expect(resolveSort(undefined, undefined, 'paying')).toBeNull()
+    expect(resolveSort(undefined, undefined, 'churned')).toBeNull()
+    expect(resolveSort(undefined, undefined, undefined)).toBeNull()
+  })
+
+  it('lets an explicit sort still beat the tab default', () => {
+    expect(resolveSort('trialEnds', 'asc', 'trial')).toEqual({ key: 'trialEnds', dir: 'asc' })
   })
 })
