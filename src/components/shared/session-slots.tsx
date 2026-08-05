@@ -147,10 +147,14 @@ export function SessionSlotsEditor({
           </Row>
 
           <Row label="Time">
+            {/* Two controls under one "Time", so neither can be named by the
+                row's label — each says which end of it it is. Without this a
+                screen reader announced two unnamed boxes with an arrow between
+                them, and the whole card is otherwise labelled. */}
             <div className="flex items-center gap-2">
-              <input type="time" value={s.start} onChange={e => update(s.id, { start: e.target.value })} className={ctrl + ' max-w-[140px]'} />
+              <input type="time" aria-label="Start time" value={s.start} onChange={e => update(s.id, { start: e.target.value })} className={ctrl + ' max-w-[140px]'} />
               <ArrowRight className="h-4 w-4 text-slate-300 shrink-0" />
-              <input type="time" value={s.end} onChange={e => update(s.id, { end: e.target.value })} className={ctrl + ' max-w-[140px]'} />
+              <input type="time" aria-label="Finish time" value={s.end} onChange={e => update(s.id, { end: e.target.value })} className={ctrl + ' max-w-[140px]'} />
             </div>
           </Row>
 

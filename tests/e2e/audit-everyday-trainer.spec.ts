@@ -41,7 +41,8 @@
  *   • the add-client, location and email-template fields had loose <label>s
  *     that named nothing. They carry htmlFor/id now, and the jobs below ask for
  *     them BY NAME, which is what keeps it true.
- *   • the calendar's month arrows had no accessible name at all.
+ *   • the calendar's month arrows, and both ends of a session's time row, had
+ *     no accessible name at all.
  */
 import { test, expect, type Page } from '@playwright/test'
 import { PrismaPg } from '@prisma/adapter-pg'
@@ -719,6 +720,135 @@ test.describe('the jobs a trainer does every day', () => {
         .toBe(0)
     } finally {
       if (packageId) await prisma.package.deleteMany({ where: { id: packageId } }).catch(() => {})
+      await prisma.$disconnect()
+    }
+  })
+
+  test('open a casual class people can drop into, rename it, then delete it', async ({ page }) => {
+    // The fourth and last kind of offering. A casual class has no single start
+    // date — each session card carries its own day, time and "starts from" — so
+    // the wizard drops the pricing step entirely and the schedule IS the form.
+    test.setTimeout(180_000)
+    const prisma = await makePrisma()
+    const name = `Everyday casual class ${stamp()}`
+    let packageId = ''
+    let runId = ''
+    try {
+      await signIn(page)
+      const trainer = await ownerTrainer(prisma)
+
+      // ── Create ──────────────────────────────────────────────────────────────
+      await page.goto('/casual-classes')
+      await page.getByRole('link', { name: 'New casual class' }).first().click()
+      await page.getByLabel('Name', { exact: true }).fill(name)
+      await page.getByRole('button', { name: 'Next' }).click()
+
+      // Times start BLANK so nobody publishes a guessed hour by accident, and
+      // the form says so in a sentence rather than letting the server reject the
+      // shape. Both ends of the row are asked for by name.
+      await page.getByLabel('Start time').fill('18:00')
+      await page.getByLabel('Finish time').fill('19:00')
+
+      await page.getByRole('button', { name: 'Next' }).click()
+      await page.getByRole('button', { name: 'Create offering' }).click()
+
+      const run = await until(
+        () => prisma.classRun.findFirst({ where: { trainerId: trainer.id, name } }),
+        'the casual class never reached the database',
+      )
+      runId = run.id
+      packageId = run.packageId
+      const pkg = await prisma.package.findUnique({
+        where: { id: packageId },
+        include: { sessionSlots: true },
+      })
+      expect(pkg?.allowDropIn, 'created from "New casual class" but not saved as one people can drop into').toBe(true)
+      expect(pkg?.sessionSlots?.[0]?.startTime, 'the session time typed into the card did not save').toBe('18:00')
+
+      await page.goto('/casual-classes')
+      await expect(
+        page.getByText(name).first(),
+        'the casual class saved, but it is not on the casual classes screen',
+      ).toBeVisible({ timeout: 20_000 })
+
+      // ── Edit ────────────────────────────────────────────────────────────────
+      const renamed = `${name} renamed`
+      await page.goto(`/packages/${packageId}/edit`)
+      await page.getByLabel('Name', { exact: true }).fill(renamed)
+      await page.getByRole('button', { name: 'Save changes' }).click()
+      await expect
+        .poll(async () => (await prisma.classRun.findUnique({ where: { id: runId } }))?.name, { timeout: 20_000 })
+        .toBe(renamed)
+
+      // ── Delete ──────────────────────────────────────────────────────────────
+      // The sheet calls it a "casual class", not a "class" — the same component
+      // serves four screens and takes the noun from the one you are on.
+      await page.goto(`/casual-classes/${runId}`)
+      await page.getByRole('button', { name: 'More actions for this casual class' }).click()
+      await page.getByRole('button', { name: /delete this casual class/i }).click()
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Delete', exact: true }).click()
+      await expect
+        .poll(async () => await prisma.classRun.count({ where: { id: runId } }), { timeout: 20_000 })
+        .toBe(0)
+    } finally {
+      if (packageId) await prisma.package.deleteMany({ where: { id: packageId } }).catch(() => {})
+      await prisma.$disconnect()
+    }
+  })
+
+  test('jot down a to-do, tick it off, then clear it', async ({ page }) => {
+    // The smallest job in the app, and the one a trainer does most often between
+    // other things. Three controls, none of them labelled in words: a field, a
+    // "+" and a tick that IS a checkbox (role and aria-label, so it can be asked
+    // for as one).
+    test.setTimeout(180_000)
+    const prisma = await makePrisma()
+    const title = `Everyday to-do ${stamp()}`
+    let id = ''
+    try {
+      await signIn(page)
+      const trainer = await ownerTrainer(prisma)
+
+      // ── Create ──────────────────────────────────────────────────────────────
+      await page.goto('/sessions/needs-notes?tab=todo')
+      await page.getByPlaceholder('Add a to-do…').fill(title)
+      await page.getByRole('button', { name: 'Add to-do' }).click()
+
+      const made = await until(
+        // companyId, not trainerId — a to-do belongs to the BUSINESS, so a
+        // manager sees what the owner wrote down.
+        () => prisma.trainerTodo.findFirst({ where: { companyId: trainer.id, title } }),
+        'the to-do never reached the database',
+      )
+      id = made.id
+      expect(made.done, 'a brand-new to-do arrived already ticked off').toBe(false)
+
+      await page.goto('/sessions/needs-notes?tab=todo')
+      await expect(
+        page.getByText(title).first(),
+        'the to-do saved, but it is not on the To do screen',
+      ).toBeVisible({ timeout: 20_000 })
+
+      // ── Tick it off ─────────────────────────────────────────────────────────
+      // The change a to-do has: done. Its row is the one carrying the title.
+      const row = page.getByText(title, { exact: true }).locator('xpath=../..')
+      await row.getByRole('checkbox', { name: 'Mark as done' }).click()
+      await expect
+        .poll(async () => (await prisma.trainerTodo.findUnique({ where: { id } }))?.done, { timeout: 20_000 })
+        .toBe(true)
+
+      // ── Delete ──────────────────────────────────────────────────────────────
+      // NOTE (for docs/audit-trainer.md): the bin only appears on hover, and on
+      // a touch screen there is no hover. It still works — it is transparent,
+      // not absent — but a trainer on a phone has no way to know it is there.
+      await page.goto('/sessions/needs-notes?tab=todo')
+      const doneRow = page.getByText(title, { exact: true }).locator('xpath=../..')
+      await doneRow.getByRole('button', { name: 'Delete to-do' }).click()
+      await expect
+        .poll(async () => await prisma.trainerTodo.count({ where: { id } }), { timeout: 20_000 })
+        .toBe(0)
+    } finally {
+      if (id) await prisma.trainerTodo.deleteMany({ where: { id } }).catch(() => {})
       await prisma.$disconnect()
     }
   })
