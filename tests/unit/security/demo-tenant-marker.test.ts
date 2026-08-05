@@ -186,4 +186,27 @@ describe('the marker cannot be set from outside', () => {
     expect(src).toContain('demoSessionId: args.sessionId')
     expect(src).toContain('demoExpiresAt: args.expiresAt')
   })
+
+  /**
+   * Called out by name because it is the one path where a leak would be
+   * catastrophic rather than merely wrong: somebody walks out of a demo, signs
+   * up for real, and their brand-new paying business inherits a marker that
+   * makes the purge cron eligible to delete it.
+   *
+   * The scan above already covers these files — this asserts they were IN the
+   * scan, so deleting them from the walk (or moving them) cannot quietly retire
+   * the check.
+   */
+  it('covers the demo → real-signup path specifically', () => {
+    const onTheConversionPath = [
+      'src/app/api/auth/register/route.ts', // creates the real account
+      'src/app/api/try/convert/route.ts',   // ends the demo and hands over
+      'src/app/(auth)/register/page.tsx',   // prefills it
+    ]
+    for (const file of onTheConversionPath) {
+      expect(files, `${file} must be inside the drift scan`).toContain(file)
+      // And, belt and braces, must not mention the markers at all.
+      expect(readFileSync(file, 'utf8')).not.toMatch(/\bdemo(SessionId|ExpiresAt)\s*:/)
+    }
+  })
 })

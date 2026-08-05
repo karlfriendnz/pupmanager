@@ -65,6 +65,38 @@ export const TRY_MARKETING: ConsentBlock = {
 export const CONSENT_BLOCKS: ConsentBlock[] = [TRY_TERMS, TRY_MARKETING]
 
 /**
+ * What we say when somebody taps "Start my own account" from inside the demo.
+ *
+ * NOT a consent block — nothing is recorded against it, so it is not versioned
+ * and it does not go in CONSENT_BLOCKS. It lives here anyway because this is
+ * the file that holds the demo's user-facing words, and Karl approves all of
+ * them in one pass rather than hunting through components.
+ *
+ * COPY STATUS: PLACEHOLDER, same as the blocks above.
+ *
+ * The one thing this wording must do is say, before they commit, that the
+ * practice data does not come with them. Burying that would mean a trainer
+ * signs up expecting the week they just built and finds an empty account —
+ * which is the moment they decide we are not careful people.
+ */
+export const TRY_CONVERT_COPY = {
+  /** The button in the demo strip, on every screen. */
+  action: 'Start my own account',
+  /** The confirm screen's title. */
+  title: 'Start your own account',
+  /**
+   * The sentence that must not be buried. One plain line, no hedging, and it
+   * says what is lost rather than what is kept.
+   */
+  warning:
+    'This ends the demo and sets up a fresh account. The practice clients, dogs and bookings you have been playing with do not come with you — you start with an empty account and add your own.',
+  /** What we WILL carry over, so the promise is specific rather than vague. */
+  reassurance: 'We will fill in your name, business name and email so you do not have to type them again.',
+  confirm: 'Set up my account',
+  cancel: 'Keep looking around',
+} as const
+
+/**
  * Resolve a stored version id back to the words that were on screen. Returns
  * null for an id we have never published — which should be impossible, and is
  * therefore worth surfacing rather than papering over with a default.

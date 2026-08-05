@@ -13,11 +13,11 @@ export const metadata: Metadata = {
  * it should not have to wonder — and offers the two next steps that are
  * actually available today: start a real trial, or read about it.
  *
- * OPEN QUESTION FOR KARL: whether a demo should be able to CONVERT into a real
- * trial in place (keeping the data they made). Nothing here does that; the
- * "Start a free trial" link is the ordinary sign-up. Converting means the lead
- * becomes a customer record and the sandbox stops being purgeable, which is a
- * different feature with different rules.
+ * The sandbox is NEVER converted or kept (Karl, asked and answered): the way to
+ * become a customer is a fresh account, and the practice data stays behind. The
+ * primary route to that is the "Start my own account" button in the demo strip,
+ * which is on every screen — somebody sold at minute three should not have to
+ * find the exit first. This page is the fallback for people who left first.
  */
 export default function TryFinishedPage() {
   return (
@@ -30,9 +30,11 @@ export default function TryFinishedPage() {
       </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white [&>*+*]:border-t [&>*+*]:border-slate-200">
-        <Link href="/register" className="block px-4 py-4 text-left">
+        <Link href="/register?as=pro&from=try" className="block px-4 py-4 text-left">
           <span className="block text-sm font-medium text-slate-900">Start a free trial</span>
-          <span className="mt-0.5 block text-xs text-slate-500">Your own account, with your own clients. No card needed.</span>
+          <span className="mt-0.5 block text-xs text-slate-500">
+            Your own account, starting empty, with your own clients. No card needed.
+          </span>
         </Link>
         <Link href="/try" className="block px-4 py-4 text-left">
           <span className="block text-sm font-medium text-slate-900">Have another go</span>

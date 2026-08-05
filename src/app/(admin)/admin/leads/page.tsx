@@ -45,7 +45,7 @@ export default async function AdminLeadsPage({
       : {}),
   }
 
-  const [leads, total, optedIn, liveSandboxes] = await Promise.all([
+  const [leads, total, optedIn, liveSandboxes, startedSignup, signedUp] = await Promise.all([
     prisma.demoLead.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -55,6 +55,7 @@ export default async function AdminLeadsPage({
         termsVersion: true, termsAcceptedAt: true,
         marketingOptIn: true, marketingVersion: true, marketingOptInAt: true, marketingRevokedAt: true,
         source: true, campaign: true, createdAt: true,
+        startedSignupAt: true, signupCompletedAt: true,
         sessions: {
           orderBy: { startedAt: 'desc' },
           select: { id: true, status: true, startedAt: true, purgedAt: true, wantsFollowUp: true },
@@ -64,11 +65,19 @@ export default async function AdminLeadsPage({
     prisma.demoLead.count(),
     prisma.demoLead.count({ where: { marketingOptIn: true, marketingRevokedAt: null } }),
     prisma.demoSession.count({ where: { status: 'ACTIVE' } }),
+    prisma.demoLead.count({ where: { startedSignupAt: { not: null } } }),
+    prisma.demoLead.count({ where: { signupCompletedAt: { not: null } } }),
   ])
 
+  // "Tapped Start" beside "Signed up" on purpose: the gap between them is the
+  // number worth acting on. Somebody who tapped and did not finish is a warm
+  // lead who hit friction, and that is a different sales call from somebody who
+  // only ever looked.
   const stats = [
     { label: 'Leads captured', value: total },
     { label: 'Marketing opt-ins', value: optedIn },
+    { label: 'Tapped “Start”', value: startedSignup },
+    { label: 'Signed up', value: signedUp },
     { label: 'Live sandboxes', value: liveSandboxes },
   ]
 
@@ -82,7 +91,7 @@ export default async function AdminLeadsPage({
         </p>
       </div>
 
-      <div className="mb-6 grid grid-cols-3 gap-3">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {stats.map(s => (
           <div key={s.label} className="rounded-xl border border-slate-700 bg-slate-800 p-3">
             <p className="text-2xl font-bold tabular-nums">{s.value}</p>
@@ -109,6 +118,7 @@ export default async function AdminLeadsPage({
                 <th className="px-3 py-2 font-medium">Marketing</th>
                 <th className="px-3 py-2 font-medium">Consent recorded</th>
                 <th className="px-3 py-2 font-medium">Source</th>
+                <th className="px-3 py-2 font-medium">Signed up?</th>
                 <th className="px-3 py-2 font-medium">Demos</th>
                 <th className="px-3 py-2 font-medium">Captured</th>
               </tr>
@@ -148,6 +158,16 @@ export default async function AdminLeadsPage({
                     <td className="px-3 py-2 text-xs text-slate-400">
                       {l.source}
                       {l.campaign ? <><br />{l.campaign}</> : null}
+                    </td>
+                    <td className="px-3 py-2 text-xs">
+                      {l.signupCompletedAt ? (
+                        <span className="text-emerald-400">Signed up<br />{fmt(l.signupCompletedAt)}</span>
+                      ) : l.startedSignupAt ? (
+                        // The row worth ringing: they decided, then stopped.
+                        <span className="text-amber-400">Tapped Start<br />{fmt(l.startedSignupAt)}</span>
+                      ) : (
+                        <span className="text-slate-500">—</span>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-xs text-slate-400">
                       {l.sessions.length === 0 ? (

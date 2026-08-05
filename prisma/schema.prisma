@@ -5590,6 +5590,24 @@ model DemoLead {
   /// Set if they later ask to come off the list (unsubscribe / erasure).
   marketingRevokedAt  DateTime?
 
+  // ─── Did the demo turn into a customer? ────────────────────────────────────
+  // Two timestamps, because they answer two different questions and only the
+  // second is worth money. Together with `campaign` they are the reason the
+  // `?ev=` tag exists: which stand produced sign-ups, not just scans.
+  //
+  // NOTE the sandbox is never converted or kept. Tapping "Start my own account"
+  // ENDS the demo and destroys the tenant; the new account is an ordinary trial
+  // with none of the demo markers on it. These columns record intent, they do
+  // not link a real business to a sandbox.
+
+  /// They tapped "Start my own account" from inside the demo. First tap wins —
+  /// re-tapping does not move it, so this is genuinely "when they decided".
+  startedSignupAt   DateTime?
+  /// They actually created an account afterwards. Stamped by the register route
+  /// when the short-lived prefill cookie names this lead. Null means they got
+  /// as far as the form and stopped, which is its own useful fact.
+  signupCompletedAt DateTime?
+
   // ─── Provenance ────────────────────────────────────────────────────────────
   /// "qr" (scanned a poster) or "link" (someone sent them the URL). Set from
   /// the ?src= parameter, allow-listed server-side.

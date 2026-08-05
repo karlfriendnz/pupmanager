@@ -63,6 +63,7 @@ export async function GET(req: Request) {
       termsVersion: true, termsAcceptedAt: true,
       marketingOptIn: true, marketingVersion: true, marketingOptInAt: true, marketingRevokedAt: true,
       source: true, campaign: true, createdAt: true,
+      startedSignupAt: true, signupCompletedAt: true,
       sessions: { select: { status: true, startedAt: true, wantsFollowUp: true } },
     },
   })
@@ -74,6 +75,9 @@ export async function GET(req: Request) {
     'marketing_version', 'marketing_text',
     'source', 'campaign', 'captured_at',
     'demos_started', 'wants_follow_up',
+    // The two columns the `ev` campaign tag exists to be joined against: which
+    // show produced people who decided, and which produced accounts.
+    'tapped_start_at', 'signed_up_at',
   ]
 
   const rows = leads.map(l => {
@@ -87,6 +91,7 @@ export async function GET(req: Request) {
       l.marketingVersion ?? '', marketingBlock?.text ?? '',
       l.source, l.campaign ?? '', iso(l.createdAt),
       l.sessions.length, l.sessions.some(s => s.wantsFollowUp) ? 'yes' : 'no',
+      iso(l.startedSignupAt), iso(l.signupCompletedAt),
     ].map(csv).join(',')
   })
 

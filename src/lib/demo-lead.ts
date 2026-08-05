@@ -21,6 +21,23 @@ export const TRY_LEAD_COOKIE = 'pm-try-lead'
 export const TRY_LEAD_COOKIE_MAX_AGE = 60 * 60 * 4
 
 /**
+ * Names the lead whose details should PREFILL the real sign-up form, set when
+ * somebody taps "Start my own account" from inside the demo.
+ *
+ * A cookie rather than query parameters, for two reasons that both matter:
+ * putting a name, business and email in a URL writes them into browser history
+ * and every access log between here and the server; and httpOnly means the
+ * form on the other side is filled from a row WE looked up, not from whatever
+ * a link happened to say.
+ *
+ * Deliberately short-lived. This is a stand where phones get handed around, and
+ * a prefill cookie that outlived the walk from the poster to the sign-up form
+ * would eventually put one visitor's email in front of the next one.
+ */
+export const TRY_PREFILL_COOKIE = 'pm-try-prefill'
+export const TRY_PREFILL_MAX_AGE = 60 * 20
+
+/**
  * Where they came from. Allow-listed rather than stored as typed: `?src=` is on
  * a poster a stranger can photograph and edit, and this column ends up in a
  * marketing export.

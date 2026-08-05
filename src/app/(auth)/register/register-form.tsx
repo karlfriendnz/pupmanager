@@ -33,7 +33,21 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>
 
-export function RegisterForm({ enabledOAuth, defaultCountry }: { enabledOAuth: EnabledOAuth; defaultCountry?: string | null }) {
+export function RegisterForm({
+  enabledOAuth,
+  defaultCountry,
+  prefill,
+}: {
+  enabledOAuth: EnabledOAuth
+  defaultCountry?: string | null
+  /**
+   * Name, business and email somebody already gave us at a trade-show poster
+   * (see the /try flow). Resolved on the SERVER from an httpOnly cookie, so
+   * these are values we looked up rather than values a link asserted. Null for
+   * every ordinary sign-up.
+   */
+  prefill?: { name: string; businessName: string; email: string } | null
+}) {
   const [serverError, setServerError] = useState<string | null>(null)
   // iOS uses the native Sign in with Apple sheet instead of web OAuth.
   const isIOS = useNativePlatform() === 'ios'
@@ -54,8 +68,13 @@ export function RegisterForm({ enabledOAuth, defaultCountry }: { enabledOAuth: E
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     // The network's guess is the starting selection, not the answer — they
-    // confirm or change it before the form will submit.
-    defaultValues: { signupCountry: defaultCountry ?? '' },
+    // confirm or change it before the form will submit. The three prefilled
+    // fields are the same deal: filled in, fully editable, and still validated
+    // by the same schema on submit.
+    defaultValues: {
+      signupCountry: defaultCountry ?? '',
+      ...(prefill ? { name: prefill.name, businessName: prefill.businessName, email: prefill.email } : {}),
+    },
   })
 
   const phoneField = register('phone')
@@ -106,6 +125,12 @@ export function RegisterForm({ enabledOAuth, defaultCountry }: { enabledOAuth: E
             placeholder="Jane Smith"
             error={errors.name?.message}
             {...register('name')}
+            // react-hook-form's defaultValues fill these on hydration, which is
+            // a beat too late on trade-show wifi — the visitor sees three empty
+            // boxes and starts typing. Rendering the value SERVER-side means the
+            // form arrives already filled. Same string from the same lookup, so
+            // the two can't disagree.
+            defaultValue={prefill?.name}
           />
           <Input
             label="Business name"
@@ -113,6 +138,7 @@ export function RegisterForm({ enabledOAuth, defaultCountry }: { enabledOAuth: E
             placeholder="Pawsome Dog Training"
             error={errors.businessName?.message}
             {...register('businessName')}
+            defaultValue={prefill?.businessName}
           />
           <Input
             label="Phone number"
@@ -133,6 +159,7 @@ export function RegisterForm({ enabledOAuth, defaultCountry }: { enabledOAuth: E
             placeholder="jane@pawsome.co.nz"
             error={errors.email?.message}
             {...register('email')}
+            defaultValue={prefill?.email}
           />
           <div className="flex flex-col gap-1.5">
             <label htmlFor="signupCountry" className="text-sm font-medium text-slate-700">Country</label>

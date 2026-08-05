@@ -5,6 +5,7 @@ import { sendVerificationEmail } from '@/lib/auth-emails'
 import { notifyNewTrainerSignup } from '@/lib/notify-new-trainer'
 import { enforceRateLimit, getClientIp } from '@/lib/rate-limit'
 import { validatePromoCode } from '@/lib/promo'
+import { TRY_PREFILL_COOKIE } from '@/lib/demo-lead'
 import crypto from 'crypto'
 
 // Registration collects only what we need to follow up on a lead: name,
@@ -153,5 +154,49 @@ export async function POST(req: Request) {
   await notifyNewTrainerSignup({ name, businessName, email, source: 'register form' })
     .catch(err => console.error('[register] founder notify failed:', err))
 
-  return NextResponse.json({ ok: true, email, trialDays }, { status: 201 })
+  // Did this account come out of a trade-show demo? The httpOnly cookie set by
+  // /api/try/convert names the lead. Stamping it here is what turns "people
+  // scanned the poster" into "that show produced sign-ups".
+  //
+  // This is a WRITE TO THE LEAD, and nothing else. No demo marker is copied
+  // onto the account created above — the tenant those markers belonged to was
+  // destroyed before this request existed, and a `demoSessionId` on a real
+  // business would put a paying customer in front of the purge cron. The rule
+  // is enforced structurally by the drift test in
+  // tests/unit/security/demo-tenant-marker.
+  const leadId = parseCookie(req.headers.get('cookie'), TRY_PREFILL_COOKIE)
+  if (leadId) {
+    // `signupCompletedAt: null` in the filter so a second account from the same
+    // lead does not overwrite when they first converted.
+    await prisma.demoLead.updateMany({
+      where: { id: leadId, signupCompletedAt: null },
+      data: { signupCompletedAt: new Date() },
+    }).catch(err => console.error('[register] demo lead conversion stamp failed:', err))
+  }
+
+  const res = NextResponse.json({ ok: true, email, trialDays }, { status: 201 })
+  // Spend the prefill cookie. Phones get handed around at a stand, and a cookie
+  // that outlives the sign-up it was for would put this person's name and email
+  // in front of whoever picks the device up next.
+  if (leadId) res.cookies.set(TRY_PREFILL_COOKIE, '', { path: '/', maxAge: 0 })
+  return res
+}
+
+/**
+ * One cookie value out of a raw Cookie header.
+ *
+ * Read from the header rather than `cookies()` from next/headers so this route
+ * stays a plain function of its Request — it is unit-tested by handing it a
+ * `new Request(...)`, and `cookies()` throws outside a real request scope.
+ */
+function parseCookie(header: string | null, name: string): string | null {
+  if (!header) return null
+  for (const part of header.split(';')) {
+    const eq = part.indexOf('=')
+    if (eq === -1) continue
+    if (part.slice(0, eq).trim() !== name) continue
+    const value = decodeURIComponent(part.slice(eq + 1).trim())
+    return value || null
+  }
+  return null
 }
