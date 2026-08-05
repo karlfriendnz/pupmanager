@@ -1192,19 +1192,10 @@ export function PackageForm({
         </div>
       )}
 
-      {/* The human cadence, in the trainer's own words. It's what the class
-          card and the client's booking screen both show, so it's worth being
-          able to write ("Tuesdays 6pm") rather than having it inferred. */}
-      {kind !== 'onetoone' && kind !== 'dropin' && (
-        <div className="md:col-span-2">
-          <Input
-            label="Schedule note (optional)"
-            placeholder="e.g. Tuesdays 6:00pm"
-            value={scheduleNote}
-            onChange={e => setScheduleNote(e.target.value)}
-          />
-        </div>
-      )}
+      {/* No schedule note. It restated in prose what the dates below already
+          say exactly, and a trainer who moved a class had to remember to edit
+          it or it quietly lied to clients (Karl, 2026-08-06). The column is
+          kept and still submitted, so nothing already written is lost. */}
 
       {/* Where it meets — same design as the drop-in session location: a
           dropdown of saved locations + a "+" that opens the add-location popup. */}
@@ -1519,10 +1510,14 @@ export function PackageForm({
         </label>
       )}
 
-      {/* WHEN they can book it — the third self-booking question, after
-          "can they" and "do I approve it". Only for a 1:1: a class runs on its
-          own timetable, so there is no hour to choose. */}
-      {clientSelfBook && kind === 'onetoone' && (
+      {/* WHEN this can be booked.
+          NOT gated on clientSelfBook: this says when the offering RUNS, not
+          when the self-service counter is open. The trainer's own assign
+          screens read it too, so a trainer who never turns self-booking on
+          still gets their Monday-afternoon consult placed on Monday afternoon.
+          Only for a 1:1 — a class runs on its own timetable, so there is no
+          hour to choose. */}
+      {kind === 'onetoone' && (
         <BookingWindowField
           value={bookingWindow}
           onChange={next => { setBookingWindowTouched(true); setBookingWindow(next) }}

@@ -302,7 +302,8 @@ export function ClassFormModal({
             <p className="text-[11px] text-slate-400 mt-1">Used to write up each session. You can change it on a single session later.</p>
           </div>
 
-          <Input label="Schedule note (optional)" placeholder="Thursdays 4:00pm" value={scheduleNote} onChange={e => setScheduleNote(e.target.value)} />
+          {/* No schedule note — see package-form.tsx. The value is still
+              submitted so an existing one survives an edit here. */}
 
           <div>
             <label className="text-sm font-medium text-slate-700 block mb-1.5">

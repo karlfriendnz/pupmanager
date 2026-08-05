@@ -701,7 +701,6 @@ export function BookingWizard(props: {
                         title={c.name}
                         subtitle={c.packageName}
                         meta={<>
-                          {c.scheduleNote && <span className="inline-flex items-center gap-1"><CalendarDays className="h-3 w-3" />{c.scheduleNote}</span>}
                           {c.seatsLeft != null && (
                             <span className={`inline-flex items-center gap-1 ${isFull ? 'text-amber-600' : ''}`}><Users className="h-3 w-3" />{isFull ? 'Full' : `${c.seatsLeft} left`}</span>
                           )}
@@ -1122,13 +1121,11 @@ function ClassOptionsStep({ cls, tz, currency, acceptPayments, dogs, dogIds, onT
     <div className="flex flex-col gap-5">
       <StepIntro title={cls.name} sub={cls.packageName} />
 
-      {/* Only when there's something to put in it. A class with no schedule
-          note and no capacity has neither row, and the card was rendering as
-          an empty white box above the schedule. */}
-      {(cls.scheduleNote || (!dropping && cls.seatsLeft != null)) && (
+      {/* Only when there's something to put in it, or the card renders as an
+          empty white box above the schedule. */}
+      {!dropping && cls.seatsLeft != null && (
         <div className="rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 flex flex-col gap-2.5 text-sm">
-          {cls.scheduleNote && <Row icon={<CalendarDays className="h-4 w-4" />} text={cls.scheduleNote} />}
-          {!dropping && cls.seatsLeft != null && <Row icon={<Users className="h-4 w-4" />} text={isFull ? (cls.allowWaitlist ? 'Full — join the waitlist' : 'Full') : `${cls.seatsLeft} spot${cls.seatsLeft === 1 ? '' : 's'} left`} />}
+          <Row icon={<Users className="h-4 w-4" />} text={isFull ? (cls.allowWaitlist ? 'Full — join the waitlist' : 'Full') : `${cls.seatsLeft} spot${cls.seatsLeft === 1 ? '' : 's'} left`} />
         </div>
       )}
 
@@ -1515,7 +1512,6 @@ function EventTicketStep({ ev, tz, currency, acceptPayments, dogs, dogIds, onTog
       <div className="rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 flex flex-col gap-2.5 text-sm">
         {fmtNextSession(ev.startsAt, tz) && <Row icon={<CalendarDays className="h-4 w-4" />} text={fmtNextSession(ev.startsAt, tz)!} />}
         {ev.durationMins != null && <Row icon={<Clock className="h-4 w-4" />} text={`${ev.durationMins} min`} />}
-        {ev.scheduleNote && <Row icon={<Repeat className="h-4 w-4" />} text={ev.scheduleNote} />}
         {ev.seatsLeft != null && <Row icon={<Users className="h-4 w-4" />} text={isFull ? (ev.allowWaitlist ? 'Full — join the waitlist' : 'Full') : `${ev.seatsLeft} place${ev.seatsLeft === 1 ? '' : 's'} left`} />}
       </div>
 
@@ -1696,7 +1692,6 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
             <>
               {fmtNextSession(ev.startsAt, tz) && <SummaryRow label="When" value={fmtNextSession(ev.startsAt, tz)!} />}
               {ev.durationMins != null && <SummaryRow label="Length" value={`${ev.durationMins} min`} />}
-              {ev.scheduleNote && <SummaryRow label="Details" value={ev.scheduleNote} />}
               {tier && <SummaryRow label="Ticket" value={ticketQty > 1 ? `${ticketQty} × ${tier.name}` : tier.name} />}
             </>
           ) : isSession ? (
@@ -1707,7 +1702,6 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
             </>
           ) : (
             <>
-              {cls!.scheduleNote && <SummaryRow label="Schedule" value={cls!.scheduleNote} />}
               <SummaryRow
                 label="Type"
                 value={classType === 'DROP_IN'
