@@ -592,32 +592,40 @@ export function BookingWizard(props: {
                 <StepIntro title="What would you like to book?" sub={`Choose what you'd like from ${businessName}.`} />
                 <div className="flex flex-col gap-3">
                   {packages.length > 0 && (
-                    <button type="button" onClick={() => setCategory('sessions')} className="group flex items-center gap-3 text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><CalendarPlus className="h-5 w-5" /></span>
-                      <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">{term.oneToOne}</span><span className="block text-xs text-slate-500">{packages.length} available</span></span>
-                      <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
-                    </button>
+                    <CategoryRow
+                      icon={<CalendarPlus className="h-5 w-5" />}
+                      title={term.oneToOne}
+                      sub={`${packages.length} available`}
+                      imageUrl={firstImage(packages)}
+                      onClick={() => setCategory('sessions')}
+                    />
                   )}
                   {classes.length > 0 && (
-                    <button type="button" onClick={() => setCategory('classes')} className="group flex items-center gap-3 text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><GraduationCap className="h-5 w-5" /></span>
-                      <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">{term.classes}</span><span className="block text-xs text-slate-500">{classes.length} available</span></span>
-                      <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
-                    </button>
+                    <CategoryRow
+                      icon={<GraduationCap className="h-5 w-5" />}
+                      title={term.classes}
+                      sub={`${classes.length} available`}
+                      imageUrl={firstImage(classes)}
+                      onClick={() => setCategory('classes')}
+                    />
                   )}
                   {events.length > 0 && (
-                    <button type="button" onClick={() => setCategory('events')} className="group flex items-center gap-3 text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><PartyPopper className="h-5 w-5" /></span>
-                      <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">{term.events}</span><span className="block text-xs text-slate-500">{events.length} coming up</span></span>
-                      <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
-                    </button>
+                    <CategoryRow
+                      icon={<PartyPopper className="h-5 w-5" />}
+                      title={term.events}
+                      sub={`${events.length} coming up`}
+                      imageUrl={firstImage(events)}
+                      onClick={() => setCategory('events')}
+                    />
                   )}
                   {memberships.length > 0 && (
-                    <button type="button" onClick={() => setCategory('memberships')} className="group flex items-center gap-3 text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
-                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><Ticket className="h-5 w-5" /></span>
-                      <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-slate-900">{term.memberships}</span><span className="block text-xs text-slate-500">{memberships.length} available</span></span>
-                      <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
-                    </button>
+                    <CategoryRow
+                      icon={<Ticket className="h-5 w-5" />}
+                      title={term.memberships}
+                      sub={`${memberships.length} available`}
+                      imageUrl={firstImage(memberships)}
+                      onClick={() => setCategory('memberships')}
+                    />
                   )}
                 </div>
 
@@ -632,15 +640,22 @@ export function BookingWizard(props: {
                         label only named what was already on screen. */}
                     {tags.map(t => {
                       const count = t.packageIds.length + t.classIds.length + t.eventIds.length + t.productIds.length
+                      // The tag borrows the picture off the first thing in it,
+                      // in the order the sections below appear.
+                      const cover = firstImage(
+                        packages.filter(p => t.packageIds.includes(p.id)),
+                        classes.filter(c => t.classIds.includes(c.id)),
+                        events.filter(e => t.eventIds.includes(e.id)),
+                      )
                       return (
-                        <button key={t.id} type="button" onClick={() => setCategory(`tag:${t.id}`)} className="group flex items-center gap-3 text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] p-4 hover:border-accent/40 transition-colors">
-                          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent"><TagIcon className="h-5 w-5" /></span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-[15px] font-semibold text-slate-900">{t.name}</span>
-                            <span className="block text-xs text-slate-500">{count} {count === 1 ? 'thing' : 'things'}</span>
-                          </span>
-                          <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
-                        </button>
+                        <CategoryRow
+                          key={t.id}
+                          icon={<TagIcon className="h-5 w-5" />}
+                          title={t.name}
+                          sub={`${count} ${count === 1 ? 'thing' : 'things'}`}
+                          imageUrl={cover}
+                          onClick={() => setCategory(`tag:${t.id}`)}
+                        />
                       )
                     })}
                   </div>
@@ -1022,6 +1037,59 @@ function OfferingRow({ onClick, imageUrl, title, subtitle, meta, price }: {
         {imageUrl && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={imageUrl} alt="" className="w-24 self-stretch object-cover shrink-0" />
+        )}
+      </div>
+    </button>
+  )
+}
+
+/** The first real picture in a group of things, for a row that has none of its
+ *  own. A tag called "Grooms" borrows the photo off the first groom in it —
+ *  which is a truer picture of what's behind the row than any icon. */
+function firstImage(...groups: { imageUrl?: string | null }[][]): string | null {
+  for (const group of groups) {
+    const hit = group.find(x => x.imageUrl)
+    if (hit?.imageUrl) return hit.imageUrl
+  }
+  return null
+}
+
+/**
+ * A way in: a type of thing, or one of the trainer's tags.
+ *
+ * Same anatomy as OfferingRow on purpose — picture hard against the right edge,
+ * full height, chevron only when there is no picture. These rows and the ones
+ * they lead to are the same screen to a client, so they should not be built two
+ * different ways (Karl, 2026-08-06).
+ */
+function CategoryRow({ icon, title, sub, imageUrl, onClick }: {
+  icon: React.ReactNode
+  title: string
+  sub: string
+  imageUrl: string | null
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group w-full text-left rounded-2xl bg-white border border-slate-100 shadow-[0_2px_16px_rgba(15,31,36,0.05)] overflow-hidden hover:border-accent/40 transition-colors"
+    >
+      <div className="flex items-stretch">
+        <div className="flex min-w-0 flex-1 items-center gap-3 p-4">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center text-accent">{icon}</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px] font-semibold text-slate-900">{title}</span>
+            <span className="block text-xs text-slate-500">{sub}</span>
+          </span>
+        </div>
+        {imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={imageUrl} alt="" className="w-24 self-stretch object-cover shrink-0" />
+        ) : (
+          <div className="flex items-center shrink-0 py-4 pr-4">
+            <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-accent transition-colors" />
+          </div>
         )}
       </div>
     </button>
