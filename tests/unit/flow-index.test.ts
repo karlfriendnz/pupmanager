@@ -8,8 +8,11 @@ import {
   orderFlowSteps,
   groupFlowsBySection,
   flowIndexHeadline,
+  flowEditorTarget,
   FLOW_OWNER_SECTIONS,
+  FLOW_OWNER_PERMISSION,
   type FlowOwner,
+  type FlowOwnerKind,
   type IndexedStep,
 } from '@/lib/flow-index'
 
@@ -217,27 +220,170 @@ describe('the line under the title', () => {
   })
 })
 
-// The index is a WAY IN, not a replacement. A second editor would be two places
-// to change a step and two places for the rules to drift.
-describe('the page does not become a second editor', () => {
-  const view = readFileSync(
-    resolve(__dirname, '../../src/app/(trainer)/automations/automations-view.tsx'),
-    'utf8',
-  )
+// ── Editing from Settings, through the SAME editor ──────────────────────────
+//
+// Karl moved this into Settings and asked to edit from it. The rule that makes
+// that safe is that there is exactly ONE editor: the Settings panel mounts
+// `CommsFlowEditor`, the same component the five offering pages mount, with the
+// same props and therefore the same four CRUD trees. A second editing UI would
+// be two places to change a step and two places for the flow rules — which
+// kinds may block, which steps the engine skips — to drift.
 
-  it('renders no flow editor of its own', () => {
-    expect(view).not.toContain('CommsFlowEditor')
-    expect(view).not.toContain('comms-flow-editor')
+const file = (rel: string) => readFileSync(resolve(__dirname, '../../', rel), 'utf8')
+
+describe('one editor, mounted from two places', () => {
+  const panel = file('src/app/(trainer)/settings/automations-panel.tsx')
+
+  it('the Settings panel mounts the existing editor rather than building one', () => {
+    expect(panel).toContain("import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'")
+    expect(panel).toContain('<CommsFlowEditor')
   })
 
-  it('writes nothing — no form, no fetch, no client component', () => {
-    expect(view).not.toContain("'use client'")
-    expect(view).not.toContain('fetch(')
-    expect(view).not.toContain('method: ')
+  it('the panel writes nothing itself — every change goes through the editor', () => {
+    // No second write path. The panel navigates and refreshes; it never posts.
+    expect(panel).not.toContain('fetch(')
+    expect(panel).not.toContain("method: 'POST'")
+    expect(panel).not.toContain("method: 'PATCH'")
+    expect(panel).not.toContain("method: 'DELETE'")
+  })
+
+  // The editor derives its ENTIRE api base from which id prop is set, so
+  // handing it the right one is the whole difference between the two mount
+  // points. Exactly one key, or it would write to whichever branch its `?:`
+  // chain reached first.
+  it('points the editor at the right tree, one id at a time', () => {
+    expect(flowEditorTarget({ kind: 'CLASS', id: 'r1' })).toEqual({ runId: 'r1' })
+    expect(flowEditorTarget({ kind: 'CASUAL', id: 'r2' })).toEqual({ runId: 'r2' })
+    expect(flowEditorTarget({ kind: 'EVENT', id: 'r3' })).toEqual({ runId: 'r3' })
+    expect(flowEditorTarget({ kind: 'DAYCARE', id: 'r4' })).toEqual({ runId: 'r4' })
+    expect(flowEditorTarget({ kind: 'PACKAGE', id: 'p1' })).toEqual({ packageId: 'p1' })
+    expect(flowEditorTarget({ kind: 'MEMBERSHIP', id: 'm1' })).toEqual({ membershipId: 'm1' })
+    expect(flowEditorTarget({ kind: 'FORM', id: 'f1' })).toEqual({ formId: 'f1' })
+  })
+
+  it('never hands the editor two ids at once', () => {
+    for (const kind of FLOW_OWNER_SECTIONS.map(s => s.kind)) {
+      const target = flowEditorTarget({ kind, id: 'x' })
+      expect(Object.keys(target), kind).toHaveLength(1)
+    }
+  })
+
+  // The prop each offering page ALREADY passes. If one of them changed shape,
+  // Settings would be pointing the same editor somewhere else.
+  it('uses the same prop the offering page uses for that kind', () => {
+    const mounts: [FlowOwnerKind, string, string][] = [
+      ['CLASS', 'src/app/(trainer)/classes/[runId]/run-detail.tsx', 'runId'],
+      ['EVENT', 'src/app/(trainer)/events/[eventId]/event-detail.tsx', 'runId'],
+      ['PACKAGE', 'src/app/(trainer)/packages/[packageId]/package-detail.tsx', 'packageId'],
+      ['MEMBERSHIP', 'src/app/(trainer)/memberships/memberships-view.tsx', 'membershipId'],
+      ['FORM', 'src/app/(trainer)/forms/client/client-form-editor.tsx', 'formId'],
+    ]
+    for (const [kind, path, prop] of mounts) {
+      const src = file(path)
+      // The offering page still mounts the editor, and still mounts it there.
+      expect(src, `${path} must still mount the editor`).toContain('<CommsFlowEditor')
+      expect(src, `${path} passes ${prop}`).toMatch(new RegExp(`${prop}=\\{`))
+      // …and Settings targets the editor with exactly that prop.
+      expect(Object.keys(flowEditorTarget({ kind, id: 'x' })), kind).toEqual([prop])
+    }
+  })
+
+  // The editors on the offering pages stay exactly where they are — nothing
+  // moved off them when Settings gained its own way in.
+  it('leaves all five offering-page editors in place', () => {
+    const homes = [
+      'src/app/(trainer)/classes/[runId]/run-detail.tsx',
+      'src/app/(trainer)/events/[eventId]/event-detail.tsx',
+      'src/app/(trainer)/packages/[packageId]/package-detail.tsx',
+      'src/app/(trainer)/memberships/memberships-view.tsx',
+      'src/app/(trainer)/forms/client/client-form-editor.tsx',
+    ]
+    for (const home of homes) expect(file(home), home).toContain('CommsFlowEditor')
   })
 
   it('phrases the steps with the shared summary rather than its own words', () => {
-    const lib = readFileSync(resolve(__dirname, '../../src/lib/flow-index.ts'), 'utf8')
-    expect(lib).toContain('flowStepSummary')
+    expect(file('src/lib/flow-index.ts')).toContain('flowStepSummary')
+  })
+})
+
+// "Off" and "needs setting up" are DERIVED on the server, so an edit made from
+// Settings would leave them stale. The editor reports every successful write
+// from `api()` — the one place it writes anything — and the panel refreshes.
+describe('the list stays fresh after an edit', () => {
+  const editor = file('src/components/trainer/comms-flow-editor.tsx')
+  const panel = file('src/app/(trainer)/settings/automations-panel.tsx')
+
+  it('the editor reports a change from its single write helper', () => {
+    // One call site, inside api(), so no mutation can be added that forgets it.
+    expect(editor.match(/onChanged\?\.\(\)/g) ?? []).toHaveLength(1)
+    const api = editor.slice(editor.indexOf('async function api('), editor.indexOf('async function addStep('))
+    expect(api).toContain('onChanged?.()')
+    // …after the response was checked, so a failed save reports nothing.
+    expect(api.indexOf('if (!res.ok)')).toBeLessThan(api.indexOf('onChanged?.()'))
+  })
+
+  it('every mutation still goes through that one helper', () => {
+    // If a raw fetch with a method ever appears outside api(), onChanged (and
+    // the refresh behind it) silently stops covering it.
+    const raw = [...editor.matchAll(/fetch\(/g)]
+    // Three reads in load(), plus the single one inside api().
+    expect(raw).toHaveLength(4)
+  })
+
+  it('the panel refreshes the server tree when told', () => {
+    expect(panel).toContain('useRouter')
+    expect(panel).toContain('router.refresh()')
+    expect(panel).toContain('onChanged=')
+  })
+})
+
+// The index may only offer a flow this person could also SAVE. An editor that
+// loads and then 403s on the first change is worse than not showing the flow.
+describe('what the tab offers matches what the API will accept', () => {
+  const routeFor: Record<FlowOwnerKind, string> = {
+    CLASS: 'src/app/api/trainer/class-runs/[runId]/comms-flow/route.ts',
+    CASUAL: 'src/app/api/trainer/class-runs/[runId]/comms-flow/route.ts',
+    EVENT: 'src/app/api/trainer/class-runs/[runId]/comms-flow/route.ts',
+    DAYCARE: 'src/app/api/trainer/class-runs/[runId]/comms-flow/route.ts',
+    PACKAGE: 'src/app/api/trainer/packages/[packageId]/comms-flow/route.ts',
+    MEMBERSHIP: 'src/app/api/trainer/memberships/[id]/comms-flow/route.ts',
+    FORM: 'src/app/api/trainer/forms/[formId]/comms-flow/route.ts',
+  }
+
+  it('names the permission each kind’s own route actually guards on', () => {
+    for (const [kind, path] of Object.entries(routeFor) as [FlowOwnerKind, string][]) {
+      const guards = [...file(path).matchAll(/guardPermission\('([^']+)'\)/g)].map(m => m[1])
+      expect(guards.length, `${path} should guard its writes`).toBeGreaterThan(0)
+      // Every guard in the file agrees, and it is the one the tab filters on.
+      expect(new Set(guards), path).toEqual(new Set([FLOW_OWNER_PERMISSION[kind]]))
+    }
+  })
+
+  it('answers for every kind that can appear on the page', () => {
+    for (const { kind } of FLOW_OWNER_SECTIONS) {
+      expect(FLOW_OWNER_PERMISSION[kind], kind).toBeTruthy()
+    }
+  })
+
+  it('the tab filters the list by that permission', () => {
+    const tab = file('src/app/(trainer)/settings/automations-tab.tsx')
+    expect(tab).toContain('FLOW_OWNER_PERMISSION[owner.kind]')
+  })
+})
+
+// It shipped as a top-level nav item. A dead URL for a screen that still exists
+// is the worst version of moving something.
+describe('the old top-level route', () => {
+  const page = file('src/app/(trainer)/automations/page.tsx')
+
+  it('redirects to the new home rather than 404ing', () => {
+    expect(page).toContain("redirect('/settings?tab=automations')")
+  })
+
+  it('is gone from the menu, and from the rename catalogue with it', () => {
+    // The catalogue mirrors the real menu and is drift-tested against it, so a
+    // stale row here fails tests/unit/nav-labels.test.ts.
+    expect(file('src/components/shared/app-shell.tsx')).not.toContain("'/automations'")
+    expect(file('src/lib/nav-labels.ts')).not.toContain("'/automations'")
   })
 })

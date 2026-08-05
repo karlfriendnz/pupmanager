@@ -17,6 +17,8 @@
 import { flowStepSummary, type FlowStepNames, type SummarisableStep } from './flow-step-summary'
 import { sortStepsByTime } from './comms-flow-steps'
 import { flowAnchorFor } from './flow-anchors'
+// Type-only, so this module stays free of anything that reads a session.
+import type { PermissionKey } from './permissions'
 
 /** What a flow hangs off. The four parents a CommsFlowStep can have, with the
  *  ClassRun ones split by section because that is how a trainer finds them. */
@@ -67,6 +69,69 @@ export interface IndexedFlow {
   /** Steps `flowStepConfigProblem` says cannot run. */
   problems: FlowIndexRow[]
   rows: FlowIndexRow[]
+}
+
+// ─── Editing a flow from somewhere other than its offering page ─────────────
+
+/**
+ * Which id `CommsFlowEditor` should be mounted with for this owner.
+ *
+ * The editor derives its whole API base from which of these four is set (see
+ * comms-flow-editor.tsx), so handing it the right one is the ENTIRE difference
+ * between editing from Settings and editing from the offering page. There is no
+ * second component and no second set of routes: the same editor, pointed at the
+ * same tree, from a different screen.
+ *
+ * Exactly one key is returned, always — anything else and the editor would
+ * silently write to whichever branch its `?:` chain happened to reach first.
+ */
+export function flowEditorTarget(owner: Pick<FlowOwner, 'kind' | 'id'>): {
+  runId?: string
+  packageId?: string
+  membershipId?: string
+  formId?: string
+} {
+  switch (owner.kind) {
+    // All four run shapes are one ClassRun with one CRUD tree; only the SCREEN
+    // they are listed under differs.
+    case 'CLASS':
+    case 'CASUAL':
+    case 'EVENT':
+    case 'DAYCARE':
+      return { runId: owner.id }
+    case 'PACKAGE':
+      return { packageId: owner.id }
+    case 'MEMBERSHIP':
+      return { membershipId: owner.id }
+    case 'FORM':
+      return { formId: owner.id }
+    default: {
+      const unhandled: never = owner.kind
+      void unhandled
+      return {}
+    }
+  }
+}
+
+/**
+ * The permission each kind's flow routes actually guard on.
+ *
+ * The index can now EDIT, so it must not offer a flow whose API will refuse the
+ * save — an editor that loads and then 403s on the first change is worse than
+ * not showing the flow at all. These are copied from the four CRUD routes and
+ * drift-tested against them in tests/unit/flow-index.test.ts, because a copy
+ * that rots here shows a trainer a flow they cannot touch.
+ */
+export const FLOW_OWNER_PERMISSION: Record<FlowOwnerKind, PermissionKey> = {
+  CLASS: 'classes.manage',
+  CASUAL: 'classes.manage',
+  EVENT: 'classes.manage',
+  DAYCARE: 'classes.manage',
+  PACKAGE: 'packages.manage',
+  // A membership's flow hangs off /api/trainer/memberships, which guards on
+  // packages.manage — not a permission of its own.
+  MEMBERSHIP: 'packages.manage',
+  FORM: 'settings.edit',
 }
 
 /** The heading each kind sits under, and the order the sections read in. */

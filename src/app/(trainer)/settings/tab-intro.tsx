@@ -105,6 +105,16 @@ export const TAB_INTRO: Record<string, TabIntroCopy> = {
       'Anything you mark as needed has to be filled in before they can finish.',
     ],
   },
+  automations: {
+    title: 'Automations',
+    blurb:
+      'Everything that goes out on its own — the reminder before a class, the form you need back before someone starts, the homework that lands after a session. Built on the class, package or form it belongs to; all of it listed here so you can see what your business is sending without opening each one.',
+    steps: [
+      'Open one to change it — it edits in place, and saves straight away.',
+      '“Off” means every step in it is switched off, so nothing is being sent.',
+      'Anything marked in amber is missing a setting, so it gets skipped until you finish it.',
+    ],
+  },
   locations: {
     title: 'Locations',
     blurb:

@@ -242,7 +242,7 @@ function normalizeStep(raw: Partial<Step> & { id: string }): Step {
   } as Step
 }
 
-export function CommsFlowEditor({ runId, packageId, membershipId, formId, clients = [], offeringName, location }: {
+export function CommsFlowEditor({ runId, packageId, membershipId, formId, clients = [], offeringName, location, onChanged }: {
   runId?: string
   packageId?: string
   membershipId?: string
@@ -253,6 +253,19 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
   /** This offering's name + venue, so the preview reads as the real thing. */
   offeringName?: string | null
   location?: string | null
+  /**
+   * Something in this flow was written. Optional, and only Settings passes it.
+   *
+   * The offering pages mount this editor beside the thing it belongs to and
+   * nothing around them derives anything from it, so they need no notification.
+   * The Settings index does: it shows "Off" and "needs setting up", both of
+   * which are DERIVED on the server and would go stale the moment a step was
+   * switched off from inside the editor.
+   *
+   * This is a notification, not a second write path — see `api()` below, which
+   * is still the one place any change is sent from.
+   */
+  onChanged?: () => void
 }) {
   // Scoped to a class run (group / drop-in / event / puppy school), a 1:1
   // package, a membership, or a form. The API trees mirror each other.
@@ -309,12 +322,24 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
     offerings: Object.fromEntries(options.offerings.map(o => [o.id, o.name])),
   }), [options])
 
+  /**
+   * The ONE place this screen writes anything.
+   *
+   * Every mutation goes through here — add, save, toggle, delete, reorder,
+   * apply-template — which is what makes `onChanged` reliable rather than
+   * something that has to be remembered at six call sites. `load()` reads with
+   * a bare fetch and deliberately does not come through here, so a reload can
+   * never be mistaken for a change.
+   */
   async function api(path: string, init: RequestInit): Promise<Response | null> {
     setBusy(true)
     setError(null)
     try {
       const res = await fetch(path, { headers: { 'content-type': 'application/json' }, ...init })
       if (!res.ok) { setError('Something went wrong — please try again.'); return null }
+      // Only a change that actually landed. A failed save must not tell the
+      // page around us that something moved.
+      onChanged?.()
       return res
     } catch {
       setError('Something went wrong — please try again.')

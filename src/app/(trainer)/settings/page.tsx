@@ -14,6 +14,7 @@ import { ActivityPanel } from './activity-panel'
 import { AddonsTab } from './addons-tab'
 import { ConfigureTab } from './configure-tab'
 import { NamingTab } from './naming-tab'
+import { AutomationsTab, canSeeAutomations } from './automations-tab'
 import { IntegrationsTab } from './integrations-tab'
 import { DaycareTab } from './daycare-tab'
 import { IntegrationTab } from './integration-tab'
@@ -158,6 +159,9 @@ export default async function TrainerSettingsPage() {
         integration={can('settings.edit', ctx.role, ctx.permissions) ? <IntegrationTab companyId={ctx.companyId} /> : undefined}
         configure={<ConfigureTab companyId={ctx.companyId} role={ctx.role} permissions={ctx.permissions} />}
         naming={<NamingTab companyId={ctx.companyId} role={ctx.role} permissions={ctx.permissions} />}
+        automations={canSeeAutomations(ctx.role, ctx.permissions)
+          ? <AutomationsTab companyId={ctx.companyId} role={ctx.role} permissions={ctx.permissions} />
+          : undefined}
         integrations={<IntegrationsTab companyId={ctx.companyId} />}
         addons={can('billing.view', ctx.role, ctx.permissions) ? <AddonsTab companyId={ctx.companyId} /> : undefined}
         daycare={daycareEnabled ? <DaycareTab companyId={ctx.companyId} /> : undefined}

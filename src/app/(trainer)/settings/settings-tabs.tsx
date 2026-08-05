@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { ArrowLeft, User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark, MapPin, Palette, CalendarDays, Dog, Mail, SlidersHorizontal, Tag, Plug } from 'lucide-react'
+import { ArrowLeft, User, Pencil, Bell, Users, CreditCard, Wallet, ShieldCheck, Globe, Puzzle, Landmark, MapPin, Palette, CalendarDays, Dog, Mail, SlidersHorizontal, Tag, Plug, Workflow } from 'lucide-react'
 import { useIsNative } from '@/lib/native'
 import { cn } from '@/lib/utils'
 import { TabIntro } from './tab-intro'
@@ -47,6 +47,11 @@ const ALL_TABS = [
   // Was "Fields & forms": fields aren't a separate thing to manage any more —
   // one is created on the form that asks it (Karl, 2026-07-30).
   { id: 'forms', label: 'Forms', icon: Pencil, section: 'business' },
+  // Directly after Forms: a form is where a journey's flow lives, so "the
+  // questions you ask" and "the things that go out on their own" read as
+  // neighbours. It is the one screen showing every flow at once — the builder
+  // itself mounts on five different offering pages, which all keep theirs.
+  { id: 'automations', label: 'Automations', icon: Workflow, section: 'business' },
   { id: 'locations', label: 'Locations', icon: MapPin, section: 'business' },
   { id: 'integrations', label: 'Integrations', icon: Plug, section: 'business' },
   // The four below are reached THROUGH Integrations (its cards' Manage links),
@@ -75,6 +80,7 @@ export function SettingsTabs({
   calendar,
   configure,
   naming,
+  automations,
   integrations,
   addons,
   daycare,
@@ -97,6 +103,7 @@ export function SettingsTabs({
   calendar?: React.ReactNode
   configure?: React.ReactNode
   naming?: React.ReactNode
+  automations?: React.ReactNode
   integrations?: React.ReactNode
   addons?: React.ReactNode
   daycare?: React.ReactNode
@@ -108,7 +115,7 @@ export function SettingsTabs({
   activity?: React.ReactNode
 }) {
   const native = useIsNative()
-  const present: Record<TabId, React.ReactNode> = { profile, design, notifications, forms, locations, integration, calendar, configure, naming, integrations, addons, daycare, emails, team, payments, xero, billing, activity }
+  const present: Record<TabId, React.ReactNode> = { profile, design, notifications, forms, locations, integration, calendar, configure, naming, automations, integrations, addons, daycare, emails, team, payments, xero, billing, activity }
   // Hide Billing inside the native app — subscription billing is handled on
   // the web (Apple Guideline 3.1.1: no in-app pricing / purchase surfaces).
   // Every tab that RENDERS — what ?tab= may name, and what gets a hidden div.
@@ -302,6 +309,7 @@ export function SettingsTabs({
         {calendar != null && <div className={tab === 'calendar' ? 'max-w-2xl' : 'hidden'}>{calendar}</div>}
         {configure != null && <div className={tab === 'configure' ? '' : 'hidden'}>{configure}</div>}
         {naming != null && <div className={tab === 'naming' ? '' : 'hidden'}>{naming}</div>}
+        {automations != null && <div className={tab === 'automations' ? '' : 'hidden'}>{automations}</div>}
         {integrations != null && <div className={tab === 'integrations' ? '' : 'hidden'}>{integrations}</div>}
         {addons != null && <div className={tab === 'addons' ? '' : 'hidden'}>{addons}</div>}
         {daycare != null && <div className={tab === 'daycare' ? '' : 'hidden'}>{daycare}</div>}
