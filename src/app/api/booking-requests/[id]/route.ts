@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { safeEvaluate } from '@/lib/achievements'
-import { createBookingAssignment } from '@/lib/self-book'
-import { createInvoiceForAssignment } from '@/lib/invoicing'
+import { confirmBookingRequest } from '@/lib/booking-request-confirm'
 
 // PATCH /api/booking-requests/[id] — trainer confirms or declines a
 // pending client self-booking. CONFIRM spawns the ClientPackage +
 // sessions from the proposed dates (same as a manual assignment).
+//
+// Suggesting a DIFFERENT time is a third path and lives next door, in
+// ./propose — it doesn't decide the request, it volleys it.
 const schema = z.object({ action: z.enum(['CONFIRM', 'DECLINE']) })
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -23,21 +24,21 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const parsed = schema.safeParse(await req.json())
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
 
-  const reqRow = await prisma.bookingRequest.findFirst({
-    where: { id, trainerId, status: 'PENDING' },
-    include: {
-      // bufferMins rides along so a trainer-confirmed request books with the
-      // package's turnaround gap, exactly like an instant book.
-      package: { select: { name: true, sessionCount: true, durationMins: true, bufferMins: true, sessionType: true } },
-    },
-  })
-  if (!reqRow) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
   if (parsed.data.action === 'DECLINE') {
+    const reqRow = await prisma.bookingRequest.findFirst({
+      where: { id, trainerId, status: 'PENDING' },
+      include: { package: { select: { name: true } } },
+    })
+    if (!reqRow) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
     await prisma.bookingRequest.update({
       where: { id },
       data: { status: 'DECLINED', decidedAt: new Date() },
     })
+    // Deciding the request ends the negotiation with it. Leaving an OPEN
+    // proposal behind would leave a live Approve button on a request that no
+    // longer exists to book — the same "superseded card" bug by another route.
+    await closeOpenProposals(id)
     await prisma.clientNotification
       .create({
         data: {
@@ -51,59 +52,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     return NextResponse.json({ ok: true, status: 'DECLINED' })
   }
 
-  // CONFIRM — turn the proposed dates into a real assignment.
-  const dates = (Array.isArray(reqRow.sessionDates) ? reqRow.sessionDates : [])
-    .map(d => new Date(String(d)))
-    .filter(d => !Number.isNaN(d.getTime()))
-  if (dates.length === 0) {
-    return NextResponse.json({ error: 'Request has no valid session dates' }, { status: 400 })
-  }
+  // CONFIRM — turn the proposed dates into a real assignment. Shared with the
+  // "client approved the trainer's counter-offer" path so the two produce
+  // identical records.
+  const result = await confirmBookingRequest({ requestId: id, trainerId })
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
+  await closeOpenProposals(id)
 
-  const assignmentId = await prisma.$transaction(async tx => {
-    const aid = await createBookingAssignment(tx, {
-      trainerId,
-      clientId: reqRow.clientId,
-      packageId: reqRow.packageId,
-      dogId: reqRow.dogId,
-      pkg: reqRow.package,
-      sessionDates: dates,
-      bookingPageId: reqRow.bookingPageId,
-    })
-    await tx.bookingRequest.update({
-      where: { id },
-      data: { status: 'CONFIRMED', decidedAt: new Date(), resultingClientPackageId: aid },
-    })
-    return aid
-  })
+  return NextResponse.json({ ok: true, status: 'CONFIRMED', clientPackageId: result.clientPackageId })
+}
 
-  await safeEvaluate(reqRow.clientId)
-  // Best-effort: mirror the confirmed session series onto the trainer's Google
-  // Calendar. createMany returns no ids, so re-read them by the new assignment.
-  try {
-    const createdRows = await prisma.trainingSession.findMany({
-      where: { clientPackageId: assignmentId },
-      select: { id: true },
+/** Any counter-offer still awaiting an answer is withdrawn once the request
+ *  itself has been decided some other way. */
+async function closeOpenProposals(requestId: string): Promise<void> {
+  await prisma.bookingProposal
+    .updateMany({
+      where: { requestId, status: 'OPEN' },
+      data: { status: 'WITHDRAWN', decidedAt: new Date() },
     })
-    if (createdRows.length) {
-      const { syncSessionsToGoogle } = await import('@/lib/google-calendar-sync')
-      await syncSessionsToGoogle(createdRows.map(r => r.id))
-    }
-  } catch {
-    // Non-critical
-  }
-  // Best-effort receivable for the confirmed self-booking (idempotent, skips
-  // unpriced packages, never blocks the confirmation).
-  await createInvoiceForAssignment({ trainerId, clientId: reqRow.clientId, sourceType: 'PACKAGE', clientPackageId: assignmentId })
-  await prisma.clientNotification
-    .create({
-      data: {
-        clientId: reqRow.clientId,
-        trainerId,
-        subject: `Booking confirmed: ${reqRow.package.name}`,
-        notes: `Your ${reqRow.package.name} sessions are now on the calendar.`,
-      },
-    })
-    .catch(e => console.error('[booking confirm] notify failed', e))
-
-  return NextResponse.json({ ok: true, status: 'CONFIRMED', clientPackageId: assignmentId })
+    .catch(e => console.error('[booking decide] close proposals failed', e))
 }

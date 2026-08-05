@@ -647,15 +647,15 @@ model TrainerProfile {
   // Checkout (destination charge), Stripe takes our application fee and pays
   // the trainer out. None of the stripeCustomerId/stripeSubscriptionId fields
   // above are involved — those are the trainer's subscription TO PupManager.
-  connectAccountId          String?   @unique // acct_… (Express). Null = not started.
-  connectChargesEnabled     Boolean   @default(false) // mirrors account.charges_enabled
-  connectPayoutsEnabled     Boolean   @default(false) // mirrors account.payouts_enabled
-  connectDetailsSubmitted   Boolean   @default(false) // account.details_submitted (KYC done)
-  connectOnboardedAt        DateTime? // first time charges + payouts both true
+  connectAccountId        String?   @unique // acct_… (Express). Null = not started.
+  connectChargesEnabled   Boolean   @default(false) // mirrors account.charges_enabled
+  connectPayoutsEnabled   Boolean   @default(false) // mirrors account.payouts_enabled
+  connectDetailsSubmitted Boolean   @default(false) // account.details_submitted (KYC done)
+  connectOnboardedAt      DateTime? // first time charges + payouts both true
   // Trainer's payout / pricing currency for client payments — ISO 4217
   // lower-case (Stripe convention). Seeded from signupCountry on first onboard.
   // SEPARATE from the per-checkout currency used by the subscription flow.
-  payoutCurrency            String?
+  payoutCurrency          String?
 
   // ─── Trade-show "Try It" sandbox ───────────────────────────────────────────
   // Both columns are non-null ONLY on a throwaway tenant created by the /try
@@ -2063,13 +2063,13 @@ model StockMovement {
 // ─── Packages ─────────────────────────────────────────────────────────────────
 
 model Package {
-  id                       String      @id @default(cuid())
+  id                       String             @id @default(cuid())
   trainerId                String
   // True for rows created by the trainer-facing "sample data" loader, so
   // clearSampleData() can remove them without touching the trainer's real data.
-  isSample                 Boolean     @default(false)
+  isSample                 Boolean            @default(false)
   name                     String
-  description              String?     @db.Text
+  description              String?            @db.Text
   // Optional cover image (Vercel Blob URL), shown on the offering card + detail.
   imageUrl                 String?
   // The offering's DEFAULT venue, free text like ClassRun.location.
@@ -2089,14 +2089,14 @@ model Package {
   // been scheduled took the note, returned 200, and lost it. A new run inherits
   // this when it doesn't name its own.
   scheduleNote             String?
-  sessionCount             Int         @default(3)
-  weeksBetween             Int         @default(2) // gap between sessions, in weeks
-  durationMins             Int         @default(60) // default duration applied to created sessions
+  sessionCount             Int                @default(3)
+  weeksBetween             Int                @default(2) // gap between sessions, in weeks
+  durationMins             Int                @default(60) // default duration applied to created sessions
   // Turnaround gap AFTER each session of this package — travel, clean-up, reset.
   // Nothing may be booked into it: a session's occupied window is
   // [scheduledAt, scheduledAt + durationMins + bufferMins). 0 = back-to-back.
-  bufferMins               Int         @default(0)
-  sessionType              SessionType @default(IN_PERSON)
+  bufferMins               Int                @default(0)
+  sessionType              SessionType        @default(IN_PERSON)
   // Prices in cents to avoid float precision issues. specialPriceCents is an
   // optional discounted price the trainer can offer for promotions, etc.
   priceCents               Int? // null = unpriced
@@ -2115,25 +2115,25 @@ model Package {
   // Optional schedule colour (Tailwind palette key, eg "blue"). When set,
   // sessions assigned to this package render in that colour on the calendar.
   color                    String?
-  order                    Int         @default(0) // display order, lowest first
+  order                    Int                @default(0) // display order, lowest first
   // Optional default session form. When a session is opened with this package
   // and no form responses exist, the default form is auto-attached.
   defaultSessionFormId     String?
   // When false, suppress the SESSION_NOTES_REMINDER push for sessions in this
   // package. Some packages (e.g. drop-in classes) don't need a follow-up.
   // Defaults to true so existing packages keep firing reminders.
-  requireSessionNotes      Boolean     @default(true)
+  requireSessionNotes      Boolean            @default(true)
   // ─── Group classes ──────────────────────────────────────────────────────
   // When isGroup, the package is a sellable class template. A trainer
   // schedules one or more ClassRuns (cohorts) off it; each run owns ONE
   // shared session series that many clients enrol into. isGroup=false
   // packages keep the 1:1 ClientPackage path untouched.
-  isGroup                  Boolean     @default(false)
+  isGroup                  Boolean            @default(false)
   // A puppy school / daycare: an ongoing, day-parted group offering run from
   // the Puppy School workspace. Implies isGroup + allowDropIn (each day-part is
   // a session a parent books like a drop-in) + sessionCount 0 (ongoing). The
   // flag lets the workspace and the week board find these without heuristics.
-  isPuppySchool            Boolean     @default(false)
+  isPuppySchool            Boolean            @default(false)
   // A one-off EVENT — a workshop, seminar or meet-up people buy a ticket to.
   // An event is a ClassRun like any other (same cohort, roster, capacity and
   // invoicing machinery, just a single occasion); this flag is the ONLY thing
@@ -2145,7 +2145,7 @@ model Package {
   // /classes and shown under /events instead. The kind is DECLARED at creation
   // (the /offerings/new?kind=oneoff route) and never re-derived, so editing an
   // offering can no longer change what it is. See lib/run-kind.ts.
-  isEvent                  Boolean     @default(false)
+  isEvent                  Boolean            @default(false)
   // A SERIES — a run of 1:1 consults with a pre-defined curriculum. The client
   // signs up to the whole thing; each step ("session 2 is loose-lead walking")
   // is defined up front on PackageSessionPlan, with its homework already on
@@ -2157,27 +2157,27 @@ model Package {
   // offerings hub and the list pages can tell a series from a plain consult
   // without re-deriving it from shape — which is the mistake isEvent was created
   // to undo. Never infer it; it is declared at creation and read back verbatim.
-  isSeries                 Boolean     @default(false)
+  isSeries                 Boolean            @default(false)
   // Max enrolments per run (null = unlimited). A run may override this.
   capacity                 Int?
   // Allow clients to book a single session on its own (drop-in), at
   // dropInPriceCents. Per-session capacity; see enrollInRun.
-  allowDropIn              Boolean     @default(false)
+  allowDropIn              Boolean            @default(false)
   dropInPriceCents         Int?
   // Repeating schedule for a class, as an iCalendar RRULE subset (e.g.
   // "FREQ=WEEKLY;BYDAY=TU;COUNT=8"). null / "" = one-off. Drives session
   // generation when a run is created. See lib/recurrence.ts.
   recurrenceRule           String?
   // Full runs accept a waitlist that auto-promotes on withdrawal.
-  allowWaitlist            Boolean     @default(false)
+  allowWaitlist            Boolean            @default(false)
   // Exposed on the public embed surface for client self-enrolment.
-  publicEnrollment         Boolean     @default(false)
+  publicEnrollment         Boolean            @default(false)
   // Client self-booking from their availability tab. clientSelfBook
   // opts the package in; selfBookRequiresApproval gates whether the
   // pick creates a pending BookingRequest (true) or books instantly
   // (false). Only meaningful when clientSelfBook is true.
-  clientSelfBook           Boolean     @default(false)
-  selfBookRequiresApproval Boolean     @default(true)
+  clientSelfBook           Boolean            @default(false)
+  selfBookRequiresApproval Boolean            @default(true)
   /// WHEN this 1:1 offering can be booked — by a CLIENT self-booking, and by
   /// the TRAINER placing it themselves. It describes when the offering happens,
   /// not merely when a client may self-serve, so it is read whether or not
@@ -2202,23 +2202,23 @@ model Package {
   /// ISO weekday (1=Mon..7=Sun) + 24h wall clock. SEVERAL entries may share a
   /// day — a morning band and an afternoon band are two rows, which is the only
   /// way to say "Monday 9–11 and 3–5". The whole session must fit in a band.
-  bookingWindowRanges      Json        @default("[]")
+  bookingWindowRanges      Json               @default("[]")
   /// One-off dated starts: `[{ "date": "2026-09-03", "time": "10:00" }]`.
   /// Unioned with the ranges above — a trainer may use either or both. A dated
   /// entry fires ONCE, on that calendar date; a date in the past can never
   /// produce a slot again, and is kept (never silently deleted) but ignored
   /// when resolving, and shown as expired in the editor.
-  bookingWindowDates       Json        @default("[]")
+  bookingWindowDates       Json               @default("[]")
   /// LEGACY weekday exact starts: `[{ "day": 1, "time": "09:00" }]`. Replaced
   /// by a weekday RANGE one session long, which says the same thing with one
   /// row kind instead of two. The migration converts them; the reader converts
   /// any leftovers the same way, so nothing a trainer configured is dropped.
-  bookingWindowTimes       Json        @default("[]")
+  bookingWindowTimes       Json               @default("[]")
   /// LEGACY, from before ranges were per-day. A single band applied to every
   /// day in bookingWindowDays. Nothing writes these; the migration folds them
   /// into bookingWindowRanges, and packageBookingWindow() folds them in at READ
   /// time too, so a row this deploy hasn't reached still behaves correctly.
-  bookingWindowDays        Json        @default("[]")
+  bookingWindowDays        Json               @default("[]")
   bookingWindowStart       String?
   bookingWindowEnd         String?
   /// The instant this offering starts being visible to CLIENTS. null — the
@@ -2672,13 +2672,82 @@ model BookingRequest {
   createdAt                DateTime             @default(now())
   decidedAt                DateTime?
 
-  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  client  ClientProfile  @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  package Package        @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  trainer   TrainerProfile    @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  client    ClientProfile     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  package   Package           @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  proposals BookingProposal[]
 
   @@index([trainerId, status])
   @@index([clientId])
   @@map("booking_requests")
+}
+
+// ─── Negotiating the time ─────────────────────────────────────────────────────
+//
+// A booking request used to have exactly two endings: the trainer confirmed the
+// client's chosen time, or declined it. There was no way to say "not that hour,
+// how about this one" — the trainer had to decline and hope the client came
+// back. A BookingProposal is that third path: a COUNTER-OFFER, from either
+// side, that the other side approves or answers with one of their own, for as
+// many rounds as it takes.
+//
+// ─── It lives in the message thread ─────────────────────────────────────────
+// `messageId` is REQUIRED and unique: a proposal is a Message in the existing
+// client↔trainer thread, rendered as a card. That is deliberate and structural
+// rather than cosmetic — it means the whole negotiation reads in order, in the
+// one place both parties already look, and it means every proposal is already
+// covered by the message notifier, the SSE stream, the unread badge and the
+// email fallback. There is no second inbox to build or keep in sync.
+//
+// ─── Only the newest one is live ────────────────────────────────────────────
+// Creating a proposal marks every other OPEN proposal on the same request
+// SUPERSEDED in the same transaction. Approval requires OPEN, so an older card
+// further up the thread cannot book a time that three messages have moved on
+// from — and that is enforced HERE, in a column, not by hiding a button.
+//
+// The request itself stays PENDING for the whole volley. Nothing is booked
+// until someone approves, "whose turn is it" is derived from the newest OPEN
+// proposal, and a request with no proposals behaves exactly as it always has.
+
+enum BookingProposalParty {
+  TRAINER
+  CLIENT
+}
+
+enum BookingProposalStatus {
+  OPEN // the live offer, waiting on the other party
+  SUPERSEDED // a later proposal replaced it — can never be approved
+  ACCEPTED // the other party approved it; the booking exists
+  WITHDRAWN // the request was confirmed or declined by another route
+}
+
+model BookingProposal {
+  id String @id @default(cuid())
+
+  requestId        String
+  // Which side offered this time. Approval is refused when it matches the
+  // approver — nobody accepts their own suggestion.
+  proposedBy       BookingProposalParty
+  // The User who sent it (soft ref, for attribution only — the Message carries
+  // the authoritative senderId and is what the thread renders).
+  proposedByUserId String
+  // The WHOLE proposed series (ISO strings), re-derived from the proposed first
+  // session on the package's cadence — the same generator and therefore the
+  // same shape as BookingRequest.sessionDates. Approving books exactly this.
+  sessionDates     Json                  @default("[]")
+  status           BookingProposalStatus @default(OPEN)
+  // The message this proposal rides in. Required: a proposal that isn't in the
+  // conversation is a proposal nobody sees.
+  messageId        String                @unique
+
+  createdAt DateTime  @default(now())
+  decidedAt DateTime?
+
+  request BookingRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  message Message        @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, createdAt])
+  @@map("booking_proposals")
 }
 
 // ─── Trainer gamification ─────────────────────────────────────────────────────
@@ -2862,8 +2931,11 @@ model Message {
 
   createdAt DateTime @default(now())
 
-  client ClientProfile @relation("ClientMessages", fields: [clientId], references: [id], onDelete: Cascade)
-  sender User          @relation(fields: [senderId], references: [id])
+  client          ClientProfile    @relation("ClientMessages", fields: [clientId], references: [id], onDelete: Cascade)
+  sender          User             @relation(fields: [senderId], references: [id])
+  // Set only on the handful of messages that ARE a counter-offer — the thread
+  // renders those as an Approve / Suggest-another card instead of a bubble.
+  bookingProposal BookingProposal?
 
   @@index([clientId])
   @@index([senderId])
@@ -5581,14 +5653,14 @@ model DemoLead {
   termsAcceptedAt DateTime
 
   /// Marketing is SEPARATE and optional. False here still gets a sandbox.
-  marketingOptIn      Boolean   @default(false)
+  marketingOptIn     Boolean   @default(false)
   /// Version id of the marketing text shown — recorded whether or not they
   /// ticked it, because "was offered and declined" is itself the record.
-  marketingVersion    String?
+  marketingVersion   String?
   /// Null when they declined. Set only on an actual opt-in.
-  marketingOptInAt    DateTime?
+  marketingOptInAt   DateTime?
   /// Set if they later ask to come off the list (unsubscribe / erasure).
-  marketingRevokedAt  DateTime?
+  marketingRevokedAt DateTime?
 
   // ─── Did the demo turn into a customer? ────────────────────────────────────
   // Two timestamps, because they answer two different questions and only the
