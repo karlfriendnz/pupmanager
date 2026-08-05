@@ -54,6 +54,12 @@ function timeToMins(hhmm: string): number {
   return h * 60 + m
 }
 
+/** "HH:MM" → minutes past local midnight. Exported for package-booking-window,
+ *  which narrows the same minute-of-day space these helpers work in. */
+export function hhmmToMins(hhmm: string): number {
+  return timeToMins(hhmm)
+}
+
 /**
  * Walk forward from `from` (a date — its time-of-day is ignored) up to
  * `maxDays` days, looking for the first availability slot wide enough for
@@ -121,7 +127,7 @@ export function overlapsBusy(
 
 // ISO day-of-week (1=Mon..7=Sun) for a YYYY-MM-DD string, computed in UTC so
 // it never drifts by the host's local offset.
-function isoDowForDateStr(dateStr: string): number {
+export function isoDowForDateStr(dateStr: string): number {
   const [y, m, d] = dateStr.split('-').map(Number)
   const js = new Date(Date.UTC(y, m - 1, d)).getUTCDay()
   return js === 0 ? 7 : js

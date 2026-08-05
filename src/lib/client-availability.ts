@@ -40,8 +40,33 @@ export async function getTrainerAvailabilityForClient(clientId: string): Promise
     },
   })
   if (!profile) return null
+  return loadAvailability(profile.trainerId, profile.trainer.user.timezone, profile.trainer.businessName)
+}
 
-  const tz = profile.trainer.user.timezone
+/**
+ * The same availability, addressed by trainer rather than by client — for
+ * TRAINER-side screens that need to know what their own openings look like.
+ *
+ * Used by the booking-window preview, so the "this window offers no times"
+ * warning is computed against real availability, real blackouts and what is
+ * really in the diary, rather than against the window in the abstract.
+ */
+export async function getTrainerAvailabilityById(trainerId: string): Promise<TrainerAvailability | null> {
+  const trainer = await prisma.trainerProfile.findUnique({
+    where: { id: trainerId },
+    select: { businessName: true, user: { select: { timezone: true } } },
+  })
+  if (!trainer) return null
+  return loadAvailability(trainerId, trainer.user.timezone, trainer.businessName)
+}
+
+/** The shared query + row mapping. One copy, so the two entry points above can
+ *  never answer the same question differently. */
+async function loadAvailability(
+  trainerId: string,
+  tz: string,
+  businessName: string,
+): Promise<TrainerAvailability> {
   const cutoff = new Date()
   cutoff.setUTCDate(cutoff.getUTCDate() - 1)
 
@@ -54,15 +79,15 @@ export async function getTrainerAvailabilityForClient(clientId: string): Promise
 
   const [rawSlots, rawBlackouts, rawSessions] = await Promise.all([
     prisma.availabilitySlot.findMany({
-      where: { trainerId: profile.trainerId },
+      where: { trainerId },
       orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
     }),
     prisma.blackoutPeriod.findMany({
-      where: { trainerId: profile.trainerId, endDate: { gte: cutoff } },
+      where: { trainerId, endDate: { gte: cutoff } },
     }),
     prisma.trainingSession.findMany({
       where: {
-        trainerId: profile.trainerId,
+        trainerId,
         scheduledAt: { gte: fetchStart, lte: fetchEnd },
         status: 'UPCOMING',
       },
@@ -102,8 +127,8 @@ export async function getTrainerAvailabilityForClient(clientId: string): Promise
   })
 
   return {
-    trainerId: profile.trainerId,
-    businessName: profile.trainer.businessName,
+    trainerId,
+    businessName,
     tz,
     slots,
     blackouts,

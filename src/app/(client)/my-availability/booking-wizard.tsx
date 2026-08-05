@@ -12,7 +12,8 @@ import { useNavLabelOverrides } from '@/components/shared/page-title'
 import { currencySymbol } from '@/lib/money'
 import { MembershipCards } from '@/components/shared/membership-cards'
 import type { ClientMembership } from '@/lib/client-memberships'
-import { enumerateStartTimes, type AvailabilityRow, type BlackoutRow, type BusyInterval } from '@/lib/availability'
+import { type AvailabilityRow, type BlackoutRow, type BusyInterval } from '@/lib/availability'
+import { bookableStartTimes, ANY_TIME_WINDOW, type PackageBookingWindow } from '@/lib/package-booking-window'
 import { zonedToUtc, todayInTz } from '@/lib/timezone'
 import {
   groupSessionsByDay, monthOf, monthLabel, monthGrid, monthsWithSessions,
@@ -34,6 +35,14 @@ export interface WizardPackage {
   priceCents: number | null
   selfBookRequiresApproval: boolean
   allowWaitlist: boolean
+  /**
+   * When this offering is on offer, if the trainer restricted it. Omitted =
+   * any time they're free, which is what every offering meant before this
+   * existed. Resolved server-side by packageBookingWindow() — the SAME window
+   * /api/my/self-book re-checks the chosen time against, so this screen can
+   * never offer a time the POST will refuse.
+   */
+  bookingWindow?: PackageBookingWindow
 }
 
 export interface WizardClass {
@@ -311,8 +320,20 @@ export function BookingWizard(props: {
   const startTimesFor = useCallback((dateStr: string) => {
     if (!pkg) return []
     const now = Date.now()
-    return enumerateStartTimes(availability.slots, dateStr, pkg.durationMins, availability.blackouts, STEP_MINS, availability.busy, pkg.bufferMins)
-      .filter(t => new Date(toUtcIso(dateStr, t, tz)).getTime() > now)
+    // One resolver, shared with the server. The offering's own booking window
+    // narrows the trainer's availability here exactly as checkBookableStart
+    // narrows it in /api/my/self-book — so what's on screen and what the route
+    // will accept are computed from the same rule, not two copies of it.
+    return bookableStartTimes({
+      slots: availability.slots,
+      blackouts: availability.blackouts,
+      busy: availability.busy,
+      dateStr,
+      durationMins: pkg.durationMins,
+      bufferMins: pkg.bufferMins,
+      stepMins: STEP_MINS,
+      window: pkg.bookingWindow ?? ANY_TIME_WINDOW,
+    }).filter(t => new Date(toUtcIso(dateStr, t, tz)).getTime() > now)
   }, [pkg, availability, tz])
 
   // Days in the window that can still hold this package's first session.

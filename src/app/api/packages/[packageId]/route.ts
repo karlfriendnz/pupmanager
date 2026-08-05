@@ -9,8 +9,9 @@ import { syncClassSessions, removeClassEvents } from '@/lib/class-session-sync'
 import { extendSlotRuns } from '@/lib/extend-slot-runs'
 import {
   slotSchema, replacePackageSlots, derivedDropInFields,
-  ticketTierSchema, replaceTicketTiers,
+  ticketTierSchema, replaceTicketTiers, bookingWindowSchema,
 } from '@/lib/package-slots'
+import { validateBookingWindow, bookingWindowColumns, bookingWindowInput } from '@/lib/package-booking-window'
 import { isValidSpecialPrice, SPECIAL_PRICE_TOO_HIGH } from '@/lib/special-price'
 import { resolvePackagePricing } from '@/lib/session-pricing'
 import { offeringListHref, offeringKindLabel } from '@/lib/run-kind'
@@ -47,6 +48,10 @@ const updateSchema = z.object({
   publicEnrollment: z.boolean().optional(),
   clientSelfBook: z.boolean().optional(),
   selfBookRequiresApproval: z.boolean().optional(),
+  // WHEN clients may self-book this. Sent whole or not at all: OMITTING it
+  // leaves the stored window alone, so a list screen that saves a row it never
+  // loaded the window for can't quietly reopen a restricted offering.
+  bookingWindow: bookingWindowSchema.optional(),
   // The calendar DAY clients start seeing this, in the trainer's own zone.
   // null clears the schedule (visible immediately); OMITTING it changes
   // nothing, which is what lets a list screen save an offering it never loaded
@@ -184,10 +189,20 @@ export async function PATCH(
   const {
     sessionSlots, ticketTiers,
     scheduleNote, location, imageUrl, assignedMembershipIds, startAt, status, removeSessionIds,
-    visibleFromDate,
+    visibleFromDate, bookingWindow,
     ...columns
   } = parsed.data
   const dropIn = sessionSlots ? derivedDropInFields(sessionSlots) : null
+
+  // The booking window is five columns, not one, and each mode clears the
+  // others' — so it's expanded here rather than spread with the rest. Omitting
+  // the key leaves the stored window exactly as it was.
+  if (bookingWindow !== undefined) {
+    const input = bookingWindowInput(bookingWindow)
+    const windowError = validateBookingWindow(input)
+    if (windowError) return NextResponse.json({ error: windowError }, { status: 400 })
+    Object.assign(columns as Record<string, unknown>, bookingWindowColumns(input))
+  }
 
   // A DAY in the trainer's zone becomes the instant that day begins for them.
   // Pulled out of `columns` rather than spread with them because the column is

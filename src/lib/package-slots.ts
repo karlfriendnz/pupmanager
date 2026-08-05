@@ -35,6 +35,24 @@ export const slotSchema = z.object({
 export type SlotInput = z.infer<typeof slotSchema>
 
 /**
+ * WHEN a client may self-book a 1:1 offering, as the two package routes accept
+ * it. The MEANING of these fields, and every rule about them, lives in
+ * lib/package-booking-window.ts — this is only the wire shape. Days are ISO
+ * weekdays (1=Mon..7=Sun), NOT slotSchema's 0=Sun..6=Sat above; the two are
+ * different concepts and the availability half of the app is ISO throughout.
+ */
+export const bookingWindowSchema = z.object({
+  mode: z.enum(['ANY_TIME', 'WEEKLY_WINDOW', 'EXACT_TIMES']),
+  days: z.array(z.number().int().min(1).max(7)).max(7).optional(),
+  startTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(),
+  times: z.array(z.object({
+    day: z.number().int().min(1).max(7),
+    time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/),
+  })).max(50).optional(),
+})
+
+/**
  * The package-level drop-in fields implied by a set of slots. The slots are the
  * source of truth for what a session costs; these are the headline values the
  * rest of the app (client wizard type-card, package list) still reads, so we

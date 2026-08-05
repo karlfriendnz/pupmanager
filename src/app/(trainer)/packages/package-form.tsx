@@ -28,6 +28,8 @@ import { useCurrency } from '@/components/currency-context'
 import { sessionCountChange, sessionCountChangeMessage } from '@/lib/session-count-change'
 import { formatMoney } from '@/lib/money'
 import { isValidSpecialPrice, SPECIAL_PRICE_TOO_HIGH } from '@/lib/special-price'
+import { BookingWindowField } from '@/components/shared/booking-window-field'
+import { ANY_TIME_WINDOW, validateBookingWindow, packageBookingWindow, type PackageBookingWindow } from '@/lib/package-booking-window'
 
 export type PackageColor = 'blue' | 'emerald' | 'amber' | 'rose' | 'purple' | 'orange' | 'teal' | 'indigo' | 'pink' | 'cyan'
 
@@ -120,6 +122,14 @@ export interface PkgRow {
   publicEnrollment?: boolean
   clientSelfBook?: boolean
   selfBookRequiresApproval?: boolean
+  /**
+   * WHEN clients may self-book this. UNDEFINED means the loader didn't fetch
+   * it, and the form then leaves the stored window alone rather than sending
+   * "any time" — the same rule visibleFromDate below is written to, for the
+   * same reason: a screen that saves a row it only half-loaded must not reopen
+   * an offering the trainer had restricted.
+   */
+  bookingWindow?: PackageBookingWindow
   /**
    * The day clients start seeing this, as `YYYY-MM-DD` in the trainer's zone.
    * null = showing now. UNDEFINED means the loader didn't fetch it, and the
@@ -514,6 +524,12 @@ export function PackageForm({
   const [xeroActive, setXeroActive] = useState(false)
   const [clientSelfBook, setClientSelfBook] = useState<boolean>(existing?.clientSelfBook ?? false)
   const [selfBookRequiresApproval, setSelfBookRequiresApproval] = useState<boolean>(existing?.selfBookRequiresApproval ?? true)
+  // WHEN clients may book it. Same "only send what you loaded" rule as
+  // visibleFromDate below: a loader that didn't fetch the window leaves it out
+  // of the payload entirely, rather than sending "any time" and reopening an
+  // offering the trainer had restricted.
+  const [bookingWindow, setBookingWindow] = useState<PackageBookingWindow>(existing?.bookingWindow ?? { ...ANY_TIME_WINDOW })
+  const [bookingWindowTouched, setBookingWindowTouched] = useState(false)
   // When clients start seeing this. '' = showing now.
   const [visibleFromDate, setVisibleFromDate] = useState<string>(existing?.visibleFromDate ?? '')
   // Whether the trainer has touched the control this session. Without it, a
@@ -648,6 +664,13 @@ export function PackageForm({
       setError('Give every session a start and finish time.')
       return
     }
+    // An unusable booking window, said at the top of the form. The API refuses
+    // it too, with this same function — this is the sentence, not the rule.
+    const windowProblem = validateBookingWindow(bookingWindow)
+    if (windowProblem) {
+      setError(windowProblem)
+      return
+    }
     // Moving a class that has attendance recorded is refused (the rebuild would
     // delete the sessions the register hangs off). The payload has always just
     // DROPPED the new date in that case, so the save came back fine and the
@@ -769,6 +792,12 @@ export function PackageForm({
         publicEnrollment: isGroup && publicEnrollment,
         clientSelfBook,
         selfBookRequiresApproval,
+        // Only sent when this form actually knows the stored window — either
+        // the loader supplied it, or the trainer changed it here. Omitting the
+        // key leaves the stored window alone (see PkgRow.bookingWindow).
+        ...(existing?.bookingWindow !== undefined || bookingWindowTouched || !existing
+          ? { bookingWindow }
+          : {}),
         ...(existing?.visibleFromDate !== undefined || visibleFromTouched
           ? { visibleFromDate: visibleFromDate || null }
           : {}),
@@ -817,6 +846,10 @@ export function PackageForm({
         publicEnrollment: saved.publicEnrollment ?? false,
         clientSelfBook: saved.clientSelfBook ?? false,
         selfBookRequiresApproval: saved.selfBookRequiresApproval ?? true,
+        // Read back off the SAVED row through the same resolver every reader
+        // uses, not echoed from local state — the list is then showing what is
+        // actually stored, which is the only thing a round-trip proves.
+        bookingWindow: packageBookingWindow(saved),
         visibleFromDate: visibleFromDate || null,
         xeroAccountCode: saved.xeroAccountCode ?? null,
         requirePayment: saved.requirePayment ?? null,
@@ -1484,6 +1517,18 @@ export function PackageForm({
             </span>
           </span>
         </label>
+      )}
+
+      {/* WHEN they can book it — the third self-booking question, after
+          "can they" and "do I approve it". Only for a 1:1: a class runs on its
+          own timetable, so there is no hour to choose. */}
+      {clientSelfBook && kind === 'onetoone' && (
+        <BookingWindowField
+          value={bookingWindow}
+          onChange={next => { setBookingWindowTouched(true); setBookingWindow(next) }}
+          durationMins={Number(watch('durationMins')) || 60}
+          bufferMins={Number(bufferMins) || 0}
+        />
       )}
 
       {/* Whether clients must pay up front to book this.

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/page-header'
 import { trainerRegionCode } from '@/lib/country'
 import { visibleFromDateStr } from '@/lib/offering-visibility'
+import { packageBookingWindow } from '@/lib/package-booking-window'
 import { EditPackageForm } from './edit-package-form'
 import type { PackageColor } from '../../package-form'
 import type { Metadata } from 'next'
@@ -132,6 +133,10 @@ export default async function EditPackagePage({
             publicEnrollment: pkg.publicEnrollment,
             clientSelfBook: pkg.clientSelfBook,
             selfBookRequiresApproval: pkg.selfBookRequiresApproval,
+            // Round-trip: the window comes back through the same resolver the
+            // client picker and the self-book route read it with, so what the
+            // form reopens on is what is actually being enforced.
+            bookingWindow: packageBookingWindow(pkg),
             xeroAccountCode: pkg.xeroAccountCode,
             requirePayment: pkg.requirePayment,
             sessionSlots: pkg.sessionSlots.map(s => ({

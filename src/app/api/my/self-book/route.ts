@@ -10,7 +10,7 @@ import { createConnectCheckout } from '@/lib/connect-checkout'
 import { isConnectConfigured } from '@/lib/connect'
 import { enforceRateLimit } from '@/lib/rate-limit'
 import { getTrainerAvailabilityForClient } from '@/lib/client-availability'
-import { isTimeWithinAvailability, overlapsBusy } from '@/lib/availability'
+import { packageBookingWindow, checkBookableStart } from '@/lib/package-booking-window'
 import { utcToZonedDateAndMinutes } from '@/lib/timezone'
 import { notifyTrainer } from '@/lib/trainer-notify'
 import { env } from '@/lib/env'
@@ -66,9 +66,15 @@ export async function GET() {
       id: true, name: true, description: true, sessionCount: true,
       weeksBetween: true, durationMins: true, bufferMins: true, sessionType: true,
       priceCents: true, selfBookRequiresApproval: true,
+      // WHEN this one may be booked. Sent so any picker built off this list
+      // narrows to the same times the POST above will accept.
+      bookingWindowMode: true, bookingWindowDays: true, bookingWindowStart: true,
+      bookingWindowEnd: true, bookingWindowTimes: true,
     },
   })
-  return NextResponse.json(packages)
+  return NextResponse.json(
+    packages.map(p => ({ ...p, bookingWindow: packageBookingWindow(p) })),
+  )
 }
 
 const schema = z.object({
@@ -110,21 +116,39 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Pick a start time in the future' }, { status: 400 })
   }
 
-  // Defense-in-depth: never trust the client's chosen time. Reject any start
-  // that doesn't sit fully inside one of the trainer's published availability
-  // windows (in the trainer's timezone) and outside their blackouts.
+  // Defense-in-depth: never trust the client's chosen time. THIS is where the
+  // rule lives, not in the picker — the screen won't offer a bad time, but a
+  // crafted POST doesn't come from the screen. Three gates, applied by the one
+  // resolver the picker itself filters with (lib/package-booking-window):
+  //
+  //   1. the start sits fully inside the trainer's published availability, in
+  //      the trainer's timezone, and outside their blackouts;
+  //   2. it doesn't collide with an existing booking — the trainer runs one
+  //      session at a time, and someone may have taken it since the picker
+  //      loaded. Buffers count on both sides: this package's own turnaround
+  //      gap, and the gap hanging off each existing booking;
+  //   3. it's inside THIS offering's booking window, when it has one. That gate
+  //      only ever removes times 1 and 2 already allowed — a window can never
+  //      conjure an hour the trainer isn't free for.
   const avail = await getTrainerAvailabilityForClient(ctx.clientId)
   if (!avail) return NextResponse.json({ error: 'Unauthorised' }, { status: 401 })
   const { dateStr, minuteOfDay } = utcToZonedDateAndMinutes(start, avail.tz)
-  if (!isTimeWithinAvailability(avail.slots, dateStr, minuteOfDay, pkg.durationMins, avail.blackouts)) {
-    return NextResponse.json({ error: "That time isn't available" }, { status: 400 })
-  }
-  // The trainer runs one session at a time — reject a start that collides with
-  // an existing booking (someone may have grabbed it since the picker loaded).
-  // Buffers count on both sides: this package's own turnaround gap, and the gap
-  // hanging off each existing booking.
-  if (overlapsBusy(avail.busy, dateStr, minuteOfDay, pkg.durationMins, pkg.bufferMins)) {
-    return NextResponse.json({ error: "That time's just been taken" }, { status: 400 })
+  const check = checkBookableStart({
+    slots: avail.slots,
+    blackouts: avail.blackouts,
+    busy: avail.busy,
+    dateStr,
+    startMin: minuteOfDay,
+    durationMins: pkg.durationMins,
+    bufferMins: pkg.bufferMins,
+    window: packageBookingWindow(pkg),
+  })
+  if (!check.ok) {
+    const message =
+      check.reason === 'taken' ? "That time's just been taken"
+      : check.reason === 'outside-window' ? "This one isn't offered at that time"
+      : "That time isn't available"
+    return NextResponse.json({ error: message }, { status: 400 })
   }
 
   const dates = generateSessionDates(start, pkg.sessionCount, pkg.weeksBetween)

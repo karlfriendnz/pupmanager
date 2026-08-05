@@ -6,6 +6,7 @@ import { getActiveClient } from '@/lib/client-context'
 import { todayInTz } from '@/lib/timezone'
 import { slotAppliesOnDate, isBlackoutDate } from '@/lib/availability'
 import { getTrainerAvailabilityForClient } from '@/lib/client-availability'
+import { packageBookingWindow } from '@/lib/package-booking-window'
 import { loadPublishedMemberships } from '@/lib/client-memberships'
 import { PACKAGES_HIDDEN_FROM_CLIENTS } from '@/lib/feature-flags'
 import { mergeClientDogs } from '@/lib/dogs'
@@ -127,6 +128,11 @@ export default async function MyAvailabilityPage() {
       id: true, name: true, imageUrl: true, description: true, sessionCount: true, weeksBetween: true,
       durationMins: true, bufferMins: true, sessionType: true, priceCents: true,
       specialPriceCents: true, selfBookRequiresApproval: true, allowWaitlist: true,
+      // WHEN each one may be booked. Resolved below into the same window the
+      // self-book route re-checks against, so the picker can't offer a time
+      // the POST will refuse.
+      bookingWindowMode: true, bookingWindowDays: true, bookingWindowStart: true,
+      bookingWindowEnd: true, bookingWindowTimes: true,
     },
   })
   const packages: WizardPackage[] = rawPackages.map(p => ({
@@ -142,6 +148,7 @@ export default async function MyAvailabilityPage() {
     priceCents: p.specialPriceCents ?? p.priceCents,
     selfBookRequiresApproval: p.selfBookRequiresApproval,
     allowWaitlist: p.allowWaitlist,
+    bookingWindow: packageBookingWindow(p),
   }))
 
   // Open group classes the client can join themselves.

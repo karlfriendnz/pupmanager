@@ -51,6 +51,15 @@ enum SessionType {
   VIRTUAL
 }
 
+/// When a client may self-book a 1:1 offering. See Package.bookingWindowMode.
+/// ANY_TIME is the default and the behaviour of every offering created before
+/// this existed — the client picks from the trainer's general availability.
+enum PackageBookingMode {
+  ANY_TIME
+  WEEKLY_WINDOW
+  EXACT_TIMES
+}
+
 enum SessionStatus {
   UPCOMING
   COMPLETED
@@ -2135,6 +2144,34 @@ model Package {
   // (false). Only meaningful when clientSelfBook is true.
   clientSelfBook           Boolean     @default(false)
   selfBookRequiresApproval Boolean     @default(true)
+  /// WHEN a client may self-book this 1:1 offering. A third, independent
+  /// dimension of self-booking: clientSelfBook says whether they can,
+  /// selfBookRequiresApproval says what happens after they do, and this says
+  /// which times were ever on offer.
+  ///
+  /// ANY_TIME — the default, and what every row written before this means:
+  /// the client picks out of the trainer's general availability, unchanged.
+  /// WEEKLY_WINDOW — only bookingWindowDays, between bookingWindowStart and
+  /// bookingWindowEnd ("Tuesdays and Thursdays, 9am–1pm").
+  /// EXACT_TIMES — only the named starts in bookingWindowTimes ("Tue 9:00,
+  /// Tue 10:30, Thu 14:00").
+  ///
+  /// A window NARROWS and never widens. The trainer's availability, their
+  /// blackouts and everything already in the diary are applied FIRST and still
+  /// remove a slot — see lib/package-booking-window.ts, which is the only
+  /// place that reads these columns.
+  ///
+  /// Modelled on BookingPage.availDays/availStartTime/availEndTime rather than
+  /// on PackageSessionSlot: those rows GENERATE drop-in sessions, and a 1:1
+  /// booking window generates nothing.
+  bookingWindowMode        PackageBookingMode @default(ANY_TIME)
+  /// ISO weekdays (1=Mon..7=Sun) the WEEKLY_WINDOW covers. Ignored otherwise.
+  bookingWindowDays        Json        @default("[]")
+  /// "HH:MM" 24h bounds of the WEEKLY_WINDOW. The whole session must fit.
+  bookingWindowStart       String?
+  bookingWindowEnd         String?
+  /// EXACT_TIMES: `[{ "day": 1, "time": "09:00" }]`, ISO weekday + 24h start.
+  bookingWindowTimes       Json        @default("[]")
   /// The instant this offering starts being visible to CLIENTS. null — the
   /// default and what every existing row means — is "visible immediately".
   ///

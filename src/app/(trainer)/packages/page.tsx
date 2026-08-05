@@ -6,6 +6,7 @@ import { PackagesView } from './packages-view'
 import { isPackagePast, type PackageAssignment } from './past-packages'
 import { notYetShowingBadge, visibleFromDateStr } from '@/lib/offering-visibility'
 import { listOfferingTags } from '@/lib/tags'
+import { packageBookingWindow } from '@/lib/package-booking-window'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: '1:1 Sessions' }
@@ -96,6 +97,10 @@ export default async function PackagesPage({
         publicEnrollment: p.publicEnrollment,
         clientSelfBook: p.clientSelfBook,
         selfBookRequiresApproval: p.selfBookRequiresApproval,
+        // Loaded so the list's inline editor reopens on the window that is
+        // actually stored — a form that didn't load it would send "any time"
+        // back and quietly reopen a restricted offering.
+        bookingWindow: packageBookingWindow(p),
         requirePayment: p.requirePayment,
         visibleFromDate: visibleFromDateStr(p.visibleFrom, tz),
         // Computed here, where the instant is — see notYetShowingBadge.

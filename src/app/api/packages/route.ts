@@ -6,8 +6,9 @@ import { z } from 'zod'
 import { MAX_BUFFER_MINS } from '@/lib/buffer'
 import {
   slotSchema, replacePackageSlots, derivedDropInFields, runStartFromSlots,
-  ticketTierSchema, replaceTicketTiers,
+  ticketTierSchema, replaceTicketTiers, bookingWindowSchema,
 } from '@/lib/package-slots'
+import { validateBookingWindow, bookingWindowColumns, bookingWindowInput } from '@/lib/package-booking-window'
 import { createClassRunIn } from '@/lib/class-runs'
 import { syncClassSessions } from '@/lib/class-session-sync'
 import { isValidSpecialPrice, SPECIAL_PRICE_TOO_HIGH } from '@/lib/special-price'
@@ -58,6 +59,10 @@ const schema = z.object({
   publicEnrollment: z.boolean().optional(),
   clientSelfBook: z.boolean().optional(),
   selfBookRequiresApproval: z.boolean().optional(),
+  // WHEN a client may self-book this. Omitted = ANY_TIME, which is what every
+  // offering created before this meant. Validated by the shared guard below,
+  // not just by the form (AGENTS.md #3).
+  bookingWindow: bookingWindowSchema.optional(),
   // The calendar DAY the trainer wants clients to start seeing this, in their
   // own zone. null / omitted = visible immediately, which is the default and
   // what every offering built before this meant. Resolved to the instant that
@@ -143,6 +148,11 @@ export async function POST(req: Request) {
   if (parsed.data.sessionSlots?.some(s => !isValidSpecialPrice(s.priceCents, s.specialPriceCents))) {
     return NextResponse.json({ error: SPECIAL_PRICE_TOO_HIGH }, { status: 400 })
   }
+  // When clients may book this. The form checks the same thing with the same
+  // function, but the form is not what makes it true.
+  const bookingWindow = bookingWindowInput(parsed.data.bookingWindow)
+  const windowError = validateBookingWindow(bookingWindow)
+  if (windowError) return NextResponse.json({ error: windowError }, { status: 400 })
 
   // Append new packages at the end of the list
   const max = await prisma.package.aggregate({
@@ -214,6 +224,9 @@ export async function POST(req: Request) {
         publicEnrollment: parsed.data.publicEnrollment ?? false,
         clientSelfBook: parsed.data.clientSelfBook ?? false,
         selfBookRequiresApproval: parsed.data.selfBookRequiresApproval ?? true,
+        // Every mode clears the other modes' fields, so an offering can never
+        // carry a stale window a later mode change would resurrect.
+        ...bookingWindowColumns(bookingWindow),
         visibleFrom: visibleFromInstant(parsed.data.visibleFromDate, trainerTz),
         xeroAccountCode: parsed.data.xeroAccountCode || null,
         requirePayment: parsed.data.requirePayment ?? null,

@@ -34,6 +34,7 @@ vi.mock('@/lib/membership', async (orig) => ({
 
 import { prisma } from '@/lib/prisma'
 import { PATCH } from '@/app/api/packages/[packageId]/route'
+import { packageBookingWindow, ANY_TIME_WINDOW } from '@/lib/package-booking-window'
 
 const created: string[] = []
 
@@ -183,6 +184,62 @@ describe('an offering edit reaches the database', () => {
     const after = await prisma.classRun.findUnique({ where: { id: run.id }, select: { capacity: true } })
     expect(pkg?.capacity, 'package.capacity').toBe(14)
     expect(after?.capacity, 'classRun.capacity on a slot-scheduled run').toBe(14)
+  })
+
+  // ── When clients can book a 1:1 ──────────────────────────────────────────
+  // The window is five columns, two of them JSON, and the mode clears the
+  // others' — exactly the shape that returns 200 and stores half of itself.
+  // Set it, read the ROW back, resolve it through the reader the client picker
+  // and the self-book route use, and compare.
+  it('saves a weekly booking window and reads it back identically', async () => {
+    const id = await makeOffering('TEST window weekly', false, false)
+    const res = await patch(id, {
+      bookingWindow: { mode: 'WEEKLY_WINDOW', days: [4, 2], startTime: '09:00', endTime: '13:00' },
+    })
+    expect(res.status).toBe(200)
+    const row = await prisma.package.findUniqueOrThrow({ where: { id } })
+    expect(row.bookingWindowMode).toBe('WEEKLY_WINDOW')
+    expect(packageBookingWindow(row)).toEqual({
+      mode: 'WEEKLY_WINDOW', days: [2, 4], startTime: '09:00', endTime: '13:00', times: [],
+    })
+  })
+
+  it('saves named exact start times and reads them back identically', async () => {
+    const id = await makeOffering('TEST window exact', false, false)
+    const res = await patch(id, {
+      bookingWindow: {
+        mode: 'EXACT_TIMES',
+        times: [{ day: 4, time: '14:00' }, { day: 2, time: '09:00' }, { day: 2, time: '10:30' }],
+      },
+    })
+    expect(res.status).toBe(200)
+    const row = await prisma.package.findUniqueOrThrow({ where: { id } })
+    expect(packageBookingWindow(row)).toEqual({
+      mode: 'EXACT_TIMES', days: [], startTime: null, endTime: null,
+      times: [{ day: 2, time: '09:00' }, { day: 2, time: '10:30' }, { day: 4, time: '14:00' }],
+    })
+  })
+
+  it('switching back to any-time clears the stored window in the database', async () => {
+    const id = await makeOffering('TEST window clear', false, false)
+    expect((await patch(id, {
+      bookingWindow: { mode: 'EXACT_TIMES', times: [{ day: 2, time: '09:00' }] },
+    })).status).toBe(200)
+    expect((await patch(id, { bookingWindow: { mode: 'ANY_TIME' } })).status).toBe(200)
+    const row = await prisma.package.findUniqueOrThrow({ where: { id } })
+    expect(row.bookingWindowMode).toBe('ANY_TIME')
+    expect(row.bookingWindowTimes).toEqual([])
+    expect(row.bookingWindowDays).toEqual([])
+    expect(row.bookingWindowStart).toBeNull()
+    expect(row.bookingWindowEnd).toBeNull()
+  })
+
+  it('a brand-new offering reads back as ANY_TIME with no migration of intent', async () => {
+    // Every row that existed before this feature means "any time I'm free".
+    const id = await makeOffering('TEST window default', false, false)
+    const row = await prisma.package.findUniqueOrThrow({ where: { id } })
+    expect(row.bookingWindowMode).toBe('ANY_TIME')
+    expect(packageBookingWindow(row)).toEqual(ANY_TIME_WINDOW)
   })
 
   it('saves capacity on a group offering that has no run yet', async () => {
