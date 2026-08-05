@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { TryFlow } from './try-flow'
-import { TRY_MARKETING, TRY_TERMS } from '@/lib/demo-consent'
+import { TRY_TERMS_V2 } from '@/lib/demo-consent'
 import { PERSONAS } from '@/lib/onboarding-recommendations'
 import { normaliseCampaign, normaliseSource } from '@/lib/demo-lead'
 
@@ -36,8 +36,7 @@ export default async function TryPage({
   const params = await searchParams
   return (
     <TryFlow
-      terms={TRY_TERMS}
-      marketing={TRY_MARKETING}
+      terms={TRY_TERMS_V2}
       personas={PERSONAS}
       source={normaliseSource(params.src)}
       campaign={normaliseCampaign(params.ev) ?? ''}

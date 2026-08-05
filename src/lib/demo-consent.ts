@@ -29,7 +29,38 @@ export type ConsentBlock = {
   required: boolean
 }
 
-/** The terms-of-use consent. Required — no tick, no sandbox. */
+/**
+ * The one tick box a visitor sees (Karl, 2026-08-06: "there should only be one
+ * tick box... the marketing terms should be inside here").
+ *
+ * It mentions product email, and it deliberately does NOT claim marketing
+ * consent: `marketingOptIn` stays false for anyone who agrees to this. Ticking
+ * a REQUIRED box cannot be "freely given" consent under GDPR, so recording it
+ * as consent would produce a database full of permissions that evaporate the
+ * moment one is questioned — and the marketing database is the point of the
+ * whole exercise. Product email to a business contact who handed it over at a
+ * stand rides on legitimate interest with an unsubscribe in every message.
+ *
+ * v2 rather than an edit of v1: see the append-only note above.
+ */
+export const TRY_TERMS_V2: ConsentBlock = {
+  id: 'try-terms-v2',
+  label: 'I agree to the terms',
+  required: true,
+  text:
+    'This is a demo of PupManager. Everything in it is made-up practice data. ' +
+    'Please do not put real client, dog, health or payment details into it. ' +
+    'The demo workspace and everything you do in it is deleted when you leave, ' +
+    'or automatically a short time later. It cannot send emails or messages to ' +
+    'anyone. We keep the name, business name and email you gave us on this ' +
+    'form, and we may email you about PupManager — you can stop that at any ' +
+    'time using the unsubscribe link in any message. We do not sell or share ' +
+    'your details with anyone else. We look after your details under our ' +
+    'Privacy Policy, and you can ask us to delete them at any time by emailing ' +
+    'hello@pupmanager.com.',
+}
+
+/** Superseded by TRY_TERMS_V2. Kept so existing records still resolve. */
 export const TRY_TERMS: ConsentBlock = {
   id: 'try-terms-v1',
   label: 'I agree to the demo terms',
@@ -62,7 +93,16 @@ export const TRY_MARKETING: ConsentBlock = {
 }
 
 /** Every consent block ever published, old versions included. Append only. */
-export const CONSENT_BLOCKS: ConsentBlock[] = [TRY_TERMS, TRY_MARKETING]
+export const CONSENT_BLOCKS: ConsentBlock[] = [TRY_TERMS_V2, TRY_TERMS, TRY_MARKETING]
+
+/**
+ * What the form actually shows today — one box.
+ *
+ * Separate from CONSENT_BLOCKS on purpose: that list can only ever grow,
+ * because it is what `consentText(id)` reads to explain a record written two
+ * years ago. This is the current form, and it is allowed to shrink.
+ */
+export const ACTIVE_CONSENT_BLOCKS: ConsentBlock[] = [TRY_TERMS_V2]
 
 /**
  * What we say when somebody taps "Start my own account" from inside the demo.

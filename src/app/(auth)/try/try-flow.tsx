@@ -22,13 +22,11 @@ type Step = 'details' | 'persona' | 'launching'
 
 export function TryFlow({
   terms,
-  marketing,
   personas,
   source,
   campaign,
 }: {
   terms: ConsentBlock
-  marketing: ConsentBlock
   personas: Persona[]
   source: string
   campaign: string
@@ -38,9 +36,7 @@ export function TryFlow({
   const [companyName, setCompanyName] = useState('')
   const [email, setEmail] = useState('')
   const [acceptTerms, setAcceptTerms] = useState(false)
-  const [marketingOptIn, setMarketingOptIn] = useState(false)
   const [showTerms, setShowTerms] = useState(false)
-  const [showMarketing, setShowMarketing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -58,8 +54,11 @@ export function TryFlow({
           email,
           acceptTerms,
           termsVersion: terms.id,
-          marketingOptIn,
-          marketingVersion: marketing.id,
+          // Not claimed. The one tick box is REQUIRED, and a required tick
+          // cannot be freely-given consent — recording it as such would fill
+          // the marketing database with permissions that fall over the first
+          // time one is questioned.
+          marketingOptIn: false,
           source,
           campaign: campaign || undefined,
         }),
@@ -196,13 +195,6 @@ export function TryFlow({
           open={showTerms}
           onToggleOpen={() => setShowTerms(v => !v)}
           required
-        />
-        <ConsentRow
-          block={marketing}
-          checked={marketingOptIn}
-          onChange={setMarketingOptIn}
-          open={showMarketing}
-          onToggleOpen={() => setShowMarketing(v => !v)}
         />
       </div>
 
