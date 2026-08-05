@@ -272,7 +272,7 @@ export function FormEditorShell({
         ) : null}
 
         <div className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white [&>section+section]:border-t [&>section+section]:border-slate-200">
-          <div className="sticky top-0 z-20 flex items-center gap-2 rounded-t-xl border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-5">
+          <div className="sticky top-0 z-20 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-t-xl border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:flex-nowrap sm:px-5">
             {/* Status and its actions live IN the bar, not in a card above it
                 (Karl, 2026-08-06: "1 line?"). Two stacked strips of chrome — one
                 saying Published, one holding Save — cost about 120px of the
@@ -324,7 +324,7 @@ export function FormEditorShell({
                 <button
                   type="button"
                   onClick={() => setConfirmDelete(true)}
-                  className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50"
+                  className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50"
                 >
                   <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
                   Delete
@@ -332,10 +332,17 @@ export function FormEditorShell({
               )
             )}
             {extraActions}
-            <Button variant="ghost" size="sm" onClick={onCancel} className={onDelete ? '' : 'ml-auto'}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onCancel}
+              className={`shrink-0 whitespace-nowrap ${onDelete ? '' : 'ml-auto'}`}
+            >
               Cancel
             </Button>
-            <Button size="sm" loading={saving} onClick={onSave}>{saveLabel}</Button>
+            <Button size="sm" loading={saving} onClick={onSave} className="shrink-0 whitespace-nowrap">
+              {saveLabel}
+            </Button>
           </div>
 
           {error && (

@@ -494,9 +494,20 @@ export function FormBuilder({
           saveLabel={saveLabel}
           // The rail belongs to the form, not to its settings — there is nothing
           // on the Settings panel to drag a field onto.
-          sidebar={showQuestions ? palette('rail') : undefined}
-          // A wizard step with no palette should not sit beside a column-shaped
-          // hole — see the prop's own note.
+          //
+          // AND NEVER IN WIZARD MODE. Karl, 2026-08-06, with step 1 and step 2
+          // side by side: "can these steps be the same layout please i like the
+          // full layout". On step 1 the panel is full width and the numbered rail
+          // reads as its header; the moment step 2 put a 17rem palette column on
+          // the left, the panel was shoved right and the numbers lined up with
+          // nothing. Same screen, two layouts, one step apart.
+          //
+          // So the palette stops being a column and becomes a full-screen picker
+          // (AGENTS.md: "Full screens, not dropdowns … Create, search and
+          // anything with more than ~3 choices takes the whole screen"). That is
+          // also the only version that ever worked on a phone, where a 17rem left
+          // rail was never going to fit.
+          sidebar={showQuestions && !wizard ? palette('rail') : undefined}
           holdSidebarColumn={!wizard}
         >
           {(showQuestions || showAbove) ? (
@@ -508,28 +519,44 @@ export function FormBuilder({
                 title={questionsTitle}
                 hint={questionsHint}
                 action={
-                  <>
-                    {/* Append-to-the-end, sitting with the list it appends to.
-                        The rail's rows are "add THIS kind, HERE"; this is the
-                        no-decision one. */}
+                  wizard ? (
+                    // There is no rail to drag from in wizard mode, so this is
+                    // the one and only way to add a question — which is why it
+                    // opens the picker rather than silently appending a long-text
+                    // box. A button that adds an unlabelled question is fine as a
+                    // shortcut NEXT TO a palette, and a trap as the only door.
                     <button
                       type="button"
-                      onClick={() => add({ kind: 'type', type: 'LONG_TEXT' })}
+                      onClick={() => setPaletteSheetOpen(true)}
                       className={FORM_QUIET_ACTION}
                     >
                       <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
                       Add question
                     </button>
-                    {/* Phones have no rail, so this is where the palette lives. */}
-                    <button
-                      type="button"
-                      onClick={() => setPaletteSheetOpen(true)}
-                      className={`${FORM_QUIET_ACTION} lg:hidden`}
-                    >
-                      <List className="h-3.5 w-3.5" strokeWidth={1.75} />
-                      Add a field
-                    </button>
-                  </>
+                  ) : (
+                    <>
+                      {/* Append-to-the-end, sitting with the list it appends to.
+                          The rail's rows are "add THIS kind, HERE"; this is the
+                          no-decision one. */}
+                      <button
+                        type="button"
+                        onClick={() => add({ kind: 'type', type: 'LONG_TEXT' })}
+                        className={FORM_QUIET_ACTION}
+                      >
+                        <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        Add question
+                      </button>
+                      {/* Phones have no rail, so this is where the palette lives. */}
+                      <button
+                        type="button"
+                        onClick={() => setPaletteSheetOpen(true)}
+                        className={`${FORM_QUIET_ACTION} lg:hidden`}
+                      >
+                        <List className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        Add a field
+                      </button>
+                    </>
+                  )
                 }
               >
                 <FormCanvas>
@@ -580,7 +607,7 @@ export function FormBuilder({
 
       {paletteSheetOpen && (
         <FullScreenSheet
-          title="Add a field"
+          title={wizard ? 'Add a question' : 'Add a field'}
           sub="Tap one to add it to the end of your form"
           onClose={() => setPaletteSheetOpen(false)}
         >
