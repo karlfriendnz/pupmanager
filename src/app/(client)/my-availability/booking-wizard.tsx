@@ -897,14 +897,18 @@ function Shell({ step, onBack, children }: {
   const labels = ['Choose', 'Details', 'Confirm']
   return (
     <div className="px-4 pt-5 pb-10 max-w-xl mx-auto w-full">
-      {onBack && (
-        <button onClick={onBack} aria-label="Back" className="-ml-1.5 mb-1 flex h-9 w-9 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100">
-          <ChevronLeft className="h-5 w-5" />
-        </button>
-      )}
+      {/* Back sits on the same line as the track, immediately left of step 1 —
+          going back IS moving along this track, and on its own row above it it
+          read as belonging to the page rather than to the steps. */}
+      <div className="flex items-center gap-1">
+        {onBack && (
+          <button onClick={onBack} aria-label="Back" className="-ml-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100">
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+        )}
 
-      {step !== null && (
-        <div className="flex items-center gap-2" aria-hidden="true">
+        {step !== null && (
+        <div className="flex flex-1 items-center gap-2" aria-hidden="true">
           {labels.map((label, i) => {
             const n = (i + 1) as 1 | 2 | 3
             const active = n === step
@@ -929,8 +933,9 @@ function Shell({ step, onBack, children }: {
               </div>
             )
           })}
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
       <div className="mt-6">{children}</div>
     </div>
