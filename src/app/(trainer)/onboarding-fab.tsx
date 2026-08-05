@@ -143,6 +143,13 @@ export function OnboardingFab({ nextStep, steps, totalSteps }: Props) {
   const inSettings =
     pathname === '/settings' || pathname.startsWith('/settings/') ||
     pathname === '/forms' || pathname.startsWith('/forms/')
+  // No coach mark on a form EDITOR (Karl, 2026-08-06: "not helpful"). The
+  // banner told you to look through the questions and hit Publish while sitting
+  // above a screen whose own three numbered steps say the same thing better —
+  // it was a second, vaguer set of instructions competing with the first. The
+  // hint still shows everywhere else, including the forms LIST that sends you
+  // here.
+  const onFormEditor = /^\/forms\/(client|session|enquiry)\//.test(pathname)
   const [mounted, setMounted] = useState(false)
   const [celebrating, setCelebrating] = useState(false)
   // usePathname / useSearchParams handle the path + query, but the hash
@@ -176,6 +183,7 @@ export function OnboardingFab({ nextStep, steps, totalSteps }: Props) {
 
   if (!mounted) return null
   if (pathname === '/dashboard') return null
+  if (onFormEditor) return null
   // Hide on the billing surfaces — the trainer's there to deal with
   // payment, not to be nudged into onboarding chores. The trial-status
   // chip + the page itself are already telegraphing what to do here.

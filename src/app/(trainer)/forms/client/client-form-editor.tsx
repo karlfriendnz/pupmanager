@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, Copy, ExternalLink, Link2, Plus, Trash2 } from 'lucide-react'
+import { Check, Copy, ExternalLink, Eye, Link2, Plus, Trash2, X } from 'lucide-react'
+import { FormRunner } from '@/components/shared/form-runner'
+import { ModalPortal } from '@/components/shared/modal-portal'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { isRichTextEmpty } from '@/lib/rich-text'
 import {
@@ -91,6 +93,7 @@ export function ClientFormEditor({
     initial?.questions ?? [createQuestion('SHORT_TEXT', newQuestionId())]
   )
   const [steps, setSteps] = useState<FormStep[]>(initial?.steps ?? [])
+  const [previewing, setPreviewing] = useState(false)
   const [activeStep, setActiveStep] = useState<string | null>(initial?.steps?.[0]?.id ?? null)
   const [thankYouTitle, setThankYouTitle] = useState(initial?.thankYouTitle ?? '')
   const [thankYouMessage, setThankYouMessage] = useState(initial?.thankYouMessage ?? '')
@@ -241,7 +244,57 @@ export function ClientFormEditor({
   const stepFallback = steps[0]?.id ?? null
 
   return (
+    <>
+    {previewing && (
+      // The preview IS the client's renderer, not a drawing of it — the same
+      // FormRunner the intake gate and the public enquiry page use. A preview
+      // built from its own markup is a preview that drifts, and the first thing
+      // it stops showing you is the thing you changed.
+      <ModalPortal>
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/40 p-0 backdrop-blur-sm sm:p-6">
+          <div className="no-scrollbar flex h-full w-full max-w-2xl flex-col overflow-y-auto bg-white sm:h-auto sm:max-h-[90vh] sm:rounded-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 px-5 py-3 backdrop-blur">
+              <p className="text-sm font-semibold text-slate-900">Preview — what they will see</p>
+              <button
+                type="button"
+                onClick={() => setPreviewing(false)}
+                aria-label="Close preview"
+                className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-700"
+              >
+                <X className="h-4 w-4" strokeWidth={1.75} />
+              </button>
+            </div>
+            <div className="p-5">
+              <FormRunner
+                form={{ id: initial?.id ?? 'preview', name, description, questions, steps }}
+                /* The same map the intake gate builds, from the fields this
+                   editor already has in hand. */
+                linkedFields={Object.fromEntries(
+                  customFields.map(f => [f.id, { label: f.label, type: f.type, options: f.options ?? [] }]),
+                )}
+                businessName=""
+                trainerLogoUrl={null}
+                heading={name || 'Your form'}
+                /* Nothing is saved from a preview — it answers "what does this
+                   look like", not "what happens when they send it". */
+                onSubmit={async () => 'This is a preview — nothing was sent.'}
+              />
+            </div>
+          </div>
+        </div>
+      </ModalPortal>
+    )}
     <FormBuilder
+      extraActions={
+        <button
+          type="button"
+          onClick={() => setPreviewing(true)}
+          className="mr-auto inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+        >
+          <Eye className="h-3.5 w-3.5" strokeWidth={1.75} />
+          Preview
+        </button>
+      }
       // Numbered steps rather than two tabs (Karl, 2026-08-05). A client form
       // has three real parts — what it is, what it asks, and what happens when
       // it comes back — and the tabs hid the third one behind a word most
@@ -286,48 +339,7 @@ export function ClientFormEditor({
       onSave={save}
       saving={saving}
       saveLabel={initial ? 'Save changes' : 'Create form'}
-      above={<>
-      <FormEditorSection title="Basics">
-        <FormField label="Form name" required>
-          <input
-            type="text"
-            value={name}
-            onChange={e => { setName(e.target.value); setError(null) }}
-            placeholder="e.g. New client intake"
-            aria-label="Form name"
-            className={FORM_INPUT}
-          />
-        </FormField>
-        <FormField label="Intro" hint="Optional — shown above the questions, to whoever fills the form in.">
-          <RichTextEditor
-            value={description}
-            onChange={html => setDescription(isRichTextEmpty(html) ? '' : html)}
-            minHeight={120}
-            theme="light"
-          />
-        </FormField>
-      </FormEditorSection>
-
-      <FormEditorSection
-        title="Where it's used"
-        hint="A form can do both — the same questions, asked in two places."
-      >
-        <FormRowGroup>
-          <FormToggleRow
-            label="Client intake form"
-            hint="Pick it when you invite a client. They fill it in before they reach their home screen."
-            checked={asIntake}
-            onChange={v => { setAsIntake(v); setError(null) }}
-          />
-          <FormToggleRow
-            label="Website enquiry form"
-            hint="Gives the form a public link you can share or embed. Submissions land in your enquiries."
-            checked={asEnquiry}
-            onChange={v => { setAsEnquiry(v); setError(null) }}
-          />
-        </FormRowGroup>
-      </FormEditorSection>
-
+      beforeQuestions={<>
       {/* Pages — a long intake reads better broken up, the way the field
           library's sections already are. Hidden until the trainer asks for it:
           most forms are one page and shouldn't pay for the concept. */}
@@ -381,6 +393,49 @@ export function ClientFormEditor({
           </FormRowGroup>
         )}
       </FormEditorSection>
+      </>}
+      above={<>
+      <FormEditorSection title="Basics">
+        <FormField label="Form name" required>
+          <input
+            type="text"
+            value={name}
+            onChange={e => { setName(e.target.value); setError(null) }}
+            placeholder="e.g. New client intake"
+            aria-label="Form name"
+            className={FORM_INPUT}
+          />
+        </FormField>
+        <FormField label="Intro" hint="Optional — shown above the questions, to whoever fills the form in.">
+          <RichTextEditor
+            value={description}
+            onChange={html => setDescription(isRichTextEmpty(html) ? '' : html)}
+            minHeight={120}
+            theme="light"
+          />
+        </FormField>
+      </FormEditorSection>
+
+      <FormEditorSection
+        title="Where it's used"
+        hint="A form can do both — the same questions, asked in two places."
+      >
+        <FormRowGroup>
+          <FormToggleRow
+            label="Client intake form"
+            hint="Pick it when you invite a client. They fill it in before they reach their home screen."
+            checked={asIntake}
+            onChange={v => { setAsIntake(v); setError(null) }}
+          />
+          <FormToggleRow
+            label="Website enquiry form"
+            hint="Gives the form a public link you can share or embed. Submissions land in your enquiries."
+            checked={asEnquiry}
+            onChange={v => { setAsEnquiry(v); setError(null) }}
+          />
+        </FormRowGroup>
+      </FormEditorSection>
+
       </>}
       settingsLabel="Settings"
       settings={<>
@@ -508,5 +563,6 @@ export function ClientFormEditor({
       )}
       </>}
     />
+    </>
   )
 }

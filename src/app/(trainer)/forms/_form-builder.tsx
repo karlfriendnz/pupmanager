@@ -322,6 +322,8 @@ export function FormBuilder({
   questionsHint = 'Drag a question by its handle to reorder it.',
   // — the two panels —
   above,
+  beforeQuestions,
+  extraActions,
   settings,
   wizard = false,
   settingsLabel = 'Settings',
@@ -346,6 +348,16 @@ export function FormBuilder({
   questionsHint?: string
   /** The form's own sections — name, where it's used, pages. Above the questions. */
   above?: ReactNode
+  /**
+   * Renders WITH the questions rather than before the form.
+   *
+   * Splitting a form into pages is a thing you do while looking at the
+   * questions — it was on the first step, next to the form's name, where it
+   * meant nothing yet (Karl, 2026-08-06).
+   */
+  beforeQuestions?: ReactNode
+  /** Passed straight through to the action bar. */
+  extraActions?: ReactNode
   /**
    * Walk it in numbered steps instead of two tabs: the basics, then the
    * questions, then what happens afterwards.
@@ -476,6 +488,7 @@ export function FormBuilder({
           error={error}
           onDelete={onDelete}
           onCancel={onCancel}
+          extraActions={extraActions}
           onSave={onSave}
           saving={saving}
           saveLabel={saveLabel}
@@ -489,6 +502,7 @@ export function FormBuilder({
           {(showQuestions || showAbove) ? (
             <>
               {showAbove && above}
+              {showQuestions && beforeQuestions}
               {showQuestions && (
               <FormEditorSection
                 title={questionsTitle}

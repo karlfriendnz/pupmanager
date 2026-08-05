@@ -201,6 +201,7 @@ export function FormEditorShell({
   holdSidebarColumn = true,
   onDelete,
   onCancel,
+  extraActions,
   onSave,
   saving,
   saveLabel,
@@ -234,6 +235,8 @@ export function FormEditorShell({
   /** Omitted for a new form — there's nothing to delete yet. */
   onDelete?: () => Promise<void> | void
   onCancel: () => void
+  /** Anything that belongs beside Cancel and Save — e.g. Preview. */
+  extraActions?: React.ReactNode
   onSave: () => Promise<void> | void
   saving?: boolean
   saveLabel: string
@@ -274,13 +277,13 @@ export function FormEditorShell({
           So the first column is held open even when empty — the rail goes, and
           nothing else does. */}
       <div className={`grid gap-4 lg:items-start ${
-        sidebar || holdSidebarColumn ? 'lg:grid-cols-[15rem_minmax(0,1fr)]' : 'lg:grid-cols-1'
+        sidebar || holdSidebarColumn ? 'lg:grid-cols-[17rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(0,1fr)]' : 'lg:grid-cols-1'
       }`}>
         {sidebar ? (
           // Sticky so the palette is still there when you have scrolled to
           // question twelve. `no-scrollbar` because a visible rail here would be
           // the second scrollbar on screen, which Karl has banned outright.
-          <aside className="no-scrollbar hidden lg:sticky lg:top-4 lg:block lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
+          <aside className="no-scrollbar hidden lg:sticky lg:top-4 lg:block lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto">
             {sidebar}
           </aside>
         ) : holdSidebarColumn ? (
@@ -290,18 +293,7 @@ export function FormEditorShell({
         ) : null}
 
         <div className="flex min-w-0 flex-col rounded-xl border border-slate-200 bg-white [&>section+section]:border-t [&>section+section]:border-slate-200">
-          {error && (
-            <p
-              role="alert"
-              className="border-b border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600 sm:px-5"
-            >
-              {error}
-            </p>
-          )}
-
-          {children}
-
-          <div className="flex items-center gap-2 border-t border-slate-200 px-4 py-3 sm:px-5">
+          <div className="sticky top-0 z-20 flex items-center gap-2 rounded-t-xl border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:px-5">
             {onDelete && (
               confirmDelete ? (
                 <div className="mr-auto flex items-center gap-1">
@@ -336,11 +328,24 @@ export function FormEditorShell({
                 </button>
               )
             )}
+            {extraActions}
             <Button variant="ghost" size="sm" onClick={onCancel} className={onDelete ? '' : 'ml-auto'}>
               Cancel
             </Button>
             <Button size="sm" loading={saving} onClick={onSave}>{saveLabel}</Button>
           </div>
+
+          {error && (
+            <p
+              role="alert"
+              className="border-b border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600 sm:px-5"
+            >
+              {error}
+            </p>
+          )}
+
+          {children}
+
         </div>
       </div>
     </div>
