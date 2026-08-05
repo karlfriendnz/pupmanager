@@ -34,6 +34,13 @@ const GUARDS = [
   'guardAnyPermission', // "any one of these capabilities"
   'getGroupAccess',     // membership of a message group
   'guardTapToPay',      // the Terminal routes, on top of a same-origin check
+  // Either party to ONE booking request — the trainer whose request it is, or
+  // the client who made it. Both sides negotiate a time through the same
+  // endpoints, so neither `guardPermission` nor `getActiveClient` alone is the
+  // check; the resolver runs both and then proves the caller is a party to that
+  // row. Same shape as getGroupAccess above: a real guard, listed so this test
+  // recognises it. See lib/booking-negotiation-actor and its security test.
+  'resolveNegotiationActor',
 ]
 
 function routeFiles(dir = API, out: { path: string; src: string }[] = []) {
