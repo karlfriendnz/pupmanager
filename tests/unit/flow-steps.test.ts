@@ -44,6 +44,8 @@ import {
   flowTriggerFor,
   flowAnchorFor,
   isCronDelivered,
+  isClockRunnable,
+  isCronRunnable,
   availableSteps,
   nextStepFor,
   recordStepCompletion,
@@ -119,6 +121,45 @@ describe('isCronDelivered', () => {
 
   it('is false for a message the run unlocks rather than the clock', () => {
     expect(isCronDelivered({ kind: 'MESSAGE', trigger: 'ON_SIGNUP', direction: 'BEFORE_SESSION' })).toBe(false)
+  })
+})
+
+// Phase 2 splits the question in two, because "does the cron send a plain
+// message for this" and "does the cron do anything at all" stopped being the
+// same question the moment a form could be due before each class.
+describe('isClockRunnable', () => {
+  it('is true for the four kinds a timetable can mean something for', () => {
+    for (const kind of ['MESSAGE', 'FORM', 'UPLOAD', 'TASK'] as const) {
+      expect(isClockRunnable(kind), kind).toBe(true)
+    }
+  })
+
+  // "Choose an offering" in front of somebody already enrolled in it, fired off
+  // their own class reminder, is worse than nothing at all.
+  it('is false for the three that only make sense inside a journey', () => {
+    for (const kind of ['ACCOUNT', 'CHOOSE_OFFERING', 'APPROVAL'] as const) {
+      expect(isClockRunnable(kind), kind).toBe(false)
+    }
+  })
+})
+
+describe('isCronRunnable', () => {
+  it('takes a form due before each class', () => {
+    expect(isCronRunnable({ kind: 'FORM', trigger: null, direction: 'BEFORE_SESSION' })).toBe(true)
+    expect(isCronRunnable({ kind: 'TASK', trigger: null, direction: 'AFTER_SESSION' })).toBe(true)
+    expect(isCronRunnable({ kind: 'UPLOAD', trigger: null, direction: 'AFTER_PURCHASE' })).toBe(true)
+  })
+
+  it('leaves a person-anchored step to the run that owns it', () => {
+    for (const kind of ['MESSAGE', 'FORM', 'UPLOAD', 'TASK'] as const) {
+      expect(isCronRunnable({ kind, trigger: 'ON_ENQUIRY_SUBMITTED', direction: 'BEFORE_SESSION' }), kind).toBe(false)
+    }
+  })
+
+  it('is the wider of the two — a form step is runnable but is not a message', () => {
+    const formStep = { kind: 'FORM' as const, trigger: null, direction: 'BEFORE_SESSION' }
+    expect(isCronRunnable(formStep)).toBe(true)
+    expect(isCronDelivered(formStep)).toBe(false)
   })
 })
 

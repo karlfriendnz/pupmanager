@@ -239,6 +239,7 @@ enum NotificationType {
   WEEKLY_SUMMARY // Sunday-evening wrap of the week + week-ahead glance
   STREAK_UPDATE // daily nudge about the trainer's weekly engagement streak
   PLATFORM_ANNOUNCEMENT // a product update / "what's new" broadcast from PupManager
+  FLOW_STEP_WAITING // a flow has reached a step the TRAINER has to do — accept a time, approve a booking
   // ─── Client-facing (the dog owner) ───
   CLIENT_ADDED_TO_PLAN // trainer added the client to a session / package / class
   CLIENT_SESSION_DIGEST // morning summary of the day's sessions
@@ -3944,26 +3945,37 @@ model CommsFlowStep {
   @@map("comms_flow_steps")
 }
 
-// One row per (step, session, recipient) already sent — dedups the */5 cron so
+// One row per (step, anchor, recipient) already sent — dedups the */5 cron so
 // each message reaches each client exactly once even if ticks overlap.
 model CommsFlowSend {
   id         String   @id @default(cuid())
   stepId     String
-  // Exactly one anchor: the session a class/package step fired for, or the
-  // membership purchase a membership step fired for.
+  // Exactly one anchor: the session a class/package step fired for, the
+  // membership purchase a membership step fired for, or — since flows widened
+  // past the clock — the RUN a person-anchored step was asked of.
+  //
+  // The run anchor exists for the same reason the other two do. A journey's
+  // step is delivered when the previous one is finished, and "has this person
+  // already been asked" is re-derived on every advance; without a row to find,
+  // every advance would re-send the same "fill this in" notification. It is the
+  // exact mirror of FlowStepCompletion.runId — "we asked" to its "they did it".
   sessionId  String?
   purchaseId String?
+  runId      String?
   userId     String // the recipient's User.id
   sentAt     DateTime @default(now())
 
   step     CommsFlowStep       @relation(fields: [stepId], references: [id], onDelete: Cascade)
   session  TrainingSession?    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   purchase MembershipPurchase? @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  run      FlowRun?            @relation(fields: [runId], references: [id], onDelete: Cascade)
 
   @@unique([stepId, sessionId, userId])
   @@unique([stepId, purchaseId, userId])
+  @@unique([stepId, runId, userId])
   @@index([sessionId])
   @@index([purchaseId])
+  @@index([runId])
   @@map("comms_flow_sends")
 }
 
@@ -4037,6 +4049,8 @@ model FlowRun {
   enquiry     Enquiry?             @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
   currentStep CommsFlowStep?       @relation(fields: [currentStepId], references: [id], onDelete: SetNull)
   completions FlowStepCompletion[]
+  // What this run has already asked of them — see CommsFlowSend.runId.
+  sends       CommsFlowSend[]
 
   @@index([trainerId])
   @@index([formId])

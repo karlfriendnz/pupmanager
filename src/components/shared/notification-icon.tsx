@@ -1,7 +1,7 @@
 import {
   Bell, Dumbbell, CheckCircle2, MessageSquare, Inbox, UserPlus, Calendar, CalendarDays,
   FileText, Clock, Flame, ClipboardList, CalendarClock, CalendarX, ShoppingBag,
-  Megaphone, Wallet, KeyRound,
+  Megaphone, Wallet, KeyRound, Hourglass,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -25,6 +25,8 @@ const NOTIFICATION_ICONS: Record<string, LucideIcon> = {
   WEEKLY_SUMMARY: CalendarDays,
   STREAK_UPDATE: Flame,
   PLATFORM_ANNOUNCEMENT: Megaphone,
+  // Somebody is stopped on a step until you do your bit — a hand up, not a bell.
+  FLOW_STEP_WAITING: Hourglass,
   // Client-facing
   CLIENT_ADDED_TO_PLAN: ClipboardList,
   CLIENT_SESSION_DIGEST: Calendar,

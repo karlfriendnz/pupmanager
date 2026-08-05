@@ -519,6 +519,28 @@ export const NOTIFICATION_TYPES: Record<NotificationType, NotificationTypeMeta> 
     placeholders: [],
     sampleValues: {},
   },
+  FLOW_STEP_WAITING: {
+    type: 'FLOW_STEP_WAITING',
+    label: 'A flow is waiting on you',
+    description:
+      'One of your automated flows has reached a step you have to do — accepting a time, approving a booking — and the client cannot go any further until you have.',
+    trigger: 'event',
+    audience: 'trainer',
+    // A blocking step is somebody stuck on your screen, so it earns the bell,
+    // the phone and the inbox.
+    channels: ['IN_APP', 'PUSH', 'EMAIL'],
+    defaults: {
+      enabled: true,
+      title: '{{title}}',
+      body: '{{clientName}} — {{detail}}',
+    },
+    placeholders: ['clientName', 'title', 'detail'],
+    sampleValues: {
+      clientName: 'Sarah Wilkins',
+      title: 'A time to accept',
+      detail: 'Sarah has asked for Tuesday at 4pm.',
+    },
+  },
 }
 
 // Substitute {{placeholder}} tokens. Unknown placeholders are left as-is

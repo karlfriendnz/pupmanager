@@ -1,0 +1,13 @@
+-- A flow step whose ACTOR is the trainer.
+--
+-- "the person goes to a website, fills in a form … the trainer gets a
+-- notification, the trainer accepts the time or moves the time" (Karl). The
+-- last step of that journey is done by the OTHER SIDE, so it has to reach the
+-- trainer's own notification surface — their per-type toggles, their copy,
+-- their bell — rather than being pushed at the client through the comms-flow
+-- delivery path, which is the client's.
+--
+-- Postgres 12+ allows ADD VALUE inside the migration transaction as long as the
+-- new label is not USED in the same transaction — it isn't. IF NOT EXISTS keeps
+-- this idempotent against a dev DB already pushed from schema.prisma.
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'FLOW_STEP_WAITING';

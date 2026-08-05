@@ -15,7 +15,16 @@ import { sendPush } from './push'
 import { sendEmail, fromTrainer } from './email'
 import { richTextToPlain } from './rich-text'
 import { renderClientNotificationEmail } from './client-notification-email'
-import { flowAnchorFor } from './flow-steps'
+import { notifyTrainer } from './trainer-notify'
+import { isCronRunnable, availableSteps, advanceFlowRun } from './flow-steps'
+import {
+  safeFlowStepPayload,
+  flowStepConfigProblem,
+  uploadSpecFor,
+  taskSpecFor,
+  type FlowStepKind,
+  type FlowStepActor,
+} from './comms-flow-steps'
 import type { NotificationChannel } from '@/generated/prisma'
 
 // Placeholders a trainer can drop into a step's title/body.
@@ -218,6 +227,229 @@ async function deliver(args: {
   }
 }
 
+// ─── Doing a step ───────────────────────────────────────────────────────────
+//
+// A step used to be a message, so "process a step" meant "render it and push
+// it". It is now one step of a flow, and four kinds of it can come round on a
+// clock: a MESSAGE, a FORM to fill in, an UPLOAD to send, a TASK to practise.
+//
+// All four go out through `deliver()` — the same channels, the same opt-out
+// rules, the same email renderer. There is deliberately no second sender: the
+// difference between "here's a reminder" and "here's a form" is a link and some
+// default copy, and a second path would be a second place for a client's mute
+// to be forgotten.
+
+/** Where a step's notification takes them. */
+export function flowStepLink(kind: FlowStepKind, payload: unknown, fallback: string): string {
+  switch (kind) {
+    case 'FORM': {
+      const formId = safeFlowStepPayload('FORM', payload).payload.formId
+      // /form/<id> is the one URL in the app that renders a Form to a person.
+      return formId ? `/form/${encodeURIComponent(formId)}` : fallback
+    }
+    case 'UPLOAD':
+      // A dog photo belongs on the dog; anything else is answered where they
+      // were asked.
+      return uploadSpecFor(safeFlowStepPayload('UPLOAD', payload).payload).target === 'DOG_PHOTO'
+        ? '/my-dogs'
+        : fallback
+    case 'TASK':
+      return '/my-homework'
+    default:
+      return fallback
+  }
+}
+
+/**
+ * The words a non-MESSAGE step goes out with when the trainer wrote none.
+ *
+ * title/body are nullable precisely because a FORM step has no copy — but a
+ * notification still has to say something, and an empty push is worse than a
+ * plain one. A trainer who DOES write copy keeps theirs: this only fills in.
+ */
+export function flowStepCopy(
+  step: { kind: FlowStepKind; title: string | null; body: string | null; payload?: unknown },
+): { title: string; body: string } {
+  if (step.title?.trim() && step.body?.trim()) return { title: step.title, body: step.body }
+  switch (step.kind) {
+    case 'FORM':
+      return {
+        title: step.title?.trim() || 'A form to fill in',
+        body: step.body?.trim() || '{{business}} needs a few details from you — it only takes a minute.',
+      }
+    case 'UPLOAD': {
+      const spec = uploadSpecFor(safeFlowStepPayload('UPLOAD', step.payload).payload)
+      const ask = spec.label ?? (spec.target === 'DOG_PHOTO' ? 'a photo of {{dog}}' : 'a file')
+      return {
+        title: step.title?.trim() || (spec.target === 'DOG_PHOTO' ? 'A photo of {{dog}}, please' : 'Something to send us'),
+        body: step.body?.trim() || `Hi {{name}}, {{business}} has asked for ${ask}.`,
+      }
+    }
+    case 'TASK':
+      return {
+        title: step.title?.trim() || 'New homework from {{business}}',
+        body: step.body?.trim() || "Hi {{name}}, there's something new to practise with {{dog}}.",
+      }
+    default:
+      // A MESSAGE cannot be saved without both, and flowStepConfigProblem holds
+      // back a legacy row that has neither, so this is the belt to that braces.
+      return { title: step.title ?? '', body: step.body ?? '' }
+  }
+}
+
+/** Everything one step needs to be executed, however it was driven. */
+export interface ExecutableStep {
+  id: string
+  kind: FlowStepKind
+  actor: FlowStepActor
+  channels: NotificationChannel[]
+  important: boolean
+  title: string | null
+  body: string | null
+  emailBody?: string | null
+  payload?: unknown
+}
+
+/**
+ * Hand out a TASK step's homework.
+ *
+ * A library-backed step reads its text LIVE from the item at hand-out time and
+ * then SNAPSHOTS it onto the TrainingTask — the same two-step dance
+ * `suggestedHomeworkForSession` + `assignDefaults` do for an offering's
+ * defaults, and for the same reason: editing the library keeps the flow current
+ * without rewriting work already given out. There is no second kind of to-do in
+ * this app and this must not invent one.
+ *
+ * Returns false when there is nothing to hand out (a deleted library item, a
+ * client we can't place), so the caller doesn't record a send for a task that
+ * never landed.
+ */
+async function assignFlowTask(args: {
+  payload: unknown
+  clientId: string
+  dogId?: string | null
+  sessionId?: string | null
+  date: Date
+}): Promise<boolean> {
+  const spec = taskSpecFor(safeFlowStepPayload('TASK', args.payload).payload)
+  let { title, description, repetitions, videoUrl } = spec
+  if (spec.libraryTaskId) {
+    const item = await prisma.libraryTask.findUnique({
+      where: { id: spec.libraryTaskId },
+      select: { title: true, description: true, repetitions: true, videoUrl: true },
+    })
+    // The item was deleted out from under the step. Handing out an empty task
+    // is worse than handing out none.
+    if (!item) return false
+    ;({ title, description, repetitions, videoUrl } = item)
+  }
+  if (!title?.trim()) return false
+
+  // Same de-duplication as assignDefaults: matched on the library item where
+  // there is one and on the title otherwise, so a re-run never doubles up even
+  // if the send row is missed.
+  const existing = await prisma.trainingTask.findMany({
+    where: { clientId: args.clientId, sessionId: args.sessionId ?? null },
+    select: { title: true, libraryTaskId: true, order: true },
+  })
+  const dupe = spec.libraryTaskId
+    ? existing.some(t => t.libraryTaskId === spec.libraryTaskId)
+    : existing.some(t => t.title.toLocaleLowerCase('en-NZ') === title!.toLocaleLowerCase('en-NZ'))
+  if (dupe) return false
+
+  await prisma.trainingTask.create({
+    data: {
+      clientId: args.clientId,
+      dogId: args.dogId ?? null,
+      sessionId: args.sessionId ?? null,
+      date: args.date,
+      title,
+      description,
+      repetitions,
+      videoUrl,
+      libraryTaskId: spec.libraryTaskId,
+      timing: spec.timing,
+      order: existing.reduce((max, t) => Math.max(max, t.order), -1) + 1,
+    },
+  })
+  return true
+}
+
+/**
+ * Do one step, for one recipient.
+ *
+ * The single place that knows what each kind means, so the cron and a
+ * person's run cannot disagree about what a FORM step is. Returns false when
+ * the step did nothing — an unconfigured step, or homework that had nowhere to
+ * land — so the caller records a send only for something that happened.
+ */
+export async function executeFlowStep(args: {
+  step: ExecutableStep
+  user: RecipientUser
+  trainer: TrainerBrand
+  vars: CommsVars
+  link: string
+  /** The client + dog a TASK step hands homework to. Absent = nothing to assign. */
+  clientId?: string | null
+  dogId?: string | null
+  sessionId?: string | null
+  date?: Date
+  /** The business, for a trainer-actor step's notification preferences. */
+  companyId?: string | null
+}): Promise<boolean> {
+  const { step, user, trainer, vars, clientId, dogId, sessionId, date, companyId } = args
+
+  // A half-built step waits. A "fill in this form" notification with no form on
+  // the end of it is worse than silence, and this is the one gate that stops
+  // one going out (see flowStepConfigProblem).
+  //
+  // MESSAGE is deliberately EXEMPT. Its copy is checked on save and has been
+  // since long before flows widened, so re-checking it here could only change
+  // what an existing reminder does — and the one thing this phase must not do
+  // is stop a reminder that fires today.
+  if (step.kind !== 'MESSAGE' && flowStepConfigProblem(step)) return false
+
+  const copy = flowStepCopy(step)
+  const rendered = renderCommsMessage({ ...step, title: copy.title, body: copy.body }, vars)
+  const link = flowStepLink(step.kind, step.payload, args.link)
+
+  // A TASK step's homework lands first: the notification says there is
+  // something new to practise, so it must not go out before there is.
+  if (step.kind === 'TASK') {
+    if (!clientId) return false
+    const assigned = await assignFlowTask({ payload: step.payload, clientId, dogId, sessionId, date: date ?? new Date() })
+    if (!assigned) return false
+  }
+
+  // ── Who hears about it ────────────────────────────────────────────────────
+  // A step whose ACTOR is the trainer is something the trainer has to do inside
+  // a client's flow ("accept the time or move it"). It goes to the trainer's
+  // own notification surface, with their own per-type preferences — never
+  // through deliver(), which is the client's.
+  if (step.actor === 'TRAINER') {
+    await notifyTrainer(
+      user.id,
+      'FLOW_STEP_WAITING',
+      { clientName: vars.name, title: rendered.title, detail: rendered.body },
+      link,
+      companyId ?? null,
+    )
+    return true
+  }
+
+  await deliver({
+    channels: step.channels,
+    important: step.important,
+    user,
+    trainer,
+    title: rendered.title,
+    body: rendered.body,
+    emailBody: rendered.emailBody,
+    link,
+  })
+  return true
+}
+
 /**
  * Cron worker: send every due comms-flow step exactly once per recipient.
  * BEFORE_SESSION fires while now is within `offset` of an upcoming session;
@@ -230,7 +462,21 @@ const TRAINER_BRAND_SELECT = {
 } as const
 const RECIPIENT_USER_SELECT = { id: true, name: true, email: true, notifyPush: true, productEmailOptOut: true } as const
 
-type SessionRecipients = { scheduledAt: Date; byUser: Map<string, { user: RecipientUser; dogs: string[] }> }
+/**
+ * One recipient of one step, at one anchor.
+ *
+ * `clientId`/`dogId` ride along because a TASK step has to hand its homework to
+ * a ClientProfile and a Dog, not to a User — the notification and the thing it
+ * is about go to two different tables. Both are null for a staff recipient,
+ * which is exactly why a TASK step assigns nothing to staff.
+ */
+interface FlowRecipient {
+  user: RecipientUser
+  dogs: string[]
+  clientId: string | null
+  dogId: string | null
+}
+type SessionRecipients = { scheduledAt: Date; byUser: Map<string, FlowRecipient> }
 
 // ─── Who a STAFF step reaches ───────────────────────────────────────────────
 // The people working THAT session, and nobody else. A reminder about Tuesday's
@@ -322,39 +568,28 @@ export async function processCommsFlows(
   let skipped = 0
   for (const step of steps) {
     // ─── Route by kind ──────────────────────────────────────────────────────
-    // A flow step is no longer necessarily a message. MESSAGE keeps the path
-    // below, unchanged. The rest are things a PERSON does — fill a form, upload
-    // a photo, accept a time — so this cron has nothing to push and nothing to
-    // wait for, and its correct behaviour is to leave them alone. They are
-    // unreachable in phase 1 (nothing can create one), but the branch exists
-    // and is tested so phase 2 is additive rather than a rewrite of this loop.
+    // A flow step is no longer necessarily a message. Four kinds mean something
+    // on a clock — a reminder, a form due before each class, a photo asked for
+    // after one, homework handed out with it — and all four run through the
+    // path below.
     //
-    // The same goes for a person-anchored MESSAGE: it is unlocked by finishing
-    // the previous step, not by a clock, so it is the run that sends it.
-    switch (step.kind) {
-      case 'MESSAGE':
-        // Person-anchored message steps are driven by the FlowRun, not by time.
-        if (flowAnchorFor(step) === 'PERSON') {
-          skipped++
-          continue
-        }
-        break
-      case 'FORM':
-      case 'UPLOAD':
-      case 'TASK':
-      case 'ACCOUNT':
-      case 'CHOOSE_OFFERING':
-      case 'APPROVAL':
-        skipped++
-        continue
-      default: {
-        // A kind added to the enum and not handled here is a compile error,
-        // not a message silently going nowhere in production.
-        const unhandled: never = step.kind
-        void unhandled
-        skipped++
-        continue
-      }
+    // The other three (set a password, choose an offering, a trainer accepting)
+    // are steps in a PERSON's journey; a class reminder has no business asking
+    // anybody to do those, and neither has this scan. Nor has it any business
+    // with a person-anchored MESSAGE: that is unlocked by finishing the step
+    // before it, so the run sends it — firing it here would send a welcome to
+    // somebody who never finished signing up.
+    if (!isCronRunnable(step)) {
+      skipped++
+      continue
+    }
+    // A step the trainer never finished configuring is passed over before it
+    // costs a query, and without recording anything — so it starts working the
+    // moment they finish it, rather than being marked delivered for ever.
+    // MESSAGE is exempt: see executeFlowStep.
+    if (step.kind !== 'MESSAGE' && flowStepConfigProblem(step)) {
+      skipped++
+      continue
     }
 
     // Membership steps anchor on a purchase, not a session — different shape
@@ -408,29 +643,38 @@ export async function processCommsFlows(
           OR: [{ dogId: null }, { dog: { deceasedAt: null } }],
           ...(step.audience === 'CUSTOM' ? { clientId: { in: step.customClientIds } } : {}),
         },
-        select: { dropInSessionId: true, dog: { select: { name: true } }, client: { select: { user: { select: RECIPIENT_USER_SELECT } } } },
+        select: {
+          dropInSessionId: true,
+          // The client + dog a TASK step hands homework to.
+          clientId: true,
+          dogId: true,
+          dog: { select: { name: true } },
+          client: { select: { user: { select: RECIPIENT_USER_SELECT } } },
+        },
       })
       for (const s of sessions) {
         // FULL enrolments (dropInSessionId null) attend every session; a drop-in
         // only its one. Dedup by user, collecting their dog name(s).
-        const byUser = new Map<string, { user: RecipientUser; dogs: string[] }>()
+        const byUser = new Map<string, FlowRecipient>()
         const attending: string[] = []
         for (const e of enrollments) {
           if (e.dropInSessionId && e.dropInSessionId !== s.id) continue
           if (e.dog?.name && !attending.includes(e.dog.name)) attending.push(e.dog.name)
           const u = e.client?.user
           if (!u?.id) continue
-          const entry = byUser.get(u.id) ?? { user: u, dogs: [] }
+          const entry = byUser.get(u.id) ?? { user: u, dogs: [], clientId: e.clientId ?? null, dogId: e.dogId ?? null }
           if (e.dog?.name && !entry.dogs.includes(e.dog.name)) entry.dogs.push(e.dog.name)
           byUser.set(u.id, entry)
         }
         if (staffFor) {
-          // Staff hear about the session even when nobody has booked yet.
+          // Staff hear about the session even when nobody has booked yet. They
+          // carry no client/dog: a staff step tells the team about the session,
+          // it does not hand anybody homework.
           const staff = await staffFor(s.assignedTrainer)
           if (staff.length) {
             perSession.set(s.id, {
               scheduledAt: s.scheduledAt,
-              byUser: new Map(staff.map(u => [u.id, { user: u, dogs: attending }])),
+              byUser: new Map(staff.map(u => [u.id, { user: u, dogs: attending, clientId: null, dogId: null }])),
             })
           }
         } else if (byUser.size) {
@@ -448,7 +692,7 @@ export async function processCommsFlows(
           ...(step.audience === 'CUSTOM' ? { clientId: { in: step.customClientIds } } : {}),
         },
         select: {
-          id: true, scheduledAt: true, dog: { select: { name: true } },
+          id: true, scheduledAt: true, clientId: true, dogId: true, dog: { select: { name: true } },
           assignedTrainer: { select: ASSIGNED_MEMBER_SELECT },
           client: { select: { user: { select: RECIPIENT_USER_SELECT } } },
         },
@@ -459,12 +703,20 @@ export async function processCommsFlows(
           // A 1:1 has no run to fall back on — "assigned to the session" is the
           // session's own trainer, then the owner.
           const staff = await staffFor(s.assignedTrainer)
-          if (staff.length) perSession.set(s.id, { scheduledAt: s.scheduledAt, byUser: new Map(staff.map(u => [u.id, { user: u, dogs }])) })
+          if (staff.length) {
+            perSession.set(s.id, {
+              scheduledAt: s.scheduledAt,
+              byUser: new Map(staff.map(u => [u.id, { user: u, dogs, clientId: null, dogId: null }])),
+            })
+          }
           continue
         }
         const u = s.client?.user
         if (!u?.id) continue
-        perSession.set(s.id, { scheduledAt: s.scheduledAt, byUser: new Map([[u.id, { user: u, dogs }]]) })
+        perSession.set(s.id, {
+          scheduledAt: s.scheduledAt,
+          byUser: new Map([[u.id, { user: u, dogs, clientId: s.clientId ?? null, dogId: s.dogId ?? null }]]),
+        })
       }
     }
 
@@ -478,11 +730,20 @@ export async function processCommsFlows(
       const alreadySent = new Set(already.map(a => a.userId))
       const vars0 = { time: fmtTime(scheduledAt, tz), date: fmtDate(scheduledAt, tz), class: className, business: trainer.businessName, location }
 
-      for (const [userId, { user, dogs }] of byUser) {
+      for (const [userId, { user, dogs, clientId, dogId }] of byUser) {
         if (alreadySent.has(userId)) continue
         const vars: CommsVars = { ...vars0, name: user.name ?? 'there', dog: dogs.join(', ') }
-        const { title, body, emailBody } = renderCommsMessage(step, vars)
-        await deliver({ channels: step.channels, important: step.important, user, trainer, title, body, emailBody, link })
+        const did = await executeFlowStep({
+          step, user, trainer, vars, link,
+          clientId, dogId, sessionId, date: scheduledAt, companyId: owner.trainerId,
+        })
+        // A step that did nothing — never configured, or homework with nowhere
+        // to land — records no send, so it runs again once the trainer fixes it
+        // rather than being marked delivered for ever.
+        if (!did) {
+          skipped++
+          continue
+        }
         // Record the send. Unique (stepId, sessionId, userId) guards a concurrent
         // tick from double-sending — swallow the conflict if it races.
         await prisma.commsFlowSend.create({ data: { stepId: step.id, sessionId, userId } }).catch(() => {})
@@ -492,6 +753,108 @@ export async function processCommsFlows(
   }
 
   return { steps: steps.length, sent, skipped }
+}
+
+// ─── A person's journey ─────────────────────────────────────────────────────
+
+const RUN_TRAINER_SELECT = { ...TRAINER_BRAND_SELECT } as const
+
+/**
+ * Ask a person for whatever their run is currently waiting on.
+ *
+ * The other half of the engine. A session-anchored flow is scanned statelessly
+ * by the cron, which is what lets one tick cover every trainer; a journey is
+ * driven from the app, one person at a time, and this is the call the app makes
+ * — after the enquiry lands, after they set a password, after each step is
+ * ticked off.
+ *
+ * BLOCKING is the whole point, and it is enforced by `availableSteps`: nothing
+ * past an unfinished blocking step is offered, so a run cannot walk past a step
+ * whose FlowStepCompletion row does not exist yet. The cursor is recomputed
+ * from that same ledger by `advanceFlowRun` — never incremented — so a step
+ * added, disabled or deleted underneath a half-finished run can't strand
+ * anybody on a step that no longer exists.
+ *
+ * Idempotent by the (step, run, user) send row, exactly as the cron is by
+ * (step, session, user): calling this twice asks once.
+ */
+export async function processFlowRun(
+  runId: string,
+  now: Date = new Date(),
+): Promise<{ asked: number; waitingOn: string | null; completed: boolean }> {
+  const run = await prisma.flowRun.findUnique({
+    where: { id: runId },
+    select: {
+      id: true, trainerId: true, formId: true, packageId: true, userId: true, clientId: true, status: true,
+      trainer: { select: RUN_TRAINER_SELECT },
+      user: { select: RECIPIENT_USER_SELECT },
+    },
+  })
+  // A run that has finished (or been abandoned) asks nothing more. Re-opening
+  // one because a step was added later would restart a journey somebody has
+  // already walked out of.
+  if (!run || run.status !== 'ACTIVE') return { asked: 0, waitingOn: null, completed: run?.status === 'COMPLETED' }
+
+  const [steps, completions] = await Promise.all([
+    prisma.commsFlowStep.findMany({
+      where: run.formId ? { formId: run.formId } : { packageId: run.packageId ?? '' },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+    }),
+    prisma.flowStepCompletion.findMany({ where: { runId }, select: { stepId: true } }),
+  ])
+
+  const open = availableSteps(
+    steps.map(s => ({ ...s, id: s.id, order: s.order, blocking: s.blocking, enabled: s.enabled })),
+    completions.map(c => c.stepId),
+  )
+
+  // Nobody to ask yet — a journey starts before the person exists (the enquiry
+  // is written first, the User arrives at the account step). The steps still
+  // sequence; there is simply nothing to notify until then.
+  const user = run.user
+  let asked = 0
+  if (user?.id && open.length) {
+    const already = await prisma.commsFlowSend.findMany({
+      where: { stepId: { in: open.map(s => s.id) }, runId, userId: user.id },
+      select: { stepId: true },
+    })
+    const asked0 = new Set(already.map(a => a.stepId))
+
+    for (const step of open) {
+      if (asked0.has(step.id)) continue
+      const vars: CommsVars = {
+        name: user.name ?? 'there',
+        dog: '',
+        time: '',
+        date: '',
+        class: '',
+        business: run.trainer.businessName,
+        location: '',
+      }
+      const did = await executeFlowStep({
+        step,
+        user,
+        trainer: run.trainer,
+        vars,
+        // A journey has no session list to send them to; their own home is
+        // where every one of these screens lives.
+        link: '/home',
+        clientId: run.clientId,
+        date: now,
+        companyId: run.trainerId,
+      })
+      if (!did) continue
+      await prisma.commsFlowSend
+        .create({ data: { stepId: step.id, runId, userId: user.id } })
+        .catch(() => {})
+      asked++
+    }
+  }
+
+  // Park the cursor where the ledger says it should be, and close the run when
+  // there is nothing left.
+  const { currentStepId, completed } = await advanceFlowRun(runId)
+  return { asked, waitingOn: currentStepId, completed }
 }
 
 /**
@@ -508,19 +871,12 @@ export async function processCommsFlows(
  * many times the cron ticks.
  */
 async function processMembershipStep(
-  step: {
-    id: string
+  step: ExecutableStep & {
     membershipId: string | null
     direction: string
     offsetMinutes: number
-    channels: NotificationChannel[]
     audience: string
     customClientIds: string[]
-    important: boolean
-    // Nullable since flows widened past messages — see renderCommsMessage.
-    title: string | null
-    body: string | null
-    emailBody: string | null
   },
   membership: { name: string; trainerId: string; trainer: TrainerBrand },
   now: Date,
@@ -557,6 +913,7 @@ async function processMembershipStep(
     where: { id: { in: purchases.map(p => p.clientId) } },
     select: {
       id: true,
+      dogId: true,
       dog: { select: { name: true, deceasedAt: true } },
       dogs: { where: { deceasedAt: null }, select: { name: true, deceasedAt: true } },
       user: { select: RECIPIENT_USER_SELECT },
@@ -602,17 +959,20 @@ async function processMembershipStep(
         business: membership.trainer.businessName,
         location: '',
       }
-      const { title, body, emailBody } = renderCommsMessage(step, vars)
-      await deliver({
-        channels: step.channels,
-        important: step.important,
+      const did = await executeFlowStep({
+        step,
         user,
         trainer: membership.trainer,
-        title,
-        body,
-        emailBody,
+        vars,
         link: toStaff ? '/memberships' : '/my-memberships',
+        // Staff carry no client, so a TASK step on a membership hands homework
+        // to the member and to nobody else.
+        clientId: toStaff ? null : client.id,
+        dogId: toStaff ? null : client.dogId,
+        date: anchorDate ?? now,
+        companyId: membership.trainerId,
       })
+      if (!did) continue
       await prisma.commsFlowSend
         .create({ data: { stepId: step.id, purchaseId: purchase.id, userId: user.id } })
         .catch(() => {})

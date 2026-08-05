@@ -63,18 +63,66 @@ export function flowAnchorFor(step: { trigger?: FlowTrigger | null; direction: s
 }
 
 /**
- * Does the comms-flow cron deliver this step?
+ * Can a CLOCK fire this kind of step at all?
  *
- * Only a MESSAGE step on a clock. Every other kind is something a PERSON does —
- * the cron has nothing to push and nothing to wait for, so its correct
- * behaviour for them is to do nothing, cleanly and without a log line.
+ * Four of the seven mean something on a timetable: a message, a form due before
+ * each class, a photo asked for after one, homework handed out with it. The
+ * other three are steps in an acquisition journey — setting a password,
+ * choosing what to book, a trainer accepting a time — and a class reminder has
+ * no business asking anybody to do those. Firing one off a session would put
+ * "choose an offering" in front of somebody already enrolled in it.
+ */
+export function isClockRunnable(kind: FlowStepKind): boolean {
+  switch (kind) {
+    case 'MESSAGE':
+    case 'FORM':
+    case 'UPLOAD':
+    case 'TASK':
+      return true
+    case 'ACCOUNT':
+    case 'CHOOSE_OFFERING':
+    case 'APPROVAL':
+      return false
+    default: {
+      // A kind added to the enum and not answered for here is a compile error,
+      // not a step quietly doing nothing in production.
+      const unhandled: never = kind
+      void unhandled
+      return false
+    }
+  }
+}
+
+/**
+ * Does the comms-flow cron act on this step?
+ *
+ * A clock-anchored step of a kind a clock can fire. A person-anchored one is
+ * unlocked by finishing the step before it, so the FlowRun drives it and this
+ * scan must leave it alone — firing it here would send a welcome to somebody
+ * who never finished signing up.
+ */
+export function isCronRunnable(step: {
+  kind: FlowStepKind
+  trigger?: FlowTrigger | null
+  direction: string
+}): boolean {
+  return isClockRunnable(step.kind) && flowAnchorFor(step) !== 'PERSON'
+}
+
+/**
+ * Does the cron deliver a plain timed MESSAGE for this step?
+ *
+ * The narrow question — "is this one of the reminders that existed before flows
+ * widened" — as opposed to isCronRunnable's "does the cron do anything at all".
+ * Kept apart because the two are different questions and reading one as the
+ * other is how a FORM step would start sending an empty push.
  */
 export function isCronDelivered(step: {
   kind: FlowStepKind
   trigger?: FlowTrigger | null
   direction: string
 }): boolean {
-  return step.kind === 'MESSAGE' && flowAnchorFor(step) !== 'PERSON'
+  return step.kind === 'MESSAGE' && isCronRunnable(step)
 }
 
 // ─── Sequencing ─────────────────────────────────────────────────────────────
