@@ -163,13 +163,13 @@ export function TryFlow({
       className="flex flex-col gap-5"
       noValidate
     >
+      {/* No subtitle. Someone standing at a stand with a phone in one hand is
+          reading as little as they can get away with, and the terms below
+          already say the workspace is practice data. */}
       <div className="text-center">
         <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
           Have a play with PupManager
         </h1>
-        <p className="mt-2 text-sm text-slate-600">
-          Your own copy of the app, on your own phone, with practice data. Takes a few seconds to set up.
-        </p>
       </div>
 
       {error && <ErrorNote>{error}</ErrorNote>}
