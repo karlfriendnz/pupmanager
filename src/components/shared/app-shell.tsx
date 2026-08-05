@@ -7,7 +7,7 @@ import { signOutWithPush } from '@/lib/sign-out'
 import { ProfileSwitchButton } from './profile-switch-button'
 import { cn } from '@/lib/utils'
 import {
-  LayoutDashboard, Users, Calendar, Layers, Package,
+  LayoutDashboard, Users, Calendar, Layers, Package, Workflow,
   MessageSquare, Settings, HelpCircle, User, Trophy,
   Home, LogOut, ShoppingBag, CalendarPlus,
   X, Inbox, GraduationCap, Bell,
@@ -83,6 +83,11 @@ const TRAINER_NAV: NavItem[] = [
   // Not offerings themselves — the things that support them.
   { href: '/schedule/route', label: 'Route',      icon: Navigation,      section: 'tools' },
   { href: '/library',      label: 'Library',      icon: Layers,          section: 'tools' },
+  // Every automated message, form and piece of homework the business sends,
+  // across all five places the flow builder mounts. A route of its own rather
+  // than a tab (the standing rule for adjunct features) because it spans five
+  // different objects and there is no one page it could hang off.
+  { href: '/automations',  label: 'Automations',  icon: Workflow,        section: 'tools' },
   { href: '/products',     label: 'Products',     icon: ShoppingBag,     section: 'tools' },
   { href: '/achievements', label: 'Achievements', icon: Trophy,          section: 'tools' },
 

@@ -122,6 +122,10 @@ export const NAV_LABEL_CATALOG: readonly RenameableEntry[] = [
   { key: '/offerings/tags', defaultLabel: 'Tags', isSection: false, examples: ['Labels', 'Themes', 'Streams'] },
 
   { key: '/library', defaultLabel: 'Library', isSection: false, examples: ['Resources', 'Guides', 'Downloads'] },
+  // Renameable: "Automations" is our word for it. A trainer who thinks of them
+  // as their follow-ups, or the things that go out on their own, should get to
+  // say so — nothing in the app's own machinery depends on the word.
+  { key: '/automations', defaultLabel: 'Automations', isSection: false, examples: ['Follow-ups', 'Reminders', 'Auto messages'] },
   { key: '/products', defaultLabel: 'Products', isSection: false, examples: ['Shop', 'Store', 'Merch'] },
   { key: '/achievements', defaultLabel: 'Achievements', isSection: false, examples: ['Badges', 'Milestones', 'Awards'] },
 
