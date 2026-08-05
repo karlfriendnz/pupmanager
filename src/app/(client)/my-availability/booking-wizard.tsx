@@ -906,14 +906,22 @@ function Shell({ step, onBack, children }: {
             const active = n === step
             const doneStep = n < step
             return (
-              <div key={label} className="flex items-center gap-2 flex-1">
+              // The last step takes no width of its own, so the bars before it
+              // absorb the row and it finishes hard against the right edge.
+              // With flex-1 on every step it sat at the left of its own cell,
+              // which read as the track stopping short.
+              <div key={label} className={`flex items-center gap-2 ${i < labels.length - 1 ? 'flex-1' : 'flex-none'}`}>
                 <div className={`flex items-center gap-1.5 ${active || doneStep ? 'text-accent' : 'text-slate-300'}`}>
                   <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${active ? 'bg-accent text-accent-fg' : doneStep ? 'bg-accent-soft text-accent' : 'bg-slate-100 text-slate-400'}`}>
                     {doneStep ? <Check className="h-3 w-3" /> : n}
                   </span>
                   <span className="text-[11px] font-semibold uppercase tracking-wide hidden sm:inline">{label}</span>
                 </div>
-                {i < labels.length - 1 && <div className={`h-px flex-1 ${doneStep ? 'bg-accent/40' : 'bg-slate-100'}`} />}
+                {/* A hairline in slate-100 is invisible against this panel —
+                    there was a track, it just couldn't be seen. */}
+                {i < labels.length - 1 && (
+                  <div className={`h-1 flex-1 rounded-full ${doneStep ? 'bg-accent' : 'bg-slate-200'}`} />
+                )}
               </div>
             )
           })}
