@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import {
   CalendarPlus, GraduationCap, Clock, Users, Video, Check, CheckCircle2,
   Loader2, ChevronLeft, ChevronRight, ArrowRight, CalendarDays, Repeat, Ticket, PartyPopper,
-  Minus, Plus, ShoppingBag, Tag as TagIcon, X,
+  Minus, Plus, ShoppingBag, Tag as TagIcon, X, Pencil,
 } from 'lucide-react'
 import { openExternal } from '@/lib/external-link'
 import { labelFor } from '@/lib/nav-labels'
@@ -874,6 +874,9 @@ export function BookingWizard(props: {
           saving={saving}
           error={error}
           onConfirm={confirm}
+          // Only a 1:1 has a time the client picked, so only that one offers a
+          // way back to change it.
+          onEditTime={selection?.kind === 'session' ? () => { setError(null); setStep(2) } : null}
           // Offered only when there IS a basket and this booking is something
           // it can hold — a priced class/event with payments switched on.
           onAddToBasket={basket && currentBasketLine() ? addToBasket : null}
@@ -1616,7 +1619,7 @@ function Row({ icon, text }: { icon: React.ReactNode; text: string }) {
 
 /* ============================ step 3 · confirm ============================ */
 
-function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, classType, dropInSessionIds, tier, ticketQty, dogName, saving, error, onConfirm, onAddToBasket, inBasket }: {
+function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, classType, dropInSessionIds, tier, ticketQty, dogName, saving, error, onConfirm, onEditTime, onAddToBasket, inBasket }: {
   tz: string
   selection: Selection
   date: string
@@ -1631,6 +1634,9 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
   saving: boolean
   error: string | null
   onConfirm: () => void
+  /** Back to the time step. Only a 1:1 has a time this client chose — a class
+   *  or event runs when it runs, so there is nothing there to change. */
+  onEditTime?: (() => void) | null
   /** Null when this booking can't go in a basket (free, or a 1:1 time slot). */
   onAddToBasket: (() => void) | null
   inBasket: boolean
@@ -1695,7 +1701,7 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
             </>
           ) : isSession ? (
             <>
-              <SummaryRow label="When" value={`${fmtFullDate(date)} · ${fmtTimeLabel(time)}`} />
+              <SummaryRow label="When" value={`${fmtFullDate(date)} · ${fmtTimeLabel(time)}`} onEdit={onEditTime ?? undefined} />
               <SummaryRow label="Length" value={`${pkg!.durationMins} min`} />
               {pkg!.sessionCount > 1 && <SummaryRow label="Sessions" value={`${pkg!.sessionCount}, every ${pkg!.weeksBetween} week${pkg!.weeksBetween === 1 ? '' : 's'}`} />}
             </>
@@ -1759,12 +1765,31 @@ function ConfirmStep({ selection, tz, date, time, currency, acceptPayments, clas
   )
 }
 
-function SummaryRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
-  return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3">
+/** A line of the confirmation. `onEdit` makes it a way back to the step that
+ *  chose it — a client reading "Thu 14 Aug · 10:00" and wanting it changed
+ *  reaches for THAT, not for a back arrow at the top of the screen. */
+function SummaryRow({ label, value, strong, onEdit }: { label: string; value: string; strong?: boolean; onEdit?: () => void }) {
+  const body = (
+    <>
       <dt className="text-xs font-medium text-slate-400 uppercase tracking-wide">{label}</dt>
-      <dd className={`text-sm text-right ${strong ? 'font-bold text-slate-900' : 'font-medium text-slate-700'}`}>{value}</dd>
-    </div>
+      <dd className={`flex items-center gap-1.5 text-sm text-right ${strong ? 'font-bold text-slate-900' : 'font-medium text-slate-700'}`}>
+        {value}
+        {onEdit && <Pencil className="h-3.5 w-3.5 shrink-0 text-accent" />}
+      </dd>
+    </>
+  )
+  if (!onEdit) {
+    return <div className="flex items-center justify-between gap-4 px-4 py-3">{body}</div>
+  }
+  return (
+    <button
+      type="button"
+      onClick={onEdit}
+      aria-label={`Change ${label.toLowerCase()}`}
+      className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+    >
+      {body}
+    </button>
   )
 }
 
