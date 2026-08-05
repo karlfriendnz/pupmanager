@@ -303,11 +303,9 @@ export function ClientHomeView({
             <img src={heroImg} alt={dogName} className="absolute inset-0 h-full w-full object-cover object-[50%_30%]" />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'var(--accent)' }}>
-              {/* With a dog on file the panel becomes the upload button below,
-                  so the outline would only sit behind its camera. Without one
-                  there is nothing to upload against — the outline is all there
-                  is to show. */}
-              {!primaryDog && <DogIcon className="h-16 w-16 text-white/80" strokeWidth={1.75} />}
+              {/* Empty either way: with a dog on file the panel becomes the
+                  upload button below, without one it becomes "Add your dog".
+                  Both carry their own icon, so nothing is drawn here. */}
             </div>
           )}
           <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/55 via-black/15 to-transparent" />
@@ -326,6 +324,22 @@ export function ClientHomeView({
               rather than a card underneath asking for the same thing. */}
           {heroEmpty && primaryDog && (
             <DogPhotoHeroPrompt dogId={primaryDog.id} dogName={primaryDog.name} />
+          )}
+          {/* No dog on file at all. A photo needs something to belong to, so the
+              hero asks for the dog first — /my-dogs is where one gets added.
+              Without this the panel is an outline with nothing to do, which is
+              what a client with no dog record actually saw. */}
+          {heroEmpty && !primaryDog && (
+            <Link
+              href="/my-dogs"
+              aria-label="Add your dog"
+              className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 text-white"
+            >
+              <DogIcon className="h-16 w-16 text-white/80" strokeWidth={1.75} />
+              <span className="text-sm font-semibold" style={{ textShadow: '0 1px 14px rgba(0,0,0,0.55)' }}>
+                Add your dog
+              </span>
+            </Link>
           )}
         </section>
 
