@@ -71,7 +71,10 @@ export function DogPhotoHeroPrompt({ dogId, dogName }: { dogId: string; dogName:
         type="button"
         onClick={open}
         disabled={uploading}
-        className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 pb-16 text-white disabled:opacity-70"
+        // Sits high in the panel, not centred: the business name and the dog's
+        // name occupy the lower half, and the quick-action tiles overlap the
+        // bottom of the hero.
+        className="absolute inset-x-0 top-0 bottom-32 z-10 flex flex-col items-center justify-center gap-2 text-white disabled:opacity-70"
         style={{ textShadow: '0 1px 14px rgba(0,0,0,0.55)' }}
       >
         {uploading

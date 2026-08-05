@@ -1343,10 +1343,6 @@ export function PackageForm({
         <XeroAccountField value={xeroAccountCode} onChange={setXeroAccountCode} required onActiveChange={setXeroActive} />
       </div>
 
-      {/* Whether clients must pay up front to book this package. */}
-      <div className="md:col-span-2">
-        <RequirePaymentField value={requirePayment} onChange={setRequirePayment} />
-      </div>
       </SectionCard>
       )}
 
@@ -1489,6 +1485,15 @@ export function PackageForm({
           </span>
         </label>
       )}
+
+      {/* Whether clients must pay up front to book this.
+          Sits with the other booking rules rather than with the price: it
+          decides HOW someone books, not what it costs. It also only rendered
+          inside the pricing step before, which a drop-in doesn't have — so for
+          a drop-in the setting could not be reached at all. */}
+      <div className="md:col-span-2">
+        <RequirePaymentField value={requirePayment} onChange={setRequirePayment} />
+      </div>
 
       {/* ─── When clients start seeing this ─────────────────────── */}
       <div className="md:col-span-2 rounded-xl border border-slate-200 px-3 py-2.5">

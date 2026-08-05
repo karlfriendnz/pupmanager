@@ -333,7 +333,10 @@ export function ClientHomeView({
             <Link
               href="/my-dogs"
               aria-label="Add your dog"
-              className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 text-white"
+              // Sits high in the panel, not centred: the business name and the
+              // dog's name occupy the lower half, and the quick-action tiles
+              // overlap the bottom of the hero.
+              className="absolute inset-x-0 top-0 bottom-32 z-20 flex flex-col items-center justify-center gap-2 text-white"
             >
               <DogIcon className="h-16 w-16 text-white/80" strokeWidth={1.75} />
               <span className="text-sm font-semibold" style={{ textShadow: '0 1px 14px rgba(0,0,0,0.55)' }}>
