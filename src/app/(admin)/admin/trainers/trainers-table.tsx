@@ -78,7 +78,13 @@ export async function TrainersTable({
       role: 'TRAINER',
       // One row per company: only account owners (a User who owns a
       // TrainerProfile). Invited team members have no profile of their own.
-      trainerProfile: { isNot: null },
+      // Trade-show "Try It" sandboxes are NOT businesses. Thirty of them can
+      // exist at once during a show and every one is gone within hours, so
+      // listing them would bury the real accounts under strangers who will
+      // never be customers. They are already excluded from every paying/trial
+      // count by isInternal; this keeps them off the list itself. The Try It
+      // leads tab is where they belong.
+      trainerProfile: { isNot: null, is: { demoSessionId: null } },
       ...(and.length ? { AND: and } : {}),
     },
     // In Trial leads with whoever runs out first — that tab is the conversion

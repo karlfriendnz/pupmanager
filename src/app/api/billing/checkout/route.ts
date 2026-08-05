@@ -73,8 +73,18 @@ export async function POST(req: Request) {
   // test key + the test price columns.
   const trainerMode = await prisma.trainerProfile.findUnique({
     where: { id: trainerId },
-    select: { sandboxBilling: true },
+    select: { sandboxBilling: true, demoSessionId: true },
   })
+  // A trade-show sandbox does not buy anything. Test mode already means no
+  // money could move, but a stranger at a stand must not reach a card form at
+  // all — it looks like we are asking them to pay to keep playing. Refused
+  // here, on the server, rather than by hiding the button (AGENTS.md #5).
+  if (trainerMode?.demoSessionId) {
+    return NextResponse.json(
+      { error: 'This is a demo workspace, so there is nothing to subscribe to.' },
+      { status: 403 },
+    )
+  }
   const sandbox = trainerMode?.sandboxBilling ?? false
 
   if (!isStripeConfigured(sandbox)) {

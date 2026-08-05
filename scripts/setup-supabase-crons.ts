@@ -33,6 +33,11 @@ const JOBS: Array<{ name: string; schedule: string; path: string }> = [
   { name: 'pm-booking-automations', schedule: '*/15 * * * *', path: 'booking-automations' },
   { name: 'pm-google-calendar-busy-refresh', schedule: '0 */3 * * *', path: 'google-calendar-busy-refresh' },
   { name: 'pm-purge-deactivated', schedule: '15 3 * * *', path: 'purge-deactivated' },
+  // Every five minutes, not daily like the purge above: nobody at a trade show
+  // presses "exit", so a sandbox going quiet is the normal case, and the point
+  // is that the next person to pick up a phone is not inside the last person's
+  // workspace. See prisma/migrations/*_purge_demo_cron.
+  { name: 'pm-purge-demo', schedule: '*/5 * * * *', path: 'purge-demo' },
   // These two were already returning 200s on an inlined token — but that token
   // is the OLD secret. Rotating CRON_SECRET (which is the only way to fix the
   // others, since the Production value is marked Sensitive in Vercel and cannot

@@ -22,6 +22,7 @@ import { isPrivateRelayEmail } from '@/lib/auth-emails'
 import { countUnreadMessages } from '@/lib/unread-messages'
 import { getAccountAccess, PROFILE_COOKIE } from '@/lib/account-access'
 import { ReviewMount } from '@/components/review/review-mount'
+import { DemoSessionBar } from '@/components/trainer/demo-session-bar'
 
 export default async function TrainerLayout({ children }: { children: React.ReactNode }) {
   const session = await auth()
@@ -352,6 +353,11 @@ export default async function TrainerLayout({ children }: { children: React.Reac
           totalSteps={fabState.totalSteps}
         />
       )}
+      {/* Trade-show sandbox strip — says it is practice data, keeps the idle
+          timer honest, and gives the visitor a way to finish. Driven by the
+          signed session flag (stamped from the tenant's marker column), never
+          by anything the browser can set. See lib/demo-tenant. */}
+      {session.user.isDemo && <DemoSessionBar expiresAt={session.user.demoExpiresAt ?? null} />}
       <CurrencyProvider currency={tp?.payoutCurrency ?? 'nzd'}>
         <BookingConflictProvider>{children}</BookingConflictProvider>
       </CurrencyProvider>

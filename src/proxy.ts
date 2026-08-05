@@ -25,6 +25,11 @@ const PUBLIC_PATHS = [
 
   '/concepts',   // TEMP: client-home redesign concept previews (mock data, no auth) — remove before ship
   '/concept-products', // TEMP: generated product images for the concept shop — remove before ship
+  '/try',        // trade-show "Try It" capture + persona screens — a stranger
+                 // scans a QR code on a poster and has no account by definition
+  '/api/try/',   // its API (rate-limited + consent-gated inside; the exit and
+                 // heartbeat routes check the session themselves) — trailing
+                 // slash so it can't match anything else
   '/api/version', // build-id check for the stale-client reload guard (no secrets)
   '/api/app/',   // native-shell config (version-gate requirements) — read on launch pre-login, no secrets
   // Universal Links / Android App Links discovery files. Apple and Google

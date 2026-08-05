@@ -34,7 +34,9 @@ export const metadata: Metadata = { title: 'Businesses' }
 // kept in step — a mismatch would put a country total next to a row count it
 // doesn't explain.
 function profileFilterForTab(tab: string): Prisma.TrainerProfileWhereInput {
-  if (tab === 'ours') return { isInternal: true, user: { deactivatedAt: null } }
+  // Trade-show sandboxes carry isInternal but are not "ours" in the sense this
+  // tab means — see the count below.
+  if (tab === 'ours') return { isInternal: true, demoSessionId: null, user: { deactivatedAt: null } }
   if (tab === 'inactive') return { user: { deactivatedAt: { not: null } } }
   const bucket: TrainerLifecycle = tab === 'paying' ? 'paying' : tab === 'churned' ? 'churned' : 'trial'
   return { ...lifecycleProfileFilter(bucket), isInternal: false, user: { deactivatedAt: null } }
@@ -136,7 +138,11 @@ export default async function AdminDashboardPage({
     prisma.user.count({ where: { role: 'TRAINER', ...real, trainerProfile: lifecycleProfileFilter('trial') } }),
     prisma.user.count({ where: { role: 'TRAINER', ...real, trainerProfile: lifecycleProfileFilter('paying') } }),
     prisma.user.count({ where: { role: 'TRAINER', ...real, trainerProfile: lifecycleProfileFilter('churned') } }),
-    prisma.user.count({ where: { role: 'TRAINER', deactivatedAt: null, trainerProfile: { isInternal: true } } }),
+    // "Ours" excludes trade-show sandboxes. They carry isInternal (so they stay
+    // out of every customer number) but they are not accounts we own and use —
+    // they are strangers' throwaways, and thirty of them during a show would
+    // make this count meaningless.
+    prisma.user.count({ where: { role: 'TRAINER', deactivatedAt: null, trainerProfile: { isInternal: true, demoSessionId: null } } }),
     prisma.user.count({ where: { role: 'TRAINER', deactivatedAt: { not: null }, trainerProfile: { isNot: null } } }),
   ])
   const counts: Record<string, number> = { all, trial, paying, churned, ours, inactive }

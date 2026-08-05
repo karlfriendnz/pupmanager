@@ -61,6 +61,16 @@ const PUBLIC_BY_DESIGN: { prefix: string; instead: string }[] = [
   { prefix: '/public/', instead: 'public by name' },
   { prefix: '/xero/webhook', instead: 'verified by Xero signature — a webhook that lives outside /webhooks/' },
   { prefix: '/review/', instead: "the in-app review widget, which returns 404 in production (reviewToolsEnabled) — a kill switch rather than a session, because Karl's own browser is the only caller" },
+  {
+    prefix: '/try/',
+    instead:
+      'a QR code on a trade-show poster — the caller has no account by definition, which is the whole point. ' +
+      'Held instead by: rate limits on the IP AND on the lead cookie, a ceiling on live sandboxes, an httpOnly ' +
+      'cookie carrying the lead id (never the request body), and the fact that everything created is a ' +
+      'throwaway tenant that can send nothing and is purged within hours. /try/exit and /try/heartbeat DO ' +
+      'check the session — they act on an existing sandbox — and are matched by this prefix only because ' +
+      'they share it.',
+  },
 ]
 
 describe('every route that changes something checks who is asking', () => {

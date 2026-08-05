@@ -226,6 +226,10 @@ const TENANT_EXEMPT: Record<string, string> = {
   OnboardingEmail: 'the onboarding drip catalogue — global',
   Announcement: 'Super Admin broadcast to every trainer/client — global on purpose',
   StripeWebhookEvent: 'platform-level Stripe idempotency ledger — no tenant exists at receipt time',
+  DemoLead:
+    'a trade-show visitor who scanned the QR — PupManager\'s own marketing record, not any trainer\'s data. ' +
+    'It deliberately OUTLIVES the sandbox tenant it spun up (which is purged within hours), so a required ' +
+    'relation to a tenant would be a relation to a row we intend to delete. DemoSession hangs off this one.',
 
   // ── Auth / identity: scoped to a USER, who may belong to several tenants ──
   User: 'the identity itself — one user can be a trainer here and a client there',

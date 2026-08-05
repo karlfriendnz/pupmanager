@@ -27,6 +27,20 @@ async function requireOwner(): Promise<{ trainerId: string; userId: string } | N
   if (ctx.role !== 'OWNER') {
     return NextResponse.json({ error: 'Only the account owner can manage payments.' }, { status: 403 })
   }
+  // A trade-show sandbox never opens a payout account. This is the one billing
+  // path where the harm is not "we took money" but "we walked a stranger at a
+  // stand into Stripe's identity checks with their real passport", so it is
+  // refused for BOTH verbs, above the branch — see lib/demo-guard.
+  const demo = await prisma.trainerProfile.findUnique({
+    where: { id: ctx.companyId },
+    select: { demoSessionId: true },
+  })
+  if (demo?.demoSessionId) {
+    return NextResponse.json(
+      { error: 'This is a demo workspace, so payments cannot be set up here.' },
+      { status: 403 },
+    )
+  }
   return { trainerId: ctx.companyId, userId: ctx.userId }
 }
 

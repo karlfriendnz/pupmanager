@@ -20,6 +20,15 @@ declare module 'next-auth' {
       // started the "log in as trainer" session. Carried in the (encrypted)
       // JWT so it can't be forged; powers the exit banner + restore route.
       impersonatorId?: string
+      // True when this session is a throwaway trade-show "Try It" sandbox.
+      // Stamped in the jwt callback from TrainerProfile.demoSessionId, so it is
+      // signed and cannot be set by the browser. Read by lib/demo-guard to
+      // block every outbound email and push, and by the chrome to show the
+      // "you're in a demo" bar. See lib/demo-tenant.
+      isDemo?: boolean
+      // When this sandbox stops working (ISO string). Drives the countdown in
+      // the demo bar. Absent for every normal session.
+      demoExpiresAt?: string
     } & DefaultSession['user']
   }
   interface User {
@@ -37,5 +46,7 @@ declare module 'next-auth/jwt' {
     businessName?: string
     logoUrl?: string | null
     impersonatorId?: string
+    isDemo?: boolean
+    demoExpiresAt?: string
   }
 }

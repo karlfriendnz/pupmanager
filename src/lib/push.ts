@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { sendApns, INVALID_TOKEN_REASONS } from '@/lib/apns'
 import { sendFcm, FCM_INVALID_TOKEN_REASONS } from '@/lib/fcm'
 import { unreadBadgeCountForUser } from '@/lib/unread-messages'
+import { demoPushBlock } from '@/lib/demo-guard'
 
 interface PushPayload {
   alert: { title: string; body: string }
@@ -30,6 +31,17 @@ export async function sendPush(
   userId: string,
   payload: PushPayload,
 ): Promise<{ sent: number; total: number; results: PushResult[] }> {
+  // Nothing leaves a "Try It" demo sandbox — not email, not push. Same reason
+  // and same shape as the block in lib/email: this is the one function every
+  // push path goes through, so the rule is written once. Returns the empty
+  // result a user with no devices would give, because that is the truth of what
+  // happened. See lib/demo-guard.
+  const blocked = await demoPushBlock(userId)
+  if (blocked) {
+    console.warn(`[demo-guard] blocked push "${payload.alert.title}" (${blocked})`)
+    return { sent: 0, total: 0, results: [] }
+  }
+
   const tokens = await prisma.deviceToken.findMany({
     where: { userId },
     select: { token: true, platform: true },

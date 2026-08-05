@@ -2,6 +2,7 @@ import { Resend } from 'resend'
 import { env } from './env'
 import { isPlaceholderEmail, reachableRecipients } from './no-email'
 import { isTrainerMailStopped } from './trainer-mail'
+import { demoOutboundBlock } from './demo-guard'
 
 let _client: Resend | null = null
 function client(): Resend {
@@ -53,10 +54,16 @@ type SendArgs = {
  *    closed) stops hearing from us unless the caller marks the message
  *    `alwaysSend`.
  *
- * Both return the same `{ data, error }` shape with no error, so a caller that
- * only checks for failures treats a suppressed message as a clean send. That
- * is deliberate: not mailing someone who cannot receive mail is the correct
- * outcome, not a failure to report upwards.
+ * 3. Nothing leaves a "Try It" demo sandbox. A stranger at a trade show is
+ *    driving a real copy of the app; the block is here, at the gate, because
+ *    the gate is the only thing all ~59 senders have in common. See
+ *    lib/demo-guard — and note `alwaysSend` does NOT override it, because
+ *    there is no message from a stranger's sandbox worth delivering.
+ *
+ * All three return the same `{ data, error }` shape with no error, so a caller
+ * that only checks for failures treats a suppressed message as a clean send.
+ * That is deliberate: not mailing someone who cannot receive mail is the
+ * correct outcome, not a failure to report upwards.
  */
 export async function sendEmail({ to, subject, html, text, from, replyTo, attachments, alwaysSend }: SendArgs) {
   // Placeholder recipients come out first — before the trainer-stopped lookup,
@@ -75,6 +82,14 @@ export async function sendEmail({ to, subject, html, text, from, replyTo, attach
   const filtered: string | string[] = Array.isArray(to) ? recipients : recipients[0]
 
   if (!alwaysSend && await isTrainerMailStopped(filtered)) {
+    return { data: null, error: null }
+  }
+
+  // Demo sandboxes send nothing, to anyone, ever — deliberately AFTER the
+  // `alwaysSend` paths above rather than gated by them.
+  const demoBlock = await demoOutboundBlock(filtered)
+  if (demoBlock) {
+    console.warn(`[demo-guard] blocked email "${subject}" (${demoBlock})`)
     return { data: null, error: null }
   }
 
@@ -130,6 +145,15 @@ export async function sendEmailBatch(
     )
   }
   if (messages.length === 0) {
+    return { data: null, error: null }
+  }
+
+  // The bulk path is the one a visitor at a stand is most likely to find — the
+  // Marketing screen's "email these clients" button. Blocked whole: a batch is
+  // one call, and there is no half of it worth sending.
+  const demoBlock = await demoOutboundBlock(messages.map(m => m.to))
+  if (demoBlock) {
+    console.warn(`[demo-guard] blocked email batch of ${messages.length} (${demoBlock})`)
     return { data: null, error: null }
   }
 

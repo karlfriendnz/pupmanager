@@ -197,6 +197,27 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
           }
         }
       }
+
+      // Is this a throwaway trade-show sandbox? Resolved from the tenant's own
+      // marker column — never from anything the browser sent — and re-resolved
+      // on every JWT refresh, so a session cannot go on claiming it is NOT a
+      // demo once its tenant is one. lib/demo-guard reads this to block every
+      // outbound email and push; the chrome reads it to show the exit bar.
+      // Runs LAST because trainerId is only settled by the blocks above.
+      // See lib/demo-tenant.
+      if (token.trainerId) {
+        const demo = await prisma.trainerProfile.findUnique({
+          where: { id: token.trainerId as string },
+          select: { demoSessionId: true, demoExpiresAt: true },
+        })
+        if (demo?.demoSessionId) {
+          token.isDemo = true
+          token.demoExpiresAt = demo.demoExpiresAt?.toISOString()
+        } else {
+          delete token.isDemo
+          delete token.demoExpiresAt
+        }
+      }
       return token
     },
     async session({ session, token }) {
@@ -209,6 +230,8 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
         session.user.businessName = token.businessName as string | undefined
         session.user.logoUrl = token.logoUrl as string | null | undefined
         session.user.impersonatorId = token.impersonatorId as string | undefined
+        session.user.isDemo = token.isDemo as boolean | undefined
+        session.user.demoExpiresAt = token.demoExpiresAt as string | undefined
       }
       return session
     },
@@ -325,6 +348,65 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
         if (!result.ok) return null
 
         return result.user
+      },
+    }),
+    // Trade-show "Try It" hand-off. The persona screen builds a sandbox tenant
+    // and mints a one-time token; this exchanges it for a session so a stranger
+    // at a poster never meets a password box.
+    //
+    // This provider WEAKENS NOTHING. It can only ever sign you into an account
+    // that (a) is named by an unguessable 256-bit token, (b) whose SHA-256 we
+    // stored ourselves minutes earlier, (c) that has not been used, (d) that
+    // has not expired, and (e) whose tenant still carries the demo marker. A
+    // token is consumed on first use, so a shared link is a dead link. Nothing
+    // here can reach a real account: the tenant is always one this codebase
+    // created, and the pairing is re-checked, not assumed.
+    Credentials({
+      id: 'demo-entry',
+      name: 'demo',
+      credentials: { token: { label: 'Token', type: 'text' } },
+      async authorize(credentials) {
+        const parsed = z.object({ token: z.string().min(20).max(200) }).safeParse(credentials)
+        if (!parsed.success) return null
+
+        const { hashEntryToken } = await import('@/lib/demo-tenant')
+        const hash = hashEntryToken(parsed.data.token)
+
+        const demoSession = await prisma.demoSession.findUnique({
+          where: { entryTokenHash: hash },
+          select: { id: true, ownerUserId: true, status: true, entryTokenUsedAt: true, entryTokenExpires: true, trainerId: true },
+        })
+        if (!demoSession) return null
+        if (demoSession.status !== 'ACTIVE') return null
+        if (demoSession.entryTokenUsedAt) return null
+        if (!demoSession.entryTokenExpires || demoSession.entryTokenExpires < new Date()) return null
+        if (!demoSession.ownerUserId || !demoSession.trainerId) return null
+
+        // The tenant must still BE a sandbox, and must still point back at this
+        // session. Re-checked rather than trusted so a half-purged row can never
+        // hand out a login.
+        const tp = await prisma.trainerProfile.findUnique({
+          where: { id: demoSession.trainerId },
+          select: { demoSessionId: true, userId: true },
+        })
+        if (tp?.demoSessionId !== demoSession.id) return null
+        if (tp.userId !== demoSession.ownerUserId) return null
+
+        const user = await prisma.user.findUnique({
+          where: { id: demoSession.ownerUserId },
+          select: { id: true, email: true, name: true, role: true },
+        })
+        if (!user) return null
+
+        // Burn it. A conditional update on the still-unused row, so two taps
+        // racing each other cannot both succeed.
+        const burned = await prisma.demoSession.updateMany({
+          where: { id: demoSession.id, entryTokenUsedAt: null },
+          data: { entryTokenUsedAt: new Date(), lastSeenAt: new Date() },
+        })
+        if (burned.count !== 1) return null
+
+        return { id: user.id, email: user.email, name: user.name, role: user.role }
       },
     }),
     // Email/password for trainers

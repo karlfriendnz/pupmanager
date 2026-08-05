@@ -656,6 +656,29 @@ model TrainerProfile {
   // lower-case (Stripe convention). Seeded from signupCountry on first onboard.
   // SEPARATE from the per-checkout currency used by the subscription flow.
   payoutCurrency            String?
+
+  // ─── Trade-show "Try It" sandbox ───────────────────────────────────────────
+  // Both columns are non-null ONLY on a throwaway tenant created by the /try
+  // flow (a stranger scanned the QR on a poster and is playing with the app on
+  // their own phone). They are the marker every safety rail keys off:
+  //
+  //   • lib/demo-guard blocks EVERY outbound email and push for this tenant.
+  //   • lib/demo-tenant's purge refuses any tenant where these are null.
+  //   • Billing, Stripe Connect and the real-customer reporting counts skip it.
+  //
+  // Impossible to set on a real business, on purpose, and by three independent
+  // means: nothing outside `createDemoTenant()` ever writes them; the trainer
+  // profile PATCH route validates against a zod allow-list that does not
+  // contain either key; and `demoSessionId` is a FK-by-convention to a
+  // DemoSession row whose own `trainerId` must point back at this profile —
+  // a pairing the purge re-verifies before it deletes anything.
+  //
+  // Nullable + defaulted-absent so every existing row reads back as "not a
+  // demo", which is the safe answer for a deploy that has not reached it.
+  demoSessionId             String?   @unique
+  // When this sandbox stops being usable and becomes purgeable. Nobody at a
+  // trade show presses "exit", so the sweep is the real cleanup path.
+  demoExpiresAt             DateTime?
   // ─── Stripe Terminal / Tap to Pay ──────────────────────────────────────────
   // Terminal requires every in-person payment to be attached to a LOCATION, so
   // Stripe knows where the tap physically happened (fraud + dispute rules).
@@ -5514,4 +5537,129 @@ model ReviewComment {
   @@index([resolved])
   @@index([parentId])
   @@map("review_comments")
+}
+
+// ─── Trade-show "Try It" demo ────────────────────────────────────────────────
+//
+// Someone at a stand scans a QR code (or follows a plain link), gives their
+// name / company / email, agrees to the terms, picks what kind of dog pro they
+// are, and gets a private sandbox of the real app seeded with data that looks
+// like their trade. When they leave — or when the clock runs out — the sandbox
+// is destroyed.
+//
+// The LEAD OUTLIVES THE SANDBOX. That is the whole point of the exercise: the
+// tenant is disposable, the marketing record is not. Nothing in the purge path
+// touches DemoLead, and DemoSession keeps its row (status PURGED) after the
+// tenant it pointed at is gone.
+
+/// A person who filled in the /try form. Kept forever (subject to their own
+/// erasure request) — this is the marketing database.
+model DemoLead {
+  id          String @id @default(cuid())
+  name        String
+  companyName String
+  email       String
+
+  /// Which kind of dog pro they said they were — a persona id from
+  /// lib/onboarding-recommendations PERSONAS ("walker" | "trainer" |
+  /// "behaviourist" | "groomer" | "petsitter" | "puppyschool" | "other").
+  /// Stored on the lead as well as the session so a purged session still says
+  /// what they came to look at.
+  persona String
+
+  // ─── Consent ───────────────────────────────────────────────────────────────
+  // Recorded as WHAT they agreed to and WHEN, never as a bare boolean.
+  // PupManager is NZ-based with global reach, so a GDPR/CCPA/APP request has to
+  // be answerable years later with the exact wording that was on screen.
+  // `*Version` is the id of a block in lib/demo-consent CONSENT_TEXTS, and that
+  // file is append-only: wording changes mint a NEW version id and leave the
+  // old text in place so this column keeps resolving.
+
+  /// Version id of the terms text shown. Always present — you cannot start a
+  /// sandbox without accepting.
+  termsVersion    String
+  termsAcceptedAt DateTime
+
+  /// Marketing is SEPARATE and optional. False here still gets a sandbox.
+  marketingOptIn      Boolean   @default(false)
+  /// Version id of the marketing text shown — recorded whether or not they
+  /// ticked it, because "was offered and declined" is itself the record.
+  marketingVersion    String?
+  /// Null when they declined. Set only on an actual opt-in.
+  marketingOptInAt    DateTime?
+  /// Set if they later ask to come off the list (unsubscribe / erasure).
+  marketingRevokedAt  DateTime?
+
+  // ─── Provenance ────────────────────────────────────────────────────────────
+  /// "qr" (scanned a poster) or "link" (someone sent them the URL). Set from
+  /// the ?src= parameter, allow-listed server-side.
+  source    String  @default("link")
+  /// Free-text campaign tag from ?ev= (e.g. "dogzonline-2026") so leads can be
+  /// attributed to the stand they came from.
+  campaign  String?
+  /// Salted SHA-256 of the client IP — enough to spot abuse from one address,
+  /// not enough to be an IP log. Never the raw address.
+  ipHash    String?
+  userAgent String? @db.Text
+
+  sessions DemoSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([createdAt])
+  @@index([marketingOptIn])
+  @@map("demo_leads")
+}
+
+/// One visit — a lead pressing "start" mints one of these, and it owns the
+/// disposable tenant until the purge takes it away.
+model DemoSession {
+  id     String   @id @default(cuid())
+  leadId String
+  lead   DemoLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  /// The sandbox tenant (TrainerProfile.id) and the user that signs into it.
+  /// Deliberately NOT Prisma relations: the tenant is deleted out from under
+  /// this row and these are nulled, so a foreign key with a cascade would take
+  /// the lead's visit history with it — the exact thing we must not lose.
+  trainerId   String? @unique
+  ownerUserId String? @unique
+
+  persona String
+
+  /// ACTIVE   — live, someone may be using it right now
+  /// ENDED    — they pressed exit; tenant still standing, purge will collect it
+  /// PURGED   — tenant destroyed; this row is now history only
+  /// FAILED   — seeding blew up; nothing to purge but the lead is still real
+  status String @default("ACTIVE")
+
+  startedAt  DateTime  @default(now())
+  /// Bumped as they use the app. Idle timeout is measured from here.
+  lastSeenAt DateTime  @default(now())
+  /// Hard stop. Past this the sweep purges regardless of activity.
+  expiresAt  DateTime
+  endedAt    DateTime?
+  purgedAt   DateTime?
+
+  /// SHA-256 of the one-time entry token. The persona screen mints the token,
+  /// hands the raw value to the browser once, and /try/enter exchanges it for a
+  /// signed-in session. Hashed at rest so a database leak is not a pile of
+  /// working logins, single-use via `entryTokenUsedAt`, and short-lived.
+  entryTokenHash    String?   @unique
+  entryTokenExpires DateTime?
+  entryTokenUsedAt  DateTime?
+
+  /// They asked us to follow up / keep going after the show. A prompt for
+  /// sales, never an automatic account.
+  wantsFollowUp Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leadId])
+  @@index([status, expiresAt])
+  @@index([status, lastSeenAt])
+  @@map("demo_sessions")
 }

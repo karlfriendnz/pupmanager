@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Users, Package, Database, ClipboardList, Mail, Ticket, Megaphone, HeartPulse, type LucideIcon } from 'lucide-react'
+import { Users, Package, Database, ClipboardList, Mail, Ticket, Megaphone, HeartPulse, QrCode, type LucideIcon } from 'lucide-react'
 
 // Shared admin tab list — rendered as a horizontal top bar on desktop
 // (AdminTabNav) and as a fixed bottom bar on mobile (AdminBottomNav).
@@ -31,6 +31,11 @@ export const ADMIN_TABS: AdminTab[] = [
   { href: '/admin/billing-health', label: 'Billing health', short: 'Billing', icon: HeartPulse },
   { href: '/admin/promo-codes', label: 'Promo codes', short: 'Promos', icon: Ticket },
   { href: '/admin/demo', label: 'Demo data', short: 'Demo', icon: Database },
+  // Everyone who scanned the QR at a stand. Its own tab rather than a section
+  // of Demo data, because it is a different thing entirely: Demo data is the
+  // demo LOGIN's content, this is the marketing database the trade-show flow
+  // exists to build.
+  { href: '/admin/leads', label: 'Try It leads', short: 'Leads', icon: QrCode },
   { href: '/admin/status', label: 'Status', icon: ClipboardList },
 ]
 
