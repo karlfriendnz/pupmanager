@@ -2,6 +2,7 @@
 
 import { DogPhotoHeroPrompt } from './dog-photo-prompt'
 import { richTextToPlain, isRichTextEmpty } from '@/lib/rich-text'
+import { personaliseWelcomeNote } from '@/lib/welcome-note'
 import { RichText } from '@/components/shared/rich-text'
 
 import { useState, useTransition, useEffect } from 'react'
@@ -361,14 +362,19 @@ export function ClientHomeView({
         </nav>
 
         <div className="mt-6 flex flex-col gap-6 pb-8">
-          <p className="px-5 -mb-2 text-sm text-slate-500">Hi {firstName} 👋</p>
-
           {/* The "add a photo" nudge used to sit here as its own card, under a
               hero that was itself an empty panel asking for nothing. Two things
               saying one thing — the hero asks now, and this went. */}
 
           {/* ─── Welcome note from the trainer ─── */}
-          {/* Rich text (Tiptap HTML) since the trainer writes it in
+          {/* No "Hi Karl" line above it and no WELCOME label on it any more
+              (Karl, 2026-08-06). Both were the app greeting the client in its
+              own voice, immediately above the trainer greeting them in theirs —
+              and a trainer who opens with "Morning!" had "Hi Karl / WELCOME /
+              Morning!" stacked three deep. The greeting is the trainer's to
+              write, so {{name}} in their note becomes the client's first name.
+
+              Rich text (Tiptap HTML) since the trainer writes it in
               Settings → Design. <RichText> sanitizes before rendering and turns
               a legacy plain-text note into paragraphs, so the line breaks the
               old whitespace-pre-line preserved still survive. isRichTextEmpty
@@ -376,8 +382,7 @@ export function ClientHomeView({
           {!isRichTextEmpty(welcomeNote) && (
             <section className="px-4">
               <div className="rounded-2xl bg-accent-soft/60 border border-accent/10 p-4">
-                <p className="text-[11px] uppercase tracking-wider font-semibold text-accent mb-1">Welcome</p>
-                <RichText html={welcomeNote} className="text-sm text-slate-700 leading-relaxed" />
+                <RichText html={personaliseWelcomeNote(welcomeNote, firstName)} className="text-sm text-slate-700 leading-relaxed" />
               </div>
             </section>
           )}

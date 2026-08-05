@@ -437,7 +437,9 @@ export function TrainerSettingsForm({
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium text-slate-700">Welcome message</label>
             <p className="text-xs text-slate-400 -mt-1">
-              A short hello at the top of your clients&apos; home screen. Leave it empty to show no welcome at all.
+              The greeting at the top of your clients&apos; home screen — the app no longer adds one of its own,
+              so this is the whole hello. Type <code className="font-mono text-slate-500">{'{{name}}'}</code> where
+              you want their first name. Leave it empty to show no welcome at all.
             </p>
             <div data-testid="client-welcome-note-editor">
               <RichTextEditor
