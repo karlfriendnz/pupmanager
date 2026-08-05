@@ -1,8 +1,19 @@
 import { NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { put } from '@vercel/blob'
 import crypto from 'crypto'
+
+/**
+ * The dog's picture is rendered by more than one server component, so a
+ * router.refresh() on whichever screen did the upload leaves the others
+ * serving their cached render — the photo saved, and /my-dogs still showed the
+ * placeholder. Reported by Karl 2026-08-06, with the blob stored and readable.
+ */
+function revalidateDogPhotoScreens() {
+  for (const path of ['/home', '/my-dogs', '/my-profile']) revalidatePath(path)
+}
 
 const MAX_SIZE_BYTES = 10 * 1024 * 1024
 const ALLOWED_TYPES = new Set([
@@ -97,6 +108,7 @@ export async function POST(
       data: { photoUrl: blob.url },
       select: { id: true, photoUrl: true },
     })
+    revalidateDogPhotoScreens()
     return NextResponse.json(updated)
   } catch (err) {
     // Log the real cause server-side; don't blame the Blob store in the UI
@@ -155,5 +167,6 @@ export async function DELETE(
   if (!authorised) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   await prisma.dog.update({ where: { id: dogId }, data: { photoUrl: null } })
+  revalidateDogPhotoScreens()
   return NextResponse.json({ ok: true })
 }
