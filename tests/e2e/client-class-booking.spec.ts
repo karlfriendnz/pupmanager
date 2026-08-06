@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { SEED, TEST_DATABASE_URL } from './test-db'
+import { bestEffort } from './cleanup'
 
 // The client half of the most common paid flow after 1:1: a dog owner finds a
 // class in Offerings and enrols themselves. self-book-wizard covers the 1:1 and
@@ -46,10 +47,12 @@ test.describe('a client enrols themselves from Offerings', () => {
     try {
       await login(page, SEED.owner.email, SEED.owner.password)
       const b = await makeClass(page, name)
-      cleanup.push(() => prisma.classEnrollment.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+      // RESTRICTs, so the package may only go once its run has.
+      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(bestEffort('package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(bestEffort('class run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class sessions')))
+      cleanup.push(() => prisma.classEnrollment.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class enrolments')))
 
       await login(page, SEED.client.email, SEED.client.password)
       await page.goto('/my-availability')
@@ -94,10 +97,12 @@ test.describe('a client enrols themselves from Offerings', () => {
       // 0 keeps it free, so the confirm stays in-app rather than hopping to
       // Stripe.
       const b = await makeClass(page, name, { allowDropIn: true, dropInPriceCents: 0 })
-      cleanup.push(() => prisma.classEnrollment.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+      // RESTRICTs, so the package may only go once its run has.
+      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(bestEffort('package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(bestEffort('class run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class sessions')))
+      cleanup.push(() => prisma.classEnrollment.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class enrolments')))
 
       const sessions = await prisma.trainingSession.findMany({
         where: { classRunId: b.classRunId }, orderBy: { scheduledAt: 'asc' }, select: { id: true },

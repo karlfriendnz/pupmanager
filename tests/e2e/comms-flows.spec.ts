@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { SEED, TEST_DATABASE_URL } from './test-db'
+import { bestEffort } from './cleanup'
 
 // Automated communication flows: a trainer builds a timed-message flow on a
 // class, it persists, shows on the class page, and can be saved + reused as a
@@ -38,9 +39,12 @@ test.describe('automated communication flows', () => {
         })
         expect(res.status(), await res.text()).toBe(201)
         const b = await res.json()
-        cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-        cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
-        cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+        // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+        // RESTRICTs, so the package may only go once its run has.
+        cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(bestEffort('package')))
+        cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(bestEffort('class run')))
+        cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class sessions')))
+        cleanup.push(() => prisma.commsFlowStep.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('flow steps')))
         return b.classRunId as string
       }
       const runA = await makeClass('E2E Flow Class A')
@@ -80,7 +84,7 @@ test.describe('automated communication flows', () => {
       })
       expect(save.status(), await save.text()).toBe(201)
       const tmpl = await save.json()
-      cleanup.push(() => prisma.commsFlowTemplate.delete({ where: { id: tmpl.id } }).catch(() => {}))
+      cleanup.push(() => prisma.commsFlowTemplate.delete({ where: { id: tmpl.id } }).catch(bestEffort('flow template')))
 
       // …and apply it to run B in one call.
       const apply = await page.request.post(`/api/trainer/class-runs/${runB}/comms-flow/apply-template`, {
@@ -112,9 +116,12 @@ test.describe('automated communication flows', () => {
       })
       expect(res.status(), await res.text()).toBe(201)
       const b = await res.json()
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+      // RESTRICTs, so the package may only go once its run has.
+      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(bestEffort('package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(bestEffort('class run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class sessions')))
+      cleanup.push(() => prisma.commsFlowStep.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('flow steps')))
 
       const emailBody = '<p>Hi <strong>{{name}}</strong>, here is what to bring.</p><ul><li>Treats</li></ul>'
       const create = await page.request.post(`/api/trainer/class-runs/${b.classRunId}/comms-flow`, {
@@ -136,7 +143,7 @@ test.describe('automated communication flows', () => {
       })
       expect(save.status(), await save.text()).toBe(201)
       const tmpl = await save.json()
-      cleanup.push(() => prisma.commsFlowTemplate.delete({ where: { id: tmpl.id } }).catch(() => {}))
+      cleanup.push(() => prisma.commsFlowTemplate.delete({ where: { id: tmpl.id } }).catch(bestEffort('flow template')))
       const savedTmpl = await prisma.commsFlowTemplate.findUnique({ where: { id: tmpl.id }, select: { steps: true } })
       const tmplSteps = savedTmpl?.steps as { emailBody?: string }[]
       expect(tmplSteps[0]?.emailBody).toBe(emailBody)
@@ -146,9 +153,10 @@ test.describe('automated communication flows', () => {
         data: { name: 'E2E Email Flow Class 2', sessionCount: 2, weeksBetween: 1, durationMins: 60, isGroup: true, startAt: inDays(12).toISOString() },
       })
       const b2 = await res2.json()
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b2.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: b2.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: b2.id } }).catch(() => {}))
+      cleanup.push(() => prisma.package.delete({ where: { id: b2.id } }).catch(bestEffort('second package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b2.classRunId } }).catch(bestEffort('second class run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b2.classRunId } }).catch(bestEffort('second class sessions')))
+      cleanup.push(() => prisma.commsFlowStep.deleteMany({ where: { classRunId: b2.classRunId } }).catch(bestEffort('applied flow steps')))
       const apply = await page.request.post(`/api/trainer/class-runs/${b2.classRunId}/comms-flow/apply-template`, {
         data: { templateId: tmpl.id },
       })
@@ -183,9 +191,12 @@ test.describe('automated communication flows', () => {
         data: { name: 'E2E Staff Flow Class', sessionCount: 2, weeksBetween: 1, durationMins: 60, isGroup: true, startAt: inDays(10).toISOString() },
       })
       const b = await res.json()
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+      // RESTRICTs, so the package may only go once its run has.
+      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(bestEffort('package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(bestEffort('class run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class sessions')))
+      cleanup.push(() => prisma.commsFlowStep.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('flow steps')))
 
       const create = await page.request.post(`/api/trainer/class-runs/${b.classRunId}/comms-flow`, {
         data: {
@@ -224,10 +235,12 @@ test.describe('automated communication flows', () => {
         data: { name: 'E2E Timeline Class', sessionCount: 2, weeksBetween: 1, durationMins: 60, isGroup: true, startAt: inDays(10).toISOString() },
       })
       const b = await res.json()
-      cleanup.push(() => prisma.commsFlowStep.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+      // RESTRICTs, so the package may only go once its run has.
+      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(bestEffort('package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(bestEffort('class run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class sessions')))
+      cleanup.push(() => prisma.commsFlowStep.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('flow steps')))
 
       // Added deliberately out of order: last-to-fire first.
       for (const s of [
@@ -289,9 +302,12 @@ test.describe('automated communication flows', () => {
         data: { name: 'E2E Guard Class', sessionCount: 2, weeksBetween: 1, durationMins: 60, isGroup: true, startAt: inDays(10).toISOString() },
       })
       const b = await res.json()
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+      // RESTRICTs, so the package may only go once its run has.
+      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(bestEffort('package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(bestEffort('class run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class sessions')))
+      cleanup.push(() => prisma.commsFlowStep.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('flow steps')))
 
       const anon = await browser.newContext()
       // Don't follow redirects: the middleware bounces an unauthenticated call
@@ -323,10 +339,12 @@ test.describe('automated communication flows', () => {
         data: { name: 'E2E Placeholder Class', sessionCount: 2, weeksBetween: 1, durationMins: 60, isGroup: true, startAt: inDays(10).toISOString() },
       })
       const b = await res.json()
-      cleanup.push(() => prisma.commsFlowStep.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+      // RESTRICTs, so the package may only go once its run has.
+      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(bestEffort('package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(bestEffort('class run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class sessions')))
+      cleanup.push(() => prisma.commsFlowStep.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('flow steps')))
 
       const create = await page.request.post(`/api/trainer/class-runs/${b.classRunId}/comms-flow`, {
         data: {

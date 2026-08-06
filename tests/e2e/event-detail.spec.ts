@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { SEED, TEST_DATABASE_URL } from './test-db'
+import { bestEffort } from './cleanup'
 
 // An event has its own screen at /events/[eventId].
 //
@@ -60,9 +61,11 @@ test.describe('the event detail screen', () => {
     try {
       await login(page, SEED.owner.email, SEED.owner.password)
       const ev = await createEvent(page)
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: ev.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: ev.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: ev.id } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+      // RESTRICTs, so the package may only go once its run has.
+      cleanup.push(() => prisma.package.delete({ where: { id: ev.id } }).catch(bestEffort('event package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: ev.classRunId } }).catch(bestEffort('event run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: ev.classRunId } }).catch(bestEffort('event sessions')))
 
       await page.goto(`/events/${ev.classRunId}`)
       await expect(page.getByRole('heading', { name: 'E2E Ticketed Workshop' })).toBeVisible({ timeout: 15_000 })
@@ -96,9 +99,11 @@ test.describe('the event detail screen', () => {
     try {
       await login(page, SEED.owner.email, SEED.owner.password)
       const ev = await createEvent(page)
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: ev.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: ev.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: ev.id } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+      // RESTRICTs, so the package may only go once its run has.
+      cleanup.push(() => prisma.package.delete({ where: { id: ev.id } }).catch(bestEffort('event package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: ev.classRunId } }).catch(bestEffort('event run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: ev.classRunId } }).catch(bestEffort('event sessions')))
 
       await page.goto(`/classes/${ev.classRunId}`)
       await page.waitForURL(`**/events/${ev.classRunId}`, { timeout: 15_000 })
@@ -115,9 +120,11 @@ test.describe('the event detail screen', () => {
     try {
       await login(page, SEED.owner.email, SEED.owner.password)
       const ev = await createEvent(page)
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: ev.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: ev.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: ev.id } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+      // RESTRICTs, so the package may only go once its run has.
+      cleanup.push(() => prisma.package.delete({ where: { id: ev.id } }).catch(bestEffort('event package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: ev.classRunId } }).catch(bestEffort('event run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: ev.classRunId } }).catch(bestEffort('event sessions')))
 
       const vip = await prisma.packageTicketTier.findFirst({ where: { packageId: ev.id, name: 'VIP' } })
 
@@ -132,8 +139,8 @@ test.describe('the event detail screen', () => {
       })
       expect(res.status(), await res.text()).toBe(201)
       const { enrollmentId } = await res.json() as { enrollmentId: string }
-      cleanup.push(() => prisma.invoice.deleteMany({ where: { sourceId: enrollmentId } }).catch(() => {}))
-      cleanup.push(() => prisma.classEnrollment.delete({ where: { id: enrollmentId } }).catch(() => {}))
+      cleanup.push(() => prisma.invoice.deleteMany({ where: { sourceId: enrollmentId } }).catch(bestEffort('ticket invoice')))
+      cleanup.push(() => prisma.classEnrollment.delete({ where: { id: enrollmentId } }).catch(bestEffort('ticket enrolment')))
 
       const enrolment = await prisma.classEnrollment.findUnique({ where: { id: enrollmentId } })
       expect(enrolment?.ticketTierId).toBe(vip!.id)
@@ -159,9 +166,11 @@ test.describe('the event detail screen', () => {
     try {
       await login(page, SEED.owner.email, SEED.owner.password)
       const ev = await createEvent(page)
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: ev.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: ev.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: ev.id } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+      // RESTRICTs, so the package may only go once its run has.
+      cleanup.push(() => prisma.package.delete({ where: { id: ev.id } }).catch(bestEffort('event package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: ev.classRunId } }).catch(bestEffort('event run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: ev.classRunId } }).catch(bestEffort('event sessions')))
 
       // Early bird is capped at 2 — three of them must not go through, even
       // though the event itself has 30 places.
@@ -184,9 +193,11 @@ test.describe('the event detail screen', () => {
     try {
       await login(page, SEED.owner.email, SEED.owner.password)
       const ev = await createEvent(page)
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: ev.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: ev.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: ev.id } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+      // RESTRICTs, so the package may only go once its run has.
+      cleanup.push(() => prisma.package.delete({ where: { id: ev.id } }).catch(bestEffort('event package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: ev.classRunId } }).catch(bestEffort('event run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: ev.classRunId } }).catch(bestEffort('event sessions')))
 
       // Give Business B the events add-on, so this proves the TENANT scope
       // rather than just re-proving the add-on gate in front of it.
@@ -195,7 +206,7 @@ test.describe('the event detail screen', () => {
       const addon = await prisma.trainerAddon.create({
         data: { trainerId: bProfile!.id, itemId: 'events', active: true },
       })
-      cleanup.push(() => prisma.trainerAddon.delete({ where: { id: addon.id } }).catch(() => {}))
+      cleanup.push(() => prisma.trainerAddon.delete({ where: { id: addon.id } }).catch(bestEffort('rival events add-on')))
 
       // A rival trainer knowing the id gets nothing.
       await login(page, SEED.businessB.ownerEmail, SEED.businessB.ownerPassword)
@@ -230,9 +241,11 @@ test.describe('the event detail screen', () => {
       })
       expect(res.status(), await res.text()).toBe(201)
       const cls = await res.json() as { id: string; classRunId: string }
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: cls.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: cls.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: cls.id } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+      // RESTRICTs, so the package may only go once its run has.
+      cleanup.push(() => prisma.package.delete({ where: { id: cls.id } }).catch(bestEffort('class package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: cls.classRunId } }).catch(bestEffort('class run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: cls.classRunId } }).catch(bestEffort('class sessions')))
 
       const at = await page.request.get(`/events/${cls.classRunId}`)
       expect(at.status()).toBe(404)

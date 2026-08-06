@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { SEED, TEST_DATABASE_URL } from './test-db'
+import { bestEffort } from './cleanup'
 
 // User acceptance tests, written against docs/business-rules.md. Each title
 // carries the rule id it proves, so a failure names the promise that broke
@@ -49,17 +50,19 @@ test.describe('UAT — a household with several dogs', () => {
     try {
       await login(page, SEED.owner.email, SEED.owner.password)
       const b = await makeClass(page, `E2E Two Dogs ${Date.now()}`)
-      cleanup.push(() => prisma.classEnrollment.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+      // RESTRICTs, so the package may only go once its run has.
+      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(bestEffort('package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(bestEffort('class run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class sessions')))
+      cleanup.push(() => prisma.classEnrollment.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class enrolments')))
 
       // The household gets a second dog (DOG-1).
       await login(page, SEED.client.email, SEED.client.password)
       const added = await page.request.post('/api/my/dogs', { data: { name: second } })
       expect(added.status()).toBe(201)
       const secondDog = await added.json() as { id: string }
-      cleanup.push(() => prisma.dog.delete({ where: { id: secondDog.id } }).catch(() => {}))
+      cleanup.push(() => prisma.dog.delete({ where: { id: secondDog.id } }).catch(bestEffort('second dog')))
 
       const profile = await prisma.clientProfile.findUnique({
         where: { id: SEED.assignedClientId },
@@ -94,10 +97,12 @@ test.describe('UAT — a household with several dogs', () => {
     try {
       await login(page, SEED.owner.email, SEED.owner.password)
       const b = await makeClass(page, `E2E Dupe Dog ${Date.now()}`)
-      cleanup.push(() => prisma.classEnrollment.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+      // RESTRICTs, so the package may only go once its run has.
+      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(bestEffort('package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(bestEffort('class run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class sessions')))
+      cleanup.push(() => prisma.classEnrollment.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class enrolments')))
 
       const profile = await prisma.clientProfile.findUnique({
         where: { id: SEED.assignedClientId }, select: { dogId: true },
@@ -127,10 +132,12 @@ test.describe('UAT — a household with several dogs', () => {
     try {
       await login(page, SEED.owner.email, SEED.owner.password)
       const b = await makeClass(page, `E2E Foreign Dog ${Date.now()}`)
-      cleanup.push(() => prisma.classEnrollment.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+      // RESTRICTs, so the package may only go once its run has.
+      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(bestEffort('package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(bestEffort('class run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class sessions')))
+      cleanup.push(() => prisma.classEnrollment.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class enrolments')))
 
       // A dog belonging to somebody else entirely.
       rivalDogId = (await prisma.dog.create({
@@ -144,7 +151,7 @@ test.describe('UAT — a household with several dogs', () => {
       expect(enrol.status(), 'booking another household’s dog must be refused').toBe(400)
       expect(await prisma.classEnrollment.count({ where: { classRunId: b.classRunId } })).toBe(0)
     } finally {
-      if (rivalDogId) await prisma.dog.delete({ where: { id: rivalDogId } }).catch(() => {})
+      if (rivalDogId) await prisma.dog.delete({ where: { id: rivalDogId } }).catch(bestEffort('rival dog'))
       for (const fn of cleanup.reverse()) await fn()
       await prisma.$disconnect()
     }
@@ -158,10 +165,12 @@ test.describe('UAT — a household with several dogs', () => {
     try {
       await login(page, SEED.owner.email, SEED.owner.password)
       const b = await makeClass(page, `E2E Two Dog Drop ${Date.now()}`, { allowDropIn: true, dropInPriceCents: 0 })
-      cleanup.push(() => prisma.classEnrollment.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in REVERSE, and ClassRun→Package
+      // RESTRICTs, so the package may only go once its run has.
+      cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(bestEffort('package')))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(bestEffort('class run')))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class sessions')))
+      cleanup.push(() => prisma.classEnrollment.deleteMany({ where: { classRunId: b.classRunId } }).catch(bestEffort('class enrolments')))
 
       const session = await prisma.trainingSession.findFirst({
         where: { classRunId: b.classRunId }, orderBy: { scheduledAt: 'asc' }, select: { id: true },
@@ -170,7 +179,7 @@ test.describe('UAT — a household with several dogs', () => {
       await login(page, SEED.client.email, SEED.client.password)
       const added = await page.request.post('/api/my/dogs', { data: { name: second } })
       const secondDog = await added.json() as { id: string }
-      cleanup.push(() => prisma.dog.delete({ where: { id: secondDog.id } }).catch(() => {}))
+      cleanup.push(() => prisma.dog.delete({ where: { id: secondDog.id } }).catch(bestEffort('second dog')))
 
       const profile = await prisma.clientProfile.findUnique({
         where: { id: SEED.assignedClientId }, select: { dogId: true },
@@ -226,7 +235,7 @@ test.describe('UAT — a household with several dogs', () => {
       if (await later.isVisible().catch(() => false)) await later.click()
       expect(page.url()).not.toContain('/login')
     } finally {
-      if (secondProfileId) await prisma.clientProfile.delete({ where: { id: secondProfileId } }).catch(() => {})
+      if (secondProfileId) await prisma.clientProfile.delete({ where: { id: secondProfileId } }).catch(bestEffort('second client profile'))
       await prisma.$disconnect()
     }
   })
