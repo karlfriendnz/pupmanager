@@ -91,7 +91,7 @@ test.describe('client profile → Invoices — the cramped table is gone', () =>
     expect(amountBox.x - rowBox.x, 'the description column is no longer squeezed').toBeGreaterThan(220)
   })
 
-  test('at 1440px it is still a table, with the columns bounded', async ({ page }) => {
+  test('at 1440px it is still a table, and a long description moves nothing', async ({ page }) => {
     await page.setViewportSize(DESKTOP)
     await login(page, SEED.owner.email, SEED.owner.password)
     await page.goto(`/clients/${SEED.assignedClientId}/invoices`)
@@ -100,11 +100,59 @@ test.describe('client profile → Invoices — the cramped table is gone', () =>
     await expect(rows.first()).toBeVisible({ timeout: 20_000 })
     expect(await rows.count()).toBeGreaterThan(2)
 
-    // The long description is bounded and truncated rather than stretching the
-    // table and shoving the amount/status columns sideways.
-    const cell = rows.filter({ hasText: INV.longTitleInvoiceDescription.slice(0, 24) }).locator('td').nth(1)
-    const cellBox = (await cell.boundingBox())!
-    expect(cellBox.width, 'the description column is capped').toBeLessThanOrEqual(26 * 16 + 40)
+    // This used to measure the description cell against the 26rem cap on its
+    // <td>, and it measured under it for a reason that has nothing to do with
+    // the cap: the profile's 20rem summary aside sat beside this table, so the
+    // column never had the room to reach it. Every section of a client is its
+    // own FULL-WIDTH page now, and a max-width on a table cell only caps that
+    // column's content contribution — the auto table algorithm still shares the
+    // table's leftover width out across the columns, so the cell is legitimately
+    // wider than 26rem on a 1440px screen. The cap was a proxy; what it was
+    // protecting is asserted directly instead, and none of it has regressed.
+    const longRow = rows.filter({ hasText: INV.longTitleInvoiceDescription.slice(0, 24) })
+    await expect(longRow).toHaveCount(1)
+
+    // 1 · The description is one line that CLIPS. Not asserted as actually
+    //     clipped: on a 1440px screen this fixture now fits, which is the right
+    //     outcome — the point was never to hide text, it was that a long one
+    //     can't wrap or push. The three properties below are what makes it
+    //     clip when it doesn't fit, and are read off the live element.
+    const desc = await longRow.locator('td').nth(1).locator('span').evaluate(el => {
+      const s = getComputedStyle(el)
+      return {
+        lines: Math.round(el.getBoundingClientRect().height / parseFloat(s.lineHeight)),
+        whiteSpace: s.whiteSpace,
+        overflow: s.overflow,
+        textOverflow: s.textOverflow,
+      }
+    })
+    expect(desc.lines, 'the description is one line, not a wrapped block').toBe(1)
+    expect(
+      `${desc.whiteSpace}/${desc.overflow}/${desc.textOverflow}`,
+      'the description no longer clips — a longer one would wrap the row',
+    ).toBe('nowrap/hidden/ellipsis')
+
+    // 2 · It has not stretched the TABLE past the box it sits in — the thing
+    //     the cap existed to stop. The wrapper is overflow-x-auto, so a stretched
+    //     table hides inside its own sideways scrollbar rather than overflowing
+    //     the page, and only this comparison catches it.
+    const fit = await page.locator('table').first().evaluate(t => ({
+      table: t.scrollWidth,
+      box: (t.parentElement as HTMLElement).clientWidth,
+    }))
+    expect(fit.table, `a long description stretched the table (${fit.table} > ${fit.box})`)
+      .toBeLessThanOrEqual(fit.box)
+
+    // 3 · And it has not squeezed the money or the status: those columns are
+    //     nowrap, so if the description had taken their room they would clip.
+    const clippedCells = await page
+      .locator('[data-testid="client-invoice-row-desktop"] td:nth-child(3), [data-testid="client-invoice-row-desktop"] td:nth-child(4)')
+      .evaluateAll(els => els.filter(el => el.scrollWidth > el.clientWidth).length)
+    expect(clippedCells, 'the amount/status columns are being clipped').toBe(0)
+
+    // 4 · No sideways scroll on the page either.
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+    expect(overflow, 'no horizontal scroll at 1440px').toBeLessThanOrEqual(0)
   })
 
   test('the Unpaid filter narrows the list without losing the layout', async ({ page }) => {

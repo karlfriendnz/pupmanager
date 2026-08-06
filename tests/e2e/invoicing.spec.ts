@@ -62,16 +62,20 @@ test.describe('invoicing — assign a priced package raises a receivable', () =>
     await expect(page.getByRole('heading', { name: 'Finances' })).toBeVisible({ timeout: 15_000 })
     await expect(page.getByRole('row', { name: /Priced Puppy Course/ })).toBeVisible({ timeout: 15_000 })
 
-    // Client profile → Overview "Unpaid invoices" card shows it…
+    // Client profile → the Invoices TILE says what is owed. The overview's
+    // "Unpaid invoices" card is gone: every section of a client is its own page
+    // now, and a card that was a smaller copy of the page one tap away said the
+    // same thing twice. The tile carries the fact instead, so the profile still
+    // answers "does this client owe me anything" without opening anything.
     await page.goto(`/clients/${SEED.assignedClientId}`)
-    await expect(page.getByRole('heading', { name: 'Unpaid invoices' })).toBeVisible({ timeout: 15_000 })
-    // The card is a tickable list (so several can be combined into one bill),
-    // not a table — hence listitem rather than row.
-    await expect(page.getByRole('listitem').filter({ hasText: 'Priced Puppy Course' }).first())
-      .toBeVisible({ timeout: 15_000 })
+    const invoicesTile = page.getByRole('link', { name: /^Invoices/ })
+    await expect(invoicesTile).toBeVisible({ timeout: 15_000 })
+    await expect(invoicesTile).toHaveAttribute('href', `/clients/${SEED.assignedClientId}/invoices`)
+    // A real amount, not the worded zero — the invoice just raised is unpaid.
+    await expect(invoicesTile, 'the Invoices tile does not name what is owed')
+      .toContainText(/[\d.,]+\s+owing/)
 
-    // …and the client's Invoices PAGE lists it too. (Every section of a client
-    // is its own route now — the tabs are gone.)
+    // …and the client's Invoices PAGE lists it.
     await page.goto(`/clients/${SEED.assignedClientId}/invoices`)
     await expect(page.getByRole('row', { name: /Priced Puppy Course/ })).toBeVisible({ timeout: 15_000 })
   })
@@ -118,14 +122,34 @@ test.describe('invoicing — edit line items', () => {
     // Total recomputes live.
     await expect(dialog.getByText('$250.00').first()).toBeVisible()
 
+    // Wait for the WRITE, not the click. click() returns when the click is
+    // dispatched, not when the PATCH behind it has landed.
+    const saved = page.waitForResponse(
+      r => r.request().method() === 'PATCH' && r.url().includes(INV.editableInvoiceId),
+      { timeout: 15_000 },
+    )
     await dialog.getByRole('button', { name: 'Save' }).click()
-    // Back in the read view, the new total is persisted.
+    await saved
+
+    // Back in the read view, the new total is on screen. On its own this proves
+    // NOTHING — $250.00 was already rendered by the live recompute above, so
+    // this assertion passed whether or not the save ever left the browser. It
+    // stays because a blank or reverted dialog is still worth catching; the API
+    // check below is what actually proves the write.
     await expect(dialog.getByText('$250.00').first()).toBeVisible({ timeout: 10_000 })
 
-    // And the list API reflects the new amount.
-    const detail = await page.request.get(`/api/trainer/finances/receivables/${INV.editableInvoiceId}`)
-    expect(detail.status()).toBe(200)
-    expect((await detail.json()).amountCents).toBe(25000)
+    // The one that proves it. Polled rather than read once: the PATCH has
+    // responded, but this is a second connection and a read-after-write can
+    // still land on a stale snapshot.
+    await expect
+      .poll(
+        async () => {
+          const detail = await page.request.get(`/api/trainer/finances/receivables/${INV.editableInvoiceId}`)
+          return detail.ok() ? (await detail.json()).amountCents : null
+        },
+        { timeout: 15_000, message: 'the saved amount never reached the API' },
+      )
+      .toBe(25000)
   })
 })
 

@@ -37,6 +37,26 @@ async function dismissAppPrompt(page: Page) {
 }
 
 /**
+ * Get to the 1-on-1 list on /my-availability, whichever shape the wizard is in.
+ *
+ * Step 1 is normally a menu of offering TYPES, so you tap "1-on-1 sessions" to
+ * drill in. But a trainer who sells only ONE kind of thing has a single way in,
+ * and the wizard opens that list directly with no row to tap (`onlyWayIn` in
+ * booking-wizard.tsx). Trainer B here sells exactly one package; trainer A sells
+ * several kinds — so both shapes turn up in the same test.
+ *
+ * The type row is renameable (`labelFor('/packages', …)`), so match its default
+ * loosely and settle on the list heading, which reads the same either way.
+ */
+async function openOneToOneList(page: Page) {
+  const typeRow = page.getByRole('button', { name: /1-on-1 sessions/ })
+  const listHeading = page.getByRole('heading', { name: '1-on-1 sessions' })
+  await expect(typeRow.or(listHeading).first()).toBeVisible({ timeout: 20_000 })
+  if (await typeRow.isVisible().catch(() => false)) await typeRow.click()
+  await expect(listHeading).toBeVisible({ timeout: 15_000 })
+}
+
+/**
  * Taking on a second trainer means that trainer's intake gate — reasonably,
  * since each trainer keeps their own record of you. Clear it so the tests can
  * reach the app behind it.
@@ -133,7 +153,7 @@ test.describe('UAT — one dog owner, two trainers', () => {
       await clearIntakeGate(page)
       await page.goto('/my-availability')
       await dismissAppPrompt(page)
-      await page.getByRole('button', { name: /1-on-1 sessions/ }).click()
+      await openOneToOneList(page)
 
       await expect(page.getByText(ctx.bPackageName).locator('visible=true').first())
         .toBeVisible({ timeout: 15_000 })
@@ -148,7 +168,7 @@ test.describe('UAT — one dog owner, two trainers', () => {
       await page.waitForURL(/\/home/, { timeout: 20_000 })
       await page.goto('/my-availability')
       await dismissAppPrompt(page)
-      await page.getByRole('button', { name: /1-on-1 sessions/ }).click()
+      await openOneToOneList(page)
 
       await expect(page.getByText('Self-Book Session').locator('visible=true').first())
         .toBeVisible({ timeout: 15_000 })

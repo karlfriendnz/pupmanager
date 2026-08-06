@@ -66,10 +66,12 @@ test.describe('automated communication flows', () => {
       // rebuilt, and OfferingTabs now marks its tabs role="tab" rather than
       // leaving them plain buttons — so getByRole('button') no longer finds one.
       await page.getByRole('tab', { name: 'Automation' }).click()
-      // exact: the Preview icon button carries an sr-only "Preview <title>" label,
-      // so a substring match hits both it and the row title. The sr-only label is
-      // correct a11y, not duplication — the assertion just has to be precise.
-      await expect(page.getByText('E2E Bring treats', { exact: true })).toBeVisible({ timeout: 15_000 })
+      // A row's first line is flowStepSummary's `what`, which now leads with the
+      // channels ("Send push: <title>") rather than the bare title — one phrasing
+      // shared by the builder, the Settings index and this row. Anchored, because
+      // the Preview icon button carries an sr-only "Preview <what>" label that a
+      // substring match would also hit.
+      await expect(page.getByText(/^Send push: E2E Bring treats$/)).toBeVisible({ timeout: 15_000 })
       await expect(page.getByText('1 day before', { exact: false })).toBeVisible()
 
       // Save the flow as a template…
@@ -159,8 +161,9 @@ test.describe('automated communication flows', () => {
       // The tab was renamed Reminders → Automation when the flow editor was
       // rebuilt; it is the same tab and the same section id ('messages').
       await page.getByRole('tab', { name: 'Automation' }).click()
-      // exact: see above — the Preview button's sr-only label also contains this.
-      await expect(page.getByText('E2E What to bring', { exact: true })).toBeVisible({ timeout: 15_000 })
+      // See above — the row leads with its channels, and the Preview button's
+      // sr-only label repeats the whole line, so the match is anchored.
+      await expect(page.getByText(/^Send email \+ push: E2E What to bring$/)).toBeVisible({ timeout: 15_000 })
     } finally {
       for (const fn of cleanup.reverse()) await fn()
       await prisma.$disconnect()
@@ -242,8 +245,9 @@ test.describe('automated communication flows', () => {
       // The tab was renamed Reminders → Automation when the flow editor was
       // rebuilt; it is the same tab and the same section id ('messages').
       await page.getByRole('tab', { name: 'Automation' }).click()
-      // exact: as above, the Preview button's sr-only label contains the title.
-      await expect(page.getByText('E2E First', { exact: true })).toBeVisible({ timeout: 15_000 })
+      // As above, the row leads with its channels and the Preview button's
+      // sr-only label repeats the line, so the match is anchored.
+      await expect(page.getByText(/^Send push: E2E First$/)).toBeVisible({ timeout: 15_000 })
 
       const stops = page.locator('ol > li')
       await expect(stops).toHaveCount(3)
@@ -251,19 +255,25 @@ test.describe('automated communication flows', () => {
       await expect(stops.nth(0)).toContainText('E2E First')
       await expect(stops.nth(1)).toContainText('E2E Second')
       await expect(stops.nth(2)).toContainText('E2E Third')
-      // …and each stop carries its own when / how / who.
+      // …and each stop carries its own when and how. The WHO moved off the row
+      // when the builder was rebuilt: the default audience on every row was
+      // noise, so it is stated once in the preview below (and on the row only
+      // when it is the odd one out — a staff step).
       await expect(stops.nth(0)).toContainText('1 week before')
-      await expect(stops.nth(0)).toContainText('Push')
-      await expect(stops.nth(0)).toContainText('Everyone booked')
+      await expect(stops.nth(0)).toContainText('Send push')
 
       // Opening a stop offers the preview, which fills the placeholders in.
       await stops.nth(0).getByRole('button').first().click()
-      await expect(page.getByRole('dialog', { name: 'Message' })).toBeVisible()
+      // The sheet is titled by the KIND it is editing ("Send a message"), which
+      // is what tells a trainer what they opened.
+      await expect(page.getByRole('dialog', { name: 'Send a message' })).toBeVisible()
       await page.getByRole('button', { name: 'Preview', exact: true }).click()
       const preview = page.getByRole('dialog', { name: 'Preview' })
       await expect(preview).toBeVisible()
       await expect(preview).not.toContainText('{{name}}')
       await expect(preview).toContainText('E2E Timeline Class') // the real offering, not a sample
+      // …and it says who it reaches, which is the line the row no longer carries.
+      await expect(preview).toContainText('to everyone booked')
     } finally {
       for (const fn of cleanup.reverse()) await fn()
       await prisma.$disconnect()
@@ -332,9 +342,11 @@ test.describe('automated communication flows', () => {
       // The tab was renamed Reminders → Automation when the flow editor was
       // rebuilt; it is the same tab and the same section id ('messages').
       await page.getByRole('tab', { name: 'Automation' }).click()
-      await expect(page.getByText('E2E Placeholder Step', { exact: true })).toBeVisible({ timeout: 15_000 })
+      // The row leads with its channels — see the timeline test above.
+      await expect(page.getByText(/^Send push: E2E Placeholder Step$/)).toBeVisible({ timeout: 15_000 })
       await page.locator('ol > li').first().getByRole('button').first().click()
-      const sheet = page.getByRole('dialog', { name: 'Message' })
+      // The step sheet is titled by the kind it edits.
+      const sheet = page.getByRole('dialog', { name: 'Send a message' })
       await expect(sheet).toBeVisible()
 
       // Labelled in plain language — the raw tokens are never button text.

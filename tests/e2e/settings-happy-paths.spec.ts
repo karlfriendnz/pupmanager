@@ -17,10 +17,16 @@ async function login(page: Page, email: string, password: string) {
 test.describe('email templates — owner happy path', () => {
   test('owner creates a reusable template and it appears in the list', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
-    // Email templates moved out of Settings to their own page under Communication.
+    // Email templates moved BACK into Settings (2026-07-30) — /email-templates
+    // is a redirect now, kept because the old url is in bookmarks, so arriving
+    // through it is part of the feature.
     await page.goto('/email-templates')
+    await expect(page, 'the old email-templates url no longer lands on the panel')
+      .toHaveURL(/\/settings\?tab=emails/, { timeout: 20_000 })
     // Templates are chosen from one dropdown now; creating is its last option.
-    await page.getByLabel('Choose an email template').selectOption('__new')
+    const picker = page.getByLabel('Choose an email template')
+    await expect(picker).toBeEnabled({ timeout: 20_000 })
+    await picker.selectOption('__new')
 
     const name = `Welcome ${Date.now()}`
     // exact: getByPlaceholder matches case-insensitive SUBSTRINGS, and the
@@ -29,14 +35,18 @@ test.describe('email templates — owner happy path', () => {
     await page.getByPlaceholder('Welcome to the pack', { exact: true }).fill(name)
     await page.getByPlaceholder('A warm welcome to the pack').fill('Hello {{clientName}}')
     // Body is a rich-text (contenteditable) editor — type into it directly.
-    const editor = page.locator('[contenteditable="true"]').first()
+    // `:visible` matters now the panel lives in Settings: every tab's content is
+    // in the DOM at once (the one you aren't on is `hidden`), so an unfiltered
+    // .first() picks up a contenteditable on some other tab and the click times
+    // out on an element that is display:none.
+    const editor = page.locator('[contenteditable="true"]:visible').first()
     await editor.click()
     await editor.pressSequentially('Welcome to the pack — great to have you!')
 
     await page.getByRole('button', { name: 'Create template' }).click()
     // The new template joins the picker. Its <option> counts as hidden to
     // Playwright, so assert the select's contents rather than visibility.
-    await expect(page.getByLabel('Choose an email template')).toContainText(name, { timeout: 10_000 })
+    await expect(picker).toContainText(name, { timeout: 10_000 })
   })
 })
 

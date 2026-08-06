@@ -108,6 +108,15 @@ test.describe('forms screen — owner happy path', () => {
     const formName = `Client form ${Date.now()}`
     await page.getByLabel('Form name').fill(formName)
 
+    // It is an intake form by default; also publish it as a website enquiry so
+    // both halves of the model get exercised. Both switches are on step 1 —
+    // "Where it's used" is part of the basics now, not a settings panel.
+    await page.getByRole('switch', { name: 'Website enquiry form' }).click()
+
+    // A client form is built in a THREE-STEP WIZARD now (the basics → the
+    // questions → what happens next), so the questions are one step in.
+    await page.getByRole('button', { name: 'Next: The questions' }).click()
+
     // Question 1 → a dropdown, so question 2 has something to branch on.
     await page.getByLabel('Question 1', { exact: true }).fill('Has your dog been groomed before?')
     await page.getByLabel('Answer type for question 1').selectOption('DROPDOWN')
@@ -115,7 +124,14 @@ test.describe('forms screen — owner happy path', () => {
     await page.getByLabel('Option 1', { exact: true }).fill('Yes')
     await page.getByLabel('Option 2', { exact: true }).fill('No')
 
+    // The wizard has no palette rail to drag from, so "Add question" opens the
+    // full-screen picker rather than appending a blank long-text box — it is
+    // the one and only door, and a door that guessed would be a trap.
     await page.getByRole('button', { name: 'Add question' }).click()
+    const palette = page.getByRole('dialog', { name: /Add a question/ })
+    await expect(palette).toBeVisible()
+    await palette.getByRole('button', { name: 'Add Short text' }).click()
+    await expect(palette).toBeHidden()
     await page.getByLabel('Question 2', { exact: true }).fill('When was the last groom?')
     // Only question 2 gets a conditional row at all: the rule can only key on
     // an EARLIER question that has a fixed option list, and question 1 has
@@ -124,10 +140,6 @@ test.describe('forms screen — owner happy path', () => {
     await expect(condition).toHaveCount(1)
     await condition.selectOption({ label: 'Has your dog been groomed before?' })
     await page.getByLabel('Answer that reveals this question').selectOption('Yes')
-
-    // It is an intake form by default; also publish it as a website enquiry so
-    // both halves of the model get exercised.
-    await page.getByRole('switch', { name: 'Website enquiry form' }).click()
 
     const [res] = await Promise.all([
       page.waitForResponse(r => r.url().endsWith('/api/forms') && r.request().method() === 'POST'),
@@ -147,6 +159,8 @@ test.describe('forms screen — owner happy path', () => {
     await row.click()
     await page.waitForURL('**/forms/client/**')
     await expect(page.getByLabel('Form name')).toHaveValue(formName)
+    // …one step in, where the questions live.
+    await page.getByRole('button', { name: 'Next: The questions' }).click()
     await expect(page.getByLabel('Answer that reveals this question')).toHaveValue('Yes')
 
     // The public enquiry page renders the same form, and the conditional

@@ -44,9 +44,47 @@ async function login(page: Page, email: string, password: string) {
   await page.waitForURL(u => !u.pathname.startsWith('/login'), { timeout: 30_000 })
 }
 
+// Scoped to <main>: the trainer shell's left nav carries its own "Products" and
+// "Achievements" links, and an unscoped getByRole('link') picks THOSE up first —
+// clicking the Products tile navigated to the shop, not to the client's page.
 function tile(page: Page, label: string) {
-  return page.getByRole('link', { name: new RegExp(`^${label}`) }).first()
+  return page.getByRole('main').getByRole('link', { name: new RegExp(`^${label}`) }).first()
 }
+
+// "Add product" is gated on the trainer HAVING a shop to pick from
+// (client-products-section.tsx: `if (!canEdit || !hasProducts) return body`), and
+// global-setup seeds no Product rows. One throwaway product, removed again, so
+// no other spec's counts move.
+const SHOP_PRODUCT_ID = 'e2etilesshopprod00000000'
+
+test.beforeAll(async () => {
+  const prisma = await makePrisma()
+  try {
+    const trainer = await prisma.trainerProfile.findFirst({
+      where: { user: { email: SEED.owner.email } }, select: { id: true },
+    })
+    await prisma.product.upsert({
+      where: { id: SHOP_PRODUCT_ID },
+      update: {},
+      create: {
+        id: SHOP_PRODUCT_ID, trainerId: trainer!.id,
+        name: 'E2E Long Line', kind: 'PHYSICAL', priceCents: 4500, active: true,
+      },
+    })
+  } finally {
+    await prisma.$disconnect()
+  }
+})
+
+test.afterAll(async () => {
+  const prisma = await makePrisma()
+  try {
+    await prisma.productRequest.deleteMany({ where: { productId: SHOP_PRODUCT_ID } })
+    await prisma.product.deleteMany({ where: { id: SHOP_PRODUCT_ID } })
+  } finally {
+    await prisma.$disconnect()
+  }
+})
 
 test.describe('the profile summarises the client', () => {
   test('every tile carries a line, and a zero reads as words', async ({ page }) => {
@@ -198,9 +236,13 @@ test.describe('the profile is hero + tiles + the action, and nothing else', () =
     await tile(page, 'Products').click()
     await page.waitForURL(`**/clients/${SEED.assignedClientId}/products`)
     await expect(page.getByRole('heading', { name: 'Bring to next session' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Add product' })).toBeVisible()
-    await page.getByRole('button', { name: 'Add product' }).click()
-    await expect(page.getByRole('heading', { name: 'Add to next session' })).toBeVisible()
+    // It is a LINK to a screen of its own now, not a sheet (Karl, 2026-08-06:
+    // "should be a page") — /clients/<id>/products/add.
+    const add = page.getByRole('link', { name: 'Add product' })
+    await expect(add).toBeVisible()
+    await add.click()
+    await page.waitForURL(`**/clients/${SEED.assignedClientId}/products/add`)
+    await expect(page.locator('header:visible h1').first()).toHaveText('Add product')
   })
 })
 

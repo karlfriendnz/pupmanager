@@ -431,9 +431,11 @@ test('a brand-new trainer builds a business, takes on clients, and talks to them
       await clientPage.getByRole('button', { name: /Behaviour consult/ }).click()
 
       await expect(clientPage.getByRole('heading', { name: 'Pick a time' })).toBeVisible({ timeout: 15_000 })
-      const continueBtn = clientPage.getByRole('button', { name: /^Continue · / })
-      await expect(continueBtn).toBeEnabled({ timeout: 15_000 })
-      await continueBtn.click()
+      // Tapping a start time IS the decision — the old "Continue · <time>"
+      // button under the grid is gone, so the tap moves the wizard on itself.
+      const startTime = clientPage.getByRole('button', { name: /^\d{1,2}(:\d{2})? [AP]M$/ }).first()
+      await expect(startTime).toBeEnabled({ timeout: 15_000 })
+      await startTime.click()
 
       await expect(clientPage.getByRole('heading', { name: 'Confirm your booking' })).toBeVisible({ timeout: 15_000 })
       await clientPage.getByRole('button', { name: 'Confirm booking' }).click()

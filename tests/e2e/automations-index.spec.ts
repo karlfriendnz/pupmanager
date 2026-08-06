@@ -56,9 +56,14 @@ test.describe('Settings → Automations', () => {
         })
         expect(res.status(), await res.text()).toBe(201)
         const b = await res.json()
-        cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-        cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
+        // Pushed OUTERMOST-FIRST, because the finally block runs `cleanup` in
+        // reverse. Both FKs RESTRICT, so the children have to go before the
+        // parent — a flow left behind blocks its ClassRun, which blocks its
+        // Package, and these classes leak into every other spec's list.
         cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+        cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
+        cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
+        cleanup.push(() => prisma.commsFlowStep.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
         return b.classRunId as string
       }
 
@@ -109,20 +114,31 @@ test.describe('Settings → Automations', () => {
       // Described in the builder's own words, not a second phrasing.
       await expect(panel.getByText('Send push: E2E See you tomorrow')).toBeVisible()
 
-      // The flow whose every step is off says so.
-      await expect(panel.getByRole('button', { name: /E2E Automations Switched Off/ }))
-        .toContainText('Off')
+      // The flow whose every step is off says so. A row is a LINK now (see
+      // below), and each one carries a second "Open <name>" link to the
+      // offering itself — hence the anchored name. The badge is asserted on its
+      // own rather than through the row's text, which happens to end in "Off".
+      const offRow = panel.getByRole('link', { name: /^E2E Automations Switched Off/ })
+      await expect(offRow.getByText('Off', { exact: true })).toBeVisible()
 
       // The step the engine will skip carries the engine's own reason.
       await expect(panel.getByText('No form chosen')).toBeVisible()
 
-      // ── Editing, in place, through the SAME editor ────────────────────────
-      await panel.getByRole('button', { name: /E2E Automations Live/ }).click()
+      // ── Editing, through the SAME editor, on the flow's own page ──────────
+      // It used to expand in place. Karl: "can it also be opened up on a new
+      // page to remove distraction from the user" — so the row is a link to
+      // /automations/<target>/<id>, which mounts the same CommsFlowEditor with
+      // the same props and nothing else on the screen.
+      await panel.getByRole('link', { name: /^E2E Automations Live/ }).click()
+      await page.waitForURL(/\/automations\/run\//)
+      await expect(page.getByRole('heading', { name: 'E2E Automations Live' })).toBeVisible()
       // The editor's own chrome, not a second UI built for this screen.
-      await expect(panel.getByRole('button', { name: /add (a )?step/i }).first()).toBeVisible()
+      await expect(page.getByRole('button', { name: /add (a )?step/i }).first()).toBeVisible()
       // The editor loaded THIS flow's steps, from the same tree the class page
-      // reads — so what is on screen is what /classes/<id> would show.
-      await expect(panel.getByText('E2E See you tomorrow').first()).toBeVisible()
+      // reads — so what is on screen is what /classes/<id> would show, in the
+      // same words (flowStepSummary) the index above used. Anchored: the row's
+      // Preview button carries an sr-only "Preview <what>" label.
+      await expect(page.getByText(/^Send push: E2E See you tomorrow$/)).toBeVisible()
 
       // ── The old top-level URL still lands somewhere real ──────────────────
       await page.goto('/automations')
@@ -155,10 +171,11 @@ test.describe('Settings → Automations', () => {
         })
         expect(res.status(), await res.text()).toBe(201)
         const b = await res.json()
-        cleanup.push(() => prisma.commsFlowStep.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-        cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-        cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
+        // Outermost first — `cleanup` is run in reverse, and both FKs RESTRICT.
         cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+        cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
+        cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
+        cleanup.push(() => prisma.commsFlowStep.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
         return b.classRunId as string
       }
 
@@ -192,10 +209,12 @@ test.describe('Settings → Automations', () => {
         .toContainText('Already has one')
 
       // ── Choosing an empty one opens the editor and writes nothing ─────────
+      // Picking goes to the flow's own page rather than expanding a row here —
+      // the same move the list itself makes now.
       await picker.getByRole('button', { name: /E2E Picker Nothing Automated/ }).click()
-      await expect(page.getByRole('dialog')).toHaveCount(0)
-      await expect(panel.getByText('E2E Picker Nothing Automated')).toBeVisible()
-      await expect(panel.getByRole('button', { name: /add (a )?step/i }).first()).toBeVisible()
+      await page.waitForURL(/\/automations\/run\//)
+      await expect(page.getByRole('heading', { name: 'E2E Picker Nothing Automated' })).toBeVisible()
+      await expect(page.getByRole('button', { name: /add (a )?step/i }).first()).toBeVisible()
       // The whole point: a flow is its steps, so picking one creates no row.
       expect(
         await prisma.commsFlowStep.count({ where: { classRunId: bareRun } }),
@@ -203,9 +222,11 @@ test.describe('Settings → Automations', () => {
       ).toBe(0)
 
       // ── Choosing one that already has a flow opens THAT flow ──────────────
+      await page.goto('/settings?tab=automations')
       await panel.getByRole('button', { name: 'New automation' }).click()
       await page.getByRole('dialog').getByRole('button', { name: /E2E Picker Already Automated/ }).click()
-      await expect(panel.getByText('E2E Picker existing step').first()).toBeVisible()
+      await page.waitForURL(/\/automations\/run\//)
+      await expect(page.getByText(/^Send push: E2E Picker existing step$/)).toBeVisible()
       // Not a second one, and nothing wiped.
       expect(await prisma.commsFlowStep.count({ where: { classRunId: busyRun } })).toBe(1)
     } finally {
@@ -230,9 +251,11 @@ test.describe('Settings → Automations', () => {
       })
       expect(res.status(), await res.text()).toBe(201)
       const b = await res.json()
-      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
-      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
+      // Outermost first — `cleanup` is run in reverse, and both FKs RESTRICT.
       cleanup.push(() => prisma.package.delete({ where: { id: b.id } }).catch(() => {}))
+      cleanup.push(() => prisma.classRun.delete({ where: { id: b.classRunId } }).catch(() => {}))
+      cleanup.push(() => prisma.trainingSession.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
+      cleanup.push(() => prisma.commsFlowStep.deleteMany({ where: { classRunId: b.classRunId } }).catch(() => {}))
 
       // ONE step, switched on — so switching it off makes the whole flow "Off".
       const step = await page.request.post(`/api/trainer/class-runs/${b.classRunId}/comms-flow`, {
@@ -246,7 +269,9 @@ test.describe('Settings → Automations', () => {
       const stepId = (await step.json()).id as string
 
       await page.goto('/settings?tab=automations')
-      const row = () => page.getByRole('button', { name: /E2E Automations Toggle/ })
+      // A row is a link to the flow's own page now, and each one carries a
+      // second "Open <name>" link beside it — hence the anchored name.
+      const row = () => page.getByRole('link', { name: /^E2E Automations Toggle/ })
       await expect(row()).toBeVisible()
       await expect(row()).not.toContainText('Off')
 

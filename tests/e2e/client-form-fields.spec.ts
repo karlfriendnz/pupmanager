@@ -97,7 +97,12 @@ test.describe('the client form, every field', () => {
       // own tab now: the screen is Contact · Dogs · Invitation email.
       await page.getByRole('button', { name: /^Dogs/ }).click()
       await page.getByPlaceholder('Buddy').fill('Rex')
-      await page.locator('input[type="date"]').first().fill('2022-03-14')
+      // A birthday is three selects now, not `input[type="date"]` — see
+      // DateOfBirthField. Year first: the day/month lists shrink inside the
+      // current year, so picking out of order can clamp the answer.
+      await page.locator('#new-dog-0-dob-year').selectOption('2022')
+      await page.locator('#new-dog-0-dob-month').selectOption('3')
+      await page.locator('#new-dog-0-dob-day').selectOption('14')
 
       // Create is live from any tab, so no tour back to Contact first.
       await page.getByRole('button', { name: 'Create client' }).click()

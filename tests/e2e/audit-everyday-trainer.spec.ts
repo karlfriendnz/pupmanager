@@ -152,7 +152,16 @@ test.describe('the jobs a trainer does every day', () => {
       // Did it save at all? Asked FIRST, because "not saved" and "saved but the
       // shelf does not show it" are different bugs and the screen alone cannot
       // tell them apart.
-      const made = await prisma.product.findFirstOrThrow({ where: { name } })
+      //
+      // Polled through until(), like every other create in this file. Read once,
+      // this raced the save it was checking: click() returns when the click is
+      // dispatched, not when the POST behind it has landed, so on a loaded
+      // machine the row genuinely wasn't there yet — the failure screenshot
+      // showed the product's own page, with its name in the heading.
+      const made = await until(
+        () => prisma.product.findFirst({ where: { name } }),
+        'the product never reached the database',
+      )
 
       // And then: can the trainer see it where they would look?
       await page.goto('/products')
@@ -173,7 +182,10 @@ test.describe('the jobs a trainer does every day', () => {
 
       // ── Delete ──────────────────────────────────────────────────────────────
       await page.goto(`/products/${made.id}`)
-      await page.getByRole('button', { name: /more actions for this product/i }).click()
+      // The ⋯ names the PRODUCT, not its noun ("More actions for Slip lead") —
+      // EditScreen builds its label from menuTitle, the same as every offering
+      // screen. It used to say "this product".
+      await page.getByRole('button', { name: /^More actions/ }).click()
       await page.getByRole('button', { name: /delete this product/i }).click()
       // A custom confirm, not window.confirm — so a dialog handler does nothing
       // and the product quietly survives. The kind of thing only clicking finds.
@@ -271,9 +283,13 @@ test.describe('the jobs a trainer does every day', () => {
         .toBe(`${renamed} / ${renamedDog}`)
 
       // ── Delete ──────────────────────────────────────────────────────────────
-      // On the client's own Overview tab, in a block of its own. Its confirm is
-      // this screen's own modal, so a dialog handler would never see it.
+      // On the client's own profile, behind the ⋯ beside Assign — the profile
+      // is hero + tiles + one action now, so the standalone "Delete client"
+      // block is gone and delete is an entry in the action sheet. The sheet's
+      // name is the CLIENT's, and its confirm is the house sheet, so a dialog
+      // handler would never see it.
       await page.goto(`/clients/${clientId}`)
+      await page.getByRole('button', { name: `More actions for ${renamed}` }).click()
       await page.getByRole('button', { name: 'Delete client' }).click()
       await page.getByRole('button', { name: 'Yes, delete' }).click()
 

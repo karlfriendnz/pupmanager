@@ -37,12 +37,13 @@ test.describe('my-availability booking wizard — client happy path', () => {
     await expect(sessionCard).toBeVisible()
     await sessionCard.click()
 
-    // Step 2 — the time picker. A day + a start time auto-select, so the
-    // Continue button resolves to a concrete time.
+    // Step 2 — the time picker. Picking the time IS the decision now: the
+    // separate "Continue · <time>" button is gone, and tapping a start time
+    // moves the wizard on by itself.
     await expect(page.getByRole('heading', { name: 'Pick a time' })).toBeVisible()
-    const continueBtn = page.getByRole('button', { name: /^Continue · / })
-    await expect(continueBtn).toBeEnabled()
-    await continueBtn.click()
+    const startTime = page.getByRole('button', { name: /^\d{1,2}(:\d{2})? [AP]M$/ }).first()
+    await expect(startTime).toBeEnabled({ timeout: 15_000 })
+    await startTime.click()
 
     // Step 3 — confirmation summary. Free + instant → "Confirm booking".
     await expect(page.getByRole('heading', { name: 'Confirm your booking' })).toBeVisible()
