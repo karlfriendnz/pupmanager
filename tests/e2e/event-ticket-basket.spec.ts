@@ -321,7 +321,7 @@ test.describe('enrolling a client on several ticket types at once', () => {
 
       // The guest list shows what they hold — BOTH types on their one row, not
       // just the first. Keeping only the first would hide half the money.
-      await page.getByRole('button', { name: /Guest list/i }).first().click()
+      await page.getByRole('tab', { name: /Guest list/i }).first().click()
       await expect(page.getByText('General entry × 3 · VIP × 3')).toBeVisible({ timeout: 15_000 })
     } finally {
       for (const fn of cleanup.reverse()) await fn()

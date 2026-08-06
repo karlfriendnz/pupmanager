@@ -65,10 +65,11 @@ test.describe('entered one side, checked from the other', () => {
 
       // ── and the trainer sees it on the client's record ────────────────
       await login(page, SEED.owner.email, SEED.owner.password)
-      await page.goto(`/clients/${SEED.assignedClientId}`)
-      // The client record is tabbed; dogs aren't on the landing tab. The count
-      // in the tab label is itself the first proof it arrived.
-      await page.getByRole('button', { name: /^Dogs?( \d+)?$/ }).click()
+      // Each section of a client record is its own PAGE now, not a tab on the
+      // profile ("Every section of a client is its own page"), so this goes
+      // straight to the dogs section rather than hunting a tab that no longer
+      // exists. CLIENT_SECTIONS in client-profile-types.ts owns the slugs.
+      await page.goto(`/clients/${SEED.assignedClientId}/dogs`)
       await expect(page.getByText(ownerAdded).locator('visible=true').first())
         .toBeVisible({ timeout: 15_000 })
 
