@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { execSync } from 'node:child_process'
 
 import { countItems } from '@/app/(trainer)/library/library-shape'
 
@@ -87,7 +88,6 @@ describe('no route scopes a library item through its theme any more', () => {
   it('has no `theme: { type: { trainerId` left in src/', () => {
     // A dead chain for a theme-less item. Grepped rather than asserted per
     // route because the failure mode is a route nobody remembered to change.
-    const { execSync } = require('node:child_process') as typeof import('node:child_process')
     const hits = execSync(
       `grep -rn "theme: { type: {" src --include="*.ts" --include="*.tsx" | grep -v generated || true`,
       { cwd: process.cwd(), encoding: 'utf8' },
