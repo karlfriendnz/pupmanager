@@ -787,7 +787,10 @@ test('an item is added straight into a category, and is listed there', async ({ 
     // …and the category LISTS it, under its own heading. Added and invisible
     // would be worse than not added at all.
     await expect(page.getByText('In this category')).toBeVisible()
-    await expect(page.getByRole('link', { name: /E2E Sit At The Kerb/ })).toBeVisible()
+    // FlatRow paints two anchors for the same row — a drag-handle variant and a
+    // plain one — and CSS shows whichever suits the width. Same href, so this
+    // asks for the one on screen rather than tripping strict mode on both.
+    await expect(page.getByRole('link', { name: /E2E Sit At The Kerb/ }).locator('visible=true').first()).toBeVisible()
   } finally {
     if (itemId) await prisma.libraryTask.deleteMany({ where: { id: itemId } })
     await prisma.$disconnect()
@@ -899,7 +902,8 @@ test('deleting a theme keeps its items — they fall back into the category', as
 
     // And it is on the category screen rather than nowhere.
     await page.reload()
-    await expect(page.getByRole('link', { name: /E2E Survivor Item/ })).toBeVisible()
+    // Two anchors per row (see the note above) — take the visible one.
+    await expect(page.getByRole('link', { name: /E2E Survivor Item/ }).locator('visible=true').first()).toBeVisible()
   } finally {
     if (itemId) await prisma.libraryTask.deleteMany({ where: { id: itemId } })
     if (themeId) await prisma.libraryTheme.deleteMany({ where: { id: themeId } })
