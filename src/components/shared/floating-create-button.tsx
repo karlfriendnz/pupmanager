@@ -39,15 +39,22 @@ export function FloatingCreateButton({
   const [open, setOpen] = useState(false)
   const [saleOpen, setSaleOpen] = useState(false)
 
-  // The circle goes exactly where the bottom tab bar is, so it goes wherever
-  // the tab bar goes — and on the two screens that hide it, the page has put
-  // something of its own down there. The offering wizard's Cancel/Next bar is
-  // one: the circle landed on top of it, offering to start a second offering
-  // over the one being filled in. An open message thread is the other, where
-  // the composer owns the bottom of the screen. Both conditions are copied
-  // from the tab bar in app-shell, and must stay in step with it.
+  // The circle belongs to the HOME screen and nowhere else (Karl, 2026-08-06:
+  // "the plus circle should only be on the home page", sent from an achievement
+  // edit screen where it was floating over the colour picker). It floats in the
+  // bottom-right corner of every screen it is on, so on any screen with work in
+  // it — a form, a colour picker, a list you are reordering — it is a button
+  // over someone else's content offering to start something unrelated.
+  //
+  // Home is where you go to start things; everywhere else the page's own
+  // create action, and the desktop bar's "+", already cover it. That also
+  // retires two special cases this used to carry (the offering wizard's
+  // Cancel/Next bar, an open message thread) — neither is home.
+  //
+  // Phone only either way: the desktop control bar has its own "+", which is
+  // NOT affected by this and still starts anything from anywhere.
   const immersive = usePageImmersive()
-  const hideOnPhone = immersive || pathname === '/offerings/new'
+  const hideOnPhone = immersive || pathname !== '/dashboard'
 
   useEffect(() => {
     if (!open) return

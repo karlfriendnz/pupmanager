@@ -9,9 +9,7 @@ import { closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, ty
 import { DndArea } from './dnd-area'
 import { SortableContext, sortableKeyboardCoordinates, useSortable, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { usePathname } from 'next/navigation'
 import { groupOfferingsByTag, type TagRef } from '@/lib/offering-grouping'
-import { prePickedOfferingHref } from '@/lib/offering-create'
 
 // One card design for everything a trainer sells — 1:1 packages, group classes,
 // drop-in classes and events. They were four hand-rolled layouts that had
@@ -468,21 +466,17 @@ export function OfferingListBar({ children, view, onView, action, grouped, onGro
   onGrouped?: (v: boolean) => void
 }) {
   const canGroup = grouped !== undefined && onGrouped !== undefined
-  // On a phone the create circle in the bottom-right corner already makes the
-  // thing this list holds — but only on the pages where it can pre-pick the
-  // kind. Tags, the waitlist, lead magnets, achievements and memberships are
-  // not among them, and on those this button is the ONLY way to make one, so it
-  // stays at every width. Hiding it everywhere would have been a tidier rule
-  // and would have stranded five screens.
-  const pathname = usePathname()
-  const duplicatedByCreateButton = prePickedOfferingHref(pathname) !== null
+  // This button now shows at EVERY width. It used to hide on a phone on the
+  // four lists where the floating create circle could make the same thing —
+  // but the circle is home-only now, so hiding it here would leave those four
+  // lists (classes, drop-ins, events, packages) with no way to add on a phone
+  // at all. That is the exact trap the old comment warned about, arriving from
+  // the other direction.
   return (
     <div className={`mb-3 flex items-end justify-between gap-3 ${children ? 'border-b border-slate-200' : ''}`}>
       <div className="min-w-0">{children}</div>
       <div className={`flex flex-shrink-0 items-center gap-2 ${children ? 'pb-1.5' : ''}`}>
-        {action && (duplicatedByCreateButton
-          ? <span className="hidden md:inline-flex">{action}</span>
-          : action)}
+        {action}
         {canGroup && <OfferingGroupToggle value={grouped} onChange={onGrouped} />}
         {view !== undefined && onView !== undefined && <OfferingViewToggle value={view} onChange={onView} />}
       </div>

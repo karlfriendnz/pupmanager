@@ -116,17 +116,32 @@ describe('the add action is a button at the top, not a row under the last card',
     expect(src).toContain(label)
   })
 
-  it('the shared bar hides a page-level add button ONLY where the create circle duplicates it', () => {
+  it('the shared bar never hides a page-level add button now the circle is home-only', () => {
     const offeringCard = readFileSync(
       join(process.cwd(), 'src', 'components', 'shared', 'offering-card.tsx'),
       'utf8',
     )
-    // The rule, not a blanket `hidden md:`. Hiding it everywhere would have been
-    // the tidier line and would have stranded Tags, the waitlist, lead magnets,
-    // achievements, memberships and timesheets with no way to add anything on a
-    // phone at all.
-    expect(offeringCard).toContain('prePickedOfferingHref(pathname) !== null')
-    expect(offeringCard).toContain("'hidden md:inline-flex'".replace(/'/g, '"'))
+    // This used to hide the button on a phone on the four lists the floating
+    // create circle could make the same thing from. The circle only appears on
+    // the home screen now (Karl, 2026-08-06: "the plus circle should only be on
+    // the home page"), so that hiding would strand classes, drop-ins, events
+    // and packages with no way to add anything on a phone at all — the same
+    // trap the old rule was written to avoid, arriving from the other side.
+    expect(offeringCard).not.toContain('prePickedOfferingHref')
+    expect(offeringCard).not.toContain('hidden md:inline-flex')
+  })
+
+  it('the create circle is the home screen\'s, and nowhere else', () => {
+    const fab = readFileSync(
+      join(process.cwd(), 'src', 'components', 'shared', 'floating-create-button.tsx'),
+      'utf8',
+    )
+    // It floats over whatever is in the bottom-right corner of the page it is
+    // on — a colour picker, in the report that prompted this.
+    expect(fab).toContain("pathname !== '/dashboard'")
+    // Phone only. The desktop control bar keeps its own "+", which starts
+    // anything from anywhere and is not what anyone complained about.
+    expect(fab).toContain('md:hidden fixed right-4')
   })
 })
 

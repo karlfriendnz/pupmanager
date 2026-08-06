@@ -2,21 +2,15 @@
  * Where the global "+" sends "New offering" from the page you are standing on.
  *
  * It answers one question — "does the create button already make THIS kind of
- * thing?" — and two places need the same answer:
+ * thing?" — so the "New offering" choice lands on the right form rather than
+ * on the pick-a-kind step you have just answered by standing here.
  *
- *   • FloatingCreateButton, so the choice lands on the right form.
- *   • OfferingListBar, so a phone does not carry a page-level add button for a
- *     job the create button has already done. AGENTS.md: nothing says the same
- *     thing twice.
- *
- * Written down once because the second reader is the dangerous one. If this
- * list and the list the "+" uses ever drift, a list either grows a second add
- * button on a phone or — much worse — loses its only one.
- *
- * `null` means the "+" cannot pre-pick a kind here, and the page's own add
- * action is the ONLY way to make the thing. Tags, the waitlist, lead magnets,
- * achievements and memberships are all in that position: the "+" has no choice
- * that makes one, so their buttons stay put at every width.
+ * OfferingListBar used to read it too, to hide its own add button on a phone
+ * where the "+" duplicated it. It no longer does: the phone's create circle is
+ * home-only now (Karl, 2026-08-06), so every list carries its own add button at
+ * every width. This is therefore only consulted from the home screen today,
+ * where it returns null — kept because the desktop bar's "+" and any future
+ * home for the circle would want the same answer.
  */
 export function prePickedOfferingHref(pathname: string): string | null {
   if (pathname.startsWith('/classes')) return '/offerings/new?kind=group'
