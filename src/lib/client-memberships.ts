@@ -8,7 +8,7 @@ import {
 import { describePlanCommitment } from './membership-consent-copy'
 import { accessPausedReason } from './membership-access'
 import { formatMoney } from './money'
-import type { PlanInterval } from './connect-subscriptions'
+import { intervalLabel, type PlanInterval } from './billing-interval'
 
 // The client-facing shape of a published membership (matches ClientMembershipsView's
 // card): card styling + resolved included-item labels/images/descriptions.
@@ -31,6 +31,8 @@ export interface ClientMembership {
   plans: {
     id: string
     interval: ClientMembershipInterval
+    /** How many of the unit make one cycle — 6 means "every 6 weeks". */
+    intervalCount: number
     priceCents: number
     priceLabel: string
     consent: MembershipConsentCopy | null
@@ -137,7 +139,7 @@ export async function loadClientSubscriptions(clientId: string, currency: string
       membershipId: true,
       accessGraceUntil: true,
       membership: { select: { name: true } },
-      plan: { select: { priceCents: true, interval: true } },
+      plan: { select: { priceCents: true, interval: true, intervalCount: true } },
       // An invoice the client's bank wants them to authorise. Nothing in the
       // app can act for them, so the hosted URL has to be reachable from here.
       invoices: {
@@ -157,7 +159,7 @@ export async function loadClientSubscriptions(clientId: string, currency: string
     priceCents: r.plan?.priceCents ?? null,
     status: r.status as ClientSubscription['status'],
     priceLabel: r.plan
-      ? `${formatMoney(r.plan.priceCents, currency)} / ${INTERVAL_WORD[r.plan.interval as ClientMembershipInterval]}`
+      ? `${formatMoney(r.plan.priceCents, currency)} / ${intervalLabel(r.plan.interval as PlanInterval, r.plan.intervalCount)}`
       : null,
     currentPeriodEnd: r.currentPeriodEnd ? r.currentPeriodEnd.toISOString() : null,
     cancelAtPeriodEnd: r.cancelAtPeriodEnd,
@@ -169,12 +171,6 @@ export async function loadClientSubscriptions(clientId: string, currency: string
     cardLast4: r.cardLast4,
     actionRequiredUrl: r.invoices[0]?.hostedInvoiceUrl ?? null,
   }))
-}
-
-const INTERVAL_WORD: Record<ClientMembershipInterval, string> = {
-  WEEK: 'week',
-  FORTNIGHT: 'fortnight',
-  MONTH: 'month',
 }
 
 /**
@@ -340,12 +336,13 @@ export async function loadPublishedMemberships(trainerId: string, clientId?: str
     // two different agreements — different price, different frequency, possibly
     // a different minimum term — so a picker that showed one set of words for
     // both would store a consent that did not match what was on screen.
-    const copyFor = (p: { priceCents: number; interval: string; minTermCount: number; earlyTermFeeCents: number | null }) => {
+    const copyFor = (p: { priceCents: number; interval: string; intervalCount: number; minTermCount: number; earlyTermFeeCents: number | null }) => {
       const c = describePlanCommitment({
         businessName,
         priceCents: p.priceCents,
         currency,
         interval: p.interval as PlanInterval,
+        intervalCount: p.intervalCount,
         minTermCount: p.minTermCount,
         earlyTermFeeCents: p.earlyTermFeeCents,
       })
@@ -373,8 +370,11 @@ export async function loadPublishedMemberships(trainerId: string, clientId?: str
       ? plans.map(p => ({
           id: p.id,
           interval: p.interval as ClientMembershipInterval,
+          intervalCount: p.intervalCount,
           priceCents: p.priceCents,
-          priceLabel: `${formatMoney(p.priceCents, currency)} / ${INTERVAL_WORD[p.interval as ClientMembershipInterval]}`,
+          // "$60.00 / 6 weeks", "$25.00 / week" — the same count-aware noun the
+          // consent sentence uses, from the same function.
+          priceLabel: `${formatMoney(p.priceCents, currency)} / ${intervalLabel(p.interval as PlanInterval, p.intervalCount)}`,
           consent: buyability.needsConsent ? copyFor(p) : null,
         }))
       : [],

@@ -57,7 +57,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ members
       id: true, name: true, priceCents: true, cadence: true, interval: true, eligibility: true,
       // Archived plans keep billing their existing subscribers but can never be
       // sold again — a new subscription always uses a current plan.
-      plans: { where: { archivedAt: null }, orderBy: { order: 'asc' }, select: { id: true, interval: true, priceCents: true, minTermCount: true, earlyTermFeeCents: true } },
+      plans: { where: { archivedAt: null }, orderBy: { order: 'asc' }, select: { id: true, interval: true, intervalCount: true, priceCents: true, minTermCount: true, earlyTermFeeCents: true } },
     },
   })
   if (!membership) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -160,12 +160,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ members
     }
 
     const interval = plan.interval as PlanInterval
+    const intervalCount = plan.intervalCount
     // Re-derived server-side. The browser does not get to tell us what it showed.
     const commitment = describePlanCommitment({
       businessName: trainer.businessName ?? 'Your trainer',
       priceCents: plan.priceCents,
       currency,
       interval,
+      intervalCount,
       minTermCount: plan.minTermCount,
       earlyTermFeeCents: plan.earlyTermFeeCents,
     })
@@ -177,6 +179,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ members
       priceCents: plan.priceCents,
       currency,
       interval,
+      intervalCount,
       consentText: commitment.consentText,
       ipAddress: getClientIp(req),
       userAgent: req.headers.get('user-agent'),

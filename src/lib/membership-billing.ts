@@ -143,6 +143,8 @@ export async function ensureConsent(args: {
   priceCents: number
   currency: string
   interval: PlanInterval
+  /** The cycle length agreed to, stored with the rest of the snapshot. */
+  intervalCount?: number
   consentText: string
   ipAddress: string | null
   userAgent: string | null
@@ -171,6 +173,7 @@ export async function ensureConsent(args: {
       priceCents: args.priceCents,
       currency: args.currency,
       interval: args.interval,
+      intervalCount: args.intervalCount ?? 1,
       consentText: args.consentText,
       consentVersion: RECURRING_CONSENT_VERSION,
       ipAddress: args.ipAddress,
@@ -278,11 +281,13 @@ export async function syncSubscription(sub: Stripe.Subscription, sandbox: boolea
     const plan = planId
       ? await tx.membershipPlan.findUnique({
           where: { id: planId },
-          select: { minTermCount: true, interval: true },
+          select: { minTermCount: true, interval: true, intervalCount: true },
         })
       : null
+    // The count goes in too: a 2-cycle minimum on an every-6-weeks plan commits
+    // them for 12 weeks, not 2.
     const committedUntil = plan && plan.minTermCount > 0 && start
-      ? addCycles(start, plan.interval as PlanInterval, plan.minTermCount)
+      ? addCycles(start, plan.interval as PlanInterval, plan.minTermCount, plan.intervalCount)
       : null
 
     const res = await fulfilMembershipInTx(tx, {

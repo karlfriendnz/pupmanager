@@ -1,5 +1,5 @@
 import { formatMoney } from './money'
-import { addCycles, intervalLabel, type PlanInterval } from './connect-subscriptions'
+import { addCycles, cycleTermLabel, intervalLabel, type PlanInterval } from './billing-interval'
 
 // The words a client is shown before they agree to a recurring charge, and the
 // dates that go with them.
@@ -28,9 +28,14 @@ export function buildConsentText(args: {
   priceCents: number
   currency: string
   interval: PlanInterval
+  /** How many of the unit make one cycle. Absent = 1, i.e. today's wording. */
+  intervalCount?: number
 }): string {
   const amount = formatMoney(args.priceCents, args.currency)
-  return `I agree ${args.businessName} can charge my card ${amount} every ${intervalLabel(args.interval)} until I cancel.`
+  // "every week" / "every 6 weeks" — never "every 1 week". A count honoured at
+  // Stripe but missing from this sentence is a client agreeing to one thing and
+  // being charged another, which is the whole reason this is one function.
+  return `I agree ${args.businessName} can charge my card ${amount} every ${intervalLabel(args.interval, args.intervalCount ?? 1)} until I cancel.`
 }
 
 export interface PlanCommitment {
@@ -57,25 +62,32 @@ export function describePlanCommitment(args: {
   priceCents: number
   currency: string
   interval: PlanInterval
+  /** How many of the unit make one cycle. Absent = 1, i.e. today's wording. */
+  intervalCount?: number
   minTermCount: number
   earlyTermFeeCents: number | null
   from?: Date
 }): PlanCommitment {
   const from = args.from ?? new Date()
   const amount = formatMoney(args.priceCents, args.currency)
-  const unit = intervalLabel(args.interval)
+  const count = args.intervalCount ?? 1
+  const unit = intervalLabel(args.interval, count)
 
   return {
     consentText: buildConsentText(args),
     consentVersion: RECURRING_CONSENT_VERSION,
     priceLabel: `${amount} every ${unit}`,
     firstChargeLabel: 'Today',
-    nextChargeAt: addCycles(from, args.interval, 1),
-    committedUntil: args.minTermCount > 0 ? addCycles(from, args.interval, args.minTermCount) : null,
+    nextChargeAt: addCycles(from, args.interval, 1, count),
+    committedUntil: args.minTermCount > 0 ? addCycles(from, args.interval, args.minTermCount, count) : null,
     // "Cancel any time" is the honest headline when there is no minimum term,
     // and it is the thing a client most wants to know before handing over a card.
+    //
+    // The term is stated in the BASE unit — "12 weeks", not "2 cycles" and
+    // certainly not "2 6 weekss". With a count of 1 this is character-for-
+    // character the sentence it has always been.
     termLabel: args.minTermCount > 0
-      ? `You're committing to ${args.minTermCount} ${unit}${args.minTermCount === 1 ? '' : 's'}.`
+      ? `You're committing to ${cycleTermLabel(args.interval, count, args.minTermCount)}.`
       : 'Cancel any time.',
     // Phase 1 DISPLAYS the early-finish fee and does not charge it. Showing a
     // number we then don't take is the safe direction to be wrong in.

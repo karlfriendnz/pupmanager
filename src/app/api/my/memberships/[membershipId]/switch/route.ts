@@ -77,7 +77,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ members
       plans: {
         where: { archivedAt: null },
         orderBy: { order: 'asc' },
-        select: { id: true, interval: true, priceCents: true, minTermCount: true, earlyTermFeeCents: true },
+        select: { id: true, interval: true, intervalCount: true, priceCents: true, minTermCount: true, earlyTermFeeCents: true },
       },
     },
   })
@@ -189,11 +189,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ members
     return NextResponse.json({ error: 'Please agree to the new payment terms first.' }, { status: 400 })
   }
   const interval = plan.interval as PlanInterval
+  const intervalCount = plan.intervalCount
   const commitment = describePlanCommitment({
     businessName: trainer.businessName ?? 'Your trainer',
     priceCents: plan.priceCents,
     currency,
     interval,
+    intervalCount,
     minTermCount: plan.minTermCount,
     earlyTermFeeCents: plan.earlyTermFeeCents,
   })
@@ -204,6 +206,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ members
     priceCents: plan.priceCents,
     currency,
     interval,
+    intervalCount,
     consentText: commitment.consentText,
     ipAddress: getClientIp(req),
     userAgent: req.headers.get('user-agent'),
@@ -250,7 +253,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ members
   const { start, end } = periodFromSubscription(sub)
   const status = mapSubscriptionStatus(sub)
   const committedUntil = plan.minTermCount > 0 && start
-    ? addCycles(start, interval, plan.minTermCount)
+    ? addCycles(start, interval, plan.minTermCount, intervalCount)
     : null
 
   let classGrants: { classRunId: string }[] = []

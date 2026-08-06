@@ -1,6 +1,7 @@
 // Shared validation + item-reconcile for the membership CRUD routes.
 import { z } from 'zod'
 import type { Prisma } from '@/generated/prisma'
+import { isValidIntervalCount, maxIntervalCount, type PlanInterval } from './billing-interval'
 
 const hexColor = z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, 'Use a hex colour like #14b8a6').nullable().optional()
 
@@ -48,11 +49,34 @@ export const membershipCreateSchema = z.object({
   // array clears the gate; omitting the key leaves it untouched.
   prerequisiteAchievementIds: z.array(z.string()).max(20).optional(),
   // RECURRING billing options — the client picks one. Empty for ONE_OFF.
+  //
+  // `intervalCount` is how many of the unit make one cycle: WEEK × 6 is "every
+  // 6 weeks". Optional and defaulted to 1, so an older client (or the mobile
+  // shell running yesterday's bundle) that sends no count still describes
+  // exactly the plan it always did.
+  //
+  // FORTNIGHT is still ACCEPTED here even though the editor no longer offers
+  // it. Refusing a value we ourselves wrote into live rows would mean a trainer
+  // could not save a membership that already has a fortnightly plan on it.
   plans: z.array(z.object({
     interval: z.enum(['WEEK', 'FORTNIGHT', 'MONTH']),
+    intervalCount: z.number().int().optional(),
     priceCents: z.number().int().min(0).max(10_000_000),
     minTermCount: z.number().int().min(0).max(120).optional(),
     earlyTermFeeCents: z.number().int().min(0).max(10_000_000).nullable().optional(),
+  }).superRefine((p, ctx) => {
+    // SERVER-SIDE bounds. A `min`/`max` on the number input is a hint; this is
+    // the rule. 0 and negatives are nonsense, and anything over a year is
+    // rejected by Stripe when the Price is minted — so accepting it here would
+    // only move the failure to the moment a client tries to buy.
+    if (p.intervalCount === undefined) return
+    if (!isValidIntervalCount(p.interval as PlanInterval, p.intervalCount)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['intervalCount'],
+        message: `Bill every 1 to ${maxIntervalCount(p.interval as PlanInterval)} ${p.interval === 'MONTH' ? 'months' : p.interval === 'FORTNIGHT' ? 'fortnights' : 'weeks'}`,
+      })
+    }
   })).max(6).optional(),
   items: z.array(itemSchema).max(30).default([]),
 })
@@ -87,6 +111,9 @@ export function planRows(membershipId: string, plans: NonNullable<z.infer<typeof
   return plans.map((p, idx) => ({
     membershipId,
     interval: p.interval,
+    // Absent = 1, which is the cycle every plan written before this column
+    // existed has always billed on.
+    intervalCount: p.intervalCount ?? 1,
     priceCents: p.priceCents,
     minTermCount: p.minTermCount ?? 0,
     earlyTermFeeCents: p.earlyTermFeeCents ?? null,

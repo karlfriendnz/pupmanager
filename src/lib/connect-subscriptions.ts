@@ -20,41 +20,25 @@ import { platformFeeBps } from './connect'
 // means to a client) lives in membership-billing.ts. This module only knows
 // about Stripe.
 
-/** Our billing intervals → Stripe's `recurring` shape. */
-export type PlanInterval = 'WEEK' | 'FORTNIGHT' | 'MONTH'
+// The cycle itself — unit, count, Stripe shape, wording and date arithmetic —
+// lives in the PURE module billing-interval.ts, so the trainer's plan editor and
+// the client's card can import the wording without dragging prisma and the
+// Stripe SDK into a browser bundle. Re-exported here because every existing
+// server caller imports it from this module.
+export {
+  type PlanInterval,
+  stripeRecurring,
+  intervalLabel,
+  cycleTermLabel,
+  addCycles,
+  editorInterval,
+  isValidIntervalCount,
+  maxIntervalCount,
+  MAX_WEEKS_PER_CYCLE,
+  MAX_MONTHS_PER_CYCLE,
+} from './billing-interval'
 
-/**
- * Stripe has no "fortnight" — a fortnightly plan is `every 2 weeks`. Keeping the
- * translation in one function means the plan editor, the consent screen and the
- * Price minting can never disagree about what FORTNIGHT means.
- */
-export function stripeRecurring(interval: PlanInterval): { interval: 'week' | 'month'; interval_count: number } {
-  switch (interval) {
-    case 'WEEK':
-      return { interval: 'week', interval_count: 1 }
-    case 'FORTNIGHT':
-      return { interval: 'week', interval_count: 2 }
-    case 'MONTH':
-      return { interval: 'month', interval_count: 1 }
-  }
-}
-
-/** Human wording for an interval, for consent text and the client's screens. */
-export function intervalLabel(interval: PlanInterval): string {
-  return interval === 'WEEK' ? 'week' : interval === 'FORTNIGHT' ? 'fortnight' : 'month'
-}
-
-/**
- * How many days one cycle is, used ONLY to describe the minimum term in words
- * before someone commits. The real period boundaries always come back from
- * Stripe — we never compute a billing date ourselves.
- */
-export function addCycles(from: Date, interval: PlanInterval, count: number): Date {
-  const d = new Date(from.getTime())
-  if (interval === 'MONTH') d.setMonth(d.getMonth() + count)
-  else d.setDate(d.getDate() + count * (interval === 'FORTNIGHT' ? 14 : 7))
-  return d
-}
+import { stripeRecurring, type PlanInterval } from './billing-interval'
 
 /**
  * Our margin as a PERCENT for `application_fee_percent`.
@@ -123,10 +107,12 @@ export async function ensureCustomer(args: {
  * The Stripe Product + recurring Price for a MembershipPlan, minted lazily on
  * first sale and cached on the row.
  *
- * Stripe Prices are IMMUTABLE. A trainer editing the price does not mutate this
- * Price — the plan editor nulls the cached ids, and the next sale mints a fresh
- * one. Everyone already subscribed keeps billing on the Price they agreed to,
- * which is exactly what stops a price edit silently re-pricing existing clients.
+ * Stripe Prices are IMMUTABLE. A trainer editing the price OR THE CYCLE does not
+ * mutate this Price — the plan editor writes a fresh row with null cached ids
+ * (archiving any plan that has live subscribers), and the next sale mints a new
+ * Price. Everyone already subscribed keeps billing on the Price they agreed to,
+ * which is exactly what stops an edit silently re-pricing or re-cycling existing
+ * clients.
  */
 export async function ensurePlanPrice(args: {
   planId: string
@@ -141,7 +127,7 @@ export async function ensurePlanPrice(args: {
   const plan = await prisma.membershipPlan.findUnique({
     where: { id: args.planId },
     select: {
-      id: true, interval: true, priceCents: true,
+      id: true, interval: true, intervalCount: true, priceCents: true,
       stripePriceId: true, stripePriceIdTest: true,
       stripeProductId: true, stripeProductIdTest: true,
       membership: { select: { trainerId: true, trainer: { select: { payoutCurrency: true } } } },
@@ -170,14 +156,16 @@ export async function ensurePlanPrice(args: {
       product: productId,
       currency,
       unit_amount: plan.priceCents,
-      recurring: stripeRecurring(plan.interval as PlanInterval),
+      recurring: stripeRecurring(plan.interval as PlanInterval, plan.intervalCount),
       metadata: { membershipPlanId: plan.id },
     },
     {
       ...opts,
-      // Includes the amount + interval, so a price EDIT (which nulls the cache)
-      // still mints a genuinely new Price rather than replaying the old request.
-      idempotencyKey: `price:${plan.id}:${plan.priceCents}:${plan.interval}:${args.sandbox ? 'test' : 'live'}`,
+      // Includes the amount, the interval AND the count, so an edit to any of
+      // them (which writes a fresh row with a null cache) still mints a
+      // genuinely new Price rather than replaying the old request. Leaving the
+      // count out would let "every 6 weeks" replay a monthly Price.
+      idempotencyKey: `price:${plan.id}:${plan.priceCents}:${plan.interval}:${plan.intervalCount}:${args.sandbox ? 'test' : 'live'}`,
     },
   )
 
