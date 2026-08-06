@@ -271,7 +271,12 @@ export function MobileHome({
         </div>
       )}
 
-      {/* One live line about today, sharing the grid's flat treatment. */}
+      {/* One live line about today, sharing the grid's flat treatment. Absent
+          when there is nothing on: a row that exists only to say "nothing" is
+          chrome that has earned no space, and the tiles below already lead to
+          the schedule (Karl, 2026-08-06). A next-session line still counts as
+          something to say, even on a day with no sessions of its own. */}
+      {(todayCount > 0 || nextSessionLabel) && (
       <Link
         href="/schedule"
         className="mb-3 flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 active:bg-slate-50"
@@ -291,6 +296,7 @@ export function MobileHome({
         </span>
         <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />
       </Link>
+      )}
 
       {/* Anything a client is waiting on an answer to, before the tiles. */}
       {requests && <div className="mb-3">{requests}</div>}
