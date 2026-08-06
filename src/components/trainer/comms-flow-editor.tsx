@@ -44,7 +44,8 @@
 //
 // "Add step" opens a FULL SCREEN picker, because seven choices with an
 // explanation each is not a 56px menu hanging off a corner.
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useSyncExternalStore } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import {
   closestCenter,
@@ -73,7 +74,13 @@ import { ModalPortal } from '@/components/shared/modal-portal'
 import { DndArea } from '@/components/shared/dnd-area'
 import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
 import { isRichTextEmpty } from '@/lib/rich-text'
-import { sortStepsByTime, channelsForAudience, type FlowStepKind, type FlowStepActor } from '@/lib/comms-flow-steps'
+import {
+  sortStepsByTime,
+  channelsForAudience,
+  stepSendsNotification,
+  type FlowStepKind,
+  type FlowStepActor,
+} from '@/lib/comms-flow-steps'
 import { canWaitForCompletion } from '@/lib/flow-anchors'
 import { canGateBooking } from '@/lib/comms-flow-steps'
 import { groupStepsByStage, reorderFlowSteps } from '@/lib/flow-timeline'
@@ -400,20 +407,40 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
     }
   }
 
-  async function addStep(kind: FlowStepKind) {
+  /** `extra` seeds the new step's columns — used by "Add a message step", which
+   *  puts the message at the SAME moment as the step it was added beside so the
+   *  two sit next to each other on the timeline rather than a day apart. */
+  async function addStep(kind: FlowStepKind, extra: Partial<Step> = {}) {
     setPicking(false)
-    const res = await api(base, { method: 'POST', body: JSON.stringify({ kind }) })
+    const res = await api(base, { method: 'POST', body: JSON.stringify({ kind, ...extra }) })
     if (!res) return
     const step = normalizeStep(await res.json())
     setSteps(prev => [...(prev ?? []), step])
     setDraft({ ...step })
   }
+
+  /**
+   * "Add a message step", from inside a step that sends nothing.
+   *
+   * Karl's model is that the two sit side by side: the homework is handed out,
+   * and a message tells them about it. Saving first is not politeness — the
+   * sheet is about to be replaced by the new step's, and losing what they just
+   * typed would make the button feel like a mistake.
+   */
+  async function addMessageBeside(step: Step) {
+    if (!(await saveDraft())) return
+    // A journey has no clock (the sequence is the timing), so there is nothing
+    // to copy across — the new step simply lands after this one.
+    await addStep('MESSAGE', sequenced ? {} : { direction: step.direction, offsetMinutes: step.offsetMinutes })
+  }
   async function seedStarter() {
     const res = await api(base, { method: 'POST', body: JSON.stringify({ seed: 'starter' }) })
     if (res) setSteps(((await res.json()) as (Partial<Step> & { id: string })[]).map(normalizeStep))
   }
-  async function saveDraft() {
-    if (!draft) return
+  /** True when the save landed — `addMessageBeside` will not replace the sheet
+   *  with a new step's until it has. */
+  async function saveDraft(): Promise<boolean> {
+    if (!draft) return false
     const { id, kind, actor, blocking, gatesBooking, direction, offsetMinutes, channels, audience, customClientIds, important, title, body, emailBody, enabled, payload } = draft
     const res = await api(`${base}/${id}`, {
       method: 'PATCH',
@@ -435,10 +462,11 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
         payload: kind === 'MESSAGE' ? null : (payload ?? {}),
       }),
     })
-    if (!res) return
+    if (!res) return false
     const saved = normalizeStep(await res.json())
     setSteps(prev => (prev ?? []).map(s => (s.id === saved.id ? saved : s)))
     setDraft(null)
+    return true
   }
   async function toggleEnabled(step: Step) {
     setSteps(prev => (prev ?? []).map(s => (s.id === step.id ? { ...s, enabled: !s.enabled } : s)))
@@ -586,32 +614,46 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
     </div>
   )
 
+  // "Save as template" belongs at the top right of the page it is on, not
+  // buried under a description (Karl). It cannot MOVE to the page, though: it
+  // needs `api`, `load`, and whichever of runId/packageId this editor holds. So
+  // in fullPage mode it is PORTALED into the page's own header slot — same one
+  // button, same one implementation, rendered where it reads correctly. A copy
+  // living in the page would be a second thing to keep in step with this one.
+  const templateButton = steps.length > 0 && !sequenced && (
+    <button onClick={saveAsTemplate} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+      <Save className="h-4 w-4 text-slate-500" strokeWidth={1.75} /> Save as template
+    </button>
+  )
+
   return (
     <div className={fullPage ? 'bg-white' : 'rounded-xl border border-slate-200 bg-white overflow-hidden'}>
-      <div className="flex flex-wrap items-start justify-between gap-3 p-4 sm:p-5">
-        <div>
-          <h3 className="text-base font-semibold text-slate-900">{heading}</h3>
-          <p className="text-sm text-slate-500 mt-0.5 max-w-prose">{blurb}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {/* The same flow with nothing else on the screen. A link, not a
-              modal: it is a place, so it can be bookmarked, shared and
-              backed out of. */}
-          {!fullPage && (
+      {/* On its own page the title and the section label are the PAGE's, one
+          row up. Repeating them here was two titles saying nearly the same
+          thing — and the older of the two said "Reminders & messages" after the
+          offering's tab was renamed to Automation. */}
+      {fullPage ? (
+        <HeaderSlot>{templateButton}</HeaderSlot>
+      ) : (
+        <div className="flex flex-wrap items-start justify-between gap-3 p-4 sm:p-5">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">{heading}</h3>
+            <p className="text-sm text-slate-500 mt-0.5 max-w-prose">{blurb}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* The same flow with nothing else on the screen. A link, not a
+                modal: it is a place, so it can be bookmarked, shared and
+                backed out of. */}
             <Link
               href={returnTo ? `${timelinePath}?from=${encodeURIComponent(returnTo)}` : timelinePath}
               className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
             >
               <Maximize2 className="h-4 w-4 text-slate-500" strokeWidth={1.75} /> Full screen
             </Link>
-          )}
-          {steps.length > 0 && !sequenced && (
-            <button onClick={saveAsTemplate} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
-              <Save className="h-4 w-4 text-slate-500" strokeWidth={1.75} /> Save as template
-            </button>
-          )}
+            {templateButton}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* The trigger, stated once at the top — every step below hangs off it,
           and a journey whose starting gun is implied is a journey nobody can
@@ -637,46 +679,34 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
 
       {error && <div className="border-t border-slate-200 px-4 sm:px-5 py-2.5 text-sm text-rose-700">{error}</div>}
 
-      {steps.length === 0 ? (
-        <div className="border-t border-slate-200 p-6 text-center">
-          <Bell className="h-6 w-6 text-slate-400 mx-auto mb-3" strokeWidth={1.75} />
-          <p className="text-sm text-slate-600 mb-4 max-w-sm mx-auto">
-            {sequenced
-              ? 'Nothing happens yet. Add the first step of what you want someone to go through after they send this form.'
-              : 'No messages yet. Add reminders that go out automatically around each session.'}
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            {!sequenced && (
-              <button onClick={seedStarter} disabled={busy} className="inline-flex items-center gap-1.5 h-10 px-4 text-sm font-medium rounded-lg bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-60">
-                <Sparkles className="h-4 w-4" strokeWidth={1.75} /> Use starter reminders
-              </button>
-            )}
-            <button onClick={() => setPicking(true)} disabled={busy} className={`inline-flex items-center gap-1.5 h-10 px-4 text-sm font-medium rounded-lg disabled:opacity-60 ${sequenced ? 'bg-slate-900 text-white hover:bg-slate-800' : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
-              <Plus className="h-4 w-4" strokeWidth={1.75} /> Add a step
-            </button>
-          </div>
-          {templates.length > 0 && !sequenced && (
-            <div className="mt-4"><TemplatePicker templates={templates} onApply={applyTemplate} busy={busy} applying={applying} /></div>
-          )}
-        </div>
-      ) : (
-        <>
-          {sequenced ? (
-            <DndArea sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-              <SortableContext items={ordered.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                {rows}
-              </SortableContext>
-            </DndArea>
-          ) : rows}
+      {/* THE SCAFFOLDING IS THE EMPTY STATE.
+          A flow with no steps renders the SAME spine as one with ten — every
+          stage heading, its hint, and its quiet "nothing here yet" line (Karl:
+          "this should be the default screen if there is no steps"). The
+          headings are the only thing that teaches a trainer what a flow can
+          do; a generic "nothing yet" card teaches nothing and hides the shape,
+          so there is no longer one — and nothing says the same thing twice. */}
+      {sequenced ? (
+        <DndArea sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <SortableContext items={ordered.map(s => s.id)} strategy={verticalListSortingStrategy}>
+            {rows}
+          </SortableContext>
+        </DndArea>
+      ) : rows}
 
-          <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 p-4 sm:px-5">
-            <button onClick={() => setPicking(true)} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
-              <Plus className="h-4 w-4" strokeWidth={1.75} /> Add step
-            </button>
-            {templates.length > 0 && !sequenced && <TemplatePicker templates={templates} onApply={applyTemplate} busy={busy} applying={applying} />}
-          </div>
-        </>
-      )}
+      <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 p-4 sm:px-5">
+        <button onClick={() => setPicking(true)} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+          <Plus className="h-4 w-4" strokeWidth={1.75} /> Add step
+        </button>
+        {/* Only worth offering into an empty flow — it seeds two reminders, and
+            a trainer who has built their own does not want them appended. */}
+        {steps.length === 0 && !sequenced && (
+          <button onClick={seedStarter} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+            <Sparkles className="h-4 w-4 text-slate-500" strokeWidth={1.75} /> Use starter reminders
+          </button>
+        )}
+        {templates.length > 0 && !sequenced && <TemplatePicker templates={templates} onApply={applyTemplate} busy={busy} applying={applying} />}
+      </div>
 
       {picking && (
         <StepKindPicker
@@ -700,6 +730,7 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
           onPatch={patchDraft}
           onPatchPayload={patchPayload}
           onToggleChannel={toggleChannel}
+          onAddMessage={() => addMessageBeside(draft)}
           onSave={saveDraft}
           onDelete={() => remove(draft.id)}
           onPreview={() => setPreviewing(draft)}
@@ -718,6 +749,33 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
     </div>
   )
 }
+
+/**
+ * Renders its children into the page's own header row (`#flow-header-actions`),
+ * where the full-page timeline keeps its actions.
+ *
+ * The alternative was a copy of "Save as template" in the page — which is a
+ * server component, and would need `api`, `load`, `runId`/`packageId` and the
+ * templates list all re-derived beside the editor that already has them. Two
+ * implementations of one button is two things to keep in step.
+ *
+ * Portals AFTER mount (the slot only exists on the client render), and renders
+ * nothing at all when the slot is absent, so an editor mounted with `fullPage`
+ * somewhere that has no header simply shows no button rather than throwing.
+ */
+function HeaderSlot({ children }: { children: React.ReactNode }) {
+  // "Have we hydrated yet?" as an external store — the same shape ModalPortal
+  // uses, and for the same reason: a portal cannot be hydrated against server
+  // HTML, and a setState-in-an-effect is a cascading render the lint rule
+  // rightly rejects.
+  const hydrated = useSyncExternalStore(neverChanges, onTheClient, onTheServer)
+  if (!hydrated || typeof document === 'undefined') return null
+  const node = document.getElementById('flow-header-actions')
+  return node ? createPortal(children, node) : null
+}
+const neverChanges = () => () => {}
+const onTheClient = () => true
+const onTheServer = () => false
 
 /**
  * One step of the flow — one node on the timeline.
@@ -921,7 +979,7 @@ function Sheet({ title, onClose, children, footer }: { title: string; onClose: (
   )
 }
 
-function StepSheet({ draft, clients, busy, isMembership = false, sequenced = false, options, names, placeholders, onPatch, onPatchPayload, onToggleChannel, onSave, onDelete, onPreview, onCancel }: {
+function StepSheet({ draft, clients, busy, isMembership = false, sequenced = false, options, names, placeholders, onPatch, onPatchPayload, onToggleChannel, onAddMessage, onSave, onDelete, onPreview, onCancel }: {
   draft: Step
   clients: ClientOpt[]
   busy: boolean
@@ -936,6 +994,9 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
   onPatch: (p: Partial<Step>) => void
   onPatchPayload: (p: Record<string, unknown>) => void
   onToggleChannel: (c: Channel) => void
+  /** Save this step and add a MESSAGE step beside it — the other half of "a
+   *  step does one thing". */
+  onAddMessage: () => void
   onSave: () => void
   onDelete: () => void
   onPreview: () => void
@@ -950,6 +1011,16 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
   const summary = flowStepSummary(draft as SummarisableStep, { names })
   const toStaff = draft.audience === 'STAFF'
   const channels = CHANNELS.filter(c => toStaff || !STAFF_ONLY_CHANNELS.includes(c.key))
+  // A step that sends nothing has nothing to configure about sending. Two
+  // reasons, and one of them is not tidiness:
+  //   • a gating FORM is a page inside the booking wizard — nobody is notified;
+  //   • a FORM / UPLOAD / TASK step is an ACTION, and telling the client about
+  //     it is a MESSAGE step of its own (Karl: "i don't think we need
+  //     notifications if people are doing homework or forms this should be its
+  //     own step").
+  // A trainer who filled Who / How / What it says / Always send in on one of
+  // these would be writing a message that could never reach anybody.
+  const sends = stepSendsNotification(draft.kind) && !draft.gatesBooking
   const audienceHint = AUDIENCES.find(a => a.key === draft.audience)?.hint
   const kindLabel = FLOW_STEP_KIND_CATALOG.find(k => k.kind === draft.kind)?.label ?? 'Step'
 
@@ -1107,7 +1178,7 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
         {/* WHO — before HOW, because who it's for decides what can carry it.
             A journey has one person in it, so there is nobody to pick. Nor does
             a gating step: it is answered by whoever is doing the booking. */}
-        {!sequenced && !draft.gatesBooking && (
+        {!sequenced && sends && (
           <Field label="Who">
             <select value={draft.audience} onChange={e => onPatch({ audience: e.target.value as Audience })} aria-label="Who it goes to" className="h-9 w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700">
               {AUDIENCES.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
@@ -1132,12 +1203,37 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
           </Field>
         )}
 
-        {/* HOW — a gating step sends nothing. The form is a step inside the
-            booking itself, so there is no push, no email and no words to write
-            (Karl, 2026-08-06: "the notifications should not show if i'm talking
-            about forms"). Hiding them is not cosmetic — a trainer who filled
-            them in would be writing a message nobody could ever receive. */}
-        {!draft.gatesBooking && (
+        {/* NOTHING IS SENT — said out loud, on the screen where the trainer is
+            deciding, with the fix one tap away.
+            A silently-assigned piece of homework nobody ever sees is a worse
+            outcome than the noisy version, so this block is not an apology: it
+            says exactly where the thing turns up, and offers the message step
+            that tells them about it. */}
+        {!sends && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+            <p className="text-sm font-medium text-slate-900">Nothing is sent</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-slate-600">
+              {draft.gatesBooking
+                ? 'They answer it while they are booking — there is no push and no email.'
+                : `${silentStepLanding(draft.kind)} No push, no email.`}
+            </p>
+            <button
+              type="button"
+              onClick={onAddMessage}
+              disabled={busy}
+              className="mt-2.5 inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            >
+              <MessageSquare className="h-4 w-4 text-slate-500" strokeWidth={1.75} /> Add a message step
+            </button>
+            <p className="mt-1.5 text-[11px] text-slate-500">Saves this one and adds a message beside it.</p>
+          </div>
+        )}
+
+        {/* HOW — only where there is a send to configure. Hiding it is not
+            cosmetic: a trainer who filled it in would be writing a message
+            nobody could ever receive (Karl, 2026-08-06: "the notifications
+            should not show if i'm talking about forms"). */}
+        {sends && (
         <Field label="How">
           <div className="flex flex-wrap gap-2">
             {channels.map(({ key, label, Icon }) => {
@@ -1160,7 +1256,7 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
         {/* WHAT IT SAYS. Required on a MESSAGE (that IS the step); optional on
             every other kind, which sends sensible words of its own when the
             trainer writes none — see flowStepCopy. */}
-        {!draft.gatesBooking && (
+        {sends && (
         <Field label={isMessage ? 'Message' : 'What it says (optional)'}>
           {!isMessage && (
             <p className="mb-2 text-xs text-slate-500">
@@ -1199,9 +1295,9 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
         </Field>
         )}
 
-        {/* IMPORTANT — also a delivery setting, so also meaningless on a step
-            that never sends anything. */}
-        {!draft.gatesBooking && (
+        {/* IMPORTANT — a delivery setting ("go out even to someone who muted
+            their notifications"), so meaningless on a step that never sends. */}
+        {sends && (
         <label className="flex items-start gap-2.5 cursor-pointer">
           <Switch checked={draft.important} onChange={() => onPatch({ important: !draft.important })} onColor="bg-slate-900" className="mt-0.5" aria-label="Always send" />
           <span className="text-sm text-slate-700">
@@ -1213,6 +1309,27 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
       </div>
     </Sheet>
   )
+}
+
+/**
+ * WHERE the thing a silent step assigns actually turns up for the client.
+ *
+ * The honest half of "nothing is sent": a trainer must be able to see that the
+ * homework does land, on a screen they can name, before deciding whether they
+ * also want a message. Mirrors flowStepLink in lib/comms-flows.ts, which is
+ * what the feed row actually points at.
+ */
+function silentStepLanding(kind: FlowStepKind): string {
+  switch (kind) {
+    case 'FORM':
+      return 'The form turns up in their app, ready to fill in.'
+    case 'UPLOAD':
+      return 'The request turns up in their app, ready to answer.'
+    case 'TASK':
+      return 'The homework lands in their homework list.'
+    default:
+      return 'It turns up in their app.'
+  }
 }
 
 /** The words the engine falls back to, quoted so a trainer can see what leaving
