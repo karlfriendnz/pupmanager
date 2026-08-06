@@ -39,7 +39,11 @@ export function RowImagePicker({
             onClick={() => onChange(null)}
             aria-label={`Remove the picture for ${label}`}
             title="Remove picture"
-            className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm active:text-rose-600"
+            // pm-corner-badge opts out of the global 44px minimum touch target,
+            // which otherwise wins over h-5/w-5 and turns this into a disc
+            // covering the picture. The class carries its own invisible 44px
+            // hit area, so the thumb is no worse off.
+            className="pm-corner-badge absolute -right-1.5 -top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm active:text-rose-600"
           >
             <X className="h-3 w-3" strokeWidth={1.75} />
           </button>

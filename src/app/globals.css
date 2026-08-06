@@ -118,9 +118,24 @@ button, a, [role="button"] {
    area instead (a ::before with negative inset), so the thumb still gets 44px
    while the ink stays the size it was drawn. */
 [role="switch"],
-[role="checkbox"] {
+[role="checkbox"],
+/* A badge pinned to the corner of a thumbnail. Forced to 44px it stops being a
+   badge and becomes a disc covering the picture it is meant to sit beside —
+   which is exactly what it did on the naming rows. */
+.pm-corner-badge {
   min-height: 0;
   min-width: 0;
+}
+
+/* The invisible hit area the note above asks for: the ink stays 20px, the thumb
+   still gets its 44px. */
+.pm-corner-badge {
+  position: relative;
+}
+.pm-corner-badge::before {
+  content: '';
+  position: absolute;
+  inset: -12px;
 }
 
 /* Hide scrollbars on horizontal carousels while keeping the scroll behaviour */
