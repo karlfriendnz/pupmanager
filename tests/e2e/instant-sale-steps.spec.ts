@@ -75,12 +75,15 @@ async function makeProducts(prisma: Db, names: string[], over: Record<string, un
 /**
  * Open the composer the way a trainer does: the mobile "+" → New sale.
  *
- * From /clients rather than /dashboard — the dashboard greets a fresh business
- * with the personalisation wizard, which covers the header the "+" lives in.
- * The "+" is in the mobile header on every trainer page, so any of them will do.
+ * From /dashboard, because that is the ONLY screen the "+" is on (Karl,
+ * 2026-08-06: "the plus circle should only be on the home page"). It used to be
+ * in the mobile header on every trainer page, which is why this helper went out
+ * of its way to avoid the dashboard's personalisation wizard — that wizard sits
+ * at the top of the page and the circle is now pinned bottom-right, so they no
+ * longer collide.
  */
 async function openComposer(page: Page) {
-  await page.goto('/clients?tab=never')
+  await page.goto('/dashboard')
   // exact, because getByRole name-matching is a SUBSTRING match by default and
   // "Create new client" also contains "Create". The one wanted here is the
   // mobile header "+", whose aria-label is exactly "Create".

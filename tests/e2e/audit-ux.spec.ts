@@ -98,7 +98,11 @@ for (const [label, viewport] of [['390', PHONE], ['1440', DESKTOP]] as const) {
 test('the phone create sheet leaves one scrollbar, not two', async ({ page }) => {
   await page.setViewportSize(PHONE)
   await login(page, SEED.owner.email, SEED.owner.password)
-  await page.goto('/clients')
+  // The dashboard, because that is the only screen the "+" is on now (Karl,
+  // 2026-08-06: "the plus circle should only be on the home page" — it used to
+  // float over every screen, including forms and colour pickers). This test is
+  // about the SHEET it opens, so it opens it where it lives.
+  await page.goto('/dashboard')
   await page.waitForTimeout(600)
 
   // The global "+" — React here often ignores Playwright's synthetic clicks,
@@ -129,7 +133,8 @@ test('an open overlay still leaves one scrollbar in a NARROW DESKTOP window', as
   // VIEWPORT width, so a bug that is invisible at 390 shows its rail here.
   await page.setViewportSize(NARROW)
   await login(page, SEED.owner.email, SEED.owner.password)
-  await page.goto('/clients')
+  // The "+" lives on the home screen only now — see the note above.
+  await page.goto('/dashboard')
   await page.waitForTimeout(600)
   const opened = await page.evaluate(() => {
     const btn = document.querySelector('button[aria-label="Create"]') as HTMLElement | null
@@ -167,7 +172,8 @@ test('every overlay that scrolls opts into the no-scrollbar net', async ({ page 
   // second rail. Assert the marker on the sheet the trainer opens most.
   await page.setViewportSize(PHONE)
   await login(page, SEED.owner.email, SEED.owner.password)
-  await page.goto('/clients')
+  // The "+" lives on the home screen only now — see the note above.
+  await page.goto('/dashboard')
   await page.waitForTimeout(600)
   await page.evaluate(() => (document.querySelector('button[aria-label="Create"]') as HTMLElement)?.click())
   await page.waitForTimeout(700)
