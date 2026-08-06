@@ -10,6 +10,7 @@ import { XeroAccountField } from '@/components/shared/xero-account-field'
 import { SectionLabel } from '@/components/shared/flat-list'
 import { TagPicker, saveTags } from '@/components/shared/tag-picker'
 import { isRichTextEmpty } from '@/lib/rich-text'
+import { SetPageImmersive } from '@/components/shared/page-title'
 import { compressImageFile } from '@/lib/compress-image'
 import { readApiError } from '@/lib/api-error'
 import { useCurrency } from '@/components/currency-context'
@@ -276,6 +277,12 @@ export function ProductForm({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Filling in a form is one job. The bottom tabs and the global "+" both
+          offer to start something ELSE mid-sentence, and the + floats over the
+          last field (Karl, 2026-08-06: "these should not be there its
+          confusing"). The shell already knows how to stand down — this is the
+          same switch an open message thread uses. */}
+      <SetPageImmersive value />
       {/* Save leads the form rather than sitting at the foot of it, and shares
           the tab strip's row and hairline — one band of chrome above the first
           field, not two stacked ones. It STICKS, which is what the pinned
