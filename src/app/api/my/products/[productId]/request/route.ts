@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server'
-import { takeStock } from '@/lib/stock'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
-import { createInvoiceForAssignment } from '@/lib/invoicing'
-import { releaseCancelledRequest } from '@/lib/product-requests'
+import { placeProductOrder, releaseCancelledRequest } from '@/lib/product-requests'
+import { quantitySchema } from '@/lib/product-quantity'
 import { notifyTrainer } from '@/lib/trainer-notify'
 import { z } from 'zod'
 
@@ -12,6 +11,8 @@ const postSchema = z.object({
   // Which size/colour. Resolved against the product's own variants below — an
   // id on its own is never trusted.
   variantId: z.string().nullable().optional(),
+  // How many. Bounds-checked here, not in the stepper (AGENTS.md #3).
+  quantity: quantitySchema,
 }).optional()
 
 // Verify the product belongs to the client's trainer (no cross-trainer leakage).
@@ -19,7 +20,7 @@ async function verifyProductOwnership(productId: string, trainerId: string) {
   const product = await prisma.product.findUnique({
     where: { id: productId },
     select: {
-      id: true, trainerId: true, active: true, name: true,
+      id: true, trainerId: true, active: true, name: true, stockCount: true,
       variants: { where: { active: true }, select: { id: true, name: true, stockCount: true } },
     },
   })
@@ -61,9 +62,10 @@ export async function POST(
   const product = await verifyProductOwnership(productId, profile.trainerId)
   if (!product) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  // Body is optional — empty body => no note.
+  // Body is optional — empty body => no note, one of it.
   let note: string | undefined
   let variantId: string | null = null
+  let quantity: number | undefined
   try {
     const text = await req.text()
     if (text) {
@@ -71,6 +73,13 @@ export async function POST(
       if (parsed.success) {
         note = parsed.data?.note
         variantId = parsed.data?.variantId ?? null
+        quantity = parsed.data?.quantity
+      } else {
+        // A body that names a quantity the schema refuses (0, -1, 2.5, 500) is
+        // a request to be turned down, not one to quietly treat as "one". The
+        // old code swallowed every parse failure, which is fine for a note and
+        // is not fine for a number that moves stock and money.
+        return NextResponse.json({ error: 'Invalid input' }, { status: 400 })
       }
     }
   } catch { /* ignore body parse errors — request still valid */ }
@@ -86,42 +95,32 @@ export async function POST(
     return NextResponse.json({ error: 'Choose an option first.' }, { status: 400 })
   }
 
-  // Idempotent: if a PENDING request already exists, return it. Avoids
-  // tripping the partial unique index on duplicate taps. Scoped to the VARIANT
-  // as well, because asking for a Large when a Small is already on order is a
-  // second thing wanted, not a duplicate tap.
-  const existing = await prisma.productRequest.findFirst({
-    where: { clientId: profile.id, productId, variantId, status: 'PENDING' },
-  })
-  if (existing) return NextResponse.json(existing)
-
-  if (!(await takeStock(prisma, product.id, { clientId: profile.id, variantId, note: 'Requested in the client app' }))) {
-    return NextResponse.json({ error: 'That item is out of stock.' }, { status: 409 })
-  }
-  const created = await prisma.productRequest.create({
-    data: {
-      clientId: profile.id,
-      productId,
-      variantId,
-      note: note ?? null,
-      status: 'PENDING',
-    },
-  })
-
-  // Best-effort receivable for the self-requested product (idempotent, skips
-  // unpriced). Never blocks the request.
-  await createInvoiceForAssignment({
+  // The three effects of ordering, in one place. Asking for the same thing
+  // again ADDS to the pending order rather than returning it untouched —
+  // scoped to the VARIANT, because asking for a Large when a Small is already
+  // on order is a second thing wanted, not more of the same. A CANCELLED row is
+  // never a match, so a re-order after a cancellation is a new order
+  // (AGENTS.md #7).
+  const result = await placeProductOrder({
     trainerId: profile.trainerId,
     clientId: profile.id,
-    sourceType: 'PRODUCT',
-    productId,
-    productVariantId: variantId,
+    product: {
+      id: product.id,
+      name: product.name,
+      stockCount: product.stockCount,
+      variant: variant ? { id: variant.id, name: variant.name, stockCount: variant.stockCount } : null,
+    },
+    quantity,
+    note: note ?? null,
+    stockNote: 'Requested in the client app',
   })
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
 
   // Tell the trainer a client requested a product (skip trainer-in-preview so a
   // trainer walking the shop doesn't notify themselves).
   const trainerUserId = profile.assignedTrainer?.user?.id ?? profile.trainer?.user?.id ?? null
   if (trainerUserId && !profile.isPreview) {
+    const name = variant ? `${product.name} — ${variant.name}` : product.name
     await notifyTrainer(
       trainerUserId,
       'CLIENT_SHOP_ORDER',
@@ -129,15 +128,16 @@ export async function POST(
         clientName: profile.user?.name ?? 'A client',
         dogName: profile.dog?.name ?? '',
         // Naming the variant is the point of the alert — "a harness" is not
-        // something the trainer can go and pick up.
-        detail: `requested “${variant ? `${product.name} — ${variant.name}` : product.name}”`,
+        // something the trainer can go and pick up. Nor is "a harness" when
+        // they wanted three, so the count rides along whenever it isn't one.
+        detail: `requested “${name}”${result.added > 1 ? ` × ${result.added}` : ''}`,
       },
       `/clients/${profile.id}`,
       profile.trainerId,
     )
   }
 
-  return NextResponse.json(created, { status: 201 })
+  return NextResponse.json(result.request, { status: result.created ? 201 : 200 })
 }
 
 export async function DELETE(
@@ -154,25 +154,30 @@ export async function DELETE(
   const variantId = new URL(req.url).searchParams.get('variantId')
 
   // Read the rows first: once they're gone there's nothing left to say which
-  // variant to put back or which receivable to cancel.
+  // variant to put back, HOW MANY, or which receivable to cancel.
   const pending = await prisma.productRequest.findMany({
     where: { clientId: profile.id, productId, status: 'PENDING', ...(variantId ? { variantId } : {}) },
-    select: { id: true, variantId: true },
+    select: { id: true, variantId: true, quantity: true },
   })
 
   // Hard delete the PENDING row. Keeps the (clientId, productId, variant) pair
   // available for fresh re-requests later. FULFILLED rows are preserved.
   await prisma.productRequest.deleteMany({ where: { id: { in: pending.map(r => r.id) } } })
 
-  // Then undo the other two things ordering did — the unit off the shelf and
+  // Then undo the other two things ordering did — the units off the shelf and
   // the receivable. Cancelling only the request row left the client owing for
   // something they cancelled and the stock count short by one (audit C-3).
+  //
+  // `row.quantity`, not 1: an order for three puts three back. Cancelling three
+  // and returning one is the same class of bug as cancelling one and returning
+  // none, two thirds of the way along.
   for (const row of pending) {
     await releaseCancelledRequest({
       trainerId: profile.trainerId,
       clientId: profile.id,
       productId,
       variantId: row.variantId,
+      quantity: row.quantity,
     })
   }
 

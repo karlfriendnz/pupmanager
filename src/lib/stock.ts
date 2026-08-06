@@ -5,8 +5,8 @@ import type { Prisma, PrismaClient, StockMovementReason } from '@/generated/pris
  *
  * `Product.stockCount` is NULL for anything a trainer never runs out of — a
  * service, a digital download, a made-to-order item. Only a number means
- * "count this". So the rule is: one product request is one unit off the shelf,
- * and an untracked product always says yes.
+ * "count this". So the rule is: a product request takes ITS QUANTITY off the
+ * shelf, and an untracked product always says yes.
  *
  * Every path that hands a product to a client goes through `takeStock` first:
  * the client's own purchase (card or pay-later), a trainer recording a sale,
@@ -126,17 +126,42 @@ async function writeBalance(
 }
 
 /**
- * Take one unit. Returns false ONLY when the product is tracked and there's
- * none left — the caller should then refuse the sale.
+ * Take `units` off the shelf, ALL OR NOTHING. Returns false ONLY when the
+ * product is tracked and there aren't that many left — the caller should then
+ * refuse the sale.
+ *
+ * `units` defaults to 1, which is every caller that predates ordering more than
+ * one of a thing, and is why none of them needed changing.
+ *
+ * ALL OR NOTHING is the point. A client asking for three and being handed two,
+ * with a receivable for three, is a worse outcome than a refusal they can act
+ * on — so the conditional update below requires the whole quantity to be there
+ * (`stockCount: { gte: units }`) rather than taking what it can. The refusal
+ * message names how many are actually left; the callers do that.
  *
  * The decrement is a conditional update rather than read-then-write, so two
  * people buying the last one at once can't both succeed.
+ *
+ * ONE movement for the whole take, not one per unit: "sold 3, balance 9" is the
+ * true statement about what happened, and three lines of -1 would imply three
+ * separate sales that a trainer reading the ledger would have to reassemble.
  *
  * An untracked product writes NO movement. There is no shelf to describe, and
  * a history of "sold one, balance unknown" against something that cannot run
  * out is noise that would swamp the products that are genuinely counted.
  */
-export async function takeStock(db: Db, productId: string, ctx?: StockContext): Promise<boolean> {
+export async function takeStock(
+  db: Db,
+  productId: string,
+  ctx?: StockContext,
+  units = 1,
+): Promise<boolean> {
+  // A non-positive take is a caller bug, not a shelf movement. Refusing to
+  // write a zero/negative "sale" keeps the ledger honest — and a fractional
+  // quantity slipping in from a JSON body must never reach the database.
+  const take = Math.floor(units)
+  if (!Number.isFinite(take) || take < 1) return false
+
   const variantId = ctx?.variantId ?? null
   const shelf = await loadShelf(db, productId, variantId)
   if (!shelf) return false
@@ -147,28 +172,47 @@ export async function takeStock(db: Db, productId: string, ctx?: StockContext): 
   // touches the Small's count.
   const { count } = variantId
     ? await db.productVariant.updateMany({
-        where: { id: variantId, productId, stockCount: { gt: 0 } },
-        data: { stockCount: { decrement: 1 } },
+        where: { id: variantId, productId, stockCount: { gte: take } },
+        data: { stockCount: { decrement: take } },
       })
     : await db.product.updateMany({
-        where: { id: productId, stockCount: { gt: 0 } },
-        data: { stockCount: { decrement: 1 } },
+        where: { id: productId, stockCount: { gte: take } },
+        data: { stockCount: { decrement: take } },
       })
   if (count !== 1) return false
 
-  // Re-read rather than assuming `stockCount - 1`: the update raced by design,
-  // and balanceAfter is only worth storing if it is the balance that actually
-  // resulted.
+  // Re-read rather than assuming `stockCount - take`: the update raced by
+  // design, and balanceAfter is only worth storing if it is the balance that
+  // actually resulted.
   const after = await loadShelf(db, productId, variantId)
   await recordMovement(db, {
     productId,
     trainerId: shelf.trainerId,
-    delta: -1,
+    delta: -take,
     reason: 'SOLD',
     balanceAfter: after?.stockCount ?? null,
     ctx,
   })
   return true
+}
+
+/**
+ * Put `units` back on the shelf because an order was undone — the named
+ * counterpart of `takeStock`, so a cancel path reads as the mirror of the order
+ * path instead of as a call to the delivery-booking-in helper.
+ *
+ * Thin on purpose: it is `addStock` with the reason pinned to RETURNED. The
+ * reason is the whole difference between "a delivery arrived" and "a sale fell
+ * through", and leaving it to each caller is how a cancel ends up filed as a
+ * receipt.
+ */
+export async function returnStock(
+  db: Db,
+  productId: string,
+  units: number,
+  ctx?: StockContext,
+): Promise<number | null> {
+  return addStock(db, productId, Math.max(0, Math.floor(units)), { ...ctx, reason: 'RETURNED' })
 }
 
 /** Is this product available to buy right now? (Read-only — no reservation.) */

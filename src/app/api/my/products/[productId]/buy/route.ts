@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server'
-import { inStock, takeStock } from '@/lib/stock'
 import { effectivePriceCents, isOnSale, resolveVariantPricing } from '@/lib/product-price'
 import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { createConnectCheckout } from '@/lib/connect-checkout'
 import { isConnectConfigured } from '@/lib/connect'
-import { createInvoiceForAssignment } from '@/lib/invoicing'
+import { placeProductOrder } from '@/lib/product-requests'
+import { enoughStock, MAX_PRODUCT_QUANTITY, normaliseQuantity, shortStockMessage } from '@/lib/product-quantity'
 import { resolveRequirePayment } from '@/lib/require-payment'
 import { enforceRateLimit } from '@/lib/rate-limit'
 import { notifyTrainer } from '@/lib/trainer-notify'
@@ -63,14 +63,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  // Which one they picked. Read from the body, then resolved against the
-  // product's OWN variants — never trusted as an id on its own.
+  // Which one they picked, and how many. Read from the body, then resolved
+  // against the product's OWN variants — never trusted as an id on its own.
   let variantId: string | null = null
+  let quantity = 1
   try {
     const text = await req.text()
     if (text) {
-      const body = JSON.parse(text) as { variantId?: unknown }
+      const body = JSON.parse(text) as { variantId?: unknown; quantity?: unknown }
       if (typeof body?.variantId === 'string' && body.variantId) variantId = body.variantId
+      if (body?.quantity !== undefined) {
+        // Refused, not rounded. A quantity of 0, -1, 2.5 or 500 is a request to
+        // turn down — this is the money path, and guessing what someone meant
+        // is how a charge ends up for a number nobody chose (AGENTS.md #3).
+        const q = body.quantity
+        if (typeof q !== 'number' || !Number.isInteger(q) || q < 1 || q > MAX_PRODUCT_QUANTITY) {
+          return NextResponse.json({ error: 'Invalid quantity' }, { status: 400 })
+        }
+        quantity = normaliseQuantity(q)
+      }
     }
   } catch { /* no body — a product with no variants doesn't need one */ }
 
@@ -92,16 +103,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
     return NextResponse.json({ error: 'This item isn’t for sale online.' }, { status: 400 })
   }
 
+  /** What the client sees on the Stripe page, the invoice and the trainer's alert. */
+  const saleName = variant ? `${product.name} — ${variant.name}` : product.name
+
   // Nothing is sold that can't be handed over. Checked here, BEFORE any money
   // moves; the actual decrement happens once the payment settles (or, on the
   // pay-later branch below, when the request is created). With variants the
   // count that matters is the picked one's — the product's is ignored.
-  if (!inStock(variant ? variant.stockCount : product.stockCount)) {
-    return NextResponse.json({ error: 'That item is out of stock.' }, { status: 409 })
+  //
+  // Enough for the WHOLE order, not just "any at all": charging for three and
+  // having two is a refund conversation, and it is avoidable right here. Same
+  // rule and same wording as the basket checkout.
+  const shelf = variant ? variant.stockCount : product.stockCount
+  if (!enoughStock(shelf, quantity)) {
+    return NextResponse.json({ error: shortStockMessage(saleName, shelf, quantity) }, { status: 409 })
   }
-
-  /** What the client sees on the Stripe page, the invoice and the trainer's alert. */
-  const saleName = variant ? `${product.name} — ${variant.name}` : product.name
 
   // Apple: no in-app purchase of digital goods. We hide the button in the
   // native app; this is the server-side backstop — the app reports itself via
@@ -128,32 +144,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
   }
 
   // Payments ON but this product resolves to "don't require payment" — book now,
-  // pay later: create a PENDING request (idempotent) and raise a receivable
-  // instead of charging a card. Mirrors the /request route.
+  // pay later: create (or grow) a PENDING request and raise a receivable
+  // instead of charging a card. Mirrors the /request route, through the same
+  // helper, so the two cannot answer "how many did that order take off the
+  // shelf" differently.
   if (!resolveRequirePayment(product.requirePayment, trainer.defaultRequirePayment)) {
-    // Per VARIANT, not per product: a Small already on order must not swallow
-    // an order for a Large.
-    const existing = await prisma.productRequest.findFirst({
-      where: { clientId: profile.id, productId: product.id, variantId, status: 'PENDING' },
-      select: { id: true },
-    })
-    if (!existing) {
-      // One unit off the shelf — the picked variant's, when there is one.
-      // Refused rather than oversold.
-      if (!(await takeStock(prisma, product.id, { clientId: profile.id, variantId, note: 'Bought in the client app, pay later' }))) {
-        return NextResponse.json({ error: 'That item is out of stock.' }, { status: 409 })
-      }
-      await prisma.productRequest.create({
-        data: { clientId: profile.id, productId: product.id, variantId, status: 'PENDING' },
-      })
-    }
-    await createInvoiceForAssignment({
+    const result = await placeProductOrder({
       trainerId: profile.trainerId,
       clientId: profile.id,
-      sourceType: 'PRODUCT',
-      productId: product.id,
-      productVariantId: variantId,
+      // Per VARIANT, not per product: a Small already on order must not swallow
+      // an order for a Large.
+      product: {
+        id: product.id,
+        name: product.name,
+        stockCount: product.stockCount,
+        variant: variant ? { id: variant.id, name: variant.name, stockCount: variant.stockCount } : null,
+      },
+      quantity,
+      stockNote: 'Bought in the client app, pay later',
     })
+    if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
     // Tell the trainer their client bought this item (book-now-pay-later path).
     // The card-checkout path below finishes in the connect webhook, so it isn't
     // notified here — that completion lives outside this route.
@@ -190,13 +200,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ product
         kind: 'PRODUCT',
         description: isOnSale(pricing) ? `${saleName} (sale)` : saleName,
         unitAmount: chargeCents,
-        quantity: 1,
+        quantity,
         productId: product.id,
         // Carried on the line AND in the intent: the line is what the trainer
         // reads back as "who bought which size", the intent is what the
-        // webhook fulfils from.
+        // webhook fulfils from. The webhook already loops the line's quantity
+        // (the basket buys three of a thing in one payment), so a straight Buy
+        // of three lands on exactly the same path.
         variantId,
-        intent: { productId: product.id, variantId, quantity: 1 },
+        intent: { productId: product.id, variantId, quantity },
       },
     ],
     successUrl: `${shop}?purchase=success`,

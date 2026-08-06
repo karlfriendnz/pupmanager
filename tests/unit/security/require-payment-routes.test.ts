@@ -57,7 +57,11 @@ vi.mock('@/lib/prisma', () => ({
     classRun: { findFirst: h.classRunFindFirst },
     trainerProfile: { findUnique: h.trainerFindUnique },
     bookingRequest: { create: h.bookingRequestCreate },
-    productRequest: { findFirst: h.productRequestFindFirst, create: h.productRequestCreate },
+    productRequest: { findFirst: h.productRequestFindFirst, create: h.productRequestCreate, update: vi.fn(async () => ({ id: 'pr1', quantity: 2 })) },
+    // The pay-later branch goes through placeProductOrder, which looks up the
+    // receivable before deciding whether to raise one or re-price it.
+    invoice: { findFirst: vi.fn(async () => null) },
+    invoiceLineItem: { update: vi.fn(async () => ({})) },
     // findMany: the pay-later path now quotes the offering's discounts across
     // the whole basket before invoicing it, so it re-reads the rows it booked.
     classEnrollment: {
@@ -202,7 +206,7 @@ describe('POST /api/my/products/[productId]/buy require-payment gate', () => {
     })
     h.trainerFindUnique.mockResolvedValue({ ...trainer })
     h.productRequestFindFirst.mockResolvedValue(null)
-    h.productRequestCreate.mockResolvedValue({ id: 'pr1' })
+    h.productRequestCreate.mockResolvedValue({ id: 'pr1', quantity: 1 })
   }
   const req = () => new Request('http://x/buy', { method: 'POST', headers: {}, body: '{}' })
   const params = { params: Promise.resolve({ productId: 'prod1' }) }

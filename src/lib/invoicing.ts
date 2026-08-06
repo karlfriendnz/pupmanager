@@ -9,6 +9,7 @@ import { createXeroInvoice, fetchXeroInvoiceState } from './xero'
 import { sessionDropInPriceCents, wholeRunPriceCents } from './class-runs'
 import { scaleLinesToNet } from './discounts/quote'
 import { effectivePriceCents, isOnSale, resolveVariantPricing } from './product-price'
+import { normaliseQuantity } from './product-quantity'
 import { env } from './env'
 import { currencySymbol } from './money'
 
@@ -134,6 +135,18 @@ export interface AssignmentInvoiceInput {
    * invoice and bill them once.
    */
   productVariantId?: string | null
+  /**
+   * HOW MANY of the product. PRODUCT sources only; 1 (and therefore invisible)
+   * everywhere else.
+   *
+   * It bills quantity × unit price on ONE line rather than raising N invoices:
+   * the idempotency key is the thing bought, not the order, so a second invoice
+   * for the same product would never be raised anyway — it would silently find
+   * the first and bill for one. The invoice line already carries a quantity
+   * (event tickets use it), so this reuses that shape rather than inventing a
+   * second one.
+   */
+  quantity?: number
   classEnrollmentId?: string
   /**
    * Whether to email the client about this invoice. Default true.
@@ -341,9 +354,16 @@ export async function createInvoiceForAssignment(input: AssignmentInvoiceInput):
       const pricing = resolveVariantPricing(product, variant)
       // On sale means on sale on the invoice too — same rule as a package's
       // specialPriceCents a few branches up.
-      amountCents = effectivePriceCents(pricing)
+      unitAmountCents = effectivePriceCents(pricing)
+      // Three harnesses is three times the money. The quantity goes on the LINE
+      // (which has carried one since event tickets) so the client reads
+      // "Harness — Large × 3" rather than a mystery tripled total, and the
+      // invoice's own amountCents stays the authoritative figure.
+      quantity = normaliseQuantity(input.quantity)
+      amountCents = unitAmountCents == null ? null : unitAmountCents * quantity
       const label = variant ? `${product.name} — ${variant.name}` : product.name
-      description = isOnSale(pricing) ? `${label} (sale)` : label
+      const sale = isOnSale(pricing) ? `${label} (sale)` : label
+      description = quantity > 1 ? `${sale} × ${quantity}` : sale
     }
 
     // Skip free / unpriced items — nothing to invoice.

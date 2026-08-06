@@ -23,10 +23,17 @@ const DOUBLE_EMAIL_RISK = [
 
 // Routes that raise an invoice and send NOTHING else — the invoice email is
 // the client's only notification and must keep firing.
+//
+// All three raise it THROUGH placeProductOrder now (quantity had to be applied
+// to the shelf, the row and the receivable together, so the three effects moved
+// into one function). The invariant is unchanged; what each file has to say to
+// satisfy it is. `placeProductOrder` is accepted as evidence a receivable is
+// raised, and lib/product-requests.ts is checked directly below.
 const INVOICE_EMAIL_IS_THE_ONLY_ONE = [
   'src/app/api/my/products/[productId]/buy/route.ts',
   'src/app/api/my/products/[productId]/request/route.ts',
   'src/app/api/clients/[clientId]/product-requests/route.ts',
+  'src/lib/product-requests.ts',
 ]
 
 describe('one email per booking', () => {
@@ -41,7 +48,9 @@ describe('one email per booking', () => {
 
   it.each(INVOICE_EMAIL_IS_THE_ONLY_ONE)('%s still lets the invoice email send', (file) => {
     const src = read(file)
-    expect(src).toContain('createInvoiceForAssignment')
+    // Raises a receivable — itself, or through the helper that owns all three
+    // effects of ordering a product.
+    expect(src).toMatch(/createInvoiceForAssignment|placeProductOrder/)
     expect(src).not.toContain('notifyClient: false')
   })
 

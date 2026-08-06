@@ -24,7 +24,16 @@ vi.mock('@/lib/prisma', () => ({
     clientProfile: { findUnique: h.clientFindUnique },
     product: { findUnique: h.productFindUnique },
     trainerProfile: { findUnique: h.trainerFindUnique },
-    productRequest: { findFirst: h.requestFindFirst, create: h.requestCreate },
+    productRequest: {
+      findFirst: h.requestFindFirst,
+      create: h.requestCreate,
+      update: vi.fn(async () => ({ id: 'pr1', quantity: 2 })),
+    },
+    // placeProductOrder reads the receivable before deciding whether to raise
+    // one or re-price the one already there.
+    invoice: { findFirst: vi.fn(async () => null) },
+    invoiceLineItem: { update: vi.fn(async () => ({})) },
+    $transaction: vi.fn(async () => []),
   },
 }))
 vi.mock('@/lib/connect-checkout', () => ({ createConnectCheckout: h.createConnectCheckout }))
@@ -72,6 +81,7 @@ beforeEach(() => {
   h.createConnectCheckout.mockResolvedValue({ url: 'https://checkout.stripe.com/x' })
   h.createInvoiceForAssignment.mockResolvedValue('inv_1')
   h.requestFindFirst.mockResolvedValue(null)
+  h.requestCreate.mockResolvedValue({ id: 'pr1', quantity: 1 })
   h.takeStock.mockResolvedValue(true)
   h.notifyTrainer.mockResolvedValue(undefined)
 })

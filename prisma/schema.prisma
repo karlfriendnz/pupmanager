@@ -2005,6 +2005,22 @@ model ProductRequest {
   variantId String?
   status    ProductRequestStatus @default(PENDING)
 
+  // HOW MANY. Defaulted to 1 so every row written before this reads back
+  // exactly as it did — an order was always for one, so 1 is not a guess, it is
+  // what those rows say.
+  //
+  // On the row rather than as N rows of one, because the three things an order
+  // does have to stay countable against each other: three units off the shelf,
+  // one line on the invoice reading "× 3", and a cancel that puts three back.
+  // N rows would make the invoice's idempotency (one per thing bought) and the
+  // request rows disagree about what "the order" is, and a partial cancel of
+  // two-of-three would be a state nothing else in the app can describe.
+  //
+  // The paid paths (Stripe fulfilment, in-person sale, membership grants) still
+  // write one FULFILLED row per unit: those are things ALREADY HANDED OVER, and
+  // the achievements counter counts them one by one.
+  quantity  Int                  @default(1)
+
   // Optional notes from the client when they request (e.g. "for Bella, size L")
   note String? @db.Text
 

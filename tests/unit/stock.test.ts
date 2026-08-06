@@ -94,7 +94,7 @@ describe('takeStock', () => {
     expect(db.product.updateMany).toHaveBeenCalledWith({
       // Conditional on there being stock, so the decrement and the check are
       // one operation — two buyers can't both take the last one.
-      where: { id: 'p1', stockCount: { gt: 0 } },
+      where: { id: 'p1', stockCount: { gte: 1 } },
       data: { stockCount: { decrement: 1 } },
     })
   })
@@ -281,7 +281,7 @@ describe('a variant is its own shelf', () => {
     expect(db.productVariant.updateMany).toHaveBeenCalledWith({
       // Scoped by productId too: a variant id belonging to a different product
       // must move nothing rather than decrementing a stranger's stock.
-      where: { id: 'v_large', productId: 'p1', stockCount: { gt: 0 } },
+      where: { id: 'v_large', productId: 'p1', stockCount: { gte: 1 } },
       data: { stockCount: { decrement: 1 } },
     })
   })

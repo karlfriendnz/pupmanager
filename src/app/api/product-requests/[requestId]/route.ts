@@ -56,15 +56,21 @@ export async function PATCH(
   }
 
   // Dismissing an order is the trainer's half of the client's cancel, and it has
-  // the same two things to undo: the unit off the shelf and the receivable.
+  // the same two things to undo: the units off the shelf and the receivable.
   // Only on the way INTO cancelled — re-sending the same PATCH must not keep
   // handing back stock for one order (audit C-3).
+  //
+  // It undoes AS MANY as the order took. `updated.quantity` is the count the
+  // order was placed with, and returning a hard-coded 1 against an order for
+  // three would leave the shelf two short with no movement explaining it — the
+  // same shape of bug as C-3, just arithmetic instead of omission.
   if (parsed.data.status === 'CANCELLED' && request.status === 'PENDING') {
     await releaseCancelledRequest({
       trainerId,
       clientId: updated.clientId,
       productId: updated.productId,
       variantId: updated.variantId,
+      quantity: updated.quantity,
     })
   }
 

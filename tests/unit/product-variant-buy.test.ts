@@ -16,6 +16,8 @@ const h = vi.hoisted(() => ({
   trainerFindUnique: vi.fn(),
   requestFindFirst: vi.fn(),
   requestCreate: vi.fn(),
+  requestUpdate: vi.fn(),
+  invoiceFindFirst: vi.fn(),
   createConnectCheckout: vi.fn(),
   createInvoiceForAssignment: vi.fn(),
   resolveRequirePayment: vi.fn(),
@@ -29,7 +31,12 @@ vi.mock('@/lib/prisma', () => ({
     clientProfile: { findUnique: h.clientFindUnique },
     product: { findUnique: h.productFindUnique },
     trainerProfile: { findUnique: h.trainerFindUnique },
-    productRequest: { findFirst: h.requestFindFirst, create: h.requestCreate },
+    productRequest: { findFirst: h.requestFindFirst, create: h.requestCreate, update: h.requestUpdate },
+    // The pay-later branch runs through placeProductOrder now, which looks the
+    // receivable up before it decides whether to raise or re-price one.
+    invoice: { findFirst: h.invoiceFindFirst },
+    invoiceLineItem: { update: vi.fn() },
+    $transaction: vi.fn(),
   },
 }))
 vi.mock('@/lib/connect-checkout', () => ({ createConnectCheckout: h.createConnectCheckout }))
@@ -97,6 +104,9 @@ beforeEach(() => {
   h.createConnectCheckout.mockResolvedValue({ url: 'https://checkout.stripe.com/x' })
   h.createInvoiceForAssignment.mockResolvedValue('inv_1')
   h.requestFindFirst.mockResolvedValue(null)
+  h.requestCreate.mockResolvedValue({ id: 'req_1', quantity: 1 })
+  h.requestUpdate.mockResolvedValue({ id: 'req_1', quantity: 2 })
+  h.invoiceFindFirst.mockResolvedValue(null)
   h.takeStock.mockResolvedValue(true)
   h.notifyTrainer.mockResolvedValue(undefined)
   h.productFindUnique.mockResolvedValue(product())
@@ -156,10 +166,11 @@ describe('POST /api/my/products/[id]/buy — with options', () => {
     expect(res.status).toBe(200)
 
     expect(h.takeStock).toHaveBeenCalledWith(
-      expect.anything(), PRODUCT, expect.objectContaining({ variantId: 'v_large' }),
+      expect.anything(), PRODUCT, expect.objectContaining({ variantId: 'v_large' }), 1,
     )
     expect(h.requestCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({ productId: PRODUCT, variantId: 'v_large', status: 'PENDING' }),
+      data: expect.objectContaining({ productId: PRODUCT, variantId: 'v_large', status: 'PENDING', quantity: 1 }),
+      select: expect.anything(),
     })
     expect(h.createInvoiceForAssignment).toHaveBeenCalledWith(
       expect.objectContaining({ productId: PRODUCT, productVariantId: 'v_large' }),
@@ -213,7 +224,7 @@ describe('POST /api/my/products/[id]/buy — a product with NO options is unchan
     h.productFindUnique.mockResolvedValue(plain())
     await buy()
     expect(h.takeStock).toHaveBeenCalledWith(
-      expect.anything(), PRODUCT, expect.objectContaining({ variantId: null }),
+      expect.anything(), PRODUCT, expect.objectContaining({ variantId: null }), 1,
     )
     expect(h.createInvoiceForAssignment).toHaveBeenCalledWith(
       expect.objectContaining({ productId: PRODUCT, productVariantId: null }),

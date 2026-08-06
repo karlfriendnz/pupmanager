@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
-import { takeStock } from '@/lib/stock'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getClientAccess } from '@/lib/trainer-access'
-import { createInvoiceForAssignment } from '@/lib/invoicing'
+import { placeProductOrder } from '@/lib/product-requests'
+import { quantitySchema } from '@/lib/product-quantity'
 import { z } from 'zod'
 
 const postSchema = z.object({
@@ -11,6 +11,10 @@ const postSchema = z.object({
   // Which size/colour the trainer handed over. Checked against the product's
   // own variants below.
   variantId: z.string().nullable().optional(),
+  // How many. Optional so an app build that predates the control still means
+  // one, and bounds-checked HERE rather than trusted from the stepper —
+  // whatever the form refuses, the route must refuse (AGENTS.md #3).
+  quantity: quantitySchema,
   note: z.string().max(500).optional(),
 })
 
@@ -41,7 +45,13 @@ export async function POST(
   // the client's "store" is that primary.
   const product = await prisma.product.findFirst({
     where: { id: parsed.data.productId, trainerId: access.client.trainerId },
-    select: { id: true, variants: { select: { id: true } } },
+    // name + the counts come back so a short shelf can be refused with a
+    // message that says WHICH thing and HOW MANY are left, rather than a bare
+    // "out of stock" against a product sitting right there.
+    select: {
+      id: true, name: true, stockCount: true,
+      variants: { select: { id: true, name: true, stockCount: true } },
+    },
   })
   if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 })
   // No `active` gate here: a trainer can add any of their own products to a
@@ -51,52 +61,37 @@ export async function POST(
 
   const variants = product.variants ?? []
   const variantId = parsed.data.variantId ?? null
-  if (variantId && !variants.some(v => v.id === variantId)) {
+  const variant = variantId ? variants.find(v => v.id === variantId) ?? null : null
+  if (variantId && !variant) {
     return NextResponse.json({ error: 'Product not found' }, { status: 404 })
   }
-  if (variants.length > 0 && !variantId) {
+  if (variants.length > 0 && !variant) {
     return NextResponse.json({ error: 'Choose an option first.' }, { status: 400 })
   }
 
-  // Idempotent — return any existing PENDING request for this exact thing.
-  // Per VARIANT: giving a client a Large when a Small is already pending is a
-  // second item, not a repeat.
-  const existing = await prisma.productRequest.findFirst({
-    where: { clientId, productId: parsed.data.productId, variantId, status: 'PENDING' },
-  })
-  if (existing) return NextResponse.json(existing)
-
-  // One unit off the shelf; a tracked product that's run out is refused so the
-  // trainer finds out here rather than when they go to hand it over. The
-  // ledger line names both the client it went to and the trainer who did it,
-  // which is the pair you need when a count looks wrong a fortnight later.
-  if (!(await takeStock(prisma, parsed.data.productId, {
-    clientId,
-    userId: session.user.id,
-    variantId,
-    note: 'Added to a client by their trainer',
-  }))) {
-    return NextResponse.json({ error: 'That item is out of stock.' }, { status: 409 })
-  }
-
-  const created = await prisma.productRequest.create({
-    data: {
-      clientId,
-      productId: parsed.data.productId,
-      variantId,
-      note: parsed.data.note ?? null,
-      status: 'PENDING',
-    },
-  })
-
-  // Best-effort receivable for the assigned product (idempotent, skips unpriced).
-  await createInvoiceForAssignment({
+  // All three effects of ordering — the units off the shelf, the request row,
+  // the receivable — in one place, so the count they each use is the same
+  // number. Adding the same thing again GROWS the pending order rather than
+  // returning it untouched, which is what "add 2 more" has to mean; a CANCELLED
+  // row is never a match (AGENTS.md #7).
+  //
+  // The ledger line names both the client it went to and the trainer who did
+  // it, which is the pair you need when a count looks wrong a fortnight later.
+  const result = await placeProductOrder({
     trainerId: access.client.trainerId,
     clientId,
-    sourceType: 'PRODUCT',
-    productId: parsed.data.productId,
-    productVariantId: variantId,
+    product: {
+      id: product.id,
+      name: product.name,
+      stockCount: product.stockCount,
+      variant: variant ? { id: variant.id, name: variant.name, stockCount: variant.stockCount } : null,
+    },
+    quantity: parsed.data.quantity,
+    note: parsed.data.note ?? null,
+    userId: session.user.id,
+    stockNote: 'Added to a client by their trainer',
   })
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status })
 
-  return NextResponse.json(created, { status: 201 })
+  return NextResponse.json(result.request, { status: result.created ? 201 : 200 })
 }
