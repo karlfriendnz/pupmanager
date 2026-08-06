@@ -381,18 +381,21 @@ export default async function DashboardPage({
 
   return (
     <>
+      {/* No trial pill in the header: on a phone it sat in the top bar ON TOP
+          of the business name, and repeated the day count it was already
+          saying in words. It is a row in the page now. */}
       <PageHeader
         title={`Good ${getGreeting(tz)}, ${session.user.name?.split(' ')[0] ?? 'there'} 👋`}
-        actions={
+      />
+      <div className="p-4 md:p-8 w-full">
+        <div className="mb-4">
           <TrialBanner
-            placement="header"
+            placement="row"
             status={brandingProfile?.subscriptionStatus ?? 'TRIALING'}
             trialEndsAt={brandingProfile?.trialEndsAt ?? null}
             hasSubscription={!!brandingProfile?.stripeSubscriptionId}
           />
-        }
-      />
-      <div className="p-4 md:p-8 w-full">
+        </div>
         {/* Free add-on trial (admin comp) countdown — self-clears at expiry. */}
         <AddonCompBanner comps={addonComps} />
         {/* iOS/Android only: prompt for a country when we couldn't capture it

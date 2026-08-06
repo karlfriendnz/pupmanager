@@ -16,7 +16,7 @@ interface Props {
   hasSubscription?: boolean
   // 'floating' = the global bottom-right chip (legacy). 'header' = a compact
   // inline pill for the dashboard top-right.
-  placement?: 'floating' | 'header'
+  placement?: 'floating' | 'header' | 'row'
 }
 
 type Tone = 'indigo' | 'rose' | 'red'
@@ -105,6 +105,11 @@ export function TrialBanner({ status, trialEndsAt, hasSubscription = false, plac
   const pathname = usePathname()
   const native = useIsNative()
   const isHeader = placement === 'header'
+  // A full-width row in the page body. The header pill sat in the mobile top
+  // bar and covered the business name beside it (Karl, 2026-08-06), and at that
+  // width it also showed the day count twice — once in the circle, once in
+  // "27 days left".
+  const isRow = placement === 'row'
   // Never surface the billing nudge inside the native app — purchasing a
   // subscription in-app would violate Apple Guideline 3.1.1 (IAP). Trainers
   // manage billing on the web. Also hide it on the /billing pages themselves.
@@ -147,7 +152,9 @@ export function TrialBanner({ status, trialEndsAt, hasSubscription = false, plac
   // legible at a glance), or an alert icon for the warning states.
   const circle = isHeader ? 'h-8 w-8 text-sm' : 'h-10 w-10 text-base'
   const icon = isHeader ? 'h-4 w-4' : 'h-5 w-5'
-  const leading = copy.daysLeft !== null && copy.daysLeft > 0 ? (
+  // The row says the number in words, so the circle would be saying it twice.
+  const leading = isRow && copy.daysLeft !== null && copy.daysLeft > 0 ? null
+    : copy.daysLeft !== null && copy.daysLeft > 0 ? (
     <div className={`shrink-0 grid place-items-center rounded-full font-bold tabular-nums ${circle} ${toneAvatar[copy.tone]}`}>
       {copy.daysLeft}
     </div>
@@ -159,7 +166,9 @@ export function TrialBanner({ status, trialEndsAt, hasSubscription = false, plac
     </div>
   )
 
-  const shell = isHeader
+  const shell = isRow
+    ? 'flex w-full items-center gap-3 px-4 py-3 rounded-xl'
+    : isHeader
     ? 'inline-flex items-center gap-2 pl-1.5 pr-1 py-1 rounded-xl shadow-sm'
     : 'fixed right-2.5 bottom-[5.625rem] md:bottom-2.5 z-30 flex items-center gap-3 px-3 py-2.5 pr-2 rounded-2xl shadow-[0_18px_40px_-12px_rgba(15,23,42,0.35)] max-w-[calc(100%-1.25rem)] hover:-translate-y-0.5 hover:shadow-[0_24px_50px_-14px_rgba(15,23,42,0.45)]'
 
@@ -171,7 +180,7 @@ export function TrialBanner({ status, trialEndsAt, hasSubscription = false, plac
     >
       {leading}
 
-      <div className="min-w-0">
+      <div className={`min-w-0 ${isRow ? 'flex-1' : ''}`}>
         <p className="text-[13px] font-semibold leading-tight tracking-tight">
           {copy.headline}
         </p>
