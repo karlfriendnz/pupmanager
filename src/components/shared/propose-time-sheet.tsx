@@ -63,7 +63,16 @@ export function ProposeTimeSheet({
   const [date, setDate] = useState(initialDate ?? todayStr())
   const [meta, setMeta] = useState<TimesResponse | null>(null)
   const [loadingTimes, setLoadingTimes] = useState(false)
-  const [time, setTime] = useState<string | null>(null)
+  // Seeded from the time they dragged to. `send()` would have used the preset
+  // anyway, but the picker opened with NOTHING selected — so the sheet looked
+  // like it had forgotten the time, which is exactly how Karl read it. The
+  // wall clock is read back in the same zone the drag built it in.
+  const [time, setTime] = useState<string | null>(() => {
+    if (!initialStartIso) return null
+    const at = new Date(initialStartIso)
+    if (Number.isNaN(at.getTime())) return null
+    return `${String(at.getHours()).padStart(2, '0')}:${String(at.getMinutes()).padStart(2, '0')}`
+  })
   const [note, setNote] = useState('')
   const [noteTouched, setNoteTouched] = useState(false)
   const [sending, setSending] = useState(false)
