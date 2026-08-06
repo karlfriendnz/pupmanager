@@ -81,7 +81,9 @@ export default async function MyShopPage({
     listShopProducts(profile.trainerId, { tagId: activeTag?.id ?? null }),
     prisma.productRequest.findMany({
       where: { clientId: profile.id, status: { in: ['PENDING', 'FULFILLED'] } },
-      select: { productId: true, status: true },
+      // quantity: "Requested" is a poorer answer than "Requested × 3" when the
+      // client asked for three, and the sheet is the only place they can check.
+      select: { productId: true, status: true, quantity: true },
     }),
     // The point of previewing is usually a product that ISN'T live yet, so the
     // list above — which is exactly what a client may see — won't contain it.
@@ -95,6 +97,14 @@ export default async function MyShopPage({
   ])
 
   const requestedIds = new Set(pendingRequests.filter(r => r.status === 'PENDING').map(r => r.productId))
+  // How many are on order, per product. SUMMED across options, because the
+  // shop's "Requested" flag has always been per PRODUCT — a client with a Small
+  // and a Large on order has two things coming, and the sheet says two.
+  const requestedUnits = new Map<string, number>()
+  for (const r of pendingRequests) {
+    if (r.status !== 'PENDING') continue
+    requestedUnits.set(r.productId, (requestedUnits.get(r.productId) ?? 0) + r.quantity)
+  }
   // A digital product the client has actually paid for unlocks its download.
   const purchasedIds = new Set(pendingRequests.filter(r => r.status === 'FULFILLED').map(r => r.productId))
 
@@ -133,6 +143,7 @@ export default async function MyShopPage({
               featured: p.featured,
               variants: p.variants,
               requested: requestedIds.has(p.id),
+              requestedQuantity: requestedUnits.get(p.id) ?? 0,
               purchased: purchasedIds.has(p.id),
             })),
             // Rides along so the sheet has something to open, flagged so the
@@ -158,6 +169,7 @@ export default async function MyShopPage({
                   featured: hiddenPreview.featured,
                   variants: hiddenPreview.variants,
                   requested: false,
+                  requestedQuantity: 0,
                   purchased: false,
                   hiddenFromShop: true,
                 }]

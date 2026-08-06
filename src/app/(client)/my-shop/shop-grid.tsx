@@ -7,7 +7,7 @@ import { RichText } from '@/components/shared/rich-text'
 import { useRouter } from 'next/navigation'
 import {
   Star, Package as PackageIcon, FileDown, Download, ShoppingBag, X, Tag,
-  Check, Loader2, CreditCard, EyeOff, ChevronRight,
+  Check, Loader2, CreditCard, EyeOff, ChevronRight, Minus, Plus,
 } from 'lucide-react'
 import type { ShopTag } from '@/lib/shop-tags'
 import { cn } from '@/lib/utils'
@@ -25,6 +25,7 @@ import { openExternal } from '@/lib/external-link'
 import { PREVIEW_REASON, useIsPreview } from '../preview-context'
 import { useBasketOptional } from '../basket/basket-context'
 import type { BasketProductLine } from '@/lib/basket'
+import { MAX_PRODUCT_QUANTITY } from '@/lib/product-quantity'
 
 /** One thing a client can pick — "Large", "Red · Large". */
 export interface Variant {
@@ -54,6 +55,8 @@ interface Product {
   category: string | null
   featured: boolean
   requested: boolean
+  /** How many are on order, summed across options. 0 when nothing is. */
+  requestedQuantity?: number
   purchased?: boolean
   /**
    * The sizes/colours this comes in. Empty = sold as one thing, and every
@@ -144,6 +147,9 @@ export function ShopGrid({
   // Which option is picked in the open product. Cleared when the sheet closes,
   // so re-opening a product never buys last time's size by accident.
   const [pickedVariantId, setPickedVariantId] = useState<string | null>(null)
+  // How many. Same lifetime as the picked option, and for the same reason:
+  // re-opening a product must never carry over "3" from the last one.
+  const [quantity, setQuantity] = useState(1)
 
   // A product is buyable when the trainer takes payments and it has a price —
   // the sale price when there is one, since that's what actually gets charged.
@@ -154,7 +160,7 @@ export function ShopGrid({
     return acceptPayments && cents != null && cents > 0
   }
 
-  async function buy(p: Product, variantId: string | null) {
+  async function buy(p: Product, variantId: string | null, qty: number) {
     if (buyingId) return
     setBuyingId(p.id)
     setBuyError(null)
@@ -162,7 +168,10 @@ export function ShopGrid({
       const res = await fetch(`/api/my/products/${p.id}/buy`, {
         method: 'POST',
         headers: { 'x-pm-platform': nativePlatform(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ variantId }),
+        // The number is the client's; the PRICE is never sent. The route
+        // re-reads what a unit costs and multiplies it itself, so a tampered
+        // basket can only ever produce a refusal.
+        body: JSON.stringify({ variantId, quantity: qty }),
       })
       const body = await res.json().catch(() => ({}))
       if (res.ok && body.url) {
@@ -181,14 +190,17 @@ export function ShopGrid({
     return optimisticRequested[p.id] ?? p.requested
   }
 
-  async function toggleRequest(p: Product, variantId: string | null) {
+  async function toggleRequest(p: Product, variantId: string | null, qty: number) {
     if (busyId) return
     const next = !isRequested(p)
     setBusyId(p.id)
+    setBuyError(null)
     setOptimisticRequested(prev => ({ ...prev, [p.id]: next }))
     try {
       // The variant rides in the body on the way in and the query string on
       // the way out — cancelling the Large must leave a pending Small alone.
+      // Cancelling carries no quantity: it ends the order, all of it, and the
+      // route puts back however many the row says (never a hard-coded one).
       const res = await fetch(
         next
           ? `/api/my/products/${p.id}/request`
@@ -197,12 +209,16 @@ export function ShopGrid({
           ? {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ variantId }),
+              body: JSON.stringify({ variantId, quantity: qty }),
             }
           : { method: 'DELETE' },
       )
       if (!res.ok) {
         setOptimisticRequested(prev => ({ ...prev, [p.id]: !next }))
+        // A short shelf comes back naming how many are left. Swallowing it left
+        // the client tapping a button that did nothing.
+        const body = await res.json().catch(() => ({}))
+        setBuyError(typeof body?.error === 'string' ? body.error : 'That didn’t go through.')
       } else {
         startTransition(() => router.refresh())
       }
@@ -240,6 +256,7 @@ export function ShopGrid({
   function close() {
     setOpen(null)
     setPickedVariantId(null)
+    setQuantity(1)
     if (openProductId) {
       startTransition(() => router.replace(shopHref(activeTag?.id ?? null, null), { scroll: false }))
     }
@@ -253,7 +270,7 @@ export function ShopGrid({
   // Add rather than buy. Someone getting a harness is very often getting the
   // class too, and sending them to Stripe on the first tap is what made that
   // two payments and two trips.
-  function addToBasket(p: Product, variantId: string | null) {
+  function addToBasket(p: Product, variantId: string | null, qty: number) {
     const variant = (p.variants ?? []).find(v => v.id === variantId) ?? null
     const cents = effectivePriceCents(resolveVariantPricing(p, variant))
     if (!basket || !cents || cents <= 0) return
@@ -262,7 +279,10 @@ export function ShopGrid({
       kind: 'PRODUCT',
       productId: p.id,
       variantId,
-      quantity: 1,
+      // The number chosen in the sheet. The basket ACCUMULATES product lines,
+      // so adding two and then three is five — and the basket's own stepper
+      // still adjusts it afterwards.
+      quantity: qty,
       name: p.name,
       variantName: variant?.name ?? null,
       imageUrl: shown.imageUrl,
@@ -271,6 +291,7 @@ export function ShopGrid({
     // Straight back to the shop — "continue shopping" is the whole point.
     setOpen(null)
     setPickedVariantId(null)
+    setQuantity(1)
   }
 
   return (
@@ -408,7 +429,10 @@ export function ShopGrid({
                 </span>
               ) : isRequested(p) && (
                 <span className="absolute top-2 right-2 flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 backdrop-blur px-2 py-0.5 rounded-full">
+                  {/* "Requested" is a poorer answer than "Requested × 3" when
+                      three are coming, and the card is where a client checks. */}
                   <Check className="h-3 w-3" /> Requested
+                  {(p.requestedQuantity ?? 0) > 1 && ` × ${p.requestedQuantity}`}
                 </span>
               )}
             </div>
@@ -440,10 +464,12 @@ export function ShopGrid({
           native={native}
           pickedVariantId={pickedVariantId}
           onPickVariant={setPickedVariantId}
+          quantity={quantity}
+          onQuantity={setQuantity}
           onClose={close}
-          onToggleRequest={() => toggleRequest(open, pickedVariantId)}
-          onBuy={() => buy(open, pickedVariantId)}
-          onAddToBasket={basket && isPayable(open) && !isPreview ? () => addToBasket(open, pickedVariantId) : null}
+          onToggleRequest={() => toggleRequest(open, pickedVariantId, quantity)}
+          onBuy={() => buy(open, pickedVariantId, quantity)}
+          onAddToBasket={basket && isPayable(open) && !isPreview ? () => addToBasket(open, pickedVariantId, quantity) : null}
           busy={busyId === open.id}
           buying={buyingId === open.id}
           buyError={buyError}
@@ -569,6 +595,8 @@ function ProductModal({
   native,
   pickedVariantId,
   onPickVariant,
+  quantity,
+  onQuantity,
   onClose,
   onToggleRequest,
   onBuy,
@@ -586,6 +614,9 @@ function ProductModal({
   /** Which option is chosen. Null until they pick, and always null with none. */
   pickedVariantId: string | null
   onPickVariant: (id: string | null) => void
+  /** How many, feeding whichever of the three actions is taken. */
+  quantity: number
+  onQuantity: (n: number) => void
   onClose: () => void
   onToggleRequest: () => void
   onBuy: () => void
@@ -607,6 +638,7 @@ function ProductModal({
   // product's where it has none. One helper, so this can never disagree with
   // what the server charges.
   const pricing = resolveVariantPricing(product, picked)
+  const unitCents = effectivePriceCents(pricing)
   // And what is actually being LOOKED at. Same rule, same helper: the picked
   // option's photo and words when it has them, the product's when it doesn't —
   // which is the case for nearly every option, so nothing on this screen
@@ -618,6 +650,14 @@ function ProductModal({
   const available = picked
     ? inStock(picked.stockCount)
     : productInStock(product, variants)
+
+  // The most they can ask for: whichever is smaller of what's on the shelf and
+  // the app-wide ceiling. An UNCOUNTED product (null) has no shelf to run out
+  // of, so it is capped by the ceiling alone.
+  const shelfCount = picked ? picked.stockCount : (variants.length === 0 ? product.stockCount : null)
+  const maxQuantity = shelfCount == null
+    ? MAX_PRODUCT_QUANTITY
+    : Math.max(1, Math.min(MAX_PRODUCT_QUANTITY, shelfCount))
 
   // Digital downloads: a free one downloads immediately; a PRICED one must be
   // bought first. Priced is priced — whether this trainer can take cards
@@ -722,6 +762,57 @@ function ProductModal({
             />
           )}
 
+          {/* HOW MANY, under the options and above the action — Karl: "when
+              ordering a product i should be able to say I want 2 of these".
+              It sits below the option picker because nobody can say how many
+              until they have said WHICH, and a product with options greys it
+              out until one is chosen.
+
+              ONE control for all three actions (Buy, Add to basket, Add to next
+              session). Two steppers, one per button, would be two answers to
+              one question.
+
+              A digital download has no quantity: buying the same PDF twice is
+              not a thing anyone wants, and neither is a shelf count for it.
+
+              Nor does a CANCEL. When the only action left is "tap to cancel",
+              a "How many" above it is asking a question the button cannot
+              answer — cancelling ends the whole order, and the route puts back
+              however many the row says. */}
+          {!canDownload && !isPaidDigital && available && !previewNote
+            && (payable || !product.requested) && (
+            <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2">
+              <span className="text-sm font-medium text-slate-700">How many</span>
+              <span className="flex items-center gap-1">
+                <button
+                  type="button"
+                  aria-label="One fewer"
+                  disabled={quantity <= 1 || mustPick}
+                  onClick={() => onQuantity(quantity - 1)}
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-700 disabled:opacity-40"
+                >
+                  <Minus className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+                <span className="min-w-7 text-center text-sm font-semibold tabular-nums text-slate-900">
+                  {quantity}
+                </span>
+                <button
+                  type="button"
+                  aria-label="One more"
+                  // Capped by the SHELF as well as the ceiling, so the client
+                  // can't ask for five of a thing there are two of and only
+                  // find out after tapping (AGENTS.md #9 — the state that
+                  // changes what you can do belongs where you choose).
+                  disabled={quantity >= maxQuantity || mustPick}
+                  onClick={() => onQuantity(quantity + 1)}
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-700 disabled:opacity-40"
+                >
+                  <Plus className="h-4 w-4" strokeWidth={1.75} />
+                </button>
+              </span>
+            </div>
+          )}
+
           {canDownload ? (
             <a
               href={product.downloadUrl!}
@@ -750,7 +841,10 @@ function ProductModal({
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : mustPick
                   ? 'Choose an option'
-                  : <><CreditCard className="h-4 w-4" /> Buy · {formatPrice(effectivePriceCents(pricing), currency)}</>
+                  // The TOTAL, not the unit price. "Buy · $20" on a basket of
+                  // three is the wrong number in the one place a client is
+                  // about to commit to it.
+                  : <><CreditCard className="h-4 w-4" /> Buy · {formatPrice(unitCents == null ? null : unitCents * quantity, currency)}</>
               }
             </button>
             {/* Under Buy, not instead of it. Buying the one thing you came for
@@ -774,7 +868,14 @@ function ProductModal({
             >
               {busy
                 ? <Loader2 className="h-4 w-4 animate-spin" />
-                : <><Check className="h-4 w-4" /> Requested · Tap to cancel</>
+                : (
+                  <>
+                    <Check className="h-4 w-4" />
+                    {/* The count, so "tap to cancel" says what is being
+                        cancelled — three of them, not one. */}
+                    Requested{(product.requestedQuantity ?? 0) > 1 ? ` × ${product.requestedQuantity}` : ''} · Tap to cancel
+                  </>
+                )
               }
             </button>
           ) : (

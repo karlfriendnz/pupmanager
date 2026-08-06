@@ -391,6 +391,76 @@ test.describe('ordering more than one', () => {
     }
   })
 
+  test('the client can ask for two, from the shop', async ({ page }) => {
+    // Karl's words, from the client's side: "when ordering a product i should
+    // be able to say I want 2 of these." The sheet's stepper feeds the same
+    // route the trainer's add screen does, so the effects are the same three.
+    const prisma = await makePrisma()
+    let productId: string | null = null
+    try {
+      const product = await makeProduct(prisma, 10)
+      productId = product.id
+
+      await login(page, SEED.client.email, SEED.client.password)
+
+      // The shop renders, and the sheet opens on the product.
+      await page.goto(`/my-shop?product=${product.id}`)
+      await expect(page.getByText('How many')).toBeVisible()
+
+      // Two, please. The seeded business takes payments, so the sheet's action
+      // is Buy — and the price on the button has to be the TOTAL. "Buy · $20"
+      // over a basket of two is the wrong number in the one place a client is
+      // about to commit to it.
+      await page.getByRole('button', { name: 'One more' }).click()
+      await expect(page.getByRole('button', { name: /Buy · \$40\.00/ })).toBeVisible()
+
+      // Into the basket, which is where a quantity is carried to checkout.
+      await page.getByRole('button', { name: 'Add to basket' }).click()
+      await expect(page.getByText('2', { exact: true }).first()).toBeVisible()
+
+      // Nothing has come off the shelf yet — a basket is not an order. The
+      // checkout takes stock when the payment settles.
+      expect(await stockOf(prisma, product.id), 'a basket reserves nothing').toBe(10)
+
+      // And the same number, sent to the pay-later route the client app uses
+      // when a trainer isn't taking cards, IS an order: three effects, all for
+      // two.
+      const res = await page.request.post(`/api/my/products/${product.id}/request`, {
+        data: { quantity: 2 },
+      })
+      expect([200, 201], await res.text()).toContain(res.status())
+      const row = await prisma.productRequest.findFirstOrThrow({
+        where: { productId: product.id, status: 'PENDING' },
+      })
+      expect(row.quantity).toBe(2)
+      expect(await stockOf(prisma, product.id), 'two off a shelf of ten').toBe(8)
+    } finally {
+      await cleanup(prisma, productId)
+      await prisma.$disconnect()
+    }
+  })
+
+  test('the client’s stepper stops at what is on the shelf', async ({ page }) => {
+    // AGENTS.md #9: the state that changes what you can do belongs where you
+    // make the choice. Finding out after tapping is the bug.
+    const prisma = await makePrisma()
+    let productId: string | null = null
+    try {
+      const product = await makeProduct(prisma, 2)
+      productId = product.id
+
+      await login(page, SEED.client.email, SEED.client.password)
+      await page.goto(`/my-shop?product=${product.id}`)
+
+      const more = page.getByRole('button', { name: 'One more' })
+      await more.click()                       // 2 — the whole shelf
+      await expect(more).toBeDisabled()        // and no further
+    } finally {
+      await cleanup(prisma, productId)
+      await prisma.$disconnect()
+    }
+  })
+
   test('another trainer’s client cannot be ordered for, whatever the quantity', async ({ page }) => {
     // The bounds are not a substitute for the tenant guard, and vice versa.
     const prisma = await makePrisma()
