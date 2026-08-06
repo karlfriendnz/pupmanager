@@ -69,6 +69,13 @@ test.describe('client home quick actions', () => {
     const tag = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`
     let withNothing: Awaited<ReturnType<typeof makeClient>> | undefined
     let withSomething: Awaited<ReturnType<typeof makeClient>> | undefined
+    // The one-time "Get the app" nudge (app-install-modal.tsx) covers the home
+    // screen on a client's first visit and swallows the tap on the tile
+    // underneath. It remembers itself in localStorage, so pre-setting its key
+    // is the same as having dismissed it — and it is nothing this spec is about.
+    await page.addInitScript(() => {
+      try { localStorage.setItem('pm_app_prompt_seen', '1') } catch { /* blocked */ }
+    })
     try {
       const businessA = await prisma.trainerProfile.findFirstOrThrow({
         where: { user: { email: SEED.owner.email } },

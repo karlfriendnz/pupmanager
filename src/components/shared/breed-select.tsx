@@ -110,6 +110,12 @@ export function BreedSelect({
     } else if (e.key === 'Escape') {
       if (open) {
         e.preventDefault()
+        // …and stop it there. FullScreenSheet closes itself on Escape from a
+        // WINDOW listener, so without this the same keypress that dismisses
+        // this dropdown carries on up and shuts the whole sheet — taking the
+        // name, the weight and the birthday with it. Escape means "close the
+        // thing I just opened", and the dropdown is that thing.
+        e.stopPropagation()
         setOpen(false)
       }
     }

@@ -61,19 +61,26 @@ test.describe('client adds a dog on /my-dogs', () => {
     try {
       await login(page, SEED.client.email, SEED.client.password, '/home')
       await page.goto('/my-dogs')
-      await expect(page.getByRole('heading', { name: 'My dogs' }).first()).toBeVisible({ timeout: 15_000 })
-
-      // The add affordance exists whether or not the client already has dogs.
+      // No heading to wait on: the client shell owns the page title and only
+      // paints it in its PHONE top bar, so at this suite's desktop viewport
+      // /my-dogs carries no <h1> at all. The add affordance is the page's own
+      // content, and it is there whether or not the client already has dogs.
       const add = page.getByRole('button', { name: /Add (a|another) dog/ })
-      await expect(add).toBeVisible()
+      await expect(add).toBeVisible({ timeout: 15_000 })
       await add.click()
 
-      await expect(page.getByRole('dialog')).toBeVisible()
-      await page.getByLabel('Name').fill(name)
-      await page.getByLabel('Breed').fill('Border Collie')
-      // The breed combobox drops its list open over the fields below it.
-      await page.getByLabel('Breed').press('Escape')
-      await page.getByLabel('Weight (kg)').fill('18.5')
+      // Scoped to the sheet: its own aria-label is "Add a dog — Just a name to
+      // start — …", so an unscoped getByLabel('Name') matches the dialog too.
+      const sheet = page.getByRole('dialog')
+      await expect(sheet).toBeVisible()
+      await sheet.getByLabel('Name').fill(name)
+      await sheet.getByLabel('Breed').fill('Border Collie')
+      // The breed combobox drops its list open over the fields below it. Close
+      // it by PICKING the breed, which is what a person does — its Escape
+      // handler doesn't stopPropagation, so Escape reaches the sheet's own
+      // window listener and shuts the whole sheet.
+      await sheet.getByRole('option', { name: 'Border Collie', exact: true }).first().click()
+      await sheet.getByLabel('Weight (kg)').fill('18.5')
       // Date of BIRTH is three selects — day, month NAME, year — never the
       // native date picker, which makes you page back through the years.
       await setDateOfBirth(page, { day: '2', month: 'April', year: '2021' })
@@ -148,7 +155,9 @@ test.describe('client adds a dog on /my-dogs', () => {
       await expect(page.getByLabel('Date of birth — month')).toBeVisible()
       await expect(page.getByLabel('Date of birth — year')).toBeVisible()
 
-      await page.getByLabel('Name').fill(name)
+      // Scoped: the sheet's aria-label contains "name", so page-level
+      // getByLabel('Name') is a strict-mode violation.
+      await sheet.getByLabel('Name').fill(name)
 
       // 2 · A day and a month with no year is REFUSED, not quietly saved as
       //     "no birthday" (AGENTS.md bugs #1 and #3). 29 February is offered

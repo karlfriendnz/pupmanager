@@ -76,15 +76,20 @@ test.describe('a client record shows the whole client', () => {
       await login(page, SEED.owner.email, SEED.owner.password)
       await page.goto(`/clients/${client.id}`)
 
-      // The record must not claim they have nothing on.
+      // The record must not claim they have nothing on. The nine tabs became
+      // tiles, so the "no sessions" claim is now the Sessions tile's own line
+      // ("No sessions yet") rather than a "Sessions 0" tab label.
+      const sessionsTile = page.getByRole('main')
+        .getByRole('link', { name: /^Sessions/ }).first()
+      await expect(sessionsTile).toBeVisible({ timeout: 20_000 })
       await expect(
-        page.getByText('Sessions 0', { exact: false }).locator('visible=true'),
+        sessionsTile,
         'a client enrolled in a class has sessions — the record said none',
-      ).toHaveCount(0)
+      ).not.toContainText('No sessions yet')
 
-      // And the class itself is named on their record, under Sessions.
-      const sessionsTab = page.getByRole('button', { name: 'Sessions' }).first()
-      if (await sessionsTab.isVisible().catch(() => false)) await sessionsTab.click()
+      // And the class itself is named on their record, under Sessions — which
+      // is a PAGE of its own now, not a tab that swaps content below the fold.
+      await page.goto(`/clients/${client.id}/sessions`)
       await expect(page.getByText(className).locator('visible=true').first())
         .toBeVisible({ timeout: 15_000 })
 

@@ -108,7 +108,11 @@ test.describe('the profile summarises the client', () => {
     }
     await expect(tile(page, 'Sessions')).toContainText(/No sessions yet|Last |[A-Z][a-z]{2} \d/)
     await expect(tile(page, 'Training log')).toContainText(/No practice logged|entr/)
-    await expect(tile(page, 'Details')).toContainText(/^Details\nSince /)
+    // \s* not \n: toContainText matches against textContent, which has no line
+    // break between the tile's two <p>s ("DetailsSince 7 Aug 2026"). That the
+    // second line EXISTS is already proved above, off innerText, which does see
+    // the break — this assertion is only about what that line says.
+    await expect(tile(page, 'Details')).toContainText(/^Details\s*Since /)
     await expect(tile(page, 'Products')).toContainText(/Nothing to bring|to bring/)
   })
 
