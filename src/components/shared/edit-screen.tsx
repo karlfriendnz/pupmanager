@@ -87,7 +87,16 @@ export function EditScreen({
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
-    <div className={cn('flex flex-col gap-6', className)}>
+    // The min-height is what makes "pinned" true on a SHORT screen. Sticky
+    // pins the bar to the bottom of the viewport while there is content below
+    // it and settles it at the end of the content when there isn't — so a tab
+    // holding one sentence (the package builder's Automation, before the
+    // package exists) left the bar floating two-thirds of the way down with
+    // nothing under it. A screenful of container, and the bar has a bottom to
+    // sit on either way. Deliberately a little SHORT of the viewport — 5.5rem
+    // is the phone header plus the page's own padding — because overshooting
+    // buys a scrollbar for empty space.
+    <div className={cn('flex flex-col gap-6 min-h-[calc(100dvh-5.5rem)] md:min-h-[calc(100dvh-7.5rem)]', className)}>
       <SetPageImmersive value keepTopBar />
       {/* The shell reserves room at the foot of every phone screen for the five
           bottom tabs. They are gone here, so that reservation is a band of
@@ -97,7 +106,10 @@ export function EditScreen({
 
       {tabs}
 
-      {children}
+      {/* flex-1 so the content takes the slack and the bar keeps the floor.
+          Its own gap-6 preserves the spacing children had when they were
+          direct descendants. */}
+      <div className="flex flex-1 flex-col gap-6">{children}</div>
 
       {/* Pinned actions. `mt-auto` is deliberately absent: this sits after the
           last field, and sticky does the pinning. */}
