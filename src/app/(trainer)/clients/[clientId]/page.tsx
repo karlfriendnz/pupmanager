@@ -1,5 +1,4 @@
 import { redirect, notFound } from 'next/navigation'
-import { PawPrint } from 'lucide-react'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { loadClientSessions } from '@/lib/client-sessions'
@@ -16,6 +15,8 @@ import { ClientSummaryCard } from './client-summary-card'
 import { ClientActionsPanel } from './client-actions-panel'
 import { AssignedTrainerControl } from './assigned-trainer-control'
 import { PageHeader } from '@/components/shared/page-header'
+import { ProfileHero } from '@/components/shared/profile-hero'
+import { dogsLine } from '@/lib/client-profile-summary'
 import { SampleRecordBadge } from '@/components/sample-record-badge'
 import { packageBookingWindow } from '@/lib/package-booking-window'
 import type { Metadata } from 'next'
@@ -236,6 +237,35 @@ export default async function ClientDetailPage({
   // tab — and its empty panel — on every client. (Karl, 2026-07-30.)
   const achievementsEnabled = await hasAddon(access.trainerId, 'achievements')
 
+  // Two aggregates that exist ONLY to put a true number on the profile's
+  // summary tiles. Both are cheap single queries and both are gated by the same
+  // flag that gates the tile they feed, so a trainer who can't see billing
+  // doesn't pay for the invoice sum.
+  //
+  // The invoice scope is deliberately `trainerCtx.companyId` — exactly what
+  // /api/trainer/finances/receivables uses — so the tile and the Invoices tab
+  // can never quote different money.
+  const [openInvoices, achievementsEarned] = await Promise.all([
+    canViewBilling && trainerCtx
+      ? prisma.invoice.findMany({
+          where: { clientId, trainerId: trainerCtx.companyId, status: { in: ['UNPAID', 'PARTIAL'] } },
+          select: { amountCents: true, amountPaidCents: true, currency: true },
+        })
+      : Promise.resolve([]),
+    achievementsEnabled
+      ? prisma.clientAchievement.count({ where: { clientId } })
+      : Promise.resolve(0),
+  ])
+  // Never negative: an over-payment on one invoice must not cancel out what is
+  // still owed on another.
+  const owingCents = openInvoices.reduce((sum, i) => sum + Math.max(0, i.amountCents - i.amountPaidCents), 0)
+  const owingCurrencies = new Set(openInvoices.map(i => i.currency))
+  const invoiceSummary = {
+    owingCents,
+    currency: owingCurrencies.size === 1 ? [...owingCurrencies][0] : null,
+    count: openInvoices.length,
+  }
+
   let distanceFromBase: string | null = null
   if (
     client.addressLat != null && client.addressLng != null &&
@@ -261,6 +291,14 @@ export default async function ClientDetailPage({
 
   const allDogs = mergeClientDogs(client.dog, client.dogs)
   const dogNames = Object.fromEntries(allDogs.map(d => [d.id, d.name]))
+
+  // Whose photo the hero shows when a client has several dogs. The first LIVING
+  // dog with one, in the order the rest of the screen lists them; a deceased
+  // dog's photo only if that is genuinely all there is. Deliberately not a
+  // carousel — the hero belongs to the PERSON, and something to swipe is not
+  // something to read at a glance on an admin screen.
+  const heroDog = allDogs.find(d => d.photoUrl && !d.deceasedAt) ?? allDogs.find(d => d.photoUrl) ?? null
+  const heroPhoto = heroDog?.photoUrl ? { url: heroDog.photoUrl, dogName: heroDog.name } : null
 
   // Every per-client action — Edit, View as client, Re-invite, Assign consult,
   // Share, Delete — now lives ON the page, at the foot of the Overview tab,
@@ -378,32 +416,55 @@ export default async function ClientDetailPage({
         )}
       </aside>
       <div className="min-w-0 flex-1">
-      {/* Compact mobile header — the heavy summary card is desktop-only, so on
-          phones we show just the dog photo + name + status, then the tabs. */}
-      <div className="lg:hidden mb-4 flex items-center gap-3 rounded-2xl bg-white border border-slate-100 p-3">
-        {allDogs[0]?.photoUrl ? (
+      {/* Phone hero — the same shape as the client's own home screen (Karl,
+          2026-08-06: "I really like the idea of the client look and feel of the
+          profile where it has a big image"). It REPLACES the compact
+          photo+name+status strip that used to sit here: same four facts, read
+          in one glance instead of a 68px band.
+          Phone only. On desktop the summary card in the aside already carries
+          the photo, the name and the status, and two of those on one screen is
+          the "nothing says the same thing twice" rule broken in the obvious way.
+          Full-bleed: it escapes the page's own p-4. */}
+      <ProfileHero
+        // `w-auto` matters: ProfileHero's base is `w-full`, and a width:100%
+        // block does NOT grow into a negative margin — it stays at the parent's
+        // content width and just slides left, which is exactly the "photo is not
+        // full width" Karl saw. With width:auto the -mx-4 makes it 100% + 32px,
+        // i.e. edge to edge on a 394px phone, and no wider — so no sideways
+        // page scroll. Square corners at every width it renders at (it is phone
+        // only); rounding here would read as a card floating in a margin.
+        className="lg:hidden w-auto -mx-4 -mt-4 h-[220px]"
+        media={heroPhoto ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={allDogs[0].photoUrl} alt="" className="h-14 w-14 flex-shrink-0 rounded-xl object-cover" />
-        ) : (
-          <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-400"><PawPrint className="h-6 w-6" /></div>
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h2 className="truncate text-base font-semibold text-slate-900">{client.user.name ?? client.user.email ?? 'Client'}</h2>
-            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${client.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-              {client.status === 'ACTIVE' ? 'Active' : client.status}
-            </span>
-          </div>
-          {allDogs[0] && <p className="truncate text-sm text-slate-500">{allDogs[0].name}{allDogs[0].breed ? ` · ${allDogs[0].breed}` : ''}</p>}
-        </div>
-      </div>
+          <img src={heroPhoto.url} alt={heroPhoto.dogName} className="absolute inset-0 h-full w-full object-cover object-[50%_30%]" />
+        ) : null}
+        // No photo is NOT an empty state here (Karl: "if there is no photo then
+        // just a nice banner, we are talking to a human not a dog"). A trainer
+        // must never be shown a prompt to upload someone else's dog's picture,
+        // and a dog illustration standing in for a missing one would say the
+        // screen is about the dog. It is about the person. So: the trainer's
+        // accent, deepened toward slate-900 with color-mix so a pastel brand
+        // still carries white text, and nothing drawn on it.
+        title={client.user.name ?? client.user.email ?? 'Client'}
+        chip={
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+            client.status === 'ACTIVE' ? 'bg-emerald-400/95 text-emerald-950' : 'bg-white/85 text-slate-700'
+          }`}>
+            {client.status === 'ACTIVE' ? 'Active' : client.status === 'NEW' ? 'New' : 'Inactive'}
+          </span>
+        }
+        subtitle={dogsLine(allDogs.map(d => ({ name: d.name, breed: d.breed })))}
+      />
       <ClientProfileTabs
         clientId={client.id}
+        clientName={personLabel(client.user)}
         canEdit={canEdit}
         actions={actionsPanel}
         communications={communications}
         canViewBilling={canViewBilling}
         showAchievements={achievementsEnabled}
+        invoiceSummary={invoiceSummary}
+        achievementsEarned={achievementsEarned}
         stats={{
           complianceRate,
           completedTasks,

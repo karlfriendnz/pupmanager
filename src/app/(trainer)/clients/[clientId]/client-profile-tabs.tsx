@@ -1,11 +1,20 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { Fragment, useState, useEffect } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Card, CardBody } from '@/components/ui/card'
 import { formatDate, cn, formatSessionTitle, displayEmail } from '@/lib/utils'
-import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Play, ShoppingBag, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, Home, PawPrint, Trophy, Info, MessageSquare, Mail, MailOpen, MousePointerClick, Send, StickyNote, FileText, Dumbbell, type LucideIcon } from 'lucide-react'
-import { FlatBlock, FlatRow, FlatRowGrid } from '@/components/shared/flat-list'
+import { X, MapPin, Video, Clock, Calendar, Trash2, AlertTriangle, Plus, Check, Loader2, Tag, Package as PackageIcon, FileDown, Home, PawPrint, Trophy, Info, MessageSquare, Mail, MailOpen, MousePointerClick, Send, StickyNote, FileText, Dumbbell, type LucideIcon } from 'lucide-react'
+import { FlatBlock, FlatSummaryGrid, FlatSummaryTile } from '@/components/shared/flat-list'
+import { SetPageImmersive } from '@/components/shared/page-title'
+import {
+  agoLine, countLine, dogsTileLine, nextSessionLine, notesLine, owingLine,
+  type OwingSummary,
+} from '@/lib/client-profile-summary'
+
+/** The page loads at most this many practice logs — see the `take` in page.tsx.
+ *  Hit it and the tile says "30+", because the number loaded is then a floor. */
+const TRAINING_LOG_CAP = 30
 import { CurrencyGlyph } from '@/components/currency-glyph'
 import { ClientNotesTab } from './client-notes-tab'
 import { ClientTrainingLogTab, type TrainerTrainingLog } from './client-training-log-tab'
@@ -118,6 +127,8 @@ interface PendingProductRequest {
 
 interface Props {
   clientId: string
+  /** Their name — the one empty state on the screen says it out loud. */
+  clientName: string
   canEdit: boolean
   stats: Stats
   dogs: Dog[]
@@ -143,6 +154,11 @@ interface Props {
   canViewBilling: boolean
   /** The achievements add-on is on. Off means no tab and no panel — not an empty one. */
   showAchievements: boolean
+  /** What's still owed, for the Invoices tile. Server-summed from the same rows
+   *  the Invoices tab lists, so the two can never disagree. */
+  invoiceSummary: OwingSummary
+  /** How many badges this client has actually earned, for its tile. */
+  achievementsEarned: number
   // Private trainer-facing notes about the client (Notes tab).
   notes: string | null
   // Client app add-on on — gates the Comms tab (no app + no email = no comms).
@@ -172,6 +188,7 @@ function groupByCategory<T extends { category: string | null }>(items: T[]) {
 
 export function ClientProfileTabs({
   clientId,
+  clientName,
   canEdit,
   dogs,
   sessions: initialSessions,
@@ -184,6 +201,8 @@ export function ClientProfileTabs({
   communications,
   canViewBilling,
   showAchievements,
+  invoiceSummary,
+  achievementsEarned,
   notes,
   clientAppEnabled,
   trainingLogs,
@@ -329,45 +348,243 @@ export function ClientProfileTabs({
   // messaging) is on, OR the client has an email. No app + no email → hide it.
   const showComms = clientAppEnabled || !!contact.email
 
-  const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }>; badge?: number }[] = [
-    { id: 'overview',     label: 'Overview',     icon: Home },
-    { id: 'sessions',     label: 'Sessions',     icon: Calendar, badge: sessions.length > 0 ? sessions.length : undefined },
-    { id: 'training',     label: 'Training log', icon: Dumbbell, badge: trainingLogs.length > 0 ? trainingLogs.length : undefined },
-    { id: 'dogs',         label: dogs.length > 1 ? 'Dogs' : 'Dog', icon: PawPrint, badge: dogs.length > 1 ? dogs.length : undefined },
-    ...(showComms ? [{ id: 'communication' as Tab, label: 'Comms', icon: MessageSquare, badge: communications.length > 0 ? communications.length : undefined }] : []),
-    { id: 'notes',        label: 'Notes',        icon: StickyNote },
-    ...(canViewBilling ? [{ id: 'invoices' as Tab, label: 'Invoices', icon: FileText }] : []),
-    ...(showAchievements ? [{ id: 'achievements' as Tab, label: 'Achievements', icon: Trophy }] : []),
-    { id: 'details',      label: 'Details',      icon: Info },
+  // ── What each tile SAYS ────────────────────────────────────────────────────
+  //
+  // The grid used to be nine bare labels — a menu with not one fact about the
+  // client on it. Every tile now carries its own number or state, worked out
+  // from data this screen already has (or, for the two that needed it, a single
+  // server aggregate passed in). Anything that would have cost a pile of extra
+  // queries says nothing rather than guessing: a wrong count on a client's
+  // record is worse than no count.
+  //
+  // The lines themselves live in lib/client-profile-summary.ts so a unit test
+  // can pin `now` and hold every zero state to "words, not 0".
+  const now = new Date()
+  const notesPlain = notes ? richTextToPlain(notes) : null
+  const firstName = clientName.split(' ')[0] || clientName
+
+  const tabs: {
+    id: Tab
+    label: string
+    icon: React.ComponentType<{ className?: string }>
+    badge?: number
+    sub?: string
+  }[] = [
+    {
+      id: 'overview', label: 'Overview', icon: Home,
+      // What's waiting on the tab itself: products picked out for this client's
+      // next session, which is the one thing Overview holds that no other tab
+      // does. Nothing for a read-only co-manager, who can't action them.
+      sub: canEdit ? countLine(pendingRequests.length, 'to bring', 'to bring', 'Nothing pending') : undefined,
+    },
+    {
+      id: 'sessions', label: 'Sessions', icon: Calendar,
+      badge: sessions.length > 0 ? sessions.length : undefined,
+      sub: nextSessionLine(sessions, now),
+    },
+    {
+      id: 'training', label: 'Training log', icon: Dumbbell,
+      badge: trainingLogs.length > 0 ? trainingLogs.length : undefined,
+      // The page loads at most 30, so 30 means "at least 30", not "30".
+      sub: countLine(trainingLogs.length, 'entry', 'entries', 'No practice logged', TRAINING_LOG_CAP),
+    },
+    {
+      id: 'dogs', label: dogs.length > 1 ? 'Dogs' : 'Dog', icon: PawPrint,
+      badge: dogs.length > 1 ? dogs.length : undefined,
+      sub: dogsTileLine(dogs, now),
+    },
+    ...(showComms ? [{
+      id: 'communication' as Tab, label: 'Comms', icon: MessageSquare,
+      badge: communications.length > 0 ? communications.length : undefined,
+      // When, not how many: the list is capped at 60, so a total would be a
+      // guess — the newest entry's date is exact either way.
+      sub: agoLine(communications[0]?.date ?? null, now, 'Not spoken yet'),
+    }] : []),
+    { id: 'notes', label: 'Notes', icon: StickyNote, sub: notesLine(notesPlain) },
+    ...(canViewBilling ? [{
+      id: 'invoices' as Tab, label: 'Invoices', icon: FileText,
+      sub: owingLine(invoiceSummary, formatMoney),
+    }] : []),
+    ...(showAchievements ? [{
+      id: 'achievements' as Tab, label: 'Achievements', icon: Trophy,
+      sub: countLine(achievementsEarned, 'earned', 'earned', 'None earned yet'),
+    }] : []),
+    { id: 'details', label: 'Details', icon: Info, sub: `Since ${contact.clientSince}` },
+  ]
+
+  // ── What the Overview tab shows ───────────────────────────────────────────
+  //
+  // A card whose only content is the word "no" does not render (Karl,
+  // 2026-08-06, looking at a screenshot of five stacked empty cards: "what can
+  // we do with this?"). Same call the dashboard made the same day: a full-width
+  // card, a heading, and a line spent on the absence of news is chrome that has
+  // earned no space.
+  //
+  // The line between these cards and the tiles above them, because it decides
+  // what belongs where: **the tiles carry the summary, these carry the
+  // detail.** The Sessions tile says when the next one is; this card lists them
+  // with their times and places. The Invoices tile says what is owed; this card
+  // lists each invoice with "Mark paid" on it. A card that could only ever
+  // restate its own tile has no reason to exist — which is why the empty
+  // variants are gone rather than reworded.
+  //
+  // Ordered by what wants a trainer's attention rather than by a fixed list:
+  // money owed first (it is an exception — it only appears when there IS some),
+  // then what's coming up, then what to hand over, then what happened last,
+  // then chatter.
+  const overviewCards: { key: string; node: React.ReactNode }[] = [
+    ...(canViewBilling && invoiceSummary.count > 0 ? [{
+      key: 'invoices',
+      node: <ClientUnpaidInvoicesCard clientId={clientId} onViewAll={() => setTab('invoices')} />,
+    }] : []),
+    ...(upcomingSessions.length > 0 ? [{
+      key: 'upcoming',
+      node: (
+        <FlatBlock>
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <h2 className="text-sm font-semibold text-slate-900">Upcoming sessions</h2>
+            <button onClick={() => setTab('sessions')} className="text-xs font-medium text-blue-600 hover:underline">
+              View all
+            </button>
+          </div>
+          {upcomingSessions.slice(0, 4).map(s => (
+            <ClientSessionRow key={s.id} session={s} className="rounded-none px-4 py-2.5" />
+          ))}
+        </FlatBlock>
+      ),
+    }] : []),
+    // The EXCEPTION to "hide an empty card": "Add product" is the only route on
+    // this screen to hand something over, so the card stays for as long as the
+    // trainer has a shop to pick from — the action is the point, not the list.
+    // It goes only when there are no products at all, where its empty line was
+    // shop onboarding ("add some to your shop") rather than anything about this
+    // client, and /products is one tap away in the menu regardless.
+    ...(canEdit && (pendingRequests.length > 0 || products.length > 0) ? [{
+      key: 'bring',
+      node: (
+        <Card>
+          <CardBody className="py-5">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <h2 className="text-sm font-semibold text-slate-900">Bring to next session</h2>
+              {products.length > 0 && (
+                <Button size="sm" variant="secondary" onClick={() => setPickerOpen(true)}>
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Add product
+                </Button>
+              )}
+            </div>
+            {/* No "nothing pending" line: "Add product" is right beside the
+                heading, and an empty state next to the action that resolves it
+                says the same thing twice. The ACTION is what has to survive
+                here — it's the only way to set something aside. */}
+            {pendingRequests.length === 0 ? null : (
+              <div className="flex flex-wrap gap-2">
+                {pendingRequests.map(r => (
+                  <span
+                    key={r.id}
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-900 bg-amber-50 border border-amber-100 pl-3 pr-1.5 py-1 rounded-full"
+                    title={r.note ?? undefined}
+                  >
+                    {/* The option is part of the name here — "a harness"
+                        is not something anyone can go and fetch. */}
+                    {r.variant ? `${r.product.name} — ${r.variant.name}` : r.product.name}
+                    <button
+                      onClick={() => dismissRequest(r.id)}
+                      disabled={busyRequestId === r.id}
+                      aria-label={`Remove ${r.product.name}`}
+                      className="ml-1 h-5 w-5 rounded-full hover:bg-amber-100 flex items-center justify-center text-amber-700 disabled:opacity-50"
+                    >
+                      {busyRequestId === r.id
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <X className="h-3 w-3" />}
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      ),
+    }] : []),
+    ...(latestPastSession ? [{
+      key: 'latest',
+      node: (
+        <Card>
+          <CardBody className="py-5">
+            <h2 className="mb-3 text-sm font-semibold text-slate-900">Latest session</h2>
+            <Link href={`/sessions/${latestPastSession.id}`} className="group block">
+              <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2">
+                <p className="text-sm font-medium text-slate-900 group-hover:underline">{formatSessionTitle(latestPastSession.title)}</p>
+                <span className="text-xs text-slate-400">{formatDate(latestPastSession.scheduledAt)}</span>
+              </div>
+              {!isRichTextEmpty(latestPastSession.description) ? (
+                <p className="line-clamp-3 text-sm text-slate-600">{richTextToPlain(latestPastSession.description)}</p>
+              ) : (
+                <p className="text-sm text-slate-400">No notes recorded — open the session to add a recap.</p>
+              )}
+            </Link>
+          </CardBody>
+        </Card>
+      ),
+    }] : []),
+    ...(communications.length > 0 ? [{
+      key: 'comms',
+      node: (
+        <Card>
+          <CardBody className="py-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold text-slate-900">Recent communication</h2>
+              <button onClick={() => setTab('communication')} className="text-xs font-medium text-blue-600 hover:underline">
+                View all
+              </button>
+            </div>
+            <div className="flex flex-col gap-2">
+              {communications.slice(0, 3).map(c => <CommunicationRow key={c.id} item={c} />)}
+            </div>
+          </CardBody>
+        </Card>
+      ),
+    }] : []),
   ]
 
   return (
     <>
-      {/* On a phone: two columns, every tab visible.
-          There are up to nine of these. As a scrolling strip only six reached
-          the edge of a 390px screen, so Notes, Invoices, Achievements and
-          Details were off-screen with nothing to say they existed — the same
-          trap the search scope chips fell into. Two columns shows the lot, and
-          it's the pattern the "More" menu already uses. Not sticky here: five
-          rows pinned to the top would own half the screen. */}
-      <div className="lg:hidden mb-6">
-        <FlatRowGrid count={tabs.length}>
+      {/* The five bottom tabs and the global "+" stand down for as long as this
+          screen is open (Karl: "think lets hide the nav bar"). keepTopBar, so
+          the shell's phone bar survives stripped back to the back arrow and the
+          client's name — with the tabs gone that is the only way off the
+          screen, and an immersive page without one is a dead end. */}
+      <SetPageImmersive value keepTopBar />
+      {/* The shell reserves 5rem at the foot of every phone screen for the tab
+          bar. It isn't there, so that reservation is a band of nothing. */}
+      <style>{`@media (max-width: 767px) { .pm-main { padding-bottom: 0 !important; } }`}</style>
+
+      {/* On a phone: the summary grid. Two columns on a small phone, three from
+          phablet width up.
+          This is the screen's centre of gravity now — it answers "how is this
+          client doing?" without opening anything, and each tile is still the
+          way in to its section. It overlaps the hero above it by 28px, the same
+          way the client app's own quick actions do, so the photo and the facts
+          read as one block rather than two stacked panels. */}
+      <div className="lg:hidden relative z-20 -mt-7 mb-4">
+        <FlatSummaryGrid>
           {tabs.map(t => (
-            <FlatRow
+            <FlatSummaryTile
               key={t.id}
               icon={t.icon as LucideIcon}
               label={t.label}
+              sub={t.sub}
               active={tab === t.id}
               onClick={() => setTab(t.id)}
-              trailing={
-                t.badge != null
-                  ? <span className="min-w-4 h-4 px-1 text-[10px] font-semibold tabular-nums rounded-full flex items-center justify-center bg-slate-100 text-slate-600">{t.badge}</span>
-                  : <span aria-hidden />
-              }
             />
           ))}
-        </FlatRowGrid>
+        </FlatSummaryGrid>
       </div>
+
+      {/* Assign, and a ⋯ for the occasional actions. Above the content and
+          OUTSIDE the tabs — they belong to the client, not to Overview, and
+          burying them one tab deep is what put them out of reach from every
+          other tab. */}
+      {actions && <div className="mb-6">{actions}</div>}
 
       {/* Desktop: the icon-on-top strip, splitting the row evenly. */}
       <div className="hidden lg:flex gap-1 p-1 bg-slate-100 rounded-2xl mb-6 lg:overflow-visible sticky top-2 z-10">
@@ -400,136 +617,31 @@ export function ClientProfileTabs({
       {/* ── Overview ─────────────────────────────────────────────────────── */}
       {tab === 'overview' && (
         <div className="flex flex-col gap-6">
-          {/* Per-client actions, at the head of the column — Karl wants them
-              reachable without scrolling to the bottom of the tab. They're a
-              two-up grid rather than a stack of six full-width rows, which
-              halves what they cost the content below them (~190px instead of
-              ~340px on a 390px screen): the actions are named and one tap away,
-              and "Upcoming sessions" is still the first thing you read. */}
-          {actions}
-
-          {/* What a trainer wants first: what's coming up, who owes money,
-              the last session, and the latest chatter. */}
-          {/* One bordered block, hairline dividers — the house flat-list
-              density. It used to be a Card whose px-6/py-5 body wrapped rows
-              that already carried their own padding, so every row sat in a
-              ring of dead space. The rows now own the padding outright. */}
-          <FlatBlock>
-            <div className="flex items-center justify-between gap-3 px-4 py-3">
-              <h2 className="text-sm font-semibold text-slate-900">Upcoming sessions</h2>
-              {upcomingSessions.length > 0 && (
-                <button onClick={() => setTab('sessions')} className="text-xs font-medium text-blue-600 hover:underline">
-                  View all
-                </button>
-              )}
-            </div>
-            {upcomingSessions.length === 0 ? (
-              <p className="px-4 py-3 text-sm text-slate-400">No upcoming sessions scheduled.</p>
-            ) : (
-              upcomingSessions.slice(0, 4).map(s => (
-                <ClientSessionRow key={s.id} session={s} className="rounded-none px-4 py-2.5" />
-              ))
-            )}
-          </FlatBlock>
-
-          <div className="grid grid-cols-1 gap-4">
-            {/* Unpaid invoices — the client's new-model Invoice rows (UNPAID /
-                PARTIAL). Only for trainers who can see billing. */}
-            {canViewBilling && <ClientUnpaidInvoicesCard clientId={clientId} onViewAll={() => setTab('invoices')} />}
-
-            {/* Latest session */}
-            <Card>
-              <CardBody className="py-5">
-                <h2 className="mb-3 text-sm font-semibold text-slate-900">Latest session</h2>
-                {latestPastSession ? (
-                  <Link href={`/sessions/${latestPastSession.id}`} className="group block">
-                    <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2">
-                      <p className="text-sm font-medium text-slate-900 group-hover:underline">{formatSessionTitle(latestPastSession.title)}</p>
-                      <span className="text-xs text-slate-400">{formatDate(latestPastSession.scheduledAt)}</span>
-                    </div>
-                    {!isRichTextEmpty(latestPastSession.description) ? (
-                      <p className="line-clamp-3 text-sm text-slate-600">{richTextToPlain(latestPastSession.description)}</p>
-                    ) : (
-                      <p className="text-sm text-slate-400">No notes recorded — open the session to add a recap.</p>
-                    )}
-                  </Link>
-                ) : (
-                  <p className="text-sm text-slate-400">No past sessions yet.</p>
-                )}
-              </CardBody>
-            </Card>
-          </div>
-
-          {/* Recent communication */}
-          <Card>
-            <CardBody className="py-5">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold text-slate-900">Recent communication</h2>
-                {communications.length > 0 && (
-                  <button onClick={() => setTab('communication')} className="text-xs font-medium text-blue-600 hover:underline">
-                    View all
-                  </button>
-                )}
-              </div>
-              {communications.length === 0 ? (
-                <p className="text-sm text-slate-400">No messages or emails yet.</p>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {communications.slice(0, 3).map(c => <CommunicationRow key={c.id} item={c} />)}
-                </div>
-              )}
-            </CardBody>
-          </Card>
-
-          {/* Bring to next session — kept for the shop workflow, de-emphasised
-              at the bottom now the priority info leads the tab. */}
-          {canEdit && (
-            <Card>
-              <CardBody className="py-5">
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <h2 className="text-sm font-semibold text-slate-900">Bring to next session</h2>
-                  {products.length > 0 && (
-                    <Button size="sm" variant="secondary" onClick={() => setPickerOpen(true)}>
-                      <Plus className="h-3.5 w-3.5 mr-1" /> Add product
-                    </Button>
-                  )}
-                </div>
-
-                {pendingRequests.length === 0 ? (
-                  <p className="text-sm text-slate-400">
-                    {products.length === 0
-                      ? <>No products yet — <Link href="/products" className="text-blue-600 hover:underline">add some to your shop</Link>.</>
-                      : 'No items pending.'}
+          {overviewCards.length > 0
+            ? overviewCards.map(c => <Fragment key={c.key}>{c.node}</Fragment>)
+            : (
+              /* All five cards had nothing in them, which is the commonest state
+                 there is: a trainer who added this client a minute ago. Five
+                 headings above five apologies is not a screen — one purposeful
+                 block is. COPY IS PLACEHOLDER pending Karl. */
+              <FlatBlock className="px-5 py-10 text-center">
+                <div className="mx-auto flex max-w-xs flex-col items-center gap-2">
+                  <PawPrint className="h-7 w-7 text-slate-300" strokeWidth={1.75} />
+                  <p className="text-base font-semibold text-slate-900">Nothing yet for {firstName}</p>
+                  <p className="text-sm leading-snug text-slate-500">
+                    {canEdit
+                      ? 'No sessions, invoices or messages on file. Assign a session with the button above, or send them a message to get started.'
+                      : 'No sessions, invoices or messages on file yet.'}
                   </p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {pendingRequests.map(r => (
-                      <span
-                        key={r.id}
-                        className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-900 bg-amber-50 border border-amber-100 pl-3 pr-1.5 py-1 rounded-full"
-                        title={r.note ?? undefined}
-                      >
-                        {/* The option is part of the name here — "a harness"
-                            is not something anyone can go and fetch. */}
-                        {r.variant ? `${r.product.name} — ${r.variant.name}` : r.product.name}
-                        <button
-                          onClick={() => dismissRequest(r.id)}
-                          disabled={busyRequestId === r.id}
-                          aria-label={`Remove ${r.product.name}`}
-                          className="ml-1 h-5 w-5 rounded-full hover:bg-amber-100 flex items-center justify-center text-amber-700 disabled:opacity-50"
-                        >
-                          {busyRequestId === r.id
-                            ? <Loader2 className="h-3 w-3 animate-spin" />
-                            : <X className="h-3 w-3" />}
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </CardBody>
-            </Card>
-          )}
-
+                  <Link
+                    href={`/messages?client=${clientId}`}
+                    className="mt-2 inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    <MessageSquare className="h-4 w-4" strokeWidth={1.75} /> Send a message
+                  </Link>
+                </div>
+              </FlatBlock>
+            )}
         </div>
       )}
 
@@ -1219,13 +1331,13 @@ function SessionsTabPanel({
     .filter(s => new Date(s.scheduledAt).getTime() < now)
     .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())
 
-  if (sessions.length === 0) {
-    return (
-      <div className="text-center py-12 text-slate-400">
-        <p>No sessions scheduled for this client yet.</p>
-      </div>
-    )
-  }
+  // No sentence when there's nothing here. "No sessions scheduled for this
+  // client yet." sat directly beneath the Assign 1:1 session button — Karl,
+  // 2026-08-06: "this is redundant". He's right: an empty state next to the
+  // action that resolves it says the same thing twice, and the button is the
+  // fact and the fix in one. The Sessions tile above also already reads "No
+  // sessions yet". The action stays; the sentence goes.
+  if (sessions.length === 0) return null
 
   const list = sub === 'upcoming' ? upcoming : past
   const weeks = groupByWeek(list)
@@ -1248,11 +1360,10 @@ function SessionsTabPanel({
         />
       </div>
 
-      {list.length === 0 ? (
-        <div className="text-center py-12 text-slate-400 text-sm">
-          {sub === 'upcoming' ? 'No upcoming sessions.' : 'No past sessions.'}
-        </div>
-      ) : (
+      {/* Same rule as above: the sub-tab beside this one already carries the
+          count, and Assign sits above both. A sentence repeating a 0 is not
+          worth twelve rows of padding. */}
+      {list.length === 0 ? null : (
         <Card>
           <CardBody className="py-3">
             <ul className="flex flex-col -mx-2">

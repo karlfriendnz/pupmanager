@@ -235,6 +235,81 @@ export function FlatTileGrid({ children, count }: { children: ReactNode; count: 
   )
 }
 
+/**
+ * The SUMMARY grid: tiles that each carry a fact, two across on a small phone
+ * and three from phablet width up (Karl, 2026-08-06: "a 3w grid might work for
+ * phablets and then a 2w grid for smaller phones").
+ *
+ * Separate from FlatTileGrid because the column count changes, and FlatTileGrid
+ * draws its hairlines with `nth-child(2n)` rules that are only correct at two
+ * columns — at three they put a line down the middle of a row. Here every cell
+ * carries its own right + bottom edge and the wrapper CLIPS the outermost ones
+ * (`-mr-px -mb-px` inside `overflow-hidden`), which is true at any count and
+ * survives a part-filled last row.
+ *
+ * The breakpoint is an explicit `min-[430px]`, not `sm:` — Tailwind's `sm:` is
+ * 640px, a small TABLET, so `sm:grid-cols-3` would leave every phone made on
+ * two columns. 430px is a Pro Max / Ultra in portrait; the 390px design target
+ * stays on two.
+ */
+export function FlatSummaryGrid({ children }: { children: ReactNode }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="-mb-px -mr-px grid grid-cols-2 min-[430px]:grid-cols-3">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * One tile in a FlatSummaryGrid: icon, what it is, and what it currently says.
+ *
+ * Icon ABOVE the label rather than beside it, because at three columns on a
+ * 430px screen a row shape leaves about 80px for the text and "No practice
+ * logged" does not live in 80px. Stacked, the same tile gets the full width and
+ * the second line wraps to two at worst.
+ */
+export function FlatSummaryTile({
+  icon: Icon,
+  label,
+  sub,
+  href,
+  onClick,
+  active,
+  accent,
+}: {
+  icon: LucideIcon
+  label: string
+  /** The fact. Worded, never a bare "0" — see lib/client-profile-summary.ts. */
+  sub?: string
+  href?: string
+  onClick?: () => void
+  active?: boolean
+  accent?: string
+}) {
+  const inner = (
+    <>
+      <Icon
+        className={cn('h-[18px] w-[18px]', active ? 'text-blue-600' : 'text-slate-700')}
+        style={active ? undefined : iconStyle(accent)}
+        strokeWidth={1.75}
+      />
+      <span className={cn('mt-2 block text-[13px] font-semibold leading-tight', active ? 'text-blue-700' : 'text-slate-900')}>
+        {label}
+      </span>
+      {sub && <span className="mt-0.5 block text-[12px] leading-tight text-slate-500">{sub}</span>}
+    </>
+  )
+  const cls = cn(
+    'flex min-h-[78px] w-full flex-col items-start justify-center border-b border-r border-slate-200 px-3 py-3 text-left active:bg-slate-50',
+    active && 'bg-slate-50',
+  )
+  return href
+    ? <Link href={href} className={cls}>{inner}</Link>
+    : <button type="button" onClick={onClick} className={cls} aria-current={active ? 'true' : undefined}>{inner}</button>
+}
+
 /** One button in a FlatTileGrid. */
 export function FlatTile({
   icon: Icon,

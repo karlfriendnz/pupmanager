@@ -1,19 +1,17 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import Link from 'next/link'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Pencil, Eye, Send, Package as PackageIcon,
-  Share2, Trash2, X, Loader2, AlertCircle, ChevronRight,
-  type LucideIcon,
+  Share2, Trash2, MoreHorizontal,
 } from 'lucide-react'
 import { ShareClientModal } from './share-client-modal'
 import { AssignPackageButton, type ClassOption } from './assign-package-modal'
-import { ModalPortal } from '@/components/shared/modal-portal'
-import { FlatBlock, FlatRow, FlatRowGrid, SectionLabel } from '@/components/shared/flat-list'
+import { ActionSheet, type SheetAction } from '@/components/shared/action-sheet'
+import { ConfirmSheet } from '@/components/shared/confirm-sheet'
+import { Button } from '@/components/ui/button'
 import { useIsNative } from '@/lib/native'
-import { cn } from '@/lib/utils'
 import type { PackageBookingWindow } from '@/lib/package-booking-window'
 
 interface PkgOption {
@@ -41,7 +39,7 @@ interface Props {
   clientId: string
   clientName: string
   /** Email the re-invite will be sent to — surfaced inside the
-   *  confirm dialog so the trainer can sanity-check before
+   *  confirm sheet so the trainer can sanity-check before
    *  triggering an outbound send. */
   clientEmail: string
   /** True when the client hasn't activated their account yet — the
@@ -59,8 +57,8 @@ interface Props {
   members?: { id: string; name: string; role: string; title?: string | null }[]
   currentMembershipId?: string | null
   /** Whether the trainer can perform editing actions (false for
-   *  read-only co-managers). When false the block shrinks to a single
-   *  "View as client" row — that's the only action they have. */
+   *  read-only co-managers). When false the menu shrinks to a single
+   *  "View as client" — that's the only action they have. */
   canEdit: boolean
   /** Whether this trainer is the primary trainer (some actions —
    *  Share + Delete — only make sense for the primary). */
@@ -69,65 +67,31 @@ interface Props {
   clientAppEnabled: boolean
 }
 
-// Every per-client action — Edit, View as client, Re-invite, Assign consult,
-// Share, Delete — as rows ON the page, at the HEAD of the Overview tab.
-//
-// This replaces the "Actions" dropdown that used to sit in the page header.
-// That dropdown itself replaced a ROW OF HEADER BUTTONS, which wrapped badly on
-// a phone, so it is deliberately NOT a row of buttons that came back: it is the
-// house flat block — one bordered surface, hairline dividers, plain line icons,
-// 44px+ tap targets — which can't wrap. Overview is the default tab, so nothing
-// is behind a trigger any more.
-//
-// Two-up, not a single stack. It sat at the FOOT of the tab until Karl asked
-// for it at the top, and six full-width rows above "Upcoming sessions" is
-// ~340px of a 390px screen spent before the trainer reads anything — the
-// wasted-vertical-space complaint he keeps making. FlatRowGrid is the house
-// shape for exactly this (the profile's own tab strip and the app's More menu
-// use it): same rows, same icons, same tap targets, two across, ~190px.
-//
-// Delete sits in its OWN block below the others, full width, red text on a
-// plain row rather than a filled button, so a destructive action can't be
-// mistaken for a neighbour of "Edit details" — and being the one full-width row
-// under a grid, it can't be tapped by accident reaching for "Share" either.
-//
-// State machine for the modals: only one can be open at a time. Each row sets
-// `activeModal` to its own kind; the controlled ShareClientModal /
-// AssignPackageButton render based on that value. Re-invite reports its
-// sending → sent → error state on its own row's second line so it never
-// blocks anything else.
-type ModalKind = null | 'assign' | 'share' | 'delete' | 'reinvite'
-type ReinviteState =
-  | { kind: 'idle' }
-  | { kind: 'sending' }
-  | { kind: 'sent' }
-  | { kind: 'error'; message: string }
-
-// The house row shape, borrowed from FlatRow for the two rows FlatRow can't
-// express: an external-target link and a destructive row.
-const ROW_CLS = 'flex w-full items-center gap-3 px-4 py-3.5 text-left active:bg-slate-50'
-
-function RowInner({ icon: Icon, label, tone, chevron = true }: { icon: LucideIcon; label: string; tone?: 'danger'; chevron?: boolean }) {
-  const danger = tone === 'danger'
-  return (
-    <>
-      <Icon
-        className={cn('h-[18px] w-[18px] flex-shrink-0', danger ? 'text-red-600' : 'text-slate-700')}
-        strokeWidth={1.75}
-      />
-      <span className={cn(
-        'min-w-0 flex-1 truncate text-sm font-medium',
-        danger ? 'text-red-600' : 'text-slate-900',
-      )}>
-        {label}
-      </span>
-      {/* No chevron inside the two-up grid — half-width cells with a caret each
-          read as noise, and the same call is made on the profile's tab strip. */}
-      {chevron && <ChevronRight className="h-4 w-4 flex-shrink-0 text-slate-400" />}
-    </>
-  )
-}
-
+/**
+ * One visible action, and a ⋯ for the rest.
+ *
+ * This was a two-up grid of five named rows plus a full-width Delete, at the
+ * head of the Overview tab — fourteen tap targets on a screen that said nothing
+ * about the client (Karl, 2026-08-06: "this is way too intense from a ux
+ * perspective… lets get creative"; then "I think we can also put some things
+ * under a ... menu like delete, view as, edit, share etc").
+ *
+ * **Assign stays out.** Not because it was the fifth in the list, but because
+ * booking this client's next session is the thing a trainer comes to this
+ * screen to DO — and the screen is now immersive, so the global "+" that was
+ * the other way to start one is gone while you are on it. Burying it would
+ * leave a phone with no one-tap route to book the client whose record is open.
+ *
+ * **Everything else is occasional.** Editing their details, previewing their
+ * app, re-sending a sign-in link, sharing them with another business: weeks
+ * apart, each. They go in the house ActionSheet — a full-width sheet off the
+ * bottom edge, not a 56px menu hanging off a corner.
+ *
+ * **Delete is last, red, and behind a separator** (ActionSheet's own `danger`
+ * treatment adds a thick rule above it, so it can't be caught by momentum on
+ * the way down the list), and then behind a ConfirmSheet on top of that. The
+ * re-invite confirms too — it sends a real email to a real person.
+ */
 export function ClientActionsPanel({
   clientId, clientName, clientEmail, needsInvite, packages, classes = [], availability, dogs,
   members = [], currentMembershipId = null,
@@ -139,156 +103,140 @@ export function ClientActionsPanel({
   // on the login screen. Navigate in the same WebView there to keep the session
   // (the preview banner's "Exit preview" brings the trainer back).
   const native = useIsNative()
-  const previewTarget = native ? undefined : '_blank'
-  const [activeModal, setActiveModal] = useState<ModalKind>(null)
-  const [reinvite, setReinvite] = useState<ReinviteState>({ kind: 'idle' })
-  const [deleteBusy, setDeleteBusy] = useState(false)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [modal, setModal] = useState<null | 'assign' | 'share'>(null)
+  const [confirm, setConfirm] = useState<null | 'reinvite' | 'delete'>(null)
+  const [busy, setBusy] = useState(false)
+  // One line under the bar for whatever the last action had to say. The sheet
+  // has closed by then, so an error has nowhere else to land.
+  const [note, setNote] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
 
-  // Never two scrollbars: while a confirm dialog is up, the page behind it
-  // must not scroll (AGENTS.md, standing rule).
-  const confirmOpen = activeModal === 'reinvite' || activeModal === 'delete'
-  useEffect(() => {
-    if (!confirmOpen) return
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = previous }
-  }, [confirmOpen])
-
-  const viewAsClient = (chevron: boolean) => (
-    <Link
-      key="view-as-client"
-      href={`/preview-as/${clientId}`}
-      target={previewTarget}
-      rel={previewTarget === '_blank' ? 'noopener' : undefined}
-      className={ROW_CLS}
-    >
-      <RowInner icon={Eye} label="View as client" chevron={chevron} />
-    </Link>
-  )
-
-  // Co-managers (canEdit=false) get the View-as-client row and nothing else —
-  // the actions below it are ones they aren't allowed to perform. One action is
-  // one full-width row; a grid of one is just a row with a gap beside it.
-  if (!canEdit) {
-    return (
-      <section aria-label="Client actions">
-        <SectionLabel>Client actions</SectionLabel>
-        <FlatBlock>{viewAsClient(true)}</FlatBlock>
-      </section>
-    )
+  function openPreview() {
+    const href = `/preview-as/${clientId}`
+    if (native) router.push(href)
+    else window.open(href, '_blank', 'noopener')
   }
 
   async function handleReinvite() {
-    setReinvite({ kind: 'sending' })
+    setBusy(true)
+    setNote(null)
     try {
       const res = await fetch(`/api/clients/${clientId}/reinvite`, { method: 'POST' })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(data.error ?? 'Could not send invite')
-      setActiveModal(null)
-      setReinvite({ kind: 'sent' })
-      setTimeout(() => setReinvite({ kind: 'idle' }), 6000)
+      setConfirm(null)
+      setNote({ tone: 'ok', text: 'Invite re-sent.' })
     } catch (err) {
-      setReinvite({ kind: 'error', message: err instanceof Error ? err.message : 'Send failed' })
+      setConfirm(null)
+      setNote({ tone: 'error', text: err instanceof Error ? err.message : 'Send failed' })
+    } finally {
+      setBusy(false)
     }
   }
 
   async function handleDelete() {
-    setDeleteBusy(true)
-    setDeleteError(null)
+    setBusy(true)
+    setNote(null)
     try {
       const res = await fetch(`/api/clients/${clientId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('Could not delete this client')
       router.push('/clients')
       router.refresh()
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : 'Delete failed')
-      setDeleteBusy(false)
+      setConfirm(null)
+      setNote({ tone: 'error', text: err instanceof Error ? err.message : 'Delete failed' })
+      setBusy(false)
     }
   }
 
   // The assign modal renders nothing when there's nothing to assign, so the
-  // row would be a dead tap. Hide it instead — same gate the old menu comment
-  // in assign-package-modal.tsx asked its caller to apply.
-  const canAssign = packages.length > 0 || classes.length > 0
+  // button would be a dead tap. Hide it instead.
+  const canAssign = canEdit && (packages.length > 0 || classes.length > 0)
 
-  const reinviteSub =
-    reinvite.kind === 'sending' ? <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Re-sending invite…</span>
-    : reinvite.kind === 'sent' ? <span className="text-emerald-600">Invite re-sent</span>
-    : reinvite.kind === 'error' ? <span className="text-red-600">{reinvite.message}</span>
-    : undefined
-
-  // Built as a list so FlatRowGrid gets an accurate `count` — it uses it to
-  // decide which cells drop their bottom edge, and a hard-coded number would
-  // go wrong the moment one of these is gated off.
-  //
-  // Labels WRAP rather than truncate: a half-width cell on a 390px phone has
-  // room for about fourteen characters, and "Share with another trainer" came
-  // back as "Share with an…". Shortening the labels would have cost the desktop
-  // layout, where they all fit; FlatRow's label is `truncate`, so a child span
-  // that opts back into normal wrapping is what gives the phone a second line.
-  const wrap = (text: string) => <span className="whitespace-normal">{text}</span>
-
-  const actionRows = [
-    <FlatRow
-      key="edit"
-      icon={Pencil}
-      label={wrap('Edit details')}
-      href={`/clients/${clientId}/edit`}
-      trailing={<span aria-hidden />}
-    />,
-    // Client-app-only actions (preview + re-invite) — hidden when the
-    // Client app add-on is off.
-    ...(clientAppEnabled ? [viewAsClient(false)] : []),
-    ...(clientAppEnabled ? [
-      <FlatRow
-        key="reinvite"
-        icon={Send}
-        label={wrap(needsInvite ? 'Re-invite client' : 'Re-send sign-in link')}
-        sub={reinviteSub}
-        trailing={<span aria-hidden />}
-        onClick={() => {
-          // Reset any previous error so the confirm dialog opens clean.
-          setReinvite({ kind: 'idle' })
-          setActiveModal('reinvite')
-        }}
-      />,
-    ] : []),
-    ...(canAssign ? [
-      <FlatRow
-        key="assign"
-        icon={PackageIcon}
-        label={wrap('Assign 1:1 session')}
-        trailing={<span aria-hidden />}
-        onClick={() => setActiveModal('assign')}
-      />,
-    ] : []),
-    ...(isPrimaryTrainer ? [
-      <FlatRow
-        key="share"
-        icon={Share2}
-        label={wrap('Share with another trainer')}
-        trailing={<span aria-hidden />}
-        onClick={() => setActiveModal('share')}
-      />,
-    ] : []),
+  const menu: SheetAction[] = [
+    ...(canEdit ? [{
+      key: 'edit',
+      label: 'Edit details',
+      icon: <Pencil className="h-[18px] w-[18px]" strokeWidth={1.75} />,
+      onSelect: () => router.push(`/clients/${clientId}/edit`),
+    }] : []),
+    // Client-app-only actions (preview + re-invite) — hidden when the Client
+    // app add-on is off. Preview is the ONE thing a read-only co-manager can do.
+    ...(clientAppEnabled ? [{
+      key: 'preview',
+      label: 'View as client',
+      hint: 'Opens their app as they see it',
+      icon: <Eye className="h-[18px] w-[18px]" strokeWidth={1.75} />,
+      onSelect: openPreview,
+    }] : []),
+    ...(canEdit && clientAppEnabled ? [{
+      key: 'reinvite',
+      label: needsInvite ? 'Re-invite client' : 'Re-send sign-in link',
+      hint: clientEmail || undefined,
+      icon: <Send className="h-[18px] w-[18px]" strokeWidth={1.75} />,
+      onSelect: () => setConfirm('reinvite'),
+    }] : []),
+    ...(canEdit && isPrimaryTrainer ? [{
+      key: 'share',
+      label: 'Share with another trainer',
+      icon: <Share2 className="h-[18px] w-[18px]" strokeWidth={1.75} />,
+      onSelect: () => setModal('share'),
+    }] : []),
+    ...(canEdit && isPrimaryTrainer ? [{
+      key: 'delete',
+      label: 'Delete client',
+      hint: 'You lose access — their account stays',
+      icon: <Trash2 className="h-[18px] w-[18px]" strokeWidth={1.75} />,
+      danger: true,
+      onSelect: () => setConfirm('delete'),
+    }] : []),
   ]
 
+  // Nothing to offer at all (a read-only co-manager with the client app off).
+  if (!canAssign && menu.length === 0) return null
+
   return (
-    <section aria-label="Client actions" className="flex flex-col gap-3">
-      <div>
-        <SectionLabel>Client actions</SectionLabel>
-        <FlatRowGrid count={actionRows.length}>{actionRows}</FlatRowGrid>
+    <section aria-label="Client actions" className="flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        {canAssign && (
+          <Button
+            onClick={() => setModal('assign')}
+            className="h-11 flex-1 md:flex-none md:px-5"
+          >
+            <PackageIcon className="h-4 w-4" strokeWidth={1.75} />
+            Assign 1:1 session
+          </Button>
+        )}
+        {menu.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            aria-label={`More actions for ${clientName}`}
+            aria-haspopup="dialog"
+            className="ml-auto inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+          >
+            <MoreHorizontal className="h-5 w-5" strokeWidth={1.75} />
+          </button>
+        )}
       </div>
 
-      {/* Delete stands alone, one block down — plain row, red text, no filled
-          button competing with the actions above it. */}
-      {isPrimaryTrainer && (
-        <FlatBlock>
-          <button type="button" onClick={() => setActiveModal('delete')} className={ROW_CLS}>
-            <RowInner icon={Trash2} label="Delete client" tone="danger" />
-          </button>
-        </FlatBlock>
+      {note && (
+        <p
+          role="status"
+          className={note.tone === 'error' ? 'text-xs font-medium text-red-600' : 'text-xs font-medium text-emerald-600'}
+        >
+          {note.text}
+        </p>
+      )}
+
+      {menuOpen && (
+        <ActionSheet
+          title={clientName}
+          // Picking anything closes the sheet first — Delete opens a confirm of
+          // its own, which would otherwise appear BEHIND it.
+          actions={menu.map(a => ({ ...a, onSelect: () => { setMenuOpen(false); a.onSelect() } }))}
+          onClose={() => setMenuOpen(false)}
+        />
       )}
 
       {/* Controlled modals. AssignPackageButton + ShareClientModal accept
@@ -301,141 +249,43 @@ export function ClientActionsPanel({
         dogs={dogs}
         members={members}
         currentMembershipId={currentMembershipId}
-        open={activeModal === 'assign'}
-        onOpenChange={v => setActiveModal(v ? 'assign' : null)}
+        open={modal === 'assign'}
+        onOpenChange={v => setModal(v ? 'assign' : null)}
       />
       <ShareClientModal
         clientId={clientId}
         clientName={clientName}
-        open={activeModal === 'share'}
-        onOpenChange={v => setActiveModal(v ? 'share' : null)}
+        open={modal === 'share'}
+        onOpenChange={v => setModal(v ? 'share' : null)}
       />
-      {/* Re-invite confirm — surfaces the recipient email so the
-          trainer can spot a typo before triggering an outbound send.
-          Copy adapts based on whether the client has activated yet:
-          unactivated → "send invite", activated → "send sign-in link"
-          (same mechanism either way, different framing for the
-          trainer's mental model). */}
-      {activeModal === 'reinvite' && (
-        <ModalPortal>
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
-          onClick={() => reinvite.kind !== 'sending' && setActiveModal(null)}
-        >
-          <div
-            className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3 mb-2">
-              <h2 className="text-base font-semibold text-slate-900">
-                {needsInvite
-                  ? `Re-send invite to ${clientName}?`
-                  : `Send a fresh sign-in link to ${clientName}?`}
-              </h2>
-              <button
-                type="button"
-                onClick={() => reinvite.kind !== 'sending' && setActiveModal(null)}
-                aria-label="Close"
-                className="text-slate-400 hover:text-slate-600 -mr-1 -mt-1 p-1"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <p className="text-sm text-slate-600 leading-snug">
-              We&apos;ll email a fresh{' '}
-              {needsInvite ? 'sign-up' : 'sign-in'} link to{' '}
-              <span className="font-medium text-slate-900">{clientEmail}</span>.{' '}
-              {needsInvite
-                ? 'Any previous invite link they had will stop working.'
-                : 'You can send this as often as you like — each new link replaces the previous one.'}
-            </p>
-            {reinvite.kind === 'error' && (
-              <p className="mt-3 text-xs text-red-600 inline-flex items-center gap-1">
-                <AlertCircle className="h-3 w-3" /> {reinvite.message}
-              </p>
-            )}
-            <div className="mt-5 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setActiveModal(null)}
-                disabled={reinvite.kind === 'sending'}
-                className="text-sm font-medium px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleReinvite}
-                disabled={reinvite.kind === 'sending'}
-                className="inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
-              >
-                {reinvite.kind === 'sending'
-                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending…</>
-                  : <><Send className="h-4 w-4" /> Yes, re-send</>}
-              </button>
-            </div>
-          </div>
-        </div>
-        </ModalPortal>
+
+      {/* Re-invite names the recipient before sending — a typo is catchable
+          only up to the moment a real email leaves. */}
+      {confirm === 'reinvite' && (
+        <ConfirmSheet
+          title={needsInvite ? `Re-send invite to ${clientName}?` : `Send a fresh sign-in link to ${clientName}?`}
+          body={`We'll email a fresh ${needsInvite ? 'sign-up' : 'sign-in'} link to ${clientEmail}. ${
+            needsInvite
+              ? 'Any previous invite link they had will stop working.'
+              : 'You can send this as often as you like — each new link replaces the previous one.'
+          }`}
+          confirmLabel="Yes, re-send"
+          busy={busy}
+          onCancel={() => !busy && setConfirm(null)}
+          onConfirm={handleReinvite}
+        />
       )}
 
-      {/* Delete confirm — stays in this component because it's small,
-          destructive, and should look in-place rather than punt to a
-          full-screen modal. */}
-      {activeModal === 'delete' && (
-        <ModalPortal>
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
-          onClick={() => !deleteBusy && setActiveModal(null)}
-        >
-          <div
-            className="w-full max-w-sm bg-white rounded-2xl shadow-xl p-5"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3 mb-2">
-              <h2 className="text-base font-semibold text-slate-900">Delete {clientName}?</h2>
-              <button
-                type="button"
-                onClick={() => !deleteBusy && setActiveModal(null)}
-                aria-label="Close"
-                className="text-slate-400 hover:text-slate-600 -mr-1 -mt-1 p-1"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <p className="text-sm text-slate-600 leading-snug">
-              Their account stays in PupManager but you&apos;ll lose access. Past sessions
-              they had with you are kept on file (visible only to you, marked as
-              orphaned). This can&apos;t be undone.
-            </p>
-            {deleteError && (
-              <p className="mt-3 text-xs text-red-600 inline-flex items-center gap-1">
-                <AlertCircle className="h-3 w-3" /> {deleteError}
-              </p>
-            )}
-            <div className="mt-5 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setActiveModal(null)}
-                disabled={deleteBusy}
-                className="text-sm font-medium px-3 py-2 rounded-lg text-slate-600 hover:bg-slate-50 disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleteBusy}
-                className="inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
-              >
-                {deleteBusy
-                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Deleting…</>
-                  : <><Trash2 className="h-4 w-4" /> Yes, delete</>}
-              </button>
-            </div>
-          </div>
-        </div>
-        </ModalPortal>
+      {confirm === 'delete' && (
+        <ConfirmSheet
+          title={`Delete ${clientName}?`}
+          body="Their account stays in PupManager but you'll lose access. Past sessions they had with you are kept on file (visible only to you, marked as orphaned). This can't be undone."
+          confirmLabel="Yes, delete"
+          danger
+          busy={busy}
+          onCancel={() => !busy && setConfirm(null)}
+          onConfirm={handleDelete}
+        />
       )}
     </section>
   )

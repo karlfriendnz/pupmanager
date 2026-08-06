@@ -4,6 +4,7 @@ import { DogPhotoHeroPrompt } from './dog-photo-prompt'
 import { richTextToPlain, isRichTextEmpty } from '@/lib/rich-text'
 import { personaliseWelcomeNote } from '@/lib/welcome-note'
 import { RichText } from '@/components/shared/rich-text'
+import { ProfileHero } from '@/components/shared/profile-hero'
 
 import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
@@ -277,9 +278,20 @@ export function ClientHomeView({
   return (
     <div className="bg-surface min-h-full">
       <div className="md:max-w-3xl md:mx-auto md:w-full">
-        {/* ─── Gallery / dog hero ─── */}
-        <section className="relative w-full h-[300px] md:h-72 md:mt-6 md:rounded-3xl overflow-hidden bg-accent-soft">
-          {gallery.length > 0 ? (
+        {/* ─── Gallery / dog hero ───
+            The photo, the two gradients over it and the caption block are
+            ProfileHero — shared with the trainer's client profile, which asked
+            for this same shape. Everything below is what makes it THIS screen:
+            the gallery, and the two prompts an empty one carries. */}
+        <ProfileHero
+          className="md:h-72 md:mt-6 md:rounded-3xl"
+          // The client's own empty hero stays flat accent — it is a backdrop for
+          // the "add a photo" prompt below, not a banner standing in for one.
+          bannerStyle={{ background: 'var(--accent)' }}
+          eyebrow={businessName}
+          title={dogName}
+          subtitle={primaryDog?.breed ?? undefined}
+          media={gallery.length > 0 ? (
             <>
               <div className="absolute inset-0 flex overflow-x-auto snap-x snap-mandatory no-scrollbar">
                 {gallery.map(m => (
@@ -303,50 +315,36 @@ export function ClientHomeView({
           ) : heroImg ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={heroImg} alt={dogName} className="absolute inset-0 h-full w-full object-cover object-[50%_30%]" />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'var(--accent)' }}>
-              {/* Empty either way: with a dog on file the panel becomes the
-                  upload button below, without one it becomes "Add your dog".
-                  Both carry their own icon, so nothing is drawn here. */}
-            </div>
-          )}
-          <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-black/55 via-black/15 to-transparent" />
-          <div className="absolute inset-x-0 bottom-0 h-52 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
-          <div
-            // pointer-events-none so a tap anywhere on an empty hero reaches the
-            // upload button underneath it — this block is text, nothing to click.
-            className="pointer-events-none absolute bottom-8 left-5 right-5 z-10 text-white"
-            style={{ textShadow: '0 1px 14px rgba(0,0,0,0.55)' }}
-          >
-            <p className="text-[11px] uppercase tracking-wider font-semibold text-white/80">{businessName}</p>
-            <h1 className="font-display text-3xl font-extrabold leading-tight">{dogName}</h1>
-            {primaryDog?.breed && <p className="text-sm text-white/85">{primaryDog.breed}</p>}
-          </div>
-          {/* Nothing to look at yet — so the hero asks for the photo itself,
-              rather than a card underneath asking for the same thing. */}
-          {heroEmpty && primaryDog && (
-            <DogPhotoHeroPrompt dogId={primaryDog.id} dogName={primaryDog.name} />
-          )}
-          {/* No dog on file at all. A photo needs something to belong to, so the
-              hero asks for the dog first — /my-dogs is where one gets added.
-              Without this the panel is an outline with nothing to do, which is
-              what a client with no dog record actually saw. */}
-          {heroEmpty && !primaryDog && (
-            <Link
-              href="/my-dogs"
-              aria-label="Add your dog"
-              // Sits high in the panel, not centred: the business name and the
-              // dog's name occupy the lower half, and the quick-action tiles
-              // overlap the bottom of the hero.
-              className="absolute inset-x-0 top-0 bottom-32 z-20 flex flex-col items-center justify-center gap-2 text-white"
-            >
-              <DogIcon className="h-16 w-16 text-white/80" strokeWidth={1.75} />
-              <span className="text-sm font-semibold" style={{ textShadow: '0 1px 14px rgba(0,0,0,0.55)' }}>
-                Add your dog
-              </span>
-            </Link>
-          )}
-        </section>
+          ) : null}
+          overlay={
+            <>
+              {/* Nothing to look at yet — so the hero asks for the photo itself,
+                  rather than a card underneath asking for the same thing. */}
+              {heroEmpty && primaryDog && (
+                <DogPhotoHeroPrompt dogId={primaryDog.id} dogName={primaryDog.name} />
+              )}
+              {/* No dog on file at all. A photo needs something to belong to, so
+                  the hero asks for the dog first — /my-dogs is where one gets
+                  added. Without this the panel is an outline with nothing to do,
+                  which is what a client with no dog record actually saw. */}
+              {heroEmpty && !primaryDog && (
+                <Link
+                  href="/my-dogs"
+                  aria-label="Add your dog"
+                  // Sits high in the panel, not centred: the business name and
+                  // the dog's name occupy the lower half, and the quick-action
+                  // tiles overlap the bottom of the hero.
+                  className="absolute inset-x-0 top-0 bottom-32 z-20 flex flex-col items-center justify-center gap-2 text-white"
+                >
+                  <DogIcon className="h-16 w-16 text-white/80" strokeWidth={1.75} />
+                  <span className="text-sm font-semibold" style={{ textShadow: '0 1px 14px rgba(0,0,0,0.55)' }}>
+                    Add your dog
+                  </span>
+                </Link>
+              )}
+            </>
+          }
+        />
 
         {/* ─── Quick actions ───
             Bookings hidden when the trainer has nothing this client can book
