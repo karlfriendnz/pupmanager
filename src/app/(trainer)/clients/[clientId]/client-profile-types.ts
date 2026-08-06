@@ -86,6 +86,13 @@ export interface PendingProductRequest {
   product: { id: string; name: string; kind: 'PHYSICAL' | 'DIGITAL'; imageUrl: string | null }
 }
 
+/** A request the trainer has already handed over, for the Products page's
+ *  second list. Same row, later in its life — FULFILLED rather than PENDING. */
+export interface HandedOverRequest extends PendingProductRequest {
+  /** When it was handed over — pre-serialised ISO. */
+  fulfilledAt: string | null
+}
+
 export interface ClientContact {
   email: string | null
   phone: string | null
@@ -96,7 +103,7 @@ export interface ClientContact {
 
 /** Every section of a client that has its own page. */
 export const CLIENT_SECTIONS = [
-  'sessions', 'training', 'dogs', 'communication', 'notes', 'invoices', 'achievements', 'details',
+  'sessions', 'training', 'dogs', 'products', 'communication', 'notes', 'invoices', 'achievements', 'details',
 ] as const
 export type ClientSection = typeof CLIENT_SECTIONS[number]
 
@@ -113,6 +120,7 @@ export function isClientSection(v: string): v is ClientSection {
  * overview now, so that one lands where it always did.
  */
 export const LEGACY_TAB_TO_SECTION: Record<string, ClientSection> = {
+  products: 'products',
   sessions: 'sessions',
   training: 'training',
   dogs: 'dogs',

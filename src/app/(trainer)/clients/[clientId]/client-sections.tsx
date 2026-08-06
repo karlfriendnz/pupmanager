@@ -5,9 +5,10 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   AlertTriangle, Calendar, Clock, Mail, MailOpen, MapPin, MessageSquare,
-  MousePointerClick, Send, Trash2, Video, X,
+  MousePointerClick, Pencil, Send, Trash2, Video, X,
 } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/card'
+import { OfferingTabs } from '@/components/shared/offering-tabs'
 import { Button } from '@/components/ui/button'
 import { CurrencyGlyph } from '@/components/currency-glyph'
 import { RichText } from '@/components/shared/rich-text'
@@ -493,10 +494,13 @@ export function ClientDogsSection({
   dogs,
   dogFields,
   fieldValueMap,
+  editHref = null,
 }: {
   dogs: Dog[]
   dogFields: CustomField[]
   fieldValueMap: Record<string, string>
+  /** Where a row's Edit goes — the trainer's existing dog editor. Null = read-only. */
+  editHref?: string | null
 }) {
   return (
     <div className={`grid gap-5 ${dogs.length > 1 ? 'md:grid-cols-2' : 'grid-cols-1 max-w-xl'}`}>
@@ -517,6 +521,14 @@ export function ClientDogsSection({
                 )}
               </div>
               {dog.breed && <p className="text-sm text-slate-500 mt-0.5">{dog.breed}</p>}
+              {/* Edit belongs on the ROW — a client can have several dogs, and
+                  one bar at the foot cannot say which one you meant. It opens
+                  the trainer's existing editor rather than a third dog form. */}
+              {editHref && (
+                <Link href={editHref} className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:underline">
+                  <Pencil className="h-3.5 w-3.5" strokeWidth={1.75} /> Edit {dog.name}
+                </Link>
+              )}
             </div>
 
             <CardBody className="pt-4 pb-5">
@@ -578,6 +590,22 @@ export function ClientDogsSection({
 
 // ─── Communication ───────────────────────────────────────────────────────────
 
+/**
+ * Messaging and emails, split (Karl, 2026-08-06: "two tabs messaging / emails").
+ *
+ * They are two different records and a trainer looks for them separately: a
+ * back-and-forth thread with the client, versus the log of what has been SENT
+ * to them — bulk broadcasts, session notes, reminders. Interleaved, a chat
+ * reply sat between two marketing emails.
+ *
+ * The strip is `OfferingTabs`, the house pill strip the offering and membership
+ * screens already use — not a third tab treatment.
+ *
+ * The thread itself is NOT embedded here. /messages is a split-pane screen with
+ * its own sticky composer, and mounting it under EditScreen's pinned bar is two
+ * sticky layers on one phone — the shape that breaks the "never two scrollbars"
+ * rule. The action opens it instead.
+ */
 export function ClientCommsSection({
   clientId,
   communications,
@@ -585,21 +613,33 @@ export function ClientCommsSection({
   clientId: string
   communications: CommItem[]
 }) {
+  const [tab, setTab] = useState<'messages' | 'emails'>('messages')
+  const messages = communications.filter(c => c.kind === 'message')
+  const emails = communications.filter(c => c.kind === 'email')
+  const shown = tab === 'messages' ? messages : emails
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Emails &amp; messages</p>
-        <Link href={`/messages?client=${clientId}`} className="text-xs font-medium text-blue-600 hover:underline">
-          Open message thread →
-        </Link>
-      </div>
-      {/* The "Open message thread" link right above IS the action that resolves
-          an empty history, so no apology sits under it — just the way in. */}
-      {communications.length > 0 && (
+      <OfferingTabs
+        label="Communication"
+        tabs={[
+          { id: 'messages' as const, label: 'Messaging', icon: MessageSquare, badge: messages.length || undefined },
+          { id: 'emails' as const, label: 'Emails', icon: Mail, badge: emails.length || undefined },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
+      {/* No apology when a tab is empty: "Send a message" is pinned to the foot
+          of the screen, and an empty state beside the action that resolves it
+          says the same thing twice. */}
+      {shown.length > 0 && (
         <div className="flex flex-col gap-2">
-          {communications.map(c => <CommunicationRow key={c.id} item={c} />)}
+          {shown.map(c => <CommunicationRow key={c.id} item={c} />)}
         </div>
       )}
+      <Link href={`/messages?client=${clientId}`} className="self-start text-xs font-medium text-blue-600 hover:underline">
+        Open message thread →
+      </Link>
     </div>
   )
 }

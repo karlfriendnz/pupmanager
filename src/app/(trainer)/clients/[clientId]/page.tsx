@@ -60,8 +60,10 @@ export default async function ClientDetailPage({
   // now (see `[section]/page.tsx`), so this screen no longer loads custom
   // fields, custom field values, thirty practice logs, fifty broadcasts, fifty
   // messages or fifty notifications on the chance that the trainer taps a tab.
-  // What's left is what the summary tiles and the profile's own cards print:
-  // the sessions, the newest few comms, and two counts.
+  // The content cards went the same way (Karl: "these things should be on the
+  // pages"), so the shop catalogue and the pending-request rows went with them.
+  // What's left is what the summary tiles print, plus what the ⋯ actions and
+  // the desktop summary card need.
   const [
     client,
     trainingSessions,
@@ -69,10 +71,9 @@ export default async function ClientDetailPage({
     openClasses,
     availabilitySlots,
     teamMembers,
-    products,
-    pendingProductRequests,
     baseProfile,
     trainingLogCount,
+    pendingProductCount,
     communications,
   ] = await Promise.all([
     prisma.clientProfile.findUnique({
@@ -130,45 +131,16 @@ export default async function ClientDetailPage({
           orderBy: [{ role: 'asc' }, { invitedAt: 'asc' }],
         })
       : Promise.resolve([]),
-    // Products from the primary trainer's shop (for "Add to next session").
-    canEdit
-      ? prisma.product.findMany({
-          // No `active` filter — the trainer can add ANY of their products to a
-          // client, even hidden ones. `active`/`featured` only gate the client's
-          // own shop view; the picker badges hidden items so the trainer knows.
-          where: { trainerId: clientAccess.trainerId },
-          orderBy: [{ category: 'asc' }, { order: 'asc' }, { createdAt: 'desc' }],
-          select: {
-            id: true, name: true, kind: true, priceCents: true, salePriceCents: true,
-            imageUrl: true, category: true, active: true,
-            // Active options only: this picker RECORDS a handover, and handing
-            // over a size the trainer has retired isn't something to make easy.
-            variants: {
-              where: { active: true },
-              orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
-              select: { id: true, name: true, priceCents: true, salePriceCents: true, stockCount: true },
-            },
-          },
-        })
-      : Promise.resolve([]),
-    prisma.productRequest.findMany({
-      where: { clientId, status: 'PENDING' },
-      orderBy: { createdAt: 'asc' },
-      select: {
-        id: true, note: true,
-        variant: { select: { id: true, name: true } },
-        product: { select: { id: true, name: true, kind: true, imageUrl: true } },
-      },
-    }),
     prisma.trainerProfile.findUnique({
       where: { id: access.trainerId },
       select: { baseLat: true, baseLng: true },
     }),
-    // COUNTED, not loaded: the tile only ever prints the number, and the whole
-    // list belongs to /clients/:id/training.
+    // COUNTED, not loaded: these tiles only ever print the number, and the
+    // lists belong to /clients/:id/training and /clients/:id/products.
     prisma.trainingLog.count({ where: { task: { clientId } } }),
-    // The newest few — three for the card, and the first one dates the tile.
-    loadClientCommunications(clientId, 6),
+    prisma.productRequest.count({ where: { clientId, status: 'PENDING' } }),
+    // The newest ONE — all the Comms tile prints is how long ago it was.
+    loadClientCommunications(clientId, 1),
   ])
 
   if (!client) notFound()
@@ -396,8 +368,6 @@ export default async function ClientDetailPage({
       />
       <ClientProfileView
         clientId={client.id}
-        clientName={personLabel(client.user)}
-        canEdit={canEdit}
         actions={actionsPanel}
         canViewBilling={canViewBilling}
         invoiceSummary={invoiceSummary}
@@ -406,6 +376,7 @@ export default async function ClientDetailPage({
         showComms={showComms}
         communications={communications}
         trainingLogCount={trainingLogCount}
+        pendingProductCount={pendingProductCount}
         notesPreview={client.notes ? richTextToPlain(client.notes) : null}
         clientSince={formatDate(client.user.createdAt)}
         dogs={allDogs.map(d => ({
@@ -416,28 +387,6 @@ export default async function ClientDetailPage({
           dob: d.dob ? d.dob.toISOString() : null,
           notes: d.notes,
           deceasedAt: d.deceasedAt ? d.deceasedAt.toISOString() : null,
-        }))}
-        products={products.map(p => ({
-          id: p.id,
-          name: p.name,
-          kind: p.kind as 'PHYSICAL' | 'DIGITAL',
-          priceCents: p.priceCents,
-          salePriceCents: p.salePriceCents,
-          imageUrl: p.imageUrl,
-          category: p.category,
-          active: p.active,
-          variants: p.variants,
-        }))}
-        pendingProductRequests={pendingProductRequests.map(r => ({
-          id: r.id,
-          note: r.note,
-          variant: r.variant,
-          product: {
-            id: r.product.id,
-            name: r.product.name,
-            kind: r.product.kind as 'PHYSICAL' | 'DIGITAL',
-            imageUrl: r.product.imageUrl,
-          },
         }))}
         sessions={trainingSessions.map(s => ({
           id: s.id,

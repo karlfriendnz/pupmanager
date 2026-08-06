@@ -29,10 +29,10 @@ async function rightEdges(loc: Locator): Promise<number[]> {
   })
 }
 
-/** Open the assigned client's profile and switch to its Invoices tab. */
+/** Open the assigned client's Invoices page — a route of its own since the
+ *  profile's tabs became pages. */
 async function openClientInvoices(page: Page) {
-  await page.goto(`/clients/${SEED.assignedClientId}`)
-  await page.getByRole('button', { name: 'Invoices' }).first().click()
+  await page.goto(`/clients/${SEED.assignedClientId}/invoices`)
   await expect(page.getByTestId('client-invoice-row').first()).toBeVisible({ timeout: 20_000 })
 }
 
@@ -94,8 +94,7 @@ test.describe('client profile → Invoices — the cramped table is gone', () =>
   test('at 1440px it is still a table, with the columns bounded', async ({ page }) => {
     await page.setViewportSize(DESKTOP)
     await login(page, SEED.owner.email, SEED.owner.password)
-    await page.goto(`/clients/${SEED.assignedClientId}`)
-    await page.getByRole('button', { name: 'Invoices' }).first().click()
+    await page.goto(`/clients/${SEED.assignedClientId}/invoices`)
 
     const rows = page.getByTestId('client-invoice-row-desktop')
     await expect(rows.first()).toBeVisible({ timeout: 20_000 })

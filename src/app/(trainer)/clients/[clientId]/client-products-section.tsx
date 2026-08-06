@@ -1,0 +1,188 @@
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import { Loader2, Plus, X } from 'lucide-react'
+import { Card, CardBody } from '@/components/ui/card'
+import { EditScreen } from '@/components/shared/edit-screen'
+import { formatDate } from '@/lib/utils'
+import { ProductPickerModal } from './product-picker-modal'
+import type { HandedOverRequest, PendingProductRequest, ShopProduct } from './client-profile-types'
+
+/**
+ * A client's products, as a page of their own (Karl, 2026-08-06: "nah i think
+ * we need a 'products' tab/page").
+ *
+ * TWO lists, under two headings, because they are two different facts and
+ * merging them would lose the one that matters:
+ *
+ *   · **Bring to next session** — PENDING requests. What the trainer has set
+ *     aside to hand over. This is the list that used to sit on the profile as a
+ *     card, and it carried the ONLY "Add product" for a specific client
+ *     anywhere in the app, which is why it moved rather than being deleted.
+ *   · **Handed over** — the same rows once they are FULFILLED, newest first.
+ *     A trainer asking "did I already give them the long line?" has nowhere
+ *     else to look.
+ *
+ * Not a third list of "recommendations": nothing in the schema records one, and
+ * a heading with nothing behind it is worse than no heading.
+ *
+ * Not a tab strip either. Two headings on one page is the smaller thing, and a
+ * strip inside a section page would be the tabs we have just spent the day
+ * taking out.
+ *
+ * `Add product` opens the app's existing picker (ProductPickerModal, lifted off
+ * the profile with this list) and POSTs to the same route it always did.
+ */
+export function ClientProductsSection({
+  clientId,
+  products,
+  pending: initialPending,
+  handedOver,
+  canEdit,
+}: {
+  clientId: string
+  /** The trainer's shop, for the picker. Empty for a read-only co-manager. */
+  products: ShopProduct[]
+  pending: PendingProductRequest[]
+  handedOver: HandedOverRequest[]
+  canEdit: boolean
+}) {
+  const [pending, setPending] = useState(initialPending)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [busyRequestId, setBusyRequestId] = useState<string | null>(null)
+
+  async function dismissRequest(requestId: string) {
+    if (busyRequestId) return
+    setBusyRequestId(requestId)
+    const removed = pending.find(r => r.id === requestId)
+    setPending(prev => prev.filter(r => r.id !== requestId))
+    try {
+      const res = await fetch(`/api/product-requests/${requestId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'CANCELLED' }),
+      })
+      if (!res.ok && removed) setPending(prev => [...prev, removed])
+    } catch {
+      if (removed) setPending(prev => [...prev, removed])
+    } finally {
+      setBusyRequestId(null)
+    }
+  }
+
+  async function addProductRequest(productId: string, variantId: string | null) {
+    const res = await fetch(`/api/clients/${clientId}/product-requests`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId, variantId }),
+    })
+    if (!res.ok) return
+    const created = await res.json()
+    const product = products.find(p => p.id === productId)
+    if (!product) return
+    const variant = product.variants?.find(v => v.id === variantId) ?? null
+    setPending(prev => {
+      if (prev.some(r => r.id === created.id)) return prev
+      return [...prev, {
+        id: created.id,
+        note: created.note ?? null,
+        variant: variant ? { id: variant.id, name: variant.name } : null,
+        product: { id: product.id, name: product.name, kind: product.kind, imageUrl: product.imageUrl },
+      }]
+    })
+  }
+
+  const body = (
+    <div className="flex flex-col gap-6">
+      <Card>
+        <CardBody className="py-5">
+          <h2 className="text-sm font-semibold text-slate-900">Bring to next session</h2>
+          {/* No "nothing pending" line: "Add product" is pinned to the foot of
+              the screen, and an empty state next to the action that resolves it
+              says the same thing twice. */}
+          {pending.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {pending.map(r => (
+                <span
+                  key={r.id}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-900 bg-amber-50 border border-amber-100 pl-3 pr-1.5 py-1 rounded-full"
+                  title={r.note ?? undefined}
+                >
+                  {/* The option is part of the name here — "a harness" is not
+                      something anyone can go and fetch. */}
+                  {r.variant ? `${r.product.name} — ${r.variant.name}` : r.product.name}
+                  {canEdit && (
+                    <button
+                      onClick={() => dismissRequest(r.id)}
+                      disabled={busyRequestId === r.id}
+                      aria-label={`Remove ${r.product.name}`}
+                      className="ml-1 h-5 w-5 rounded-full hover:bg-amber-100 flex items-center justify-center text-amber-700 disabled:opacity-50"
+                    >
+                      {busyRequestId === r.id
+                        ? <Loader2 className="h-3 w-3 animate-spin" />
+                        : <X className="h-3 w-3" />}
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+          {canEdit && products.length === 0 && (
+            // The one empty state worth keeping: it is not about this client at
+            // all, and the fix is on another screen.
+            <p className="mt-3 text-sm text-slate-400">
+              No products in your shop yet — <Link href="/products" className="text-blue-600 hover:underline">add some</Link> and they&apos;ll be pickable here.
+            </p>
+          )}
+        </CardBody>
+      </Card>
+
+      {handedOver.length > 0 && (
+        <Card>
+          <CardBody className="py-5">
+            <h2 className="mb-3 text-sm font-semibold text-slate-900">Handed over</h2>
+            <ul className="divide-y divide-slate-100">
+              {handedOver.map(r => (
+                <li key={r.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <span className="min-w-0 flex-1 truncate text-sm text-slate-900">
+                    {r.variant ? `${r.product.name} — ${r.variant.name}` : r.product.name}
+                  </span>
+                  {r.fulfilledAt && (
+                    <span className="shrink-0 text-xs text-slate-400">{formatDate(r.fulfilledAt)}</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+      )}
+    </div>
+  )
+
+  if (!canEdit || products.length === 0) return body
+
+  return (
+    <EditScreen
+      primary={{
+        label: 'Add product',
+        icon: <Plus className="h-4 w-4" strokeWidth={1.75} />,
+        onClick: () => setPickerOpen(true),
+      }}
+    >
+      {body}
+      {pickerOpen && (
+        <ProductPickerModal
+          products={products}
+          // A varianted product is "added" per OPTION, so the two sets are
+          // separate: the product row only greys out for things sold as one
+          // thing. A client can have the Small and then also want the Large.
+          requestedIds={new Set(pending.filter(r => !r.variant).map(r => r.product.id))}
+          requestedVariantIds={new Set(pending.map(r => r.variant?.id).filter((id): id is string => !!id))}
+          onClose={() => setPickerOpen(false)}
+          onPick={async (id, variantId) => { await addProductRequest(id, variantId) }}
+        />
+      )}
+    </EditScreen>
+  )
+}

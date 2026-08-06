@@ -70,8 +70,9 @@ test.describe('invoicing — assign a priced package raises a receivable', () =>
     await expect(page.getByRole('listitem').filter({ hasText: 'Priced Puppy Course' }).first())
       .toBeVisible({ timeout: 15_000 })
 
-    // …and the client's Invoices tab (still a table) lists it too.
-    await page.getByRole('button', { name: 'Invoices' }).click()
+    // …and the client's Invoices PAGE lists it too. (Every section of a client
+    // is its own route now — the tabs are gone.)
+    await page.goto(`/clients/${SEED.assignedClientId}/invoices`)
     await expect(page.getByRole('row', { name: /Priced Puppy Course/ })).toBeVisible({ timeout: 15_000 })
   })
 
@@ -132,8 +133,7 @@ test.describe('invoicing — partial payment display', () => {
   test('a PARTIAL invoice shows "Partially paid" + "paid $X of $Y" on the client profile', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
 
-    await page.goto(`/clients/${SEED.assignedClientId}`)
-    await page.getByRole('button', { name: 'Invoices' }).click()
+    await page.goto(`/clients/${SEED.assignedClientId}/invoices`)
 
     // filter({ visible: true }): the Invoices tab now renders a phone list AND
     // a desktop table, one hidden by viewport. Both are in the DOM, and .first()
