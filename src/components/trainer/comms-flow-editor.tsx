@@ -551,8 +551,11 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
         <section key={stage?.key ?? 'all'} className="border-t border-slate-200">
           {stage && (
             <div className="px-4 pt-3.5 sm:px-5">
-              <h4 className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{stage.label}</h4>
-              <p className="mt-0.5 text-xs text-slate-500">{stage.hint}</p>
+              {/* The stage headings carry the shape of the whole flow, so they
+                  read as headings rather than as the smallest text on screen
+                  (Karl, 2026-08-06: "make these bigger"). */}
+              <h4 className="text-sm font-semibold text-slate-900">{stage.label}</h4>
+              <p className="mt-0.5 text-[13px] text-slate-500">{stage.hint}</p>
             </div>
           )}
           {inStage.length === 0 ? (
