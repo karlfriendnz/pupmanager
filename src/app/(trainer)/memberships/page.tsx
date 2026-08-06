@@ -71,7 +71,7 @@ export default async function MembershipsPage() {
         prerequisiteIds: m.prerequisites.map(p => p.achievementId),
         pendingRequests: requestCounts.get(m.id) ?? 0,
         items: m.items.map(i => ({ kind: i.kind, packageId: i.packageId, classRunId: i.classRunId, productId: i.productId, quantity: i.quantity, regrantOnRenewal: i.regrantOnRenewal, imageUrl: i.imageUrl, description: i.description })),
-        plans: m.plans.map(p => ({ interval: p.interval, priceCents: p.priceCents, minTermCount: p.minTermCount, earlyTermFeeCents: p.earlyTermFeeCents })),
+        plans: m.plans.map(p => ({ interval: p.interval, intervalCount: p.intervalCount, priceCents: p.priceCents, minTermCount: p.minTermCount, earlyTermFeeCents: p.earlyTermFeeCents })),
       }))}
       offerings={{
         packages: packages.map(p => ({ id: p.id, name: p.name, priceCents: (p.specialPriceCents ?? p.priceCents) ?? undefined, description: p.description ?? null })),

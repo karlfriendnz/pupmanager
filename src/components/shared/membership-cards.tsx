@@ -15,8 +15,21 @@ const INTERVAL_LABEL: Record<ClientMembershipInterval, string> = {
   MONTH: 'month',
 }
 
-/** "$400.00 / month" for a recurring plan, plain money for a one-off. */
+/**
+ * "$60.00 / 6 weeks" for a recurring plan, plain money for a one-off.
+ *
+ * The FIRST BILLING OPTION wins when there is one, because that is the plan the
+ * buy route actually sells when no planId is sent — and it is the row that
+ * carries the real cycle. `Membership.interval` is a headline field with no
+ * editor behind it (it is always MONTH), so reading the price off it told a
+ * client on an every-6-weeks plan that they were paying "/ month".
+ *
+ * The plan's own `priceLabel` is built server-side by the same function as the
+ * consent sentence, so the card and the agreement cannot drift.
+ */
 function priceLabel(m: ClientMembership, currency: string): string {
+  const plan = m.plans[0]
+  if (plan) return plan.priceLabel
   const base = formatMoney(m.priceCents, currency)
   return m.interval ? `${base} / ${INTERVAL_LABEL[m.interval]}` : base
 }

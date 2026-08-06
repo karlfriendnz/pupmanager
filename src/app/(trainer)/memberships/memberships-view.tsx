@@ -33,15 +33,25 @@ import {
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
 import { resolveButtonColors, MIN_CONTRAST, type ButtonColors } from '@/lib/membership-card-colors'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
+import { editorInterval, intervalLabel, maxIntervalCount } from '@/lib/billing-interval'
 import { Package as PackageIcon, Bell } from 'lucide-react'
 
 type Kind = 'PACKAGE' | 'CLASS' | 'PRODUCT'
 type Cadence = 'ONE_OFF' | 'RECURRING'
 type Interval = 'WEEK' | 'FORTNIGHT' | 'MONTH'
+/**
+ * What the plan editor offers. FORTNIGHT is deliberately absent: "every 2
+ * weeks" is the same cycle, the same Stripe Price and the same money, and two
+ * ways to say one thing is how a consent screen and an invoice end up
+ * disagreeing. Plans already stored as FORTNIGHT keep billing untouched and are
+ * SHOWN here as "every 2 weeks" (editorInterval), so opening an old membership
+ * never presents an empty dropdown.
+ */
+type EditorInterval = 'WEEK' | 'MONTH'
 interface Offering { id: string; name: string; priceCents?: number; imageUrl?: string | null; description?: string | null }
 interface Offerings { packages: Offering[]; classRuns: Offering[]; products: Offering[] }
 interface MItem { kind: Kind; packageId: string | null; classRunId: string | null; productId: string | null; quantity: number; regrantOnRenewal: boolean; imageUrl?: string | null; description?: string | null }
-interface MPlan { interval: Interval; priceCents: number; minTermCount: number; earlyTermFeeCents: number | null }
+interface MPlan { interval: Interval; intervalCount: number; priceCents: number; minTermCount: number; earlyTermFeeCents: number | null }
 interface Card {
   imageUrl: string | null; bgColor: string | null; headerColor: string | null; textColor: string | null; featuredColor: string | null
   buttonBgColor: string | null; buttonTextColor: string | null; buttonText: string | null
@@ -58,7 +68,10 @@ interface Membership extends Card {
 }
 
 interface DraftItem { key: string; kind: Kind; id: string; quantity: number; regrantOnRenewal: boolean; imageUrl: string | null; description: string }
-interface DraftPlan { key: string; interval: Interval; price: string; minTerm: string; earlyTermFee: string }
+// The editor speaks weeks and months plus a NUMBER — "every 6 weeks" — rather
+// than one enum value per cycle length. `intervalCount` is a string because it
+// is a text input and a half-typed "" must not become 0.
+interface DraftPlan { key: string; interval: EditorInterval; intervalCount: string; price: string; minTerm: string; earlyTermFee: string }
 interface Draft extends Card {
   id: string | null; name: string; description: string; price: string; cadence: Cadence
   interval: Interval; minTermCount: string; earlyTermFee: string; published: boolean; items: DraftItem[]; plans: DraftPlan[]
@@ -67,8 +80,14 @@ interface Draft extends Card {
 
 // Live preview of the membership as it appears in the client Memberships
 // storefront (mirrors ClientMembershipsView's card), fed from the builder draft.
-const INTERVAL_LABEL: Record<Interval, string> = { WEEK: 'week', FORTNIGHT: 'fortnight', MONTH: 'month' }
-interface PreviewPlan { interval: Interval; priceCents: number }
+interface PreviewPlan { interval: Interval; intervalCount: number; priceCents: number }
+
+/** "$60.00 / 6 weeks" from the first billing option, else the headline price. */
+function recurringBadge(m: Membership, currency: string): string {
+  const plan = m.cadence === 'RECURRING' ? m.plans[0] : null
+  if (plan) return `${formatMoney(plan.priceCents, currency)} / ${intervalLabel(plan.interval, plan.intervalCount)}`
+  return `${formatMoney(m.priceCents, currency)}${m.cadence === 'RECURRING' && m.interval ? ` / ${intervalLabel(m.interval)}` : ''}`
+}
 interface PreviewItem { label: string; quantity: number; imageUrl?: string | null; description?: string | null }
 function MembershipPreviewCard({ name, description, priceCents, recurring, interval, items, plans, currency, card }: {
   name: string; description: string; priceCents: number; recurring: boolean; interval: Interval; items: PreviewItem[]; plans: PreviewPlan[]; currency: string; card: Card
@@ -116,7 +135,7 @@ function MembershipPreviewCard({ name, description, priceCents, recurring, inter
           <div className="mt-3 flex flex-col gap-1.5">
             {plans.map((pl, i) => (
               <div key={i} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm" style={{ borderColor: featured }}>
-                <span style={{ color: header }}>Every {INTERVAL_LABEL[pl.interval]}</span>
+                <span style={{ color: header }}>Every {intervalLabel(pl.interval, pl.intervalCount)}</span>
                 <span className="font-semibold" style={{ color: featured }}>{formatMoney(pl.priceCents, currency)}</span>
               </div>
             ))}
@@ -255,7 +274,21 @@ export function MembershipsView({
       imageUrl: m.imageUrl, bgColor: m.bgColor, headerColor: m.headerColor, textColor: m.textColor, featuredColor: m.featuredColor,
       buttonBgColor: m.buttonBgColor, buttonTextColor: m.buttonTextColor, buttonText: m.buttonText,
       items: m.items.map(i => ({ key: `k${seq++}`, kind: i.kind, id: i.packageId ?? i.classRunId ?? i.productId ?? '', quantity: i.quantity, regrantOnRenewal: i.regrantOnRenewal, imageUrl: i.imageUrl ?? null, description: i.description ?? '' })),
-      plans: m.plans.map(p => ({ key: `p${seq++}`, interval: p.interval, price: (p.priceCents / 100).toString(), minTerm: String(p.minTermCount), earlyTermFee: p.earlyTermFeeCents != null ? (p.earlyTermFeeCents / 100).toString() : '' })),
+      // editorInterval shows a legacy FORTNIGHT row as "every 2 weeks" — the
+      // identical cycle in the vocabulary this editor speaks. Nothing is
+      // written until Save, and the PATCH route archives (never re-prices) any
+      // plan that has live subscribers before writing the new set.
+      plans: m.plans.map(p => {
+        const e = editorInterval(p.interval, p.intervalCount)
+        return {
+          key: `p${seq++}`,
+          interval: e.interval,
+          intervalCount: String(e.intervalCount),
+          price: (p.priceCents / 100).toString(),
+          minTerm: String(p.minTermCount),
+          earlyTermFee: p.earlyTermFeeCents != null ? (p.earlyTermFeeCents / 100).toString() : '',
+        }
+      }),
     })
   }
 
@@ -263,8 +296,9 @@ export function MembershipsView({
   const addItem = () => patch({ items: [...draft!.items, { key: `k${seq++}`, kind: 'PACKAGE', id: '', quantity: 1, regrantOnRenewal: false, imageUrl: null, description: '' }] })
   const patchItem = (key: string, p: Partial<DraftItem>) => patch({ items: draft!.items.map(it => (it.key === key ? { ...it, ...p } : it)) })
   const removeItem = (key: string) => patch({ items: draft!.items.filter(it => it.key !== key) })
-  // Recurring billing options (per week/fortnight/month), each own price/term/fee.
-  const addPlan = () => patch({ plans: [...draft!.plans, { key: `p${seq++}`, interval: 'MONTH', price: '', minTerm: '0', earlyTermFee: '' }] })
+  // Recurring billing options ("every N weeks/months"), each with its own
+  // price, minimum term and early-finish fee.
+  const addPlan = () => patch({ plans: [...draft!.plans, { key: `p${seq++}`, interval: 'MONTH', intervalCount: '1', price: '', minTerm: '0', earlyTermFee: '' }] })
   const patchPlan = (key: string, p: Partial<DraftPlan>) => patch({ plans: draft!.plans.map(pl => (pl.key === key ? { ...pl, ...p } : pl)) })
   const removePlan = (key: string) => patch({ plans: draft!.plans.filter(pl => pl.key !== key) })
   // Drag-to-reorder the included items; their saved order is the array order.
@@ -314,7 +348,16 @@ export function MembershipsView({
       showWhenLocked: draft.showWhenLocked,
       prerequisiteAchievementIds: draft.prerequisiteIds,
       plans: draft.cadence === 'RECURRING'
-        ? draft.plans.filter(p => p.price.trim()).map(p => ({ interval: p.interval, priceCents: Math.round(Number(p.price) * 100), minTermCount: Number(p.minTerm) || 0, earlyTermFeeCents: p.earlyTermFee.trim() ? Math.round(Number(p.earlyTermFee) * 100) : null }))
+        ? draft.plans.filter(p => p.price.trim()).map(p => ({
+            interval: p.interval,
+            // A blank or half-typed box means one cycle, never zero. The server
+            // re-checks the bounds regardless — this is only so an in-progress
+            // edit doesn't post a 0 and get a red box for it.
+            intervalCount: Math.max(1, Number(p.intervalCount) || 1),
+            priceCents: Math.round(Number(p.price) * 100),
+            minTermCount: Number(p.minTerm) || 0,
+            earlyTermFeeCents: p.earlyTermFee.trim() ? Math.round(Number(p.earlyTermFee) * 100) : null,
+          }))
         : [],
       imageUrl: draft.imageUrl, bgColor: draft.bgColor, headerColor: draft.headerColor, textColor: draft.textColor, featuredColor: draft.featuredColor,
       buttonBgColor: draft.buttonBgColor, buttonTextColor: draft.buttonTextColor,
@@ -424,9 +467,23 @@ export function MembershipsView({
                         <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">{sym}</span>
                         <input value={pl.price} onChange={e => patchPlan(pl.key, { price: e.target.value.replace(/[^0-9.]/g, '') })} inputMode="decimal" placeholder="Price" className="h-9 w-24 rounded-lg border border-slate-200 pl-5 pr-2 text-sm" />
                       </div>
-                      <span className="text-slate-500">per</span>
-                      <select value={pl.interval} onChange={e => patchPlan(pl.key, { interval: e.target.value as Interval })} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm">
-                        <option value="WEEK">week</option><option value="FORTNIGHT">fortnight</option><option value="MONTH">month</option>
+                      {/* "every ⟨6⟩ ⟨weeks⟩" — a number, not one dropdown value
+                          per cycle length. Groomers work on 4, 6 and 8-week
+                          cycles and this is the only shape that fits them all. */}
+                      <label className="sr-only" htmlFor={`cycle-${pl.key}`}>Bill every how many</label>
+                      <span className="text-slate-500">every</span>
+                      <input
+                        id={`cycle-${pl.key}`}
+                        value={pl.intervalCount}
+                        onChange={e => patchPlan(pl.key, { intervalCount: e.target.value.replace(/[^0-9]/g, '') })}
+                        inputMode="numeric"
+                        title="how many weeks or months between payments"
+                        className="h-9 w-12 rounded-lg border border-slate-200 px-2 text-sm"
+                      />
+                      <label className="sr-only" htmlFor={`unit-${pl.key}`}>Cycle unit</label>
+                      <select id={`unit-${pl.key}`} value={pl.interval} onChange={e => patchPlan(pl.key, { interval: e.target.value as EditorInterval })} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm">
+                        <option value="WEEK">{Number(pl.intervalCount) > 1 ? 'weeks' : 'week'}</option>
+                        <option value="MONTH">{Number(pl.intervalCount) > 1 ? 'months' : 'month'}</option>
                       </select>
                       <span className="text-slate-500">· min</span>
                       <input value={pl.minTerm} onChange={e => patchPlan(pl.key, { minTerm: e.target.value.replace(/[^0-9]/g, '') })} inputMode="numeric" title="minimum term in cycles (0 = cancel any time)" className="h-9 w-12 rounded-lg border border-slate-200 px-2 text-sm" />
@@ -436,6 +493,16 @@ export function MembershipsView({
                         <input value={pl.earlyTermFee} onChange={e => patchPlan(pl.key, { earlyTermFee: e.target.value.replace(/[^0-9.]/g, '') })} inputMode="decimal" placeholder="0" title="early-termination fee" className="h-9 w-20 rounded-lg border border-slate-200 pl-5 pr-2 text-sm" />
                       </div>
                       <button onClick={() => removePlan(pl.key)} title="Remove option" className="ml-auto p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>
+                      {/* A hint, not the rule — the route refuses the same
+                          numbers whatever the browser was persuaded to send.
+                          One cycle can't be longer than a year, which is also
+                          Stripe's own limit on a price. */}
+                      {Number(pl.intervalCount) > maxIntervalCount(pl.interval) && (
+                        <p className="w-full text-xs text-rose-600">A payment has to come round at least once a year — {maxIntervalCount(pl.interval)} {pl.interval === 'MONTH' ? 'months' : 'weeks'} at most.</p>
+                      )}
+                      {pl.price.trim() && (
+                        <p className="w-full text-xs text-slate-500">Charged {formatMoney(Math.round(Number(pl.price) * 100), currency)} every {intervalLabel(pl.interval, Math.max(1, Number(pl.intervalCount) || 1))}.</p>
+                      )}
                     </div>
                   ))}
                   <button onClick={addPlan} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-dashed border-violet-300 text-violet-700 hover:bg-violet-50 self-start"><Plus className="h-4 w-4" /> Add pricing option</button>
@@ -645,7 +712,7 @@ export function MembershipsView({
               priceCents={priceCents}
               recurring={draft.cadence === 'RECURRING'}
               interval={draft.interval}
-              plans={draft.cadence === 'RECURRING' ? draft.plans.filter(p => p.price.trim()).map(p => ({ interval: p.interval, priceCents: Math.round(Number(p.price) * 100) })) : []}
+              plans={draft.cadence === 'RECURRING' ? draft.plans.filter(p => p.price.trim()).map(p => ({ interval: p.interval, intervalCount: Math.max(1, Number(p.intervalCount) || 1), priceCents: Math.round(Number(p.price) * 100) })) : []}
               items={draft.items.filter(it => it.id).map(it => {
                 const off = offeringOf(it)
                 return { label: off?.name ?? '…', quantity: it.quantity, imageUrl: it.imageUrl ?? off?.imageUrl ?? null, description: it.description.trim() || off?.description || null }
@@ -706,7 +773,13 @@ export function MembershipsView({
                         dragHandle={handle}
                         badges={[
                           {
-                            label: `${formatMoney(m.priceCents, currency)}${m.cadence === 'RECURRING' ? ` / ${m.interval?.toLowerCase()}` : ''}`,
+                            // The FIRST billing option is what a client is sold
+                            // when they don't pick one, and it is the row that
+                            // carries the real cycle — `Membership.interval` is
+                            // a headline with no editor behind it, so reading
+                            // the badge off it said "/ month" on an
+                            // every-6-weeks package.
+                            label: recurringBadge(m, currency),
                             tone: 'accent',
                           },
                           ...(m.published ? [] : [{ label: 'Draft', tone: 'muted' as const }]),
