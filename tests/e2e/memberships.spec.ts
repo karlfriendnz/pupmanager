@@ -644,11 +644,14 @@ test.describe('memberships — trainer builds, client sees', () => {
         await expect(page.getByRole('button', { name: label, exact: true })).toHaveCount(0)
       }
 
-      // Opening the card is what the row does, and Delete is waiting inside it.
+      // Opening the card is what the row does, and Delete is waiting inside it —
+      // in the ⋯ , where an unrecoverable action belongs, rather than beside
+      // Save where a thumb lands.
       await page.getByText(name).click()
       await expect(page.getByPlaceholder('Package name (e.g. Puppy Starter)')).toHaveValue(name)
+      await page.getByRole('button', { name: /^More actions/ }).click()
       page.once('dialog', d => d.accept())
-      await page.getByRole('button', { name: 'Delete' }).click()
+      await page.getByRole('button', { name: /Delete this package/ }).click()
 
       // Back on the list, and gone for good.
       await expect(page.getByRole('button', { name: 'New package' }).first()).toBeVisible({ timeout: 15_000 })
