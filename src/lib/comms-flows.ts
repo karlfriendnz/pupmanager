@@ -109,15 +109,42 @@ function fmtDate(date: Date, tz: string): string {
 }
 
 const DAY_MS = 86_400_000
+// How far back a "when they enrol" step is allowed to look.
+//
+// This is the sharp edge of the whole direction, not a nicety. The case it
+// exists for is a warm "thanks for joining!" — so a trainer who writes one and
+// switches it on for a class that has been running a year would, without this,
+// thank every client who ever took it for enrolling in something they finished
+// months ago. From a real business, to real people, all at once.
+//
+// The same thirty days AFTER_SESSION and AFTER_PURCHASE already use, and for the
+// same reason: the floor is what makes switching a flow on a forward-looking
+// act rather than a mailout.
+const ENROLMENT_FLOOR_MS = 30 * DAY_MS
 // The widest a session can be and still be "on right now". Only a bound on the
 // QUERY for a DURING_SESSION step — the exact end is scheduledAt + durationMins,
 // checked per session (see stillRunning). A day covers a full daycare session
 // with room to spare, and keeps the scan off the whole table.
 const MAX_SESSION_MS = DAY_MS
 
-// A starter flow offered when a trainer first opens the editor: a friendly
-// day-before nudge + a 15-minute heads-up. Trainers tweak or delete freely.
+// A starter flow offered when a trainer first opens the editor: a thank-you the
+// moment somebody joins, a friendly day-before nudge, and a 15-minute heads-up.
+// Trainers tweak or delete freely.
+//
+// COPY IS PLACEHOLDER until Karl signs it off — he approves all client-facing
+// wording.
 export const COMMS_STARTER_STEPS = [
+  {
+    // The one Karl asked the enrolment anchor FOR: "its for things like a thank
+    // you message etc". Straight away (0), because a thank-you that arrives
+    // tomorrow is not a thank-you.
+    direction: 'ON_ENROLMENT' as const,
+    offsetMinutes: 0,
+    channels: ['PUSH', 'EMAIL'] as NotificationChannel[],
+    important: false,
+    title: "You're in, {{name}} 🎉",
+    body: "Thanks for signing {{dog}} up for {{class}}. We'll be in touch before it starts — see you there!",
+  },
   {
     direction: 'BEFORE_SESSION' as const,
     offsetMinutes: 1440,
@@ -487,6 +514,10 @@ export async function executeFlowStep(args: {
  * BEFORE_SESSION fires while now is within `offset` of an upcoming session;
  * AFTER_SESSION fires once now is past session + offset (bounded to 30 days so
  * old sessions never reopen). Dedup is the unique (step, session, user) row.
+ *
+ * ON_ENROLMENT is the one direction on these owners that is not about a session
+ * at all — it fires on somebody JOINING — so it has a pass of its own
+ * (processEnrolmentStep) and never reaches the session scan below.
  */
 const TRAINER_BRAND_SELECT = {
   businessName: true, logoUrl: true, emailAccentColor: true,
@@ -635,6 +666,20 @@ export async function processCommsFlows(
     // school) OR a Package (a 1:1 package). Skip a step whose owner was deleted.
     const owner = step.classRunId ? step.classRun : step.packageId ? step.package : null
     if (!owner) continue
+
+    // ── "When they enrol" gets its OWN pass, and must never reach the one below.
+    //
+    // The scan below walks SESSIONS. A step anchored on somebody joining has
+    // nothing to do with any one session of the thing they joined, so letting it
+    // fall through would put it in the `else` branch of the direction ladder and
+    // fire it after every single session — a "thanks for signing up!" once a
+    // week for the length of the run. `continue` is what stops that, and it is
+    // the reason this branch sits above every session query rather than inside
+    // one.
+    if (step.direction === 'ON_ENROLMENT') {
+      sent += await processEnrolmentStep(step, owner, now)
+      continue
+    }
     const tz = owner.trainer.user.timezone ?? 'Pacific/Auckland'
     const trainer: TrainerBrand = owner.trainer
     const className = owner.name
@@ -963,6 +1008,267 @@ export async function processFlowRun(
   // there is nothing left.
   const { currentStepId, completed } = await advanceFlowRun(runId)
   return { asked, waitingOn: currentStepId, completed }
+}
+
+// ─── "When they enrol" ──────────────────────────────────────────────────────
+
+/** The offering a "when they enrol" step hangs off. `location` only exists on a
+ *  ClassRun; a 1:1 Package has none, which is why it is optional. */
+interface EnrolmentOwner {
+  name: string
+  trainerId: string
+  trainer: TrainerBrand
+  location?: string | null
+}
+
+/**
+ * One ON_ENROLMENT step, for everybody who has just joined the thing.
+ *
+ * Karl asked for a stage that fires on somebody signing up rather than on one of
+ * their sessions — "hmm yeah when they enrol is better" — for, in his words,
+ * "things like a thank you message etc".
+ *
+ * ── What "they enrolled" IS, per kind of offering ────────────────────────────
+ *
+ *   ClassRun (class / casual class / event / puppy school)
+ *       a ClassEnrollment row. Anchor date: `enrolledAt`.
+ *   Package (a 1:1)
+ *       a ClientPackage row — the client being assigned the package IS them
+ *       joining it; there is no other row that records it. Anchor: `assignedAt`.
+ *
+ * ── Which of them count ──────────────────────────────────────────────────────
+ *
+ * The status filter is the SAME one the session pass uses, deliberately: a
+ * trainer who has chosen an audience has already answered this question and must
+ * not be asked it twice in two different vocabularies. So by default only
+ * ENROLLED, which is the honest reading — a WAITLISTED person has not got a
+ * place yet and thanking them for one would be a promise nobody made, and a
+ * WITHDRAWN or COMPLETED one is not somebody who has just joined. A trainer who
+ * picks "Booked + waitlist" has explicitly said they want the people waiting
+ * told, and then they are.
+ *
+ * A ClientPackage has no status column; `suspendedAt` is the nearest thing, and
+ * an assignment paused for non-payment is not one to welcome.
+ *
+ * ── Once per person per enrolment ────────────────────────────────────────────
+ *
+ * Ledgered against the enrolment ROW (CommsFlowSend.enrollmentId /
+ * .clientPackageId), which is exactly Karl's rule: "a fresh enrolment row is a
+ * fresh enrolment and may thank them again, but the same row must never thank
+ * them twice." Not against a session — a class has many and the welcome belongs
+ * to none of them — and not against the client, who may legitimately take the
+ * same class twice a year.
+ *
+ * ── And it must not back-fire ────────────────────────────────────────────────
+ *
+ * See ENROLMENT_FLOOR_MS. The scan window is bounded at BOTH ends, so switching
+ * this on today reaches the last thirty days of joiners and no further.
+ */
+async function processEnrolmentStep(
+  step: ExecutableStep & {
+    classRunId: string | null
+    packageId: string | null
+    offsetMinutes: number
+    audience: string
+    customClientIds: string[]
+  },
+  owner: EnrolmentOwner,
+  now: Date,
+): Promise<number> {
+  const tz = owner.trainer.user.timezone ?? 'Pacific/Auckland'
+  const offsetMs = step.offsetMinutes * 60_000
+  // Due since they joined + the trainer's offset, and no further back than the
+  // floor. `offsetMinutes` is an ordinary lead time here — "straight away" (0)
+  // and "3 days after they enrol" are both reasonable, and 0 is the default.
+  const anchorWhere = {
+    lte: new Date(now.getTime() - offsetMs),
+    gte: new Date(now.getTime() - offsetMs - ENROLMENT_FLOOR_MS),
+  }
+
+  // A staff step on this anchor is "somebody just joined" — the same shape the
+  // membership pass sends. There is no session to be assigned to, so the cascade
+  // starts at whoever runs the class and falls back to the owner.
+  const toStaff = step.audience === 'STAFF' || step.actor === 'TRAINER'
+  const staffFor = toStaff ? await staffResolver(owner.trainerId, step.classRunId) : null
+  const link = toStaff
+    ? step.classRunId
+      ? `/classes/${step.classRunId}`
+      : '/schedule'
+    : '/my-sessions'
+
+  /** One thing to send, already resolved. */
+  interface Joiner {
+    /** Which column ledgers it — an enrolment is one row or the other, never both. */
+    anchor: { enrollmentId: string } | { clientPackageId: string }
+    key: string
+    clientId: string | null
+    dogId: string | null
+    dogs: string[]
+    user: RecipientUser
+    /** Their next session, so {{date}}/{{time}} still mean what the picker says
+     *  they mean — the session — rather than the day they signed up. */
+    startsAt: Date | null
+    assigned: AssignedMember
+  }
+  const joiners: Joiner[] = []
+
+  if (step.classRunId) {
+    const statuses = step.audience === 'ENROLLED_AND_WAITLIST' ? ['ENROLLED', 'WAITLISTED'] : ['ENROLLED']
+    const enrolments = await prisma.classEnrollment.findMany({
+      where: {
+        classRunId: step.classRunId,
+        status: { in: statuses as ('ENROLLED' | 'WAITLISTED')[] },
+        enrolledAt: anchorWhere,
+        // Nothing automated goes out about a dog that has died — the same rule
+        // the session pass applies.
+        OR: [{ dogId: null }, { dog: { deceasedAt: null } }],
+        ...(step.audience === 'CUSTOM' ? { clientId: { in: step.customClientIds } } : {}),
+      },
+      select: {
+        id: true,
+        clientId: true,
+        dogId: true,
+        dog: { select: { name: true } },
+        // A drop-in joined for ONE session, so that is the one their welcome
+        // should name; everybody else gets the run's next one.
+        dropInSession: { select: { scheduledAt: true } },
+        client: { select: { user: { select: RECIPIENT_USER_SELECT } } },
+      },
+    })
+    if (enrolments.length === 0) return 0
+
+    // The run's next session, fetched once for the whole run rather than per
+    // joiner. Null when the run has already finished, which is fine — the tokens
+    // simply fill with nothing, exactly as they do on a membership.
+    const nextSession = await prisma.trainingSession.findFirst({
+      where: { classRunId: step.classRunId, scheduledAt: { gte: now } },
+      orderBy: { scheduledAt: 'asc' },
+      select: { scheduledAt: true },
+    })
+
+    for (const e of enrolments) {
+      const u = e.client?.user
+      if (!u?.id) continue
+      joiners.push({
+        anchor: { enrollmentId: e.id },
+        key: e.id,
+        clientId: e.clientId ?? null,
+        dogId: e.dogId ?? null,
+        dogs: e.dog?.name ? [e.dog.name] : [],
+        user: u,
+        startsAt: e.dropInSession?.scheduledAt ?? nextSession?.scheduledAt ?? null,
+        assigned: null,
+      })
+    }
+  } else {
+    const assignments = await prisma.clientPackage.findMany({
+      where: {
+        packageId: step.packageId!,
+        assignedAt: anchorWhere,
+        // Access paused for non-payment. Not somebody to welcome.
+        suspendedAt: null,
+        ...(step.audience === 'CUSTOM' ? { clientId: { in: step.customClientIds } } : {}),
+      },
+      select: {
+        id: true,
+        clientId: true,
+        sessions: {
+          where: { scheduledAt: { gte: now } },
+          orderBy: { scheduledAt: 'asc' },
+          take: 1,
+          select: { scheduledAt: true },
+        },
+        client: {
+          select: {
+            dogId: true,
+            dog: { select: { name: true, deceasedAt: true } },
+            dogs: { where: { deceasedAt: null }, select: { name: true } },
+            user: { select: RECIPIENT_USER_SELECT },
+            assignedTrainer: { select: ASSIGNED_MEMBER_SELECT },
+          },
+        },
+      },
+    })
+    if (assignments.length === 0) return 0
+
+    for (const a of assignments) {
+      const u = a.client?.user
+      if (!u?.id) continue
+      const dogs = [a.client.dog?.deceasedAt ? null : a.client.dog?.name, ...a.client.dogs.map(d => d.name)]
+        .filter((n): n is string => !!n)
+        .filter((n, i, arr) => arr.indexOf(n) === i)
+      joiners.push({
+        anchor: { clientPackageId: a.id },
+        key: a.id,
+        clientId: a.clientId ?? null,
+        dogId: a.client.dogId ?? null,
+        dogs,
+        user: u,
+        startsAt: a.sessions[0]?.scheduledAt ?? null,
+        // A 1:1 has no run to fall back on — the client's own assigned member is
+        // the nearest thing to "who is taking this", then the owner.
+        assigned: a.client.assignedTrainer ?? null,
+      })
+    }
+  }
+  if (joiners.length === 0) return 0
+
+  // One dedup query for the whole batch, keyed on whichever anchor column this
+  // owner uses. Both are read back so a step moved between owners cannot read
+  // the wrong ledger.
+  const already = await prisma.commsFlowSend.findMany({
+    where: step.classRunId
+      ? { stepId: step.id, enrollmentId: { in: joiners.map(j => j.key) } }
+      : { stepId: step.id, clientPackageId: { in: joiners.map(j => j.key) } },
+    select: { enrollmentId: true, clientPackageId: true, userId: true },
+  })
+  const alreadySent = new Set(
+    already.map(a => `${a.enrollmentId ?? a.clientPackageId ?? ''}|${a.userId}`),
+  )
+
+  let sent = 0
+  for (const joiner of joiners) {
+    const recipients = staffFor ? await staffFor(joiner.assigned) : [joiner.user]
+    for (const user of recipients) {
+      if (alreadySent.has(`${joiner.key}|${user.id}`)) continue
+      const vars: CommsVars = {
+        name: user.name ?? 'there',
+        dog: joiner.dogs.join(', '),
+        // Still the SESSION, which is what the placeholder picker promises these
+        // two mean. A "your first class is {{date}} at {{time}}" welcome is the
+        // natural one to write, and filling them with the day they signed up
+        // instead would be a lie about the class.
+        time: joiner.startsAt ? fmtTime(joiner.startsAt, tz) : '',
+        date: joiner.startsAt ? fmtDate(joiner.startsAt, tz) : '',
+        class: owner.name,
+        business: owner.trainer.businessName,
+        location: owner.location ?? '',
+      }
+      const did = await executeFlowStep({
+        step,
+        user,
+        trainer: owner.trainer,
+        vars,
+        link,
+        // Staff carry no client, so a TASK step on this anchor hands homework to
+        // the person who joined and to nobody else.
+        clientId: staffFor ? null : joiner.clientId,
+        dogId: staffFor ? null : joiner.dogId,
+        // Homework given for JOINING belongs to the person, not to a session —
+        // there is no one session it is about, and pinning it to the next one
+        // would move it every time the timetable changed.
+        sessionId: null,
+        date: now,
+        companyId: owner.trainerId,
+      })
+      if (!did) continue
+      await prisma.commsFlowSend
+        .create({ data: { stepId: step.id, ...joiner.anchor, userId: user.id } })
+        .catch(() => {})
+      sent++
+    }
+  }
+  return sent
 }
 
 /**

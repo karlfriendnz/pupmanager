@@ -29,6 +29,14 @@ export const ANCHOR_BY_TRIGGER: Record<FlowTrigger, FlowAnchor> = {
   BEFORE_SESSION: 'SESSION',
   DURING_SESSION: 'SESSION',
   AFTER_SESSION: 'SESSION',
+  // SESSION, not an anchor of its own. What "when they enrol" hangs off is the
+  // same two owners the other three do — a ClassRun or a 1:1 Package — and the
+  // anchor is what decides which stages a flow shows and which step kinds it
+  // offers. A fourth value would fork both of those tables to say the same
+  // thing twice. The ENGINE still gives it its own pass (processEnrolmentStep):
+  // "which flow is this" and "what does the cron scan for it" are two questions,
+  // and this one is the first.
+  ON_ENROLMENT: 'SESSION',
   AFTER_PURCHASE: 'PURCHASE',
   BEFORE_PERIOD_END: 'PURCHASE',
   ON_ENQUIRY_SUBMITTED: 'PERSON',

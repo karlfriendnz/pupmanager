@@ -2407,6 +2407,9 @@ model ClientPackage {
   client      ClientProfile     @relation(fields: [clientId], references: [id], onDelete: Cascade)
   sessions    TrainingSession[]
   paymentItem PaymentItem?
+  // A "when they enrol" step's send ledger. Being assigned a 1:1 package IS the
+  // moment somebody joined it — see CommsFlowDirection.ON_ENROLMENT.
+  commsFlowSends CommsFlowSend[]
 
   @@index([clientId])
   @@index([packageId])
@@ -2573,6 +2576,8 @@ model ClassEnrollment {
   sessionForm        SessionForm?        @relation("EnrollmentSessionForm", fields: [sessionFormId], references: [id], onDelete: SetNull)
   // What they answered to get this place — the class half of the booking gate.
   bookingFormAnswers BookingFormAnswer[]
+  // A "when they enrol" step's send ledger — see CommsFlowDirection.ON_ENROLMENT.
+  commsFlowSends     CommsFlowSend[]
 
   // dropInSessionId is part of the key so a client can drop into SEVERAL
   // sessions of the same run — one row each. Postgres treats NULLs as distinct,
@@ -4111,6 +4116,21 @@ enum CommsFlowDirection {
   // check-in), or before the current period ends (renewal, expiry).
   AFTER_PURCHASE
   BEFORE_PERIOD_END
+  // WHEN THEY ENROL — the moment somebody joins the thing, not a moment in one
+  // of its sessions. Karl: "hmm yeah when they enrol is better", for the case he
+  // described as "things like a thank you message etc".
+  //
+  // The anchor is the ENROLMENT ROW, which is a different row per kind of
+  // offering: a ClassEnrollment on a ClassRun (class / casual / event / puppy
+  // school), a ClientPackage on a 1:1 Package. `offsetMinutes` counts forward
+  // from it, and 0 — "straight away" — is the normal setting, because a
+  // thank-you that arrives tomorrow is not a thank-you.
+  //
+  // Scanned by its OWN pass in processCommsFlows (processEnrolmentStep), never
+  // by the session scan: a step anchored on joining has nothing to do with any
+  // one session, and letting it fall through to the session pass is exactly how
+  // it would fire after every single one of them.
+  ON_ENROLMENT
 }
 
 // Who a step reaches within the run's enrolments.
@@ -4183,6 +4203,12 @@ enum FlowTrigger {
   DURING_SESSION
   AFTER_PURCHASE
   BEFORE_PERIOD_END
+  // Mirrors CommsFlowDirection.ON_ENROLMENT, added with it in the same
+  // migration, for the same reason DURING_SESSION was: flowTriggerFor() resolves
+  // a clock-anchored step's trigger by looking its DIRECTION up by name, so a
+  // value present in one enum and missing from the other reads back as
+  // BEFORE_SESSION — a welcome message turned into a session reminder.
+  ON_ENROLMENT
   // Person-anchored. No session, no clock — the run advances as they finish.
   ON_ENQUIRY_SUBMITTED
   ON_SIGNUP
@@ -4303,20 +4329,44 @@ model CommsFlowSend {
   sessionId  String?
   purchaseId String?
   runId      String?
+  // ─── The enrolment anchors ────────────────────────────────────────────────
+  // An ON_ENROLMENT step fires on somebody JOINING, so what it has to be deduped
+  // against is the row that says they joined — not a session (a class has many
+  // and the welcome belongs to none of them) and not a purchase (a class enrolee
+  // has none).
+  //
+  // TWO columns rather than one, because "they enrolled" is two different rows:
+  // a ClassEnrollment on a ClassRun and a ClientPackage on a 1:1 Package. One
+  // shared id column would be an FK to nothing, so neither cascade would clean
+  // up and a deleted enrolment would leave a send row claiming to have thanked
+  // somebody for a place that no longer exists.
+  //
+  // Per-ROW, deliberately: a fresh enrolment row is a fresh enrolment and may be
+  // thanked again (Karl), but the same row must never be thanked twice.
+  enrollmentId    String?
+  clientPackageId String?
   userId     String // the recipient's User.id
   sentAt     DateTime @default(now())
 
-  step     CommsFlowStep       @relation(fields: [stepId], references: [id], onDelete: Cascade)
-  session  TrainingSession?    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  purchase MembershipPurchase? @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-  run      FlowRun?            @relation(fields: [runId], references: [id], onDelete: Cascade)
+  step          CommsFlowStep       @relation(fields: [stepId], references: [id], onDelete: Cascade)
+  session       TrainingSession?    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  purchase      MembershipPurchase? @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  run           FlowRun?            @relation(fields: [runId], references: [id], onDelete: Cascade)
+  enrollment    ClassEnrollment?    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  clientPackage ClientPackage?      @relation(fields: [clientPackageId], references: [id], onDelete: Cascade)
 
   @@unique([stepId, sessionId, userId])
   @@unique([stepId, purchaseId, userId])
   @@unique([stepId, runId, userId])
+  // Postgres treats NULLs as distinct, so each of these five only bites on the
+  // anchor it names — exactly as the three above already do.
+  @@unique([stepId, enrollmentId, userId])
+  @@unique([stepId, clientPackageId, userId])
   @@index([sessionId])
   @@index([purchaseId])
   @@index([runId])
+  @@index([enrollmentId])
+  @@index([clientPackageId])
   @@map("comms_flow_sends")
 }
 

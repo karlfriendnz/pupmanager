@@ -10,10 +10,13 @@ import type { Prisma } from '@/generated/prisma'
 export const channelEnum = z.enum(['PUSH', 'EMAIL', 'IN_APP'])
 // BEFORE/DURING/AFTER_SESSION are for offerings with a timetable; the PURCHASE
 // and PERIOD_END anchors are for memberships, which have no sessions.
+// ON_ENROLMENT is for the same offerings as the SESSION three, but anchors on
+// somebody JOINING rather than on any one of their sessions.
 export const directionEnum = z.enum([
   'BEFORE_SESSION',
   'DURING_SESSION',
   'AFTER_SESSION',
+  'ON_ENROLMENT',
   'AFTER_PURCHASE',
   'BEFORE_PERIOD_END',
 ])
@@ -48,6 +51,7 @@ export const flowTriggerEnum = z.enum([
   'BEFORE_SESSION',
   'DURING_SESSION',
   'AFTER_SESSION',
+  'ON_ENROLMENT',
   'AFTER_PURCHASE',
   'BEFORE_PERIOD_END',
   'ON_ENQUIRY_SUBMITTED',
@@ -702,6 +706,24 @@ export function withDefaults(partial: Partial<StepFields>): StepFields {
   return { ...defaultsForKind(partial.kind ?? 'MESSAGE'), ...partial }
 }
 
+/**
+ * The lead time a direction STARTS on when a trainer switches a step to it — or
+ * null for the directions that keep whatever the step already holds.
+ *
+ * Only ON_ENROLMENT answers. A welcome is the headline case for it (Karl: "its
+ * for things like a thank you message etc") and a thank-you that arrives
+ * tomorrow is not a thank-you, so inheriting the 1-day default the session
+ * reminders carry would be wrong every time. Every other direction returns null
+ * deliberately: switching a step from "1 day before" to "during" and back has
+ * always restored the trainer's day, and this must not quietly change that.
+ *
+ * A rule rather than a column — `offsetMinutes` still means the same thing, and
+ * the trainer can pick any of the offsets the select offers.
+ */
+export function defaultOffsetForDirection(direction: string): number | null {
+  return direction === 'ON_ENROLMENT' ? 0 : null
+}
+
 // A membership has no sessions, so its steps count from the client's purchase.
 // Same shape, different anchor + copy.
 export const DEFAULT_MEMBERSHIP_STEP_FIELDS: StepFields = {
@@ -866,6 +888,10 @@ export function commsTimelinePos(s: { direction: string; offsetMinutes: number }
   // within them the biggest lead time is the earliest.
   if (s.direction === 'BEFORE_PERIOD_END') return 1_000_000 - s.offsetMinutes
   if (s.direction === 'AFTER_PURCHASE') return s.offsetMinutes
+  // Enrolling happens before any of the sessions enrolled for, whatever lead
+  // time the run-up reminders carry — the cap on offsetMinutes is 60 days, so a
+  // million minutes of clearance can never be closed by a stray value.
+  if (s.direction === 'ON_ENROLMENT') return -1_000_000 + s.offsetMinutes
   // The session itself is zero on this number line, and a "during" step happens
   // AT it — its offsetMinutes is not a lead time and must not move it (see the
   // enum comment in schema.prisma). It ties with "right on" either side, and

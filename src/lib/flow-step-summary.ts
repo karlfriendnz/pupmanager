@@ -133,6 +133,14 @@ export function flowStepWhenText(step: SummarisableStep, index = 0): string {
 
   // SESSION.
   //
+  // Joining is answered first: it is not a moment in a session at all, so a
+  // stale offsetMinutes must not be read as a lead time either side of one.
+  // Zero is the common setting here rather than the odd one — the case this
+  // exists for is a thank-you, and a thank-you is sent straight away.
+  if (step.direction === 'ON_ENROLMENT') {
+    return step.offsetMinutes === 0 ? 'When they enrol' : `${offsetLabel(step.offsetMinutes)} after they enrol`
+  }
+
   // "During" is a window, not an offset: it happens while the session is
   // actually running, so there is no number to say. Answered before the zero
   // case below precisely so a stale offsetMinutes left over from when the step

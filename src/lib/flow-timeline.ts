@@ -33,6 +33,7 @@ import type { FlowTrigger } from './comms-flow-steps'
  */
 export type FlowStageKey =
   | 'BEFORE_CONFIRM'
+  | 'ON_ENROLMENT'
   | 'AFTER_SIGNUP'
   | 'DURING_SESSION'
   | 'AFTER_SESSION'
@@ -66,21 +67,26 @@ export interface FlowStage {
  *              signup' section"): AFTER_PURCHASE, which is somebody joining.
  *              Its other anchor is the run-up to a renewal, so it gets two.
  *
- * ── "After signup" is a PURCHASE stage and only a PURCHASE stage ─────────────
+ * ── Joining is a real moment on BOTH, and they are not the same moment ───────
  *
- * Because that is the only anchor the engine can actually fire it from.
- * `processMembershipStep` counts AFTER_PURCHASE forward from the client's
- * purchase, which IS "they joined". A class or a 1:1 package has nothing
- * equivalent: `processCommsFlows` scans SESSIONS, so a step on one anchors to a
- * session or to nothing, and an AFTER_PURCHASE direction stored on a class step
- * would be read by the scan as "after the session" and fire against every one
- * of them. Offering the heading there would be a stage a trainer could drop a
- * step into that could never run — the exact failure `flowStepKindsFor` exists
- * to prevent on the other axis.
+ * A stage must never be offered where the engine cannot fire it, which is why
+ * "After signup" was a PURCHASE stage and only a PURCHASE stage: it is fired by
+ * `processMembershipStep` counting AFTER_PURCHASE forward from the client's
+ * purchase. A class or a 1:1 package had nothing equivalent — the cron scanned
+ * SESSIONS, so an AFTER_PURCHASE direction on a class step would be read by that
+ * scan as "after the session" and fire after every one of them.
  *
- * Enrolling on a class IS a real moment and a trainer will want it. It needs a
- * trigger of its own and a pass in the engine that walks enrolments rather than
- * sessions; it is not a heading. See the report accompanying this change.
+ * So it was given one. `ON_ENROLMENT` is a direction of its own with a pass of
+ * its own (`processEnrolmentStep`), anchored on the row that says somebody
+ * joined: a ClassEnrollment on a run, a ClientPackage on a 1:1. That is what
+ * earns SESSION its own joining stage — and it is a SEPARATE key from
+ * AFTER_SIGNUP rather than a second label on it, because the two fire off
+ * different columns of different tables and one key would make "which pass runs
+ * this" a question you have to answer twice.
+ *
+ * The WORDS differ because the moments differ. Karl's own — "when they enrol" —
+ * for a class or a package, which is a thing you enrol ON. A recurring plan is
+ * not enrolled on; it is signed up for, so PURCHASE keeps "After signup".
  */
 export const FLOW_STAGES_BY_ANCHOR: Record<FlowAnchor, FlowStage[]> = {
   SESSION: [
@@ -89,6 +95,12 @@ export const FLOW_STAGES_BY_ANCHOR: Record<FlowAnchor, FlowStage[]> = {
       label: 'Before they confirm',
       hint: 'Part of booking — it holds the booking up until it is done.',
       empty: 'Nothing is asked before they book.',
+    },
+    {
+      key: 'ON_ENROLMENT',
+      label: 'When they enrol',
+      hint: 'The moment they get a place — a thank-you, or what happens next.',
+      empty: 'Nothing welcomes them when they join.',
     },
     {
       key: 'DURING_SESSION',
@@ -166,6 +178,7 @@ export interface StageableStep {
 export function flowStageOf(step: StageableStep): FlowStageKey {
   if (step.gatesBooking) return 'BEFORE_CONFIRM'
   if (flowAnchorFor(step) === 'PERSON') return 'BEFORE_CONFIRM'
+  if (step.direction === 'ON_ENROLMENT') return 'ON_ENROLMENT'
   if (step.direction === 'AFTER_PURCHASE') return 'AFTER_SIGNUP'
   if (step.direction === 'BEFORE_PERIOD_END') return 'BEFORE_RENEWAL'
   if (step.direction === 'AFTER_SESSION') return 'AFTER_SESSION'
