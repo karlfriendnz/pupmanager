@@ -148,8 +148,12 @@ export function MessageThread({
           Bottom padding accounts for iOS home indicator on native; on
           mobile web the bottom tab nav sits below this. */}
       <div
-        className="flex-shrink-0 border-t border-slate-100 px-4 pt-3 bg-white"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
+        // The surface reclaims main's pb-24 so it reaches the bottom of the
+        // screen, which puts this composer UNDER the fixed bottom tab bar —
+        // rendered, but invisible on a phone. The bar is ~60px, so the padding
+        // below clears it. From md: up there is no bar and no reclaim, so it
+        // goes back to a plain gap.
+        className="flex-shrink-0 border-t border-slate-100 px-4 pt-3 bg-white pb-[calc(env(safe-area-inset-bottom,0px)+4.25rem)] md:pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)]"
       >
         {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
         <form onSubmit={sendMessage} className="flex gap-2">

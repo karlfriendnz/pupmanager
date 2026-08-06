@@ -470,8 +470,9 @@ function JoinedThread({
         </div>
 
         <div
-          className="flex-shrink-0 border-t border-slate-100 bg-white px-4 pt-3"
-          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
+          // Same as the 1:1 thread: clear the fixed bottom tab bar, which the
+          // -mb-24 reclaim otherwise hides this composer behind.
+          className="flex-shrink-0 border-t border-slate-100 bg-white px-4 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+4.25rem)] md:pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)]"
         >
           {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
           {group.canPost ? (
