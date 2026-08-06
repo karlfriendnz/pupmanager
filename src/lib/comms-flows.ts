@@ -25,6 +25,7 @@ import {
   type FlowStepKind,
   type FlowStepActor,
 } from './comms-flow-steps'
+import { bookingAnswerExists } from './booking-gate'
 import type { NotificationChannel } from '@/generated/prisma'
 
 // Placeholders a trainer can drop into a step's title/body.
@@ -754,6 +755,23 @@ export async function processCommsFlows(
 
       for (const [userId, { user, dogs, clientId, dogId }] of byUser) {
         if (alreadySent.has(userId)) continue
+        // A gating FORM step is asked AT THE MOMENT OF BOOKING — it is what
+        // holds the booking up (lib/booking-gate). Asking again the day before
+        // would nag somebody for a form they filled in to get the session in the
+        // first place, which is the "booked AND being chased" behaviour this
+        // whole feature exists to stop.
+        //
+        // Skipped WITHOUT recording a send, so a session that reached this step
+        // some other way (a trainer booking it on the client's behalf, where the
+        // gate deliberately does not apply) is still asked, and keeps being asked
+        // until they answer.
+        if (step.gatesBooking && step.kind === 'FORM') {
+          const formId = safeFlowStepPayload('FORM', step.payload).payload.formId
+          if (formId && (await bookingAnswerExists({ formId, sessionId }))) {
+            skipped++
+            continue
+          }
+        }
         const vars: CommsVars = { ...vars0, name: user.name ?? 'there', dog: dogs.join(', ') }
         const did = await executeFlowStep({
           step, user, trainer, vars, link,

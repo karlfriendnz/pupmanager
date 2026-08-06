@@ -13,6 +13,7 @@
 import { prisma } from './prisma'
 import { safeEvaluate } from './achievements'
 import { createBookingAssignment } from './self-book'
+import { carryRequestAnswersToSession } from './booking-gate'
 import { createInvoiceForAssignment } from './invoicing'
 
 export interface ConfirmArgs {
@@ -80,13 +81,26 @@ export async function confirmBookingRequest(args: ConfirmArgs): Promise<ConfirmR
   })
 
   await safeEvaluate(reqRow.clientId)
+  // createMany returns no ids, so re-read them by the new assignment. Read
+  // OUTSIDE the Google try/catch below: the answers move on the back of this,
+  // and a flaky calendar sync must not be able to swallow them.
+  const createdRows = await prisma.trainingSession.findMany({
+    where: { clientPackageId: assignmentId },
+    orderBy: { scheduledAt: 'asc' },
+    select: { id: true },
+  })
+  // An approval-required offering asks its gating questions BEFORE anybody has
+  // said yes, so the answers were parked on the request. This is where they move
+  // onto the session the trainer has just created — otherwise the client would
+  // have typed five things that ended up on a decided request while the session
+  // being run had none, which is bug #8's shape exactly.
+  await carryRequestAnswersToSession(prisma, {
+    bookingRequestId: args.requestId,
+    sessionId: createdRows[0]?.id ?? null,
+  })
   // Best-effort: mirror the confirmed session series onto the trainer's Google
-  // Calendar. createMany returns no ids, so re-read them by the new assignment.
+  // Calendar.
   try {
-    const createdRows = await prisma.trainingSession.findMany({
-      where: { clientPackageId: assignmentId },
-      select: { id: true },
-    })
     if (createdRows.length) {
       const { syncSessionsToGoogle } = await import('@/lib/google-calendar-sync')
       await syncSessionsToGoogle(createdRows.map(r => r.id))

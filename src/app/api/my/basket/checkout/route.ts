@@ -11,6 +11,7 @@ import { quoteClassLine, type ClassQuote } from '@/lib/basket-quote'
 import { checkoutFingerprint, MAX_BASKET_LINES, MAX_PRODUCT_QUANTITY } from '@/lib/basket'
 import { MAX_TICKET_QUANTITY } from '@/lib/class-runs'
 import { env } from '@/lib/env'
+import { bookingGateFor, gateRefusal, pickGateAnswers, type GateAnswers } from '@/lib/booking-gate'
 
 // ONE payment for a whole basket — products and classes together.
 //
@@ -58,6 +59,12 @@ const lineSchema = z.discriminatedUnion('kind', [
     dogIds: z.array(z.string().min(1).nullable()).max(20).optional(),
     ticketTierId: z.string().min(1).nullable().optional(),
     quantity: z.number().int().min(1).max(MAX_TICKET_QUANTITY).optional(),
+    // Answers to that offering's booking gate. A basket is still a booking, and
+    // an ungated door beside a gated one is worse than no gate at all — it is
+    // the one everybody ends up using.
+    answers: z
+      .record(z.string(), z.union([z.string().max(4000), z.array(z.string().max(2000)).max(50)]))
+      .nullish(),
   }),
 ])
 
@@ -220,8 +227,32 @@ export async function POST(req: Request) {
       unavailable.push({ key: line.key, reason: result.reason })
       continue
     }
+    // ── THE GATE ─────────────────────────────────────────────────────────────
+    // Refused as an UNAVAILABLE line rather than a hard 400, so the review
+    // screen strikes through the exact row and says why — and, per rule (2) at
+    // the top, nothing in the basket is charged until it is fixed.
+    const gate = await bookingGateFor({ classRunId: line.classRunId, packageId: result.quote.packageId })
+    let lineGate: { formId: string; stepId: string; answers: GateAnswers } | null = null
+    if (gate) {
+      const answers = pickGateAnswers(gate, (line.answers ?? {}) as GateAnswers)
+      if (gateRefusal(gate, answers)) {
+        unavailable.push({ key: line.key, reason: `Answer “${gate.form.name}” before booking this.` })
+        continue
+      }
+      lineGate = { formId: gate.formId, stepId: gate.stepId, answers }
+    }
+
     hasClassLine = true
-    lines.push(...(await applyClassDiscount(profile.trainerId, result.quote)))
+    const classLines = await applyClassDiscount(profile.trainerId, result.quote)
+    // On the FIRST line only — one booking, one answer set. The webhook reads it
+    // back off the PaymentItem intent when it enrols them.
+    if (lineGate && classLines.length > 0) {
+      classLines[0] = {
+        ...classLines[0],
+        intent: { ...(classLines[0].intent as Record<string, unknown>), gate: lineGate },
+      }
+    }
+    lines.push(...classLines)
   }
 
   // Nothing is charged unless everything is still there. See (2) at the top.

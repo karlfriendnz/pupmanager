@@ -15,6 +15,8 @@ import { utcToZonedDateAndMinutes } from '@/lib/timezone'
 import { notifyTrainer } from '@/lib/trainer-notify'
 import { env } from '@/lib/env'
 import { offeringVisibleWhere } from '@/lib/offering-visibility'
+import { bookingGateFor, gateRefusal, pickGateAnswers, recordBookingAnswers, type GateAnswers } from '@/lib/booking-gate'
+import { consumeBookingHold, extendHoldForPayment, liveHold, releaseBookingHold, saveHoldAnswers } from '@/lib/booking-holds'
 
 // GET  /api/my/self-book  — packages this client may self-book
 // POST /api/my/self-book  — book one (instant or pending request)
@@ -82,6 +84,15 @@ const schema = z.object({
   // Client-chosen first-session datetime (ISO). Subsequent sessions are
   // placed on the package cadence from here.
   startDate: z.string().min(1),
+  // The claim on the slot they have been holding while they answered. Optional
+  // so an offering with no gate books in one call exactly as it always has.
+  holdId: z.string().min(1).nullish(),
+  // Their answers to the offering's gating form. Sent again with the booking
+  // rather than only trusted off the hold, so the gate is checked against what
+  // THIS request carries — see lib/booking-gate.
+  answers: z
+    .record(z.string(), z.union([z.string().max(4000), z.array(z.string().max(2000)).max(50)]))
+    .nullish(),
 })
 
 export async function POST(req: Request) {
@@ -151,6 +162,39 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: message }, { status: 400 })
   }
 
+  // ── THE GATE ───────────────────────────────────────────────────────────────
+  //
+  // A FORM step on this offering marked "ask before they can book" holds the
+  // booking up. The wizard shows the questions as a step of its own and will
+  // not let anybody past them — and that is not enforcement. A crafted POST
+  // does not come from the wizard, and this codebase has already shipped a gate
+  // that existed only in the browser (AGENTS.md bug #3). So the answers are
+  // checked HERE, against the form as it is configured right now.
+  //
+  // Satisfied by what THIS request carries, never by what the client answered
+  // last time. The hold is a fallback for exactly one case — the client coming
+  // back from Stripe, or retrying after a decline, where the browser no longer
+  // has the answers to send. It is not a second way to open the gate: the same
+  // client, the same form, the same booking.
+  const gate = await bookingGateFor({ packageId: pkg.id })
+  const hold = parsed.data.holdId ? await liveHold(parsed.data.holdId) : null
+  if (parsed.data.holdId && (!hold || hold.clientId !== ctx.clientId)) {
+    // Their claim lapsed while they were answering. Say so plainly and send
+    // them back to the time picker rather than failing at the end.
+    return NextResponse.json(
+      { error: 'That time is no longer held — please pick another.', code: 'HOLD_EXPIRED' },
+      { status: 409 },
+    )
+  }
+
+  let gateAnswers: GateAnswers = {}
+  if (gate) {
+    const supplied = (parsed.data.answers ?? (hold?.answers as GateAnswers | null) ?? {}) as GateAnswers
+    gateAnswers = pickGateAnswers(gate, supplied)
+    const refusal = gateRefusal(gate, gateAnswers)
+    if (refusal) return NextResponse.json(refusal, { status: 400 })
+  }
+
   const dates = generateSessionDates(start, pkg.sessionCount, pkg.weeksBetween)
 
   // Approval-required packages are REQUEST-FIRST: never charge up front. A
@@ -159,7 +203,7 @@ export async function POST(req: Request) {
   // come before the paid path so an approval-required package is never a
   // pay-to-book.
   if (pkg.selfBookRequiresApproval) {
-    await prisma.bookingRequest.create({
+    const request = await prisma.bookingRequest.create({
       data: {
         trainerId: ctx.trainerId,
         clientId: ctx.clientId,
@@ -167,7 +211,26 @@ export async function POST(req: Request) {
         dogId: ctx.dogId,
         sessionDates: dates.map(d => d.toISOString()),
       },
+      select: { id: true },
     })
+    // Nothing is booked yet, so the answers hang off the REQUEST. Confirming it
+    // carries them onto the session it creates (carryRequestAnswersToSession),
+    // because answers the client typed that end up nowhere are exactly bug #8.
+    if (gate) {
+      await recordBookingAnswers(prisma, {
+        trainerId: ctx.trainerId,
+        clientId: ctx.clientId,
+        formId: gate.formId,
+        stepId: gate.stepId,
+        answers: gateAnswers,
+        anchor: { bookingRequestId: request.id },
+      })
+    }
+    // The slot is no longer being held for a form — the request is what claims
+    // it now, and the trainer decides. Releasing rather than consuming keeps the
+    // diary honest: an unapproved request has never blocked a slot and doesn't
+    // start to now.
+    if (hold) await releaseBookingHold(hold.id, ctx.clientId)
     if (ctx.trainerUserId) {
       await notifyTrainer(
         ctx.trainerUserId,
@@ -227,6 +290,10 @@ export async function POST(req: Request) {
               singleDurationMins: pkg.durationMins,
               singleSessionType: pkg.sessionType,
               singleTitle: pkg.name,
+              // The webhook has no request body to read the answers out of, so
+              // it follows the hold. This lives on OUR PaymentItem row, not in
+              // Stripe metadata — five answers would not fit there anyway.
+              holdId: hold?.id ?? null,
             },
           },
         ],
@@ -237,6 +304,17 @@ export async function POST(req: Request) {
         cancelUrl: `${appUrl}/my-availability?purchase=cancelled`,
       })
       if (!url) return NextResponse.json({ error: 'Could not start checkout' }, { status: 502 })
+      // The form is answered and the slot is theirs; now they go and pay for it.
+      // A card is a round trip to another site and back via a webhook, so the
+      // hold gets the longer window — losing the slot with the money in flight
+      // is the one version of this that costs somebody real money.
+      //
+      // The answers are already ON the hold (saved when the form step finished),
+      // so a decline sends them back to a filled-in form, not an empty one.
+      if (hold) {
+        if (gate) await saveHoldAnswers(hold.id, gateAnswers)
+        await extendHoldForPayment(hold.id)
+      }
       return NextResponse.json({ ok: true, mode: 'payment', url }, { status: 201 })
     }
     // Trainer hasn't enabled payments — fall through to the normal flow.
@@ -254,14 +332,36 @@ export async function POST(req: Request) {
     }),
   )
   await safeEvaluate(ctx.clientId)
-  // Best-effort: mirror the newly-booked session(s) onto the trainer's Google
-  // Calendar. createBookingAssignment uses createMany (no ids), so re-read the
-  // rows by the assignment we just created. Wrapped so it never breaks booking.
-  try {
-    const createdRows = await prisma.trainingSession.findMany({
-      where: { clientPackageId: assignmentId },
-      select: { id: true },
+  // The booking exists, so the hold has done its job and stops counting as busy
+  // — the sessions do that now, and counting both would make the trainer's own
+  // diary look double-booked to the picker.
+  if (hold) await consumeBookingHold(hold.id)
+
+  // createBookingAssignment uses createMany (no ids), so re-read the rows by
+  // the assignment we just created. Read OUTSIDE the Google try/catch: the
+  // answers are the record of what was said to get this booking, and a flaky
+  // calendar sync must not be able to swallow them.
+  const createdRows = await prisma.trainingSession.findMany({
+    where: { clientPackageId: assignmentId },
+    orderBy: { scheduledAt: 'asc' },
+    select: { id: true },
+  })
+  // The answers go on the session they got booked — the FIRST one, which is the
+  // slot they actually chose and held. Not on all of them: this records what was
+  // said to make THIS booking, and the next booking asks again.
+  if (gate && createdRows.length) {
+    await recordBookingAnswers(prisma, {
+      trainerId: ctx.trainerId,
+      clientId: ctx.clientId,
+      formId: gate.formId,
+      stepId: gate.stepId,
+      answers: gateAnswers,
+      anchor: { sessionId: createdRows[0].id },
     })
+  }
+  // Best-effort: mirror the newly-booked session(s) onto the trainer's Google
+  // Calendar. Wrapped so it never breaks booking.
+  try {
     if (createdRows.length) {
       const { syncSessionsToGoogle } = await import('@/lib/google-calendar-sync')
       await syncSessionsToGoogle(createdRows.map(r => r.id))

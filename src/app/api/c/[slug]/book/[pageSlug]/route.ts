@@ -14,6 +14,8 @@ import { createConnectCheckout } from '@/lib/connect-checkout'
 import { isConnectConfigured } from '@/lib/connect'
 import { env } from '@/lib/env'
 import { offeringVisibleWhere } from '@/lib/offering-visibility'
+import { bookingGateFor, gateRefusal, pickGateAnswers, recordBookingAnswers, type GateAnswers } from '@/lib/booking-gate'
+import { createBookingHold, extendHoldForPayment, saveHoldAnswers } from '@/lib/booking-holds'
 
 // Public booking endpoint for a single booking page: /c/<slug>/book/<pageSlug>.
 //   GET  — current bookable slots (for the picker to refresh).
@@ -62,15 +64,30 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   // will occupy — it has to be known here or the picker would offer slots that
   // the POST re-validation then rejects.
   const gPkg = await loadPackage(ctx.trainer.id, ctx.page.packageId)
+  // A signed-in client's OWN hold must not hide the slot they are holding.
+  const gSession = await auth()
+  const gClient = gSession?.user?.id
+    ? await prisma.clientProfile.findFirst({
+        where: { userId: gSession.user.id, trainerId: ctx.trainer.id },
+        select: { id: true },
+      })
+    : null
   const days = await fetchBookingSlots(
     ctx.trainer.id,
     bookingConfig(ctx.page, ctx.trainer.user.timezone, gPkg?.bufferMins ?? 0),
+    new Date(),
+    { excludeClientId: gClient?.id ?? null },
   )
   return NextResponse.json({ days })
 }
 
 const schema = z.object({
   slotIso: z.string().min(1),
+  // Answers to the offering's gating form, when the page books a package that
+  // has one. Only meaningful for a SIGNED-IN client — see the gate block below.
+  answers: z
+    .record(z.string(), z.union([z.string().max(4000), z.array(z.string().max(2000)).max(50)]))
+    .nullish(),
   name: z.string().min(1).max(120).optional(),
   email: z.string().email().max(200).optional(),
   phone: z.string().max(40).optional().nullable(),
@@ -98,11 +115,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   // occupies, so the re-validation below has to know about it.
   const pkg = await loadPackage(trainer.id, page.packageId)
 
-  const cfg = bookingConfig(page, tz, pkg?.bufferMins ?? 0)
-  if (!(await isSlotAvailable(trainer.id, cfg, slotAt.toISOString()))) {
-    return NextResponse.json({ error: 'That time was just taken — pick another.', code: 'SLOT_TAKEN' }, { status: 409 })
-  }
-
+  // WHO is booking has to be resolved BEFORE the slot check, not after: a
+  // signed-in client's own booking hold must not make their own slot look taken.
   const session = await auth()
   const client = session?.user?.id
     ? await prisma.clientProfile.findFirst({
@@ -110,6 +124,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
         select: { id: true, dogId: true, user: { select: { name: true, email: true } }, dog: { select: { name: true } } },
       })
     : null
+
+  const cfg = bookingConfig(page, tz, pkg?.bufferMins ?? 0)
+  if (!(await isSlotAvailable(trainer.id, cfg, slotAt.toISOString(), new Date(), { excludeClientId: client?.id ?? null }))) {
+    return NextResponse.json({ error: 'That time was just taken — pick another.', code: 'SLOT_TAKEN' }, { status: 409 })
+  }
 
   // ON_BOOKING automations fire to the booker's email the moment they book.
   const fireOnBooking = (email: string | null, name: string, dogName: string | null) => {
@@ -128,6 +147,26 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   if (client) {
     const singleTitle = page.headline?.trim() || page.name || `${trainer.businessName} session`
 
+    // ── THE GATE ─────────────────────────────────────────────────────────────
+    //
+    // A booking page that books a PACKAGE inherits that offering's booking gate:
+    // the same questions, asked the same way, whichever door the client came
+    // through. A page with no package books a one-off session against no
+    // offering, so there is nothing to hang a gate on and nothing is asked.
+    //
+    // This branch is the only one on this route that creates a booking. The
+    // stranger branch below creates an ENQUIRY — no session, no enrolment, no
+    // place — which the trainer then accepts. That is a trainer-side action and
+    // is deliberately not gated (see the trainer decision in lib/booking-gate);
+    // the flow asks the client afterwards.
+    const gate = pkg ? await bookingGateFor({ packageId: pkg.id }) : null
+    let gateAnswers: GateAnswers = {}
+    if (gate) {
+      gateAnswers = pickGateAnswers(gate, (parsed.data.answers ?? {}) as GateAnswers)
+      const refusal = gateRefusal(gate, gateAnswers)
+      if (refusal) return NextResponse.json(refusal, { status: 400 })
+    }
+
     // ── Pay-to-confirm: charge first, the webhook books on success. Payment
     // supersedes approval. Falls through to the free flow if no price/payments. ──
     if (page.requiresPayment) {
@@ -138,6 +177,30 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
           return NextResponse.json({ error: 'Payments are not configured yet' }, { status: 503 })
         }
         const base = `${env.NEXT_PUBLIC_APP_URL}/c/${slug}/book/${pageSlug}`
+        // A gated booking that is about to go to Stripe needs somewhere to keep
+        // the answers while the card clears — the webhook has no request body.
+        // The hold does that job, and holds the slot for the payment window at
+        // the same time, which is the one case where losing it costs real money.
+        let paymentHoldId: string | null = null
+        if (gate && pkg) {
+          const held = await createBookingHold({
+            trainerId: trainer.id,
+            clientId: client.id,
+            packageId: pkg.id,
+            bookingPageId: page.id,
+            slotAt,
+            durationMins: pkg.durationMins,
+            bufferMins: pkg.bufferMins,
+            formId: gate.formId,
+            stepId: gate.stepId,
+          })
+          if (!held.ok) {
+            return NextResponse.json({ error: 'That time was just taken — pick another.', code: 'SLOT_TAKEN' }, { status: 409 })
+          }
+          paymentHoldId = held.hold.id
+          await saveHoldAnswers(paymentHoldId, gateAnswers)
+          await extendHoldForPayment(paymentHoldId)
+        }
         const { url } = await createConnectCheckout({
           sandbox,
           trainerId: trainer.id,
@@ -159,6 +222,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
                 singleDurationMins: page.slotLengthMins,
                 singleSessionType: page.sessionType,
                 singleTitle,
+                // Carries the answers across the payment. Only created when
+                // there IS a gate — an ungated booking page keeps exactly the
+                // slot behaviour it has today.
+                holdId: paymentHoldId,
               },
             },
           ],
@@ -173,7 +240,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
 
     // ── Existing client: honour instant-vs-approval (packages only). ──
     if (pkg && page.requiresApproval) {
-      await prisma.bookingRequest.create({
+      const request = await prisma.bookingRequest.create({
         data: {
           trainerId: trainer.id,
           clientId: client.id,
@@ -182,7 +249,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
           bookingPageId: page.id,
           sessionDates: generateSessionDates(slotAt, pkg.sessionCount, pkg.weeksBetween).map(d => d.toISOString()),
         },
+        select: { id: true },
       })
+      // Nothing is booked yet, so the answers hang off the request and are
+      // carried onto the session when the trainer confirms it.
+      if (gate) {
+        await recordBookingAnswers(prisma, {
+          trainerId: trainer.id,
+          clientId: client.id,
+          formId: gate.formId,
+          stepId: gate.stepId,
+          answers: gateAnswers,
+          anchor: { bookingRequestId: request.id },
+        })
+      }
       fireOnBooking(client.user?.email ?? null, client.user?.name ?? 'there', client.dog?.name ?? null)
       return NextResponse.json({ ok: true, mode: 'requested' }, { status: 201 })
     }
@@ -201,6 +281,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       }),
     )
     await safeEvaluate(client.id)
+    // The record of what was said to get this booking, on the session it made.
+    if (gate && sessionIds.length) {
+      await recordBookingAnswers(prisma, {
+        trainerId: trainer.id,
+        clientId: client.id,
+        formId: gate.formId,
+        stepId: gate.stepId,
+        answers: gateAnswers,
+        anchor: { sessionId: sessionIds[0] },
+      })
+    }
     // Best-effort: mirror the booked session(s) onto the trainer's Google Calendar.
     try {
       if (sessionIds.length) {

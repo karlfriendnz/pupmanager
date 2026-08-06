@@ -18,6 +18,7 @@ import { quoteOfferingDiscount, scaleLinesToNet } from '@/lib/discounts/quote'
 import { quoteEnrollmentDiscounts } from '@/lib/discounts/booking-discount'
 import { env } from '@/lib/env'
 import { offeringVisibleRelationWhere } from '@/lib/offering-visibility'
+import { bookingGateFor, gateRefusal, pickGateAnswers, recordBookingAnswers, type GateAnswers } from '@/lib/booking-gate'
 
 // Client self-enrolment into a group class run. Free classes (or trainers not
 // taking payments) enrol straight away; a priced class with payments on is
@@ -52,6 +53,12 @@ const schema = z.object({
   // event, or another trainer, resolves to nothing and is refused.
   ticketTierId: z.string().min(1).nullable().optional(),
   quantity: z.number().int().min(1).max(MAX_TICKET_QUANTITY).optional(),
+  // Answers to the offering's gating form, when it has one. A class has no diary
+  // slot to hold, so unlike a 1:1 there is nothing in flight here — the wizard
+  // collects the answers on its form step and they arrive with the enrolment.
+  answers: z
+    .record(z.string(), z.union([z.string().max(4000), z.array(z.string().max(2000)).max(50)]))
+    .nullish(),
 })
 
 export async function POST(req: Request, { params }: { params: Promise<{ runId: string }> }) {
@@ -177,6 +184,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
   if (dogs.some(d => d && deceasedDogIds.has(d))) {
     return NextResponse.json({ error: 'That dog is marked as deceased and can’t be enrolled.' }, { status: 400 })
   }
+  // ── THE GATE ───────────────────────────────────────────────────────────────
+  //
+  // A FORM step on this run (or on the offering behind it) marked "ask before
+  // they can book" holds up the enrolment. Checked HERE, on the server, against
+  // the form as configured right now — the wizard shows the questions as a step
+  // of its own and that is a courtesy, not enforcement (AGENTS.md bug #3).
+  //
+  // Satisfied only by what THIS request carries. There is no "they answered
+  // when they joined the last course" shortcut, because asking every time is
+  // the point.
+  const gate = await bookingGateFor({ classRunId: runId, packageId: run.packageId })
+  let gateAnswers: GateAnswers = {}
+  if (gate) {
+    gateAnswers = pickGateAnswers(gate, (parsed.data.answers ?? {}) as GateAnswers)
+    const refusal = gateRefusal(gate, gateAnswers)
+    if (refusal) return NextResponse.json(refusal, { status: 400 })
+  }
+
   const dogCount = dogs.length
   // For the "already booked?" queries: match the real dog ids, or the null-dog
   // row when the client is booking without a specific dog.
@@ -295,7 +320,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
       // One line per dog × chosen session, each carrying its own intent — the
       // connect webhook fulfils class lines one at a time, so this fans out into
       // an enrolment per (dog, session) once the payment lands.
-      type Line = { kind: 'CLASS_ENROLLMENT'; description: string; unitAmount: number; quantity: number; intent: { classRunId: string; type: 'FULL' | 'DROP_IN'; dogId: string | null; sessionId: string | null } }
+      // `gate` rides on the FIRST line only. The webhook has no request body to
+      // read the answers out of, and a class booking has no BookingHold to park
+      // them on (there is no diary slot to hold), so the PaymentItem intent —
+      // our own row, not Stripe metadata — carries them across. One line, not
+      // every line: this is one answer set for one booking, and copying it onto
+      // each dog x session would put the same five answers in front of the
+      // trainer six times.
+      type Gate = { formId: string; stepId: string; answers: GateAnswers }
+      type Line = { kind: 'CLASS_ENROLLMENT'; description: string; unitAmount: number; quantity: number; intent: { classRunId: string; type: 'FULL' | 'DROP_IN'; dogId: string | null; sessionId: string | null; gate?: Gate } }
       // A ticketed event bills ONE line for the tickets bought — it must not
       // fan out per dog, or two dogs would double the charge for one ticket.
       const grossLines: Line[] = ticketed && tier
@@ -326,6 +359,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
               intent: { classRunId: runId, type, dogId: dog ?? null, sessionId: null },
             }],
       )
+      if (gate && grossLines.length > 0) {
+        grossLines[0] = {
+          ...grossLines[0],
+          intent: { ...grossLines[0].intent, gate: { formId: gate.formId, stepId: gate.stepId, answers: gateAnswers } },
+        }
+      }
       // Spread the discount across the lines so the total charged (and the
       // platform fee, computed from the line totals) is the discounted net.
       const scaled = scaleLinesToNet(grossLines.map(l => l.unitAmount), discountTotal)
@@ -377,6 +416,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ runId: 
       }
     }
     const result = results[0]
+    // What they answered to get this place. On the FIRST enrolment: one booking
+    // is one answer set, and the next time they book this class they are asked
+    // again — the record is never read back as permission (lib/booking-gate).
+    if (gate && result) {
+      await recordBookingAnswers(prisma, {
+        trainerId: profile.trainerId,
+        clientId: profile.id,
+        formId: gate.formId,
+        stepId: gate.stepId,
+        answers: gateAnswers,
+        anchor: { enrollmentId: result.enrollmentId },
+      })
+    }
     if (payLater) {
       const enrolled = results.filter(r => r.status === 'ENROLLED')
       // The discount has to come off the receivable too. Above, a pay-NOW

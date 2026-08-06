@@ -7,6 +7,8 @@ import { stripeFor, isStripeConfigured } from '@/lib/stripe'
 import { env } from '@/lib/env'
 import { readAccountFlags, stripeProcessingFeeFrom } from '@/lib/connect'
 import { materializeBooking } from '@/lib/booking-page'
+import { recordBookingAnswers, type GateAnswers } from '@/lib/booking-gate'
+import { consumeBookingHold } from '@/lib/booking-holds'
 import { runOnBookingAutomations, formatBookingTime } from '@/lib/booking-automations'
 import { enrollInRun } from '@/lib/class-runs'
 import { fulfilMembershipInTx, enrolMembershipClasses } from '@/lib/memberships'
@@ -39,6 +41,10 @@ interface ScheduledIntent {
   // True for a trainer-issued invoice settling an EXISTING assignment — no new
   // calendar rows are created; the linked ClientPackage is just marked invoiced.
   invoice?: boolean
+  // The slot claim this booking has been sitting on since checkout, carrying
+  // the answers that opened the offering's booking gate. There is no request
+  // body here to read them out of, so the hold is how they cross the payment.
+  holdId?: string | null
 }
 
 // PaymentItem.intent for a paid class enrolment (CLASS_ENROLLMENT).
@@ -48,6 +54,10 @@ interface ClassIntent {
   // The single session a paid DROP_IN is for (null for a FULL seat).
   sessionId?: string | null
   dogId?: string | null
+  // Set on the FIRST line of a gated class booking: what they answered to be
+  // allowed to book. A class has no diary slot and therefore no BookingHold, so
+  // the intent is where its answers live between checkout and fulfilment.
+  gate?: { formId: string; stepId?: string | null; answers: Record<string, string | string[]> } | null
 }
 
 // Connect webhook — SEPARATE from the subscription webhook (/api/webhooks/stripe).
@@ -456,11 +466,26 @@ async function fulfilClassEnrolments(
   const failures: string[] = []
   const enrolledRunIds: string[] = []
   for (const it of items) {
-    const { classRunId, type, dogId, sessionId } = it.intent
+    const { classRunId, type, dogId, sessionId, gate } = it.intent
     if (!classRunId) continue
     try {
       const r = await enrollInRun({ classRunId, clientId, dogId: dogId ?? null, type: type ?? 'FULL', sessionId: sessionId ?? null, source: 'SELF_SERVE' })
       if (r.status === 'ENROLLED') {
+        // The answers that got them past the offering's gate, carried across on
+        // this line's intent since checkout (a class has no diary slot, so no
+        // BookingHold to park them on). Written against the ENROLMENT, which is
+        // what this booking produced — never against the client, or the next
+        // course would let them straight through.
+        if (gate?.formId) {
+          await recordBookingAnswers(prisma, {
+            trainerId,
+            clientId,
+            formId: gate.formId,
+            stepId: gate.stepId ?? null,
+            answers: (gate.answers ?? {}) as GateAnswers,
+            anchor: { enrollmentId: r.enrollmentId },
+          })
+        }
         await prisma.paymentItem.update({ where: { id: it.itemId }, data: { classEnrollmentId: r.enrollmentId } })
         await prisma.classEnrollment.update({ where: { id: r.enrollmentId }, data: { invoicedAt: new Date() } })
         // Raise the receivable and settle it against this payment. The money is
@@ -665,6 +690,32 @@ async function fulfilScheduledBooking(
     // Link the payment to the assignment and stamp the legacy invoiced flag.
     await tx.paymentItem.update({ where: { id: args.itemId }, data: { clientPackageId } })
     await tx.clientPackage.update({ where: { id: clientPackageId }, data: { invoicedAt: args.paidAt } })
+  }
+
+  // The answers that got this booking past the gate have been sitting on the
+  // hold since the form step — written then, not now, so a declined card sends
+  // somebody back to a filled-in form rather than an empty one. This is where
+  // they stop being a claim and become the record on the session.
+  if (intent.holdId) {
+    const hold = await tx.bookingHold.findUnique({
+      where: { id: intent.holdId },
+      select: { id: true, clientId: true, formId: true, stepId: true, answers: true },
+    })
+    // Scoped to the payer: an intent is our own row, but a hold id that belongs
+    // to somebody else must never write answers against this booking.
+    if (hold?.formId && hold.clientId === args.clientId && sessionIds.length) {
+      await recordBookingAnswers(tx, {
+        trainerId: args.trainerId,
+        clientId: args.clientId,
+        formId: hold.formId,
+        stepId: hold.stepId,
+        answers: (hold.answers ?? {}) as GateAnswers,
+        anchor: { sessionId: sessionIds[0] },
+      })
+    }
+    // Done either way — the session now occupies the slot, and a hold left live
+    // beside it would make the trainer's own diary look double-booked.
+    if (hold) await consumeBookingHold(hold.id, tx)
   }
 
   return { booked: true, collided: false, bookingPageId: intent.bookingPageId ?? null, slotAt, sessionIds }
