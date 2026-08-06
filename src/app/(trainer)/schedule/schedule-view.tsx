@@ -1212,7 +1212,12 @@ function WeekGrid({
     // Height-capped internal scroller from `sm:` up, where the shell really is
     // a full-height app frame. On a phone it stays auto-height and the PAGE
     // scrolls — see the grid body below.
-    <div className="flex flex-col bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden sm:h-full">
+    //
+    // overflow-CLIP, not hidden: it still clips to the rounded corners, but it
+    // does NOT become a scroll container — and `hidden` here is what pinned the
+    // sticky day-header row 41px too low (it resolved its `top` against this
+    // card instead of the page, leaving a strip of grid showing above it).
+    <div className="flex flex-col bg-white rounded-2xl border border-slate-100 shadow-sm overflow-clip sm:h-full">
       {/* Mobile 3-day window navigator — sits above the day headers so the
           trainer can step through the week in 3-day chunks. The week-level
           date nav (in the page header) still moves between weeks. Hidden
@@ -1250,8 +1255,21 @@ function WeekGrid({
         </div>
       )}
 
-      {/* Day headers */}
-      <div className="grid border-b border-slate-100 flex-shrink-0" style={{ gridTemplateColumns: `48px repeat(${visibleDays.length}, 1fr)` }}>
+      {/* Day headers.
+          Sticky directly under the control bar, so the day you are looking at
+          keeps its name and date while the hours scroll past (Karl). It cannot
+          use a fixed `top`: the control bar is flex-wrap, so its height changes
+          with the window — --pm-sched-stick is measured from the bar itself (its stuck top plus
+          its height), so it cannot drift from wherever the bar actually lands.
+          bg-white because the grid must not show through it once it is stuck,
+          and z-20 keeps it UNDER the control bar (z-30) rather than over it. */}
+      <div
+        className="grid border-b border-slate-100 flex-shrink-0 sticky z-20 bg-white"
+        style={{
+          gridTemplateColumns: `48px repeat(${visibleDays.length}, 1fr)`,
+          top: 'var(--pm-sched-stick, 0px)',
+        }}
+      >
         <div className="border-r border-slate-100" />
         {visibleDays.map((d) => {
           const ds = toDateStr(d)
@@ -3925,6 +3943,34 @@ export function ScheduleView({
   // grid's per-day counts) consumes `visibleSessions`, while drag-drop, drop
   // conflict checks and the booking-request preview keep using whole-company
   // `sessions` so clashes are never hidden by the view filter.
+  // How tall the control bar currently is, published as a CSS variable so the
+  // day-header row can stick directly beneath it. Measured rather than assumed:
+  // the bar is flex-wrap, so it becomes two lines on a narrow window and any
+  // constant would leave the dates either floating or tucked underneath it.
+  const controlBarRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = controlBarRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const publish = () => {
+      // Where the bar's BOTTOM lands once it is stuck = the `top` it sticks at
+      // (its own computed style, which resolves --app-top-offset for us) plus
+      // its height. Composing those two variables in CSS looked right and was
+      // 40px out, because the offset the bar actually resolves is not the one
+      // the day row would have read. Reading it back off the element cannot
+      // drift.
+      const stuckTop = parseFloat(getComputedStyle(el).top) || 0
+      const h = el.getBoundingClientRect().height
+      document.documentElement.style.setProperty('--pm-sched-stick', `${Math.round(stuckTop + h)}px`)
+    }
+    publish()
+    const ro = new ResizeObserver(publish)
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      document.documentElement.style.removeProperty('--pm-sched-stick')
+    }
+  }, [])
+
   const showMemberSwitcher = canViewAllSchedule && members.length > 1
   const hasUnassignedSessions = sessions.some(s => s.assignedMembershipId == null)
   const visibleSessions = showMemberSwitcher
@@ -3949,6 +3995,7 @@ export function ScheduleView({
     <div className="flex flex-col sm:h-full">
       {/* ── Header (title + date nav on the left, controls on the right) ────── */}
       <div
+        ref={controlBarRef}
         // `relative` on phones: now that the PAGE scrolls, a second sticky bar
         // at top:0 would sit underneath the shell's own sticky mobile header
         // (z-40) and simply disappear. It was never actually sticky on a phone
@@ -4244,7 +4291,13 @@ export function ScheduleView({
 
 
       {/* ── Main content ─────────────────────────────────────────────────────── */}
-      <div className="px-4 md:px-6 py-4 sm:flex-1 sm:overflow-hidden">
+      {/* overflow-CLIP, not overflow-hidden. Both clip the same way, but
+          `hidden` makes this a scroll container, and a sticky descendant then
+          resolves its `top` against THIS box instead of the page — which is why
+          the day-header row landed 41px below the control bar with a strip of
+          grid showing through the gap. `clip` creates no scroll container, so
+          the dates stick where they are told. */}
+      <div className="px-4 md:px-6 py-4 sm:flex-1 sm:overflow-clip">
         {view !== 'agenda' ? (
           <WeekGrid
             weekDays={weekDays}
