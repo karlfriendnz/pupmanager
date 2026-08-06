@@ -30,7 +30,11 @@ export function RowImagePicker({
 }) {
   if (value) {
     return (
-      <span className="relative inline-block shrink-0">
+      // A fixed 40px slot in BOTH states. The empty state is ImageUploadButton,
+      // a 36px circle, and the filled state a 40px square — so down a column of
+      // rows the control jumped size and shape depending on whether a picture
+      // had been set. The slot keeps the column straight.
+      <span className="relative flex h-10 w-10 shrink-0 items-center justify-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={value} alt="" className="h-10 w-10 rounded-lg border border-slate-200 object-cover" />
         {!disabled && (
@@ -51,9 +55,14 @@ export function RowImagePicker({
       </span>
     )
   }
-  if (disabled) return null
+  // Still occupies the slot when there is nothing to show and nothing to do,
+  // so a read-only row lines up with an editable one above it.
+  if (disabled) return <span className="h-10 w-10 shrink-0" aria-hidden />
   return (
-    <span className="shrink-0" aria-label={`Add a picture for ${label}`}>
+    <span
+      className="flex h-10 w-10 shrink-0 items-center justify-center"
+      aria-label={`Add a picture for ${label}`}
+    >
       <ImageUploadButton onUploaded={urls => { if (urls[0]) onChange(urls[0]) }} />
     </span>
   )

@@ -206,7 +206,9 @@ function LabelRow({
   // client's booking tile), so the accessible name has to say which is which.
   const ariaName = entry.hint ? `${entry.defaultLabel} — ${entry.hint}` : entry.defaultLabel
   return (
-    <div className="flex items-center gap-3 px-4 py-3">
+    // py-3.5 rather than py-3: the remove badge sits proud of the thumbnail's
+    // top-right corner, and at py-3 it grazed the hairline above the row.
+    <div className="flex items-center gap-3 px-4 py-3.5">
       <span className="min-w-0 basis-1/3 sm:basis-1/4">
         <span className="block truncate text-sm font-medium text-slate-900">{entry.defaultLabel}</span>
         {note && <span className="mt-0.5 block text-[11px] text-slate-500">{note}</span>}
@@ -224,13 +226,18 @@ function LabelRow({
       {/* The picture your clients see on this row when they open the booking
           screen. Nothing here means it keeps borrowing one off the first thing
           inside it, which is what it has always done. */}
-      {imageable && (
+      {imageable ? (
         <RowImagePicker
           value={imageUrl}
           onChange={url => onEditImage(entry.key, url)}
           label={ariaName}
           disabled={!canEdit}
         />
+      ) : (
+        // Most rows are menu items a client never sees as a picture, so they
+        // hold the slot empty rather than letting the reset button slide left
+        // and leave the column ragged.
+        <span className="h-10 w-10 shrink-0" aria-hidden />
       )}
       {/* Only where there's something to undo — a row of dead buttons down the
           side is noise. */}

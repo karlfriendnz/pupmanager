@@ -128,10 +128,10 @@ button, a, [role="button"] {
 }
 
 /* The invisible hit area the note above asks for: the ink stays 20px, the thumb
-   still gets its 44px. */
-.pm-corner-badge {
-  position: relative;
-}
+   still gets its 44px.
+   No `position` here — the badge is positioned by its own utility class, and
+   setting it in this rule beat Tailwind's `absolute` on source order, which
+   dropped the badge out of the corner and below the thumbnail. */
 .pm-corner-badge::before {
   content: '';
   position: absolute;
