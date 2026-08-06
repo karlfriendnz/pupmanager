@@ -6,8 +6,7 @@ import { Loader2, Plus, X } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/card'
 import { EditScreen } from '@/components/shared/edit-screen'
 import { formatDate } from '@/lib/utils'
-import { ProductPickerModal } from './product-picker-modal'
-import type { HandedOverRequest, PendingProductRequest, ShopProduct } from './client-profile-types'
+import type { HandedOverRequest, PendingProductRequest } from './client-profile-types'
 
 /**
  * A client's products, as a page of their own (Karl, 2026-08-06: "nah i think
@@ -31,25 +30,24 @@ import type { HandedOverRequest, PendingProductRequest, ShopProduct } from './cl
  * strip inside a section page would be the tabs we have just spent the day
  * taking out.
  *
- * `Add product` opens the app's existing picker (ProductPickerModal, lifted off
- * the profile with this list) and POSTs to the same route it always did.
+ * `Add product` is a PAGE, not a sheet (Karl: "should be a page") — see
+ * `[section]/add/page.tsx`. It POSTs to the same route it always did.
  */
 export function ClientProductsSection({
   clientId,
-  products,
+  hasProducts,
   pending: initialPending,
   handedOver,
   canEdit,
 }: {
   clientId: string
-  /** The trainer's shop, for the picker. Empty for a read-only co-manager. */
-  products: ShopProduct[]
+  /** The trainer has a shop to pick from — gates the Add product action. */
+  hasProducts: boolean
   pending: PendingProductRequest[]
   handedOver: HandedOverRequest[]
   canEdit: boolean
 }) {
   const [pending, setPending] = useState(initialPending)
-  const [pickerOpen, setPickerOpen] = useState(false)
   const [busyRequestId, setBusyRequestId] = useState<string | null>(null)
 
   async function dismissRequest(requestId: string) {
@@ -71,27 +69,6 @@ export function ClientProductsSection({
     }
   }
 
-  async function addProductRequest(productId: string, variantId: string | null) {
-    const res = await fetch(`/api/clients/${clientId}/product-requests`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ productId, variantId }),
-    })
-    if (!res.ok) return
-    const created = await res.json()
-    const product = products.find(p => p.id === productId)
-    if (!product) return
-    const variant = product.variants?.find(v => v.id === variantId) ?? null
-    setPending(prev => {
-      if (prev.some(r => r.id === created.id)) return prev
-      return [...prev, {
-        id: created.id,
-        note: created.note ?? null,
-        variant: variant ? { id: variant.id, name: variant.name } : null,
-        product: { id: product.id, name: product.name, kind: product.kind, imageUrl: product.imageUrl },
-      }]
-    })
-  }
 
   const body = (
     <div className="flex flex-col gap-6">
@@ -128,7 +105,7 @@ export function ClientProductsSection({
               ))}
             </div>
           )}
-          {canEdit && products.length === 0 && (
+          {canEdit && !hasProducts && (
             // The one empty state worth keeping: it is not about this client at
             // all, and the fix is on another screen.
             <p className="mt-3 text-sm text-slate-400">
@@ -160,29 +137,19 @@ export function ClientProductsSection({
     </div>
   )
 
-  if (!canEdit || products.length === 0) return body
+  if (!canEdit || !hasProducts) return body
 
   return (
     <EditScreen
       primary={{
         label: 'Add product',
         icon: <Plus className="h-4 w-4" strokeWidth={1.75} />,
-        onClick: () => setPickerOpen(true),
+        // A PAGE, not a sheet (Karl: "should be a page"). Its own route under
+        // the client, with the same chrome as every other screen in here.
+        href: `/clients/${clientId}/products/add`,
       }}
     >
       {body}
-      {pickerOpen && (
-        <ProductPickerModal
-          products={products}
-          // A varianted product is "added" per OPTION, so the two sets are
-          // separate: the product row only greys out for things sold as one
-          // thing. A client can have the Small and then also want the Large.
-          requestedIds={new Set(pending.filter(r => !r.variant).map(r => r.product.id))}
-          requestedVariantIds={new Set(pending.map(r => r.variant?.id).filter((id): id is string => !!id))}
-          onClose={() => setPickerOpen(false)}
-          onPick={async (id, variantId) => { await addProductRequest(id, variantId) }}
-        />
-      )}
     </EditScreen>
   )
 }

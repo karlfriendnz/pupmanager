@@ -337,7 +337,7 @@ export default async function ClientSectionPage({
     case 'products': {
       // What to hand over next time, and what already has been. Both are
       // ProductRequest rows — PENDING and FULFILLED — so it is one query.
-      const [requests, products] = await Promise.all([
+      const [requests, productCount] = await Promise.all([
         prisma.productRequest.findMany({
           where: { clientId, status: { in: ['PENDING', 'FULFILLED'] } },
           orderBy: [{ fulfilledAt: 'desc' }, { createdAt: 'asc' }],
@@ -347,23 +347,8 @@ export default async function ClientSectionPage({
             product: { select: { id: true, name: true, kind: true, imageUrl: true } },
           },
         }),
-        canEdit
-          ? prisma.product.findMany({
-              // No `active` filter — the trainer can add ANY of their products
-              // to a client, even hidden ones; the picker badges them.
-              where: { trainerId: clientAccess.trainerId },
-              orderBy: [{ category: 'asc' }, { order: 'asc' }, { createdAt: 'desc' }],
-              select: {
-                id: true, name: true, kind: true, priceCents: true, salePriceCents: true,
-                imageUrl: true, category: true, active: true,
-                variants: {
-                  where: { active: true },
-                  orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
-                  select: { id: true, name: true, priceCents: true, salePriceCents: true, stockCount: true },
-                },
-              },
-            })
-          : Promise.resolve([]),
+        // Counted, not loaded: the catalogue belongs to the Add product PAGE.
+        canEdit ? prisma.product.count({ where: { trainerId: clientAccess.trainerId } }) : Promise.resolve(0),
       ])
       const shape = (r: typeof requests[number]) => ({
         id: r.id,
@@ -380,12 +365,7 @@ export default async function ClientSectionPage({
         <ClientProductsSection
           clientId={clientId}
           canEdit={canEdit}
-          products={products.map(p => ({
-            id: p.id, name: p.name, kind: p.kind as 'PHYSICAL' | 'DIGITAL',
-            priceCents: p.priceCents, salePriceCents: p.salePriceCents,
-            imageUrl: p.imageUrl, category: p.category, active: p.active,
-            variants: p.variants,
-          }))}
+          hasProducts={productCount > 0}
           pending={requests.filter(r => r.status === 'PENDING').map(shape)}
           handedOver={requests.filter(r => r.status === 'FULFILLED').map(r => ({
             ...shape(r),
