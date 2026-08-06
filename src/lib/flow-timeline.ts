@@ -231,17 +231,141 @@ export function flowStageAdd(stage: FlowStageKey, anchor: FlowAnchor): FlowStage
       // which is also the app's long-standing default.
       return { seed: { direction: 'BEFORE_SESSION', offsetMinutes: 1440 } }
     case 'AFTER_SESSION':
-      return { seed: { direction: 'AFTER_SESSION' } }
+      return { seed: { direction: 'AFTER_SESSION', offsetMinutes: 1440 } }
     case 'AFTER_SIGNUP':
       return { seed: { direction: 'AFTER_PURCHASE', offsetMinutes: 0 } }
     case 'BEFORE_RENEWAL':
-      return { seed: { direction: 'BEFORE_PERIOD_END' } }
+      return { seed: { direction: 'BEFORE_PERIOD_END', offsetMinutes: 1440 } }
     default: {
       const unhandled: never = stage
       void unhandled
       return { seed: {} }
     }
   }
+}
+
+/**
+ * Everything a step must be patched with to MOVE to another stage.
+ *
+ * The sheet no longer asks which stage a step is in — it is added from one
+ * (Karl: "i dont think we need this now that we have our add steps right?").
+ * That makes this the only escape from a step added under the wrong heading, and
+ * without it one would be stuck there for ever with nothing but delete-and-add.
+ *
+ * Deliberately the SAME seed "Add step" uses, so a moved step and a newly added
+ * one land in identical shape — plus an explicit `gatesBooking: false` first, so
+ * moving OUT of the booking gate takes the gate down with it. The seed puts it
+ * back on when the destination IS the gate.
+ */
+export function flowStageMove(
+  stage: FlowStageKey,
+  anchor: FlowAnchor,
+): { direction?: string; offsetMinutes?: number; gatesBooking: boolean } {
+  return { gatesBooking: false, ...flowStageAdd(stage, anchor).seed }
+}
+
+/** Can this step be moved into that stage at all? A stage that only holds forms
+ *  cannot hold a message, and offering the move would be offering a no-op. */
+export function canMoveStepToStage(kind: FlowStepKind, stage: FlowStageKey, anchor: FlowAnchor): boolean {
+  const { kinds } = flowStageAdd(stage, anchor)
+  return !kinds || kinds.includes(kind)
+}
+
+// ─── WHEN, within a stage ───────────────────────────────────────────────────
+//
+// One control, not two. The stage says WHICH part of the flow a step is in; this
+// says when INSIDE it — and the two used to be asked separately, which produced
+// the sentence "Sends right on before".
+//
+// So the list below is (direction, offsetMinutes) PAIRS, and picking one sets
+// both. That is what lets the "During the session" stage offer a run-up reminder
+// and the session itself from the same box: they are two directions, but from
+// the trainer's chair they are one question with one answer.
+
+/** One choice in a stage's WHEN list. The label is `flowStepWhenText`'s, so the
+ *  option a trainer picks and the line the row shows are the same words. */
+export interface FlowTimingOption {
+  direction: string
+  offsetMinutes: number
+}
+
+const BEFORE_OFFSETS = [10080, 4320, 2880, 1440, 120, 60, 30, 15, 0]
+const AFTER_OFFSETS = [0, 15, 30, 60, 120, 1440, 2880, 4320, 10080]
+
+/**
+ * The timings a stage offers, earliest first.
+ *
+ * Empty means the stage has no timing to choose: the booking gate is answered
+ * while somebody is tapping Confirm, and a journey's steps are unlocked by the
+ * one before rather than by a clock.
+ */
+export function flowTimingOptions(stage: FlowStageKey, anchor: FlowAnchor): FlowTimingOption[] {
+  if (anchor === 'PERSON') return []
+  switch (stage) {
+    case 'BEFORE_CONFIRM':
+      return []
+    case 'ON_ENROLMENT':
+      // 0 first and 0 by default — the case this stage exists for is a
+      // thank-you, and a thank-you is sent straight away.
+      return AFTER_OFFSETS.map(min => ({ direction: 'ON_ENROLMENT', offsetMinutes: min }))
+    case 'DURING_SESSION':
+      // The run-up, counted down to the start, and then the session itself —
+      // which is a WINDOW and carries no offset of its own (see the enum).
+      return [
+        ...BEFORE_OFFSETS.map(min => ({ direction: 'BEFORE_SESSION', offsetMinutes: min })),
+        { direction: 'DURING_SESSION', offsetMinutes: 0 },
+      ]
+    case 'AFTER_SESSION':
+      return AFTER_OFFSETS.map(min => ({ direction: 'AFTER_SESSION', offsetMinutes: min }))
+    case 'AFTER_SIGNUP':
+      return AFTER_OFFSETS.map(min => ({ direction: 'AFTER_PURCHASE', offsetMinutes: min }))
+    case 'BEFORE_RENEWAL':
+      // A renewal warning with no lead time would arrive as the card is charged,
+      // which is not a warning — so this one starts at 15 minutes, not at zero.
+      return BEFORE_OFFSETS.filter(min => min > 0).map(min => ({ direction: 'BEFORE_PERIOD_END', offsetMinutes: min }))
+    default: {
+      const unhandled: never = stage
+      void unhandled
+      return []
+    }
+  }
+}
+
+/**
+ * The stage's list with the step's CURRENT timing guaranteed to be in it.
+ *
+ * A saved step may hold a value the list does not offer — 45 minutes typed by an
+ * older build, or a lead time left over from before it was moved. A `<select>`
+ * whose value matches no option shows the FIRST one instead, so the box would
+ * say "1 week before" about a step that fires in 45 minutes. That exact bug is
+ * why `OFFSETS` has a zero entry; this is the general form of the fix.
+ */
+export function flowTimingOptionsFor(
+  step: { direction: string; offsetMinutes: number },
+  stage: FlowStageKey,
+  anchor: FlowAnchor,
+): FlowTimingOption[] {
+  const options = flowTimingOptions(stage, anchor)
+  if (options.length === 0) return options
+  const has = options.some(o => o.direction === step.direction && o.offsetMinutes === step.offsetMinutes)
+  // A DURING_SESSION step's offsetMinutes is inert, so it matches on direction
+  // alone — otherwise a stale "1440" on one would add a duplicate row reading
+  // "While the session is on".
+  if (has || step.direction === 'DURING_SESSION') return options
+  return [{ direction: step.direction, offsetMinutes: step.offsetMinutes }, ...options]
+}
+
+/**
+ * One timing, as a `<select>` value.
+ *
+ * DURING_SESSION keys on its direction ALONE, because its offsetMinutes is inert
+ * (the column keeps whatever the step held before it was switched, on purpose,
+ * so switching back restores the trainer's lead time). Keying it on the pair
+ * would leave a step holding `DURING_SESSION` + a stale `1440` matching no
+ * option, and a select with no matching value silently shows the first one.
+ */
+export function flowTimingKey(t: { direction: string; offsetMinutes: number }): string {
+  return t.direction === 'DURING_SESSION' ? 'DURING_SESSION' : `${t.direction}:${t.offsetMinutes}`
 }
 
 export interface FlowStageGroup<T> {

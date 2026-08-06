@@ -706,23 +706,11 @@ export function withDefaults(partial: Partial<StepFields>): StepFields {
   return { ...defaultsForKind(partial.kind ?? 'MESSAGE'), ...partial }
 }
 
-/**
- * The lead time a direction STARTS on when a trainer switches a step to it — or
- * null for the directions that keep whatever the step already holds.
- *
- * Only ON_ENROLMENT answers. A welcome is the headline case for it (Karl: "its
- * for things like a thank you message etc") and a thank-you that arrives
- * tomorrow is not a thank-you, so inheriting the 1-day default the session
- * reminders carry would be wrong every time. Every other direction returns null
- * deliberately: switching a step from "1 day before" to "during" and back has
- * always restored the trainer's day, and this must not quietly change that.
- *
- * A rule rather than a column — `offsetMinutes` still means the same thing, and
- * the trainer can pick any of the offsets the select offers.
- */
-export function defaultOffsetForDirection(direction: string): number | null {
-  return direction === 'ON_ENROLMENT' ? 0 : null
-}
+// NOTE: the lead time a step STARTS on now belongs to its STAGE, not to its
+// direction — see `flowStageAdd` in lib/flow-timeline.ts. The sheet no longer
+// lets a trainer switch direction (a step is added into a stage instead), so
+// there is no "switching to this direction" moment left for a per-direction
+// default to describe.
 
 // A membership has no sessions, so its steps count from the client's purchase.
 // Same shape, different anchor + copy.

@@ -7,13 +7,18 @@ import {
   flowStagesFor,
   flowStageOf,
   flowStageAdd,
+  flowStageMove,
+  flowTimingOptions,
+  flowTimingOptionsFor,
+  flowTimingKey,
+  canMoveStepToStage,
   groupStepsByStage,
   reorderFlowSteps,
   type FlowStageKey,
   type StageableStep,
 } from '@/lib/flow-timeline'
 import type { FlowAnchor } from '@/lib/flow-anchors'
-import { commsTimelinePos, sortStepsByTime, defaultOffsetForDirection } from '@/lib/comms-flow-steps'
+import { commsTimelinePos, sortStepsByTime } from '@/lib/comms-flow-steps'
 import { flowStepWhenText, type SummarisableStep } from '@/lib/flow-step-summary'
 import {
   FLOW_OWNER_PERMISSION,
@@ -387,12 +392,27 @@ describe('adding a step from a stage heading', () => {
   })
 
   it('starts a "when they enrol" step straight away, not a day later', () => {
-    // A thank-you that arrives tomorrow is not a thank-you (Karl). Every other
-    // direction keeps whatever lead time the step already held.
-    expect(flowStageAdd('ON_ENROLMENT', 'SESSION').seed.offsetMinutes).toBe(0)
-    expect(defaultOffsetForDirection('ON_ENROLMENT')).toBe(0)
-    for (const d of ['BEFORE_SESSION', 'DURING_SESSION', 'AFTER_SESSION', 'AFTER_PURCHASE', 'BEFORE_PERIOD_END']) {
-      expect(defaultOffsetForDirection(d), d).toBeNull()
+    // A thank-you that arrives tomorrow is not a thank-you (Karl).
+    expect(flowStageAdd('ON_ENROLMENT', 'SESSION').seed).toEqual({ direction: 'ON_ENROLMENT', offsetMinutes: 0 })
+    // A follow-up is not the same shape: "right as it ends" is a poor default
+    // for one, so the run-up and the follow-up both start a day out.
+    expect(flowStageAdd('DURING_SESSION', 'SESSION').seed).toEqual({ direction: 'BEFORE_SESSION', offsetMinutes: 1440 })
+    expect(flowStageAdd('AFTER_SESSION', 'SESSION').seed).toEqual({ direction: 'AFTER_SESSION', offsetMinutes: 1440 })
+  })
+
+  it('every stage a step can be added to starts on a timing that stage offers', () => {
+    // Otherwise the WHEN select opens on a value matching no option, and a
+    // select with no matching value silently shows the FIRST one.
+    for (const anchor of ANCHORS) {
+      for (const stage of flowStagesFor(anchor)) {
+        const seed = flowStageAdd(stage.key, anchor).seed
+        const options = flowTimingOptions(stage.key, anchor)
+        if (options.length === 0 || seed.direction === undefined) continue
+        expect(
+          options.some(o => o.direction === seed.direction && o.offsetMinutes === seed.offsetMinutes),
+          `${anchor} / ${stage.key}`,
+        ).toBe(true)
+      }
     }
   })
 
@@ -416,6 +436,163 @@ describe('adding a step from a stage heading', () => {
     expect(editor).toContain('stages.every(g => !g.stage)')
     // The starter stays at the bottom — it fills every stage, not one.
     expect(editor).toContain('Use starter reminders')
+  })
+})
+
+// Karl, once every heading had its own Add step: "i dont think we need this now
+// that we have our add steps right?" — so the sheet stopped asking which stage a
+// step is in. Which makes the per-stage Add buttons load-bearing, and makes a
+// way OUT of the wrong stage mandatory.
+describe('moving a step to another stage', () => {
+  const ANCHORS: FlowAnchor[] = ['SESSION', 'PERSON', 'PURCHASE']
+
+  it('renders the moved step under the new heading', () => {
+    for (const anchor of ANCHORS) {
+      for (const from of flowStagesFor(anchor)) {
+        for (const to of flowStagesFor(anchor)) {
+          if (!canMoveStepToStage('MESSAGE', to.key, anchor)) continue
+          const before: StageableStep = {
+            trigger: anchor === 'PERSON' ? 'ON_ENQUIRY_SUBMITTED' : null,
+            gatesBooking: false,
+            direction: 'BEFORE_SESSION',
+            ...flowStageAdd(from.key, anchor).seed,
+          }
+          const after = { ...before, ...flowStageMove(to.key, anchor) }
+          expect(flowStageOf(after), `${anchor}: ${from.key} → ${to.key}`).toBe(to.key)
+          const groups = groupStepsByStage([{ ...after, id: 'moved', order: 0 }], anchor)
+          expect(groups.find(g => g.steps.length === 1)?.stage?.key).toBe(to.key)
+        }
+      }
+    }
+  })
+
+  it('takes the booking gate down on the way out, and puts it back on the way in', () => {
+    // Moving out of "Before they confirm" without clearing gatesBooking would
+    // leave the step reading as a gate for ever — flowStageOf answers it first.
+    const gate: StageableStep = { gatesBooking: true, trigger: null, direction: 'BEFORE_SESSION' }
+    const moved = { ...gate, ...flowStageMove('AFTER_SESSION', 'SESSION') }
+    expect(moved.gatesBooking).toBe(false)
+    expect(flowStageOf(moved)).toBe('AFTER_SESSION')
+
+    const back = { ...moved, ...flowStageMove('BEFORE_CONFIRM', 'SESSION') }
+    expect(back.gatesBooking).toBe(true)
+    expect(flowStageOf(back)).toBe('BEFORE_CONFIRM')
+  })
+
+  it('lands the moved step on a timing that still makes sense', () => {
+    // Not the lead time it happened to hold. A "1 day before" reminder moved to
+    // the follow-up must not become "1 day before" of nothing.
+    const reminder: SummarisableStep = {
+      kind: 'MESSAGE', actor: 'CLIENT', trigger: null, blocking: false, channels: ['PUSH'],
+      title: 'x', body: 'y', direction: 'BEFORE_SESSION', offsetMinutes: 1440,
+    }
+    expect(flowStepWhenText({ ...reminder, ...flowStageMove('ON_ENROLMENT', 'SESSION') })).toBe('When they enrol')
+    expect(flowStepWhenText({ ...reminder, ...flowStageMove('AFTER_SESSION', 'SESSION') })).toBe('1 day after')
+  })
+
+  it('never offers a stage the step could not be', () => {
+    // Only a form can hold up a booking — the server refuses gatesBooking on
+    // anything else, so the move would be a no-op that looked like it worked.
+    expect(canMoveStepToStage('MESSAGE', 'BEFORE_CONFIRM', 'SESSION')).toBe(false)
+    expect(canMoveStepToStage('TASK', 'BEFORE_CONFIRM', 'SESSION')).toBe(false)
+    expect(canMoveStepToStage('FORM', 'BEFORE_CONFIRM', 'SESSION')).toBe(true)
+    // Everything can be anywhere else — the stages are scaffolding, not slots.
+    for (const stage of ['ON_ENROLMENT', 'DURING_SESSION', 'AFTER_SESSION'] as FlowStageKey[]) {
+      expect(canMoveStepToStage('MESSAGE', stage, 'SESSION'), stage).toBe(true)
+    }
+  })
+
+  it('offers it in the sheet footer, beside Delete', () => {
+    const editor = file('src/components/trainer/comms-flow-editor.tsx')
+    expect(editor).toContain('flowStageMove(to.key, anchor)')
+    expect(editor).toContain('Move to…')
+    expect(editor).toContain('canMoveStepToStage')
+  })
+})
+
+// The sheet asks WHEN INSIDE the stage, and nothing else. One control, because
+// two produced the sentence "Sends right on before".
+describe('the WHEN list, inside a stage', () => {
+  const asStep = (t: { direction: string; offsetMinutes: number }): SummarisableStep => ({
+    kind: 'MESSAGE', actor: 'CLIENT', trigger: null, blocking: false,
+    channels: ['PUSH'], title: 'x', body: 'y', ...t,
+  })
+
+  it('offers the run-up AND the session itself from one list', () => {
+    // Two directions, one question. Without this the "During the session" stage
+    // could only ever hold whatever it was seeded with.
+    const options = flowTimingOptions('DURING_SESSION', 'SESSION')
+    expect(options.map(o => o.direction)).toContain('BEFORE_SESSION')
+    expect(options[options.length - 1]).toEqual({ direction: 'DURING_SESSION', offsetMinutes: 0 })
+    // Earliest first, the same order the timeline draws them in.
+    const positions = options.map(o => commsTimelinePos(o))
+    expect([...positions].sort((a, b) => a - b)).toEqual(positions)
+  })
+
+  it('reads as a whole sentence for every stage', () => {
+    // "Sends right on before" is what two controls produced. Each option is a
+    // complete answer to "when", phrased by the one tested function.
+    for (const anchor of ['SESSION', 'PURCHASE'] as FlowAnchor[]) {
+      for (const stage of flowStagesFor(anchor)) {
+        for (const t of flowTimingOptions(stage.key, anchor)) {
+          const words = flowStepWhenText(asStep(t))
+          const where = `${stage.key} ${t.direction}/${t.offsetMinutes}`
+          expect(words, where).toBeTruthy()
+          // A complete answer: never "0 min", never a bare "right on" that only
+          // made sense with a segmented button sitting beside it.
+          expect(words, where).not.toMatch(/^0\b/)
+          expect(words, where).not.toMatch(/^right on/i)
+          expect(words[0], where).toBe(words[0].toUpperCase())
+        }
+      }
+    }
+    // The specific ones a trainer reads most.
+    expect(flowStepWhenText(asStep({ direction: 'ON_ENROLMENT', offsetMinutes: 0 }))).toBe('When they enrol')
+    expect(flowStepWhenText(asStep({ direction: 'BEFORE_SESSION', offsetMinutes: 0 }))).toBe('When the session starts')
+    expect(flowStepWhenText(asStep({ direction: 'DURING_SESSION', offsetMinutes: 0 }))).toBe('While the session is on')
+    expect(flowStepWhenText(asStep({ direction: 'AFTER_SESSION', offsetMinutes: 0 }))).toBe('When the session ends')
+  })
+
+  it('has nothing to choose where there is no clock', () => {
+    // A gate is answered while somebody is tapping Confirm; a journey's steps
+    // are unlocked by the one before.
+    expect(flowTimingOptions('BEFORE_CONFIRM', 'SESSION')).toEqual([])
+    expect(flowTimingOptions('BEFORE_CONFIRM', 'PERSON')).toEqual([])
+  })
+
+  it('never warns about a renewal at the instant it renews', () => {
+    expect(flowTimingOptions('BEFORE_RENEWAL', 'PURCHASE').every(o => o.offsetMinutes > 0)).toBe(true)
+  })
+
+  it('keeps a saved value the list does not offer, rather than showing the wrong one', () => {
+    // A select whose value matches no option shows the FIRST one instead — the
+    // box would read "1 week before" about a step that fires in 45 minutes.
+    const odd = { direction: 'BEFORE_SESSION', offsetMinutes: 45 }
+    const options = flowTimingOptionsFor(odd, 'DURING_SESSION', 'SESSION')
+    expect(options[0]).toEqual(odd)
+    expect(options.some(o => flowTimingKey(o) === flowTimingKey(odd))).toBe(true)
+  })
+
+  it('matches a "during" step on its direction alone — its offset is inert', () => {
+    // The column deliberately keeps whatever lead time the step held before it
+    // was switched, so switching back restores it. Keying on the pair would
+    // leave a DURING_SESSION step matching no option at all.
+    const stale = { direction: 'DURING_SESSION', offsetMinutes: 1440 }
+    expect(flowTimingKey(stale)).toBe('DURING_SESSION')
+    expect(flowTimingKey({ direction: 'DURING_SESSION', offsetMinutes: 0 })).toBe('DURING_SESSION')
+    const options = flowTimingOptionsFor(stale, 'DURING_SESSION', 'SESSION')
+    expect(options.filter(o => o.direction === 'DURING_SESSION')).toHaveLength(1)
+    expect(options.some(o => flowTimingKey(o) === flowTimingKey(stale))).toBe(true)
+  })
+
+  it('is the ONLY timing control left in the sheet', () => {
+    const editor = file('src/components/trainer/comms-flow-editor.tsx')
+    const sheet = editor.slice(editor.indexOf('function StepSheet('))
+    // The segmented stage buttons are gone (Karl). What is left is one select
+    // keyed by flowTimingKey.
+    expect(sheet).not.toMatch(/'BEFORE_SESSION', 'DURING_SESSION', 'AFTER_SESSION'/)
+    expect(sheet).toContain('flowTimingKey(draft)')
+    expect(sheet).toContain('flowTimingOptionsFor')
   })
 })
 

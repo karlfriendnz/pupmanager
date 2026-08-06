@@ -82,10 +82,24 @@ import {
   type FlowStepActor,
 } from '@/lib/comms-flow-steps'
 import { canWaitForCompletion } from '@/lib/flow-anchors'
-import { canGateBooking, defaultOffsetForDirection } from '@/lib/comms-flow-steps'
-import { groupStepsByStage, flowStageAdd, reorderFlowSteps, type FlowStageAdd } from '@/lib/flow-timeline'
+import { canGateBooking } from '@/lib/comms-flow-steps'
+import {
+  groupStepsByStage,
+  flowStageAdd,
+  flowStageMove,
+  flowStageOf,
+  flowStagesFor,
+  flowTimingKey,
+  flowTimingOptionsFor,
+  canMoveStepToStage,
+  reorderFlowSteps,
+  type FlowStageAdd,
+  type StageableStep,
+} from '@/lib/flow-timeline'
+import type { FlowAnchor } from '@/lib/flow-anchors'
 import {
   flowStepSummary,
+  flowStepWhenText,
   flowStepKindsFor,
   FLOW_STEP_KIND_CATALOG,
   type FlowStepNames,
@@ -1073,6 +1087,15 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
   const audienceHint = AUDIENCES.find(a => a.key === draft.audience)?.hint
   const kindLabel = FLOW_STEP_KIND_CATALOG.find(k => k.kind === draft.kind)?.label ?? 'Step'
 
+  // Which stage this step is in, and when inside it. Derived, both of them —
+  // there is no stage column and the sheet does not send one.
+  const anchor: FlowAnchor = sequenced ? 'PERSON' : isMembership ? 'PURCHASE' : 'SESSION'
+  const stage = flowStageOf(draft as StageableStep)
+  const timings = flowTimingOptionsFor(draft, stage, anchor)
+  // Where it could go instead. A stage that only holds forms is not offered to a
+  // message, and a flow with one stage has nowhere to move to.
+  const moveTo = flowStagesFor(anchor).filter(s => s.key !== stage && canMoveStepToStage(draft.kind, s.key, anchor))
+
   return (
     <Sheet
       title={kindLabel}
@@ -1082,6 +1105,28 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
           <button onClick={onDelete} disabled={busy} className="inline-flex items-center gap-1.5 h-10 px-3 text-sm font-medium rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-60">
             <Trash2 className="h-4 w-4" strokeWidth={1.75} /> Delete
           </button>
+          {/* MOVE TO — the only way out of a step added under the wrong heading,
+              now that the sheet no longer asks which stage it is in. Without it
+              a misplaced step would be stuck there for ever, with delete and
+              re-add the only escape.
+              A plain <select> rather than a menu: it is a short list of places,
+              it is keyboard- and screen-reader-native, and the phone gets the
+              system picker for free. */}
+          {moveTo.length > 0 && (
+            <select
+              value=""
+              disabled={busy}
+              aria-label="Move to another stage"
+              onChange={e => {
+                const to = moveTo.find(s => s.key === e.target.value)
+                if (to) onPatch(flowStageMove(to.key, anchor) as Partial<Step>)
+              }}
+              className="h-10 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+            >
+              <option value="">Move to…</option>
+              {moveTo.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+            </select>
+          )}
           <div className="flex-1" />
           {isMessage && (
             <button onClick={onPreview} className="inline-flex items-center gap-1.5 h-10 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
@@ -1128,9 +1173,19 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
           </label>
         )}
 
-        {/* WHEN — a journey has no clock: the step before it finishing IS the
-            timing, so there is nothing here to choose. A gating step has no
-            clock either: "before they confirm" is not an offset. */}
+        {/* WHEN — ONE control, and it no longer asks which stage.
+            Karl, once every stage had its own "Add step": "i dont think we need
+            this now that we have our add steps right?" A step is added from a
+            stage, so being asked again which stage it is in was the same
+            question twice — and the two controls together produced the sentence
+            "Sends right on before".
+            What is left is when INSIDE the stage, which is a real choice: the
+            run-up reminder and the session itself are two directions but one
+            question from the trainer's chair, so `flowTimingOptions` offers them
+            as one list of (direction, offset) pairs.
+            Nothing to choose where there is no clock: a journey's steps are
+            unlocked by the one before, and a gate is answered while somebody is
+            tapping Confirm. */}
         {draft.gatesBooking ? (
           <Field label="When">
             <p className="text-sm text-slate-600">While they are booking, before it is confirmed.</p>
@@ -1141,59 +1196,30 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
           </Field>
         ) : (
           <Field label="When">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex rounded-lg border border-slate-200 p-0.5">
-                {(isMembership
-                  ? (['AFTER_PURCHASE', 'BEFORE_PERIOD_END'] as Direction[])
-                  // Enrolling comes first because it happens first: it is the
-                  // moment they join, before any of the sessions they joined for.
-                  : (['ON_ENROLMENT', 'BEFORE_SESSION', 'DURING_SESSION', 'AFTER_SESSION'] as Direction[])
-                ).map(d => (
-                  <button
-                    key={d}
-                    // Switching direction adopts that direction's starting lead
-                    // time where it has one — "when they enrol" starts at
-                    // straight away, because the case it exists for is a
-                    // thank-you and a thank-you inheriting a 1-day reminder's
-                    // lead time would be wrong every time. Every other direction
-                    // returns null and keeps whatever the trainer had chosen.
-                    onClick={() => {
-                      const seed = defaultOffsetForDirection(d)
-                      onPatch(seed === null ? { direction: d } : { direction: d, offsetMinutes: seed })
-                    }}
-                    className={`px-3 h-8 text-sm font-medium rounded-md ${draft.direction === d ? 'bg-slate-900 text-white' : 'text-slate-600'}`}
-                  >
-                    {d === 'ON_ENROLMENT' ? 'When they enrol' : d === 'BEFORE_SESSION' ? 'Before' : d === 'DURING_SESSION' ? 'During' : d === 'AFTER_SESSION' ? 'After' : d === 'AFTER_PURCHASE' ? 'After they join' : 'Before it renews'}
-                  </button>
-                ))}
-              </div>
-              {/* "During" is a window, not a lead time: there is no number to
-                  choose, so there is no box to choose it in. The stored
-                  offsetMinutes is left where it is — switch back to Before and
-                  the trainer's "1 day" is still there. */}
-              {draft.direction !== 'DURING_SESSION' && (
-                <>
-                  <select value={draft.offsetMinutes} onChange={e => onPatch({ offsetMinutes: Number(e.target.value) })} aria-label="How long" className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700">
-                    {OFFSETS.map(o => (
-                      <option key={o.min} value={o.min}>
-                        {/* "right on the session" is the session wording. There
-                            is no session here — 0 means the instant they joined. */}
-                        {o.min === 0 && draft.direction === 'ON_ENROLMENT' ? 'straight away' : o.label}
-                      </option>
-                    ))}
-                  </select>
-                  {draft.direction === 'ON_ENROLMENT'
-                    ? draft.offsetMinutes > 0 && <span className="text-sm text-slate-500">after they enrol</span>
-                    : !isMembership && <span className="text-sm text-slate-500">the session</span>}
-                </>
-              )}
-            </div>
+            <select
+              value={flowTimingKey(draft)}
+              onChange={e => {
+                const picked = timings.find(t => flowTimingKey(t) === e.target.value)
+                if (picked) onPatch({ direction: picked.direction as Direction, offsetMinutes: picked.offsetMinutes })
+              }}
+              aria-label="When"
+              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 sm:w-auto"
+            >
+              {timings.map(t => (
+                // The SAME words the row shows — flowStepWhenText is the one
+                // tested place a timing is phrased, so the option a trainer
+                // picks and the line they read back cannot disagree.
+                <option key={flowTimingKey(t)} value={flowTimingKey(t)}>
+                  {flowStepWhenText({ ...(draft as SummarisableStep), ...t })}
+                </option>
+              ))}
+            </select>
             <p className="mt-1.5 text-xs text-slate-500">
               {draft.direction === 'DURING_SESSION'
                 ? 'Goes out while the session is actually running — any time between it starting and finishing.'
                 : draft.direction === 'ON_ENROLMENT'
-                  ? `Goes out ${humanWhen(draft.direction, draft.offsetMinutes).toLowerCase()} — when they get a place, not around any one session.`
-                  : `Sends ${humanWhen(draft.direction, draft.offsetMinutes).toLowerCase()}.`}
+                  ? `Goes out ${summary.when.toLowerCase()} — when they get a place, not around any one session.`
+                  : `Sends ${summary.when.toLowerCase()}.`}
             </p>
           </Field>
         )}
