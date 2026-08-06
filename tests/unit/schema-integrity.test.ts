@@ -255,6 +255,16 @@ const TENANT_EXEMPT: Record<string, string> = {
   FlowStepCompletion:
     'AUDIT GAP: the mirror of CommsFlowSend ("they did it" vs "we sent it") and inherits the same gap — its only required relation is to CommsFlowStep, which is itself tenant-less. Fix both together or neither.',
   TrainerProfile: 'IS the tenant — its own id is the trainerId everything else carries',
+
+  // ── Reachable from a tenant, just not in a way this static check can see ──
+  MessageAttachment:
+    'a photo in a chat. Its parent is an EXCLUSIVE ARC — exactly one of messageId / groupMessageId ' +
+    'is set — so neither relation can be marked required and this walk finds no path. The guarantee ' +
+    'is enforced in the database instead, by the CHECK constraint ' +
+    '"message_attachments_one_parent" (migration 20260806260000_message_attachments): every row has ' +
+    'a parent, and both parents cascade to a tenant (Message → ClientProfile → trainerId, ' +
+    'GroupMessage → MessageGroup → trainerId). Serving is authorised by walking that parent — see ' +
+    'src/app/api/message-images/[attachmentId], which never trusts an id on its own.',
 }
 
 describe('every model is reachable from a tenant', () => {

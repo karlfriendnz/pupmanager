@@ -3096,6 +3096,8 @@ model Message {
   // Set only on the handful of messages that ARE a counter-offer — the thread
   // renders those as an Approve / Suggest-another card instead of a bubble.
   bookingProposal BookingProposal?
+  // Photos sent with this message. Empty on every message that predates them.
+  attachments     MessageAttachment[]
 
   @@index([clientId])
   @@index([senderId])
@@ -3262,12 +3264,72 @@ model GroupMessage {
   sender  User           @relation(fields: [senderId], references: [id])
   replyTo GroupMessage?  @relation("GroupMessageReplies", fields: [replyToId], references: [id], onDelete: Cascade)
   replies GroupMessage[] @relation("GroupMessageReplies")
+  // Photos posted with it. Same table the 1:1 thread uses — see
+  // MessageAttachment for why one table rather than two.
+  attachments MessageAttachment[]
 
   @@index([groupId, createdAt])
   @@index([senderId])
   // The responses view: every reply to one broadcast, by person.
   @@index([replyToId])
   @@map("group_messages")
+}
+
+// A photo sent in a chat — a 1:1 trainer↔client message, or a group post.
+//
+// ─── Why a child table and not a Json column on Message ─────────────────────
+// A Json array of urls would have been fewer moving parts, and it is the right
+// answer when the thing genuinely IS just urls. This isn't:
+//
+//   • ORDER matters. Three photos of a harness fit are a sequence, and
+//     `position` says so explicitly rather than relying on nobody ever
+//     re-serialising the array.
+//   • PER-IMAGE METADATA is load-bearing, not decoration. `width`/`height` let
+//     the bubble reserve the right box BEFORE the image loads, so a thread does
+//     not jump under the reader's thumb as photos arrive — the single most
+//     obvious tell of a bolted-on image feature. `contentType` and `sizeBytes`
+//     are what the serving route answers with, so it never has to guess.
+//   • It is addressable. The image is served by ITS OWN id
+//     (/api/message-images/<id>), which is what makes the ownership check a
+//     database join instead of a string comparison against a path the caller
+//     supplied. A Json array has no id to hang that off.
+//
+// ─── Why ONE table with two nullable parents ────────────────────────────────
+// An exclusive arc: exactly one of messageId / groupMessageId is set, enforced
+// by a CHECK constraint in the migration (Prisma cannot express it). The
+// alternative — two near-identical tables — would mean two upload contracts,
+// two serving routes and two renderers for a thing that is the same thing.
+// The 1:1 thread and the group thread differ in WHO MAY READ them; that
+// difference already lives in the access helpers and is re-applied by the
+// serving route, so it does not need a second schema to say it again.
+//
+// ─── storagePath, not url ───────────────────────────────────────────────────
+// The blob is written with `access: 'private'`, so there is no url that a
+// browser could fetch. What is stored is the blob PATHNAME, which is useless
+// without the store's token. See src/app/api/message-images/[attachmentId].
+model MessageAttachment {
+  id             String  @id @default(cuid())
+  messageId      String?
+  groupMessageId String?
+  /** Vercel Blob pathname. Carries a random UUID; never a client-chosen name. */
+  storagePath    String
+  /** Sniffed from the file's magic bytes on upload — never the browser's claim. */
+  contentType    String
+  sizeBytes      Int
+  /** Intrinsic pixels, for the aspect-ratio box. Client-reported hints, clamped
+   *  server-side, and used for LAYOUT ONLY — nothing trusts them. */
+  width          Int?
+  height         Int?
+  position       Int     @default(0)
+
+  createdAt DateTime @default(now())
+
+  message      Message?      @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  groupMessage GroupMessage? @relation(fields: [groupMessageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId, position])
+  @@index([groupMessageId, position])
+  @@map("message_attachments")
 }
 
 // ─── Notifications ────────────────────────────────────────────────────────────
