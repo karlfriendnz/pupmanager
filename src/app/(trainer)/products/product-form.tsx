@@ -288,9 +288,14 @@ export function ProductForm({
           field, not two stacked ones. It STICKS, which is what the pinned
           bottom bar was really buying (it is always reachable) without a bar
           that has to dodge the desktop sidebar and the phone's safe area. */}
-      <div className="sticky top-0 z-20 -mx-4 flex items-end justify-between gap-3 border-b border-slate-200 bg-slate-50/95 px-4 pb-1.5 pt-1 backdrop-blur md:mx-0 md:px-0">
-        {heading ?? <span />}
-        <span className="flex flex-shrink-0 items-center gap-2 pb-1">
+      {/* On a phone the tabs and the actions cannot share one row: the tabs are
+          as wide as their words and the actions got pushed off the edge, so
+          "Cancel" was clipped mid-word. Actions take their own row above, and
+          the tabs scroll sideways under them. From md: up there is room for the
+          original single band. */}
+      <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-1 border-b border-slate-200 bg-slate-50/95 px-4 pb-1.5 pt-1 backdrop-blur md:mx-0 md:flex-row md:items-end md:justify-between md:gap-3 md:px-0">
+        <div className="order-2 min-w-0 overflow-x-auto no-scrollbar md:order-1">{heading ?? <span />}</div>
+        <span className="order-1 flex flex-shrink-0 items-center justify-end gap-2 md:order-2 md:pb-1">
         {/* See it the way a client does. A plain <a>, not router.push: the
             target is a route handler that has to set the preview cookie on its
             own redirect, which the client router would swallow.
