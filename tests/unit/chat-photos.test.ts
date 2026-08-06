@@ -131,7 +131,8 @@ describe('pathBelongsToScope — a photo cannot cross threads', () => {
 
 describe('attachmentCreateRows — order kept, foreign paths rejected', () => {
   const scope = { kind: 'direct' as const, clientId: 'cl_1' }
-  const ref = (path: string) => ({ path, contentType: 'image/jpeg' as const, sizeBytes: 100 })
+  const ref = (path: string) =>
+    ({ path, contentType: 'image/jpeg' as const, sizeBytes: 100, access: 'public' as const })
 
   it('numbers them in the order they were picked', () => {
     const out = attachmentCreateRows(

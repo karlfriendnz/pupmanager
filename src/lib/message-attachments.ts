@@ -144,6 +144,14 @@ export const attachmentRefSchema = z.object({
   sizeBytes: z.number().int().positive().max(MAX_ATTACHMENT_BYTES),
   width: z.number().int().positive().max(MAX_DIMENSION).optional(),
   height: z.number().int().positive().max(MAX_DIMENSION).optional(),
+  /**
+   * Which access the blob was actually written with, echoed back from the
+   * upload route. It is only ever used to tell `get()` how to read the object,
+   * so a caller who lies about it breaks nothing but their own image — it
+   * grants no access and reveals nothing. Defaults to the conservative value
+   * for a caller that omits it.
+   */
+  access: z.enum(['private', 'public']).default('public'),
 })
 export type AttachmentRef = z.infer<typeof attachmentRefSchema>
 
@@ -168,6 +176,7 @@ export function attachmentCreateRows(
     ok: true,
     rows: refs.map((r, i) => ({
       storagePath: r.path,
+      storageAccess: r.access ?? 'public',
       contentType: r.contentType,
       sizeBytes: r.sizeBytes,
       width: r.width ?? null,
@@ -179,6 +188,7 @@ export function attachmentCreateRows(
 
 export interface AttachmentCreateRow {
   storagePath: string
+  storageAccess: string
   contentType: string
   sizeBytes: number
   width: number | null

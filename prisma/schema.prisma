@@ -3329,6 +3329,19 @@ model MessageAttachment {
   groupMessageId String?
   /** Vercel Blob pathname. Carries a random UUID; never a client-chosen name. */
   storagePath    String
+  /**
+   * Which access mode the blob was written with — "private" or "public".
+   *
+   * It is a COLUMN rather than a constant because a Vercel Blob store is
+   * public-or-private for its whole life, and this app's store is public today
+   * (a private write is refused outright with "Cannot use private access on a
+   * public store"). So the upload route asks for private, accepts public when
+   * the store cannot do better, and records WHICH it got. `get()` needs the
+   * right mode, and rows written before a store is switched must keep working.
+   *
+   * Either way the blob url is never emitted by the app — see the serving route.
+   */
+  storageAccess  String  @default("public")
   /** Sniffed from the file's magic bytes on upload — never the browser's claim. */
   contentType    String
   sizeBytes      Int

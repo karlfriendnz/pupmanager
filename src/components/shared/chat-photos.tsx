@@ -171,6 +171,9 @@ async function uploadOne(file: File, scope: ChatThreadScope): Promise<UploadResu
         path: data.path as string,
         contentType: data.contentType,
         sizeBytes: data.sizeBytes as number,
+        // Echoed straight back from the upload route; it only tells the serving
+        // route how to read the object.
+        access: data.access === 'private' ? 'private' : 'public',
         ...(size ?? {}),
       },
     }

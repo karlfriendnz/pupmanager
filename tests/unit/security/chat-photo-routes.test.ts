@@ -174,12 +174,51 @@ describe('upload — a stranger cannot attach to someone else\'s thread', () => 
     expect(h.put).not.toHaveBeenCalled()
   })
 
-  it('writes the blob PRIVATE, so a leaked url fetches nothing', async () => {
+  it('ASKS for a private blob every time', async () => {
     h.auth.mockResolvedValue(CLIENT_SESSION)
     clientOwnsOnlyTheirThread()
 
-    await uploadPOST(chatUpload(JPEG_BYTES, { clientId: OWNER_CLIENT }))
+    const res = await uploadPOST(chatUpload(JPEG_BYTES, { clientId: OWNER_CLIENT }))
     expect(h.put.mock.calls[0][2]).toMatchObject({ access: 'private' })
+    expect((await res.json()).access).toBe('private')
+  })
+
+  it('falls back to public ONLY on a public store, and says so per row', async () => {
+    // A Vercel Blob store is public or private for its whole life. Asking for a
+    // private object on a public one is refused outright, and 502ing every chat
+    // photo because of it would be worse than the weaker object — but the
+    // fallback has to be recorded, not silent, or `get()` reads it wrong.
+    h.auth.mockResolvedValue(CLIENT_SESSION)
+    clientOwnsOnlyTheirThread()
+    h.put
+      .mockRejectedValueOnce(new Error('Vercel Blob: Cannot use private access on a public store.'))
+      .mockResolvedValueOnce({ url: 'https://blob.invalid/x' })
+
+    const res = await uploadPOST(chatUpload(JPEG_BYTES, { clientId: OWNER_CLIENT }))
+    expect(res.status).toBe(200)
+    expect((await res.json()).access).toBe('public')
+    expect(h.put.mock.calls[0][2]).toMatchObject({ access: 'private' })
+    expect(h.put.mock.calls[1][2]).toMatchObject({ access: 'public' })
+  })
+
+  it('does NOT fall back on any other failure — that would hide a real error', async () => {
+    h.auth.mockResolvedValue(CLIENT_SESSION)
+    clientOwnsOnlyTheirThread()
+    h.put.mockRejectedValue(new Error('network exploded'))
+
+    const res = await uploadPOST(chatUpload(JPEG_BYTES, { clientId: OWNER_CLIENT }))
+    expect(res.status).toBe(502)
+    expect(h.put).toHaveBeenCalledTimes(1)
+  })
+
+  it('never returns a blob url to the caller — only the path it may quote back', async () => {
+    h.auth.mockResolvedValue(CLIENT_SESSION)
+    clientOwnsOnlyTheirThread()
+    h.put.mockResolvedValue({ url: 'https://blob.invalid/chat/direct/cl_1/leaky.jpg' })
+
+    const body = await (await uploadPOST(chatUpload(JPEG_BYTES, { clientId: OWNER_CLIENT }))).json()
+    expect(JSON.stringify(body)).not.toContain('blob.invalid')
+    expect(body.url).toBeUndefined()
   })
 })
 
@@ -328,6 +367,7 @@ describe('GET /api/message-images/<id> — the url is not the permission', () =>
     clientOwnsOnlyTheirThread()
     h.attachmentFindUnique.mockResolvedValue({
       storagePath: `chat/direct/${OWNER_CLIENT}/a.jpg`,
+      storageAccess: 'private',
       contentType: 'image/jpeg',
       message: { clientId: OWNER_CLIENT },
       groupMessage: null,
@@ -342,11 +382,33 @@ describe('GET /api/message-images/<id> — the url is not the permission', () =>
     expect(h.blobGet).toHaveBeenCalledWith(`chat/direct/${OWNER_CLIENT}/a.jpg`, { access: 'private' })
   })
 
+  it('reads a public-store row with the mode it was WRITTEN with', async () => {
+    // Passing 'private' for an object on a public store fails, so the row has
+    // to carry which one it is.
+    h.auth.mockResolvedValue(CLIENT_SESSION)
+    clientOwnsOnlyTheirThread()
+    h.attachmentFindUnique.mockResolvedValue({
+      storagePath: `chat/direct/${OWNER_CLIENT}/a.jpg`,
+      storageAccess: 'public',
+      contentType: 'image/png',
+      message: { clientId: OWNER_CLIENT },
+      groupMessage: null,
+    })
+    h.blobGet.mockResolvedValue({ statusCode: 200, stream: new ReadableStream(), headers: new Headers(), blob: {} })
+
+    const res = await imageGET(req, params)
+    expect(res.status).toBe(200)
+    expect(h.blobGet).toHaveBeenCalledWith(`chat/direct/${OWNER_CLIENT}/a.jpg`, { access: 'public' })
+    // Still never cached by a shared CDN, and still only served to a participant.
+    expect(res.headers.get('Cache-Control')).toContain('private')
+  })
+
   it('REFUSES a stranger holding the id — 404, and the blob is never read', async () => {
     h.auth.mockResolvedValue(CLIENT_SESSION)
     clientOwnsOnlyTheirThread()
     h.attachmentFindUnique.mockResolvedValue({
       storagePath: `chat/direct/${STRANGER_CLIENT}/a.jpg`,
+      storageAccess: 'public',
       contentType: 'image/jpeg',
       message: { clientId: STRANGER_CLIENT },
       groupMessage: null,
@@ -367,6 +429,7 @@ describe('GET /api/message-images/<id> — the url is not the permission', () =>
     h.auth.mockResolvedValue(CLIENT_SESSION)
     h.attachmentFindUnique.mockResolvedValue({
       storagePath: 'chat/group/g1/a.jpg',
+      storageAccess: 'public',
       contentType: 'image/jpeg',
       message: null,
       groupMessage: { id: 'gm1', groupId: 'g1' },

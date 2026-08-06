@@ -9,24 +9,27 @@ import { visibleMessagesWhere } from '@/lib/message-groups'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// The ONLY way to see a photo somebody sent in a chat.
+// The ONLY url the app ever emits for a photo somebody sent in a chat.
 //
-// Chat blobs are written with `access: 'private'`, so there is no url a browser
-// could fetch and no url that keeps working after the fact. This route is the
-// door, and it asks the same question the thread itself asks: are you a party
-// to the conversation this photo was posted into?
+// This route is the door, and it asks the same question the thread itself asks:
+// are you a party to the conversation this photo was posted into?
 //
-// Consequences worth being explicit about:
-//
-//   • A leaked link is inert. Paste it into a signed-out browser and you get a
-//     404, today and in a year. That is the difference between a photo of a dog
-//     and a photo of a vet's letter, and it is why the extra hop is worth it.
-//   • Ownership is a JOIN, not a string comparison. The caller names an
-//     attachment ID; we walk it to its message, its message to its thread, and
-//     the thread to its participants. There is nothing in the request the caller
-//     could tamper with to change who they are.
+//   • A LEAKED /api/message-images/<id> LINK IS INERT. Paste it into a
+//     signed-out browser and you get a 404, today and in a year. Ownership is a
+//     JOIN, not a string comparison — the caller names an attachment id, and we
+//     walk it to its message, its message to its thread, and the thread to its
+//     participants. Nothing in the request can change who they are.
 //   • The response says `private` in its Cache-Control, so a shared CDN never
 //     holds a copy that would outlive the check.
+//
+// The remaining gap, stated plainly rather than left to be discovered: the
+// upload route asks for `access: 'private'` but this app's Blob store is a
+// PUBLIC store, which refuses private objects. So the underlying blob url does
+// exist. It is never stored in a payload, never rendered, and never handed to a
+// browser — the only way to learn it is to already know the exact 122-bit uuid
+// path — but it is not revocable the way a private object is. Closing that is a
+// one-off store change, not a code change: see writeChatBlob in
+// /api/upload/image.
 
 export async function GET(
   _req: Request,
@@ -40,6 +43,7 @@ export async function GET(
     where: { id: attachmentId },
     select: {
       storagePath: true,
+      storageAccess: true,
       contentType: true,
       message: { select: { clientId: true } },
       groupMessage: { select: { id: true, groupId: true } },
@@ -53,7 +57,10 @@ export async function GET(
   const allowed = await mayView(session.user.id, attachment)
   if (!allowed) return new NextResponse('Not found', { status: 404 })
 
-  const blob = await get(attachment.storagePath, { access: 'private' }).catch(err => {
+  // The mode the object was actually written with — see the upload route for
+  // why that is not always 'private'.
+  const access = attachment.storageAccess === 'private' ? 'private' as const : 'public' as const
+  const blob = await get(attachment.storagePath, { access }).catch(err => {
     console.error('[message-images] blob read failed:', err)
     return null
   })

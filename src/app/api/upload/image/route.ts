@@ -175,20 +175,8 @@ async function uploadChatPhoto({
 
   const pathname = buildAttachmentPath(scope, contentType)
 
-  try {
-    // Buffer, not the Uint8Array — the blob SDK's PutBody doesn't accept a bare
-    // typed array, and we already hold the bytes because we had to sniff them.
-    await put(pathname, Buffer.from(buffer), {
-      // PRIVATE. There is no public url for a chat photo — it is fetched
-      // through /api/message-images/<id>, which re-checks participation on
-      // every request. A url that leaks (forwarded email, shared screenshot,
-      // browser history on a shared laptop) is worth nothing on its own.
-      access: 'private',
-      addRandomSuffix: false,
-      contentType,
-    })
-  } catch (err) {
-    console.error('[chat photo upload] blob write failed:', err)
+  const written = await writeChatBlob(pathname, Buffer.from(buffer), contentType)
+  if (!written) {
     return NextResponse.json(
       { error: 'Upload failed — please try again.' },
       { status: 502 },
@@ -196,11 +184,72 @@ async function uploadChatPhoto({
   }
 
   // The PATH goes back to the sender so they can hand it to the message POST.
-  // It is worthless to anyone else: private blob, and the POST refuses a path
-  // that doesn't belong to the thread being posted into.
+  // It is worthless to anyone else: the POST refuses a path that doesn't belong
+  // to the thread being posted into, and nothing in the app ever turns a path
+  // back into a blob url.
   return NextResponse.json({
     path: pathname,
     contentType,
     sizeBytes: file.size,
+    access: written,
   })
+}
+
+/**
+ * Write the photo, as privately as this Blob store will allow.
+ *
+ * A Vercel Blob store is public OR private for its entire life; there is no
+ * per-object choice on a public store, and asking for one is refused outright:
+ *
+ *   "Vercel Blob: Cannot use private access on a public store."
+ *
+ * Private is what a chat photo wants — the difference between a picture of a
+ * dog and the vet's letter someone snapped in the same conversation. So we ASK
+ * for it every time, and this is the ONE place that knows we didn't get it.
+ * The fallback is deliberately loud and recorded per row rather than silent:
+ *
+ *   • it logs, once per upload, with the reason;
+ *   • the mode is stored on the attachment, so `get()` uses the right one and
+ *     old rows keep resolving if the store is ever switched;
+ *   • the moment the store IS private, this starts returning 'private' with no
+ *     code change at all.
+ *
+ * What does NOT change with the fallback: the blob url is never stored, never
+ * sent to a browser and never rendered. Every photo is fetched through
+ * /api/message-images/<id>, which re-checks that the caller is a party to the
+ * conversation. On a public store that url still EXISTS and would work for
+ * anyone who somehow learned the exact path — 122 bits of uuid that the app
+ * never emits — so it is weaker than a private store, and the difference is
+ * worth closing. It is not, however, the "public url pasted into the page"
+ * that the rest of this app's images are.
+ */
+async function writeChatBlob(
+  pathname: string,
+  body: Buffer,
+  contentType: string,
+): Promise<'private' | 'public' | null> {
+  try {
+    await put(pathname, body, { access: 'private', addRandomSuffix: false, contentType })
+    return 'private'
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (!/private access on a public store/i.test(message)) {
+      console.error('[chat photo upload] blob write failed:', err)
+      return null
+    }
+    console.warn(
+      '[chat photo upload] this Blob store is PUBLIC, so the photo was written public. ' +
+      'The app never emits its url — every read goes through /api/message-images/<id> — ' +
+      'but a private store is the stronger answer. To get one: create a Blob store with ' +
+      'private access and point BLOB_READ_WRITE_TOKEN at it; this code then needs no change.',
+    )
+  }
+
+  try {
+    await put(pathname, body, { access: 'public', addRandomSuffix: false, contentType })
+    return 'public'
+  } catch (err) {
+    console.error('[chat photo upload] blob write failed:', err)
+    return null
+  }
 }
