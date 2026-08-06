@@ -8,6 +8,9 @@ import { createContext, useCallback, useContext, useEffect, useId, useState, typ
 type PageTitleCtx = {
   title: string | null
   setTitle: (t: string | null) => void
+  /** A quiet second line under the title in the top bar (see SetPageTitle). */
+  subtitle: string | null
+  setSubtitle: (t: string | null) => void
   /** Whether the current page portals a back arrow into the top bar. */
   hasBack: boolean
   setHasBack: (b: boolean) => void
@@ -23,6 +26,7 @@ const Ctx = createContext<PageTitleCtx | null>(null)
 
 export function PageTitleProvider({ children }: { children: ReactNode }) {
   const [title, setTitle] = useState<string | null>(null)
+  const [subtitle, setSubtitle] = useState<string | null>(null)
   const [hasBack, setHasBack] = useState(false)
   /**
    * Who is currently declaring this page immersive, and whether each wants the
@@ -52,7 +56,7 @@ export function PageTitleProvider({ children }: { children: ReactNode }) {
   // (a message thread) is the case that must win, or the thread grows two.
   const immersiveKeepsTopBar = immersive && declarations.every(Boolean)
   return (
-    <Ctx.Provider value={{ title, setTitle, hasBack, setHasBack, immersive, immersiveKeepsTopBar, setImmersive }}>
+    <Ctx.Provider value={{ title, setTitle, subtitle, setSubtitle, hasBack, setHasBack, immersive, immersiveKeepsTopBar, setImmersive }}>
       {children}
     </Ctx.Provider>
   )
@@ -60,6 +64,19 @@ export function PageTitleProvider({ children }: { children: ReactNode }) {
 
 export function usePageTitle(): string | null {
   return useContext(Ctx)?.title ?? null
+}
+
+/**
+ * The quiet line under the title in the top bar.
+ *
+ * It exists so a screen can say WHOSE it is without a second band under the
+ * header. A client's section pages had "← Details" in the bar and a full-width
+ * strip beneath it holding nothing but "karl · Sammy" — about 120px of a phone
+ * spent on a back arrow and two names (Karl, 2026-08-06: "i think we should
+ * tighten this up"). One bar, one hairline, two lines of text.
+ */
+export function usePageSubtitle(): string | null {
+  return useContext(Ctx)?.subtitle ?? null
 }
 
 /**
@@ -163,13 +180,20 @@ export function useNavLabelOverrides(): Record<string, string> {
   return useContext(NavLabelCtx)
 }
 
-// Drop into any page to set the top-bar title. `title` is a string so the
-// effect dependency is stable — no render loop. Clears on unmount.
-export function SetPageTitle({ title }: { title: string }) {
-  const setTitle = useContext(Ctx)?.setTitle
+// Drop into any page to set the top-bar title (and optionally the quiet line
+// under it). Both are strings so the effect dependencies are stable — no render
+// loop. Cleared on unmount.
+export function SetPageTitle({ title, subtitle }: { title: string; subtitle?: string }) {
+  const ctx = useContext(Ctx)
+  const setTitle = ctx?.setTitle
+  const setSubtitle = ctx?.setSubtitle
   useEffect(() => {
     setTitle?.(title)
     return () => setTitle?.(null)
   }, [title, setTitle])
+  useEffect(() => {
+    setSubtitle?.(subtitle ?? null)
+    return () => setSubtitle?.(null)
+  }, [subtitle, setSubtitle])
   return null
 }

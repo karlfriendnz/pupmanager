@@ -13,6 +13,13 @@ type BackLink = { href?: string; label?: string; onClick?: () => void }
 
 interface PageHeaderProps {
   title: string
+  /**
+   * A quiet second line inside the top bar — whose record this is, what kind of
+   * thing this is. NOT a page description (see the note below): it identifies,
+   * it doesn't explain. Rendered in the same band as the title, so it costs a
+   * line rather than a strip.
+   */
+  subtitle?: string
   back?: BackLink
   actions?: React.ReactNode
   // Rendered on its own row under the top bar (trainer shell), e.g. a page's
@@ -43,7 +50,7 @@ interface PageHeaderProps {
 //     <PageHeader … />
 //     <div className="p-4 md:p-8 w-full max-w-… mx-auto">…</div>
 //   </>
-export function PageHeader({ title: rawTitle, back, actions, descriptionActions }: PageHeaderProps) {
+export function PageHeader({ title: rawTitle, subtitle, back, actions, descriptionActions }: PageHeaderProps) {
   // In the trainer shell the phone top bar renders the title + back itself, so
   // the in-page mobile header below would duplicate it — skip it there.
   const shellOwnsMobileHeader = useHasPageTitleShell()
@@ -55,7 +62,7 @@ export function PageHeader({ title: rawTitle, back, actions, descriptionActions 
   const title = pageTitleLabel(pathname, rawTitle, useNavLabelOverrides())
   return (
     <>
-      <SetPageTitle title={title} />
+      <SetPageTitle title={title} subtitle={subtitle} />
       {/* Tells the phone bar to drop its menu icon while this page shows a
           back arrow — it can't see the arrow itself, since it arrives by
           portal. */}
@@ -101,6 +108,7 @@ export function PageHeader({ title: rawTitle, back, actions, descriptionActions 
           )}
           <div className="min-w-0 flex-1">
             <h1 className="text-base font-semibold text-slate-900 truncate leading-tight">{title}</h1>
+            {subtitle && <p className="truncate text-xs leading-tight text-slate-500">{subtitle}</p>}
           </div>
           {actions && (
             <div className="flex items-center gap-1.5 flex-shrink-0">{actions}</div>

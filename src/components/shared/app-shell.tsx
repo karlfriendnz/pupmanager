@@ -21,7 +21,7 @@ import { VersionGuard } from './version-guard'
 import { NotificationToaster } from './notification-toaster'
 import { TopBarControls } from './top-bar-controls'
 import { FloatingCreateButton } from './floating-create-button'
-import { PageTitleProvider, NavLabelProvider, usePageTitle, usePageHasBack, usePageImmersive, usePageImmersiveKeepsTopBar } from './page-title'
+import { PageTitleProvider, NavLabelProvider, usePageTitle, usePageSubtitle, usePageHasBack, usePageImmersive, usePageImmersiveKeepsTopBar } from './page-title'
 import { FlatRow, FlatRowGrid } from './flat-list'
 import { shouldShowSectionHeader, labelFor, sectionKey, clientLabelFor } from '@/lib/nav-labels'
 
@@ -873,6 +873,7 @@ function TrainerTopBar({
   notifCount?: number
 }) {
   const title = usePageTitle() ?? fallbackTitle
+  const subtitle = usePageSubtitle()
   return (
     <header className="hidden md:flex fixed top-0 inset-x-0 z-40 min-h-[3.5rem] items-center border-b border-slate-100 bg-white/85 backdrop-blur pt-[var(--app-safe-top)]">
       {/* Logo zone — aligned to the sidebar width so it sits above it. Links to
@@ -938,7 +939,11 @@ function TrainerTopBar({
       {/* Back-arrow slot — pages portal a back button here (detail pages). */}
       <div id="pm-topbar-back" className="ml-2 flex items-center empty:hidden" />
       {/* Page title. */}
-      <h1 className="ml-2 min-w-0 flex-1 truncate text-base font-semibold text-slate-900">{title}</h1>
+      <div className="ml-2 min-w-0 flex-1">
+        <h1 className="truncate text-base font-semibold text-slate-900 leading-tight">{title}</h1>
+        {/* Whose record this is, in the same band — never a strip of its own. */}
+        {subtitle && <p className="truncate text-xs leading-tight text-slate-500">{subtitle}</p>}
+      </div>
       {/* Page-actions slot — pages portal their action buttons here instead of
           a redundant second header row. */}
       <div id="pm-topbar-actions" className="mr-2 flex items-center gap-1.5 empty:hidden" />
@@ -971,6 +976,7 @@ function TrainerMobileHeader({
   // label for the route, so pages with a custom header (e.g. /schedule) still
   // name themselves here.
   const title = usePageTitle() ?? fallbackTitle
+  const subtitle = usePageSubtitle()
   const hasBack = usePageHasBack()
   const pathname = usePathname()
   const isHome = pathname === '/dashboard'
@@ -1023,9 +1029,19 @@ function TrainerMobileHeader({
             heading at 1280px, zero at 390px. That's a screen reader with
             nothing to jump to on every page. The desktop bar is md:-only and
             this one is md:hidden, so exactly one h1 ever renders. */}
-        <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-slate-900">
-          {showTitle ? title : businessName ?? 'PupManager'}
-        </h1>
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-base font-semibold text-slate-900 leading-tight">
+            {showTitle ? title : businessName ?? 'PupManager'}
+          </h1>
+          {/* One band, two lines. A client's section pages used to put "karl ·
+              Sammy" in a full-width strip UNDER this bar — a back arrow and two
+              names costing ~120px before any content (Karl: "i think we should
+              tighten this up"). It truncates, so a long name can't push the
+              44px back arrow around. */}
+          {showTitle && subtitle && (
+            <p className="truncate text-xs leading-tight text-slate-500">{subtitle}</p>
+          )}
+        </div>
         {/* Page-actions slot — always present (empty:hidden). */}
         <span id="pm-topbar-actions-mobile" className="flex items-center gap-1.5 empty:hidden" />
         {/* Create "+" and search both offer to start something ELSE, which is

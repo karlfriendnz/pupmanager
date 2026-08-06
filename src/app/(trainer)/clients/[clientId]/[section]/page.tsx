@@ -1,5 +1,4 @@
 import { redirect, notFound } from 'next/navigation'
-import Link from 'next/link'
 import type { Metadata } from 'next'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
@@ -114,31 +113,26 @@ export default async function ClientSectionPage({
     if (!clientAppEnabled && !client.user.email) notFound()
   }
 
-  const header = (
-    <>
-      <PageHeader
-        title={SECTION_TITLE[section]}
-        back={{ href: `/clients/${clientId}`, label: `Back to ${clientName}` }}
-      />
-      <ClientSectionChrome />
-    </>
-  )
-
-  // Whose record this is, as one line of text under the title — the same line
-  // on all eight pages so they read as siblings. It links back to the profile,
-  // which gives the trainer a second way out that names where it goes.
-  const identity = (
-    <Link href={`/clients/${clientId}`} className="mb-4 block text-sm text-slate-500 hover:text-slate-700">
-      <span className="font-medium text-slate-700">{clientName}</span>
-      {dogLine && <> · {dogLine}</>}
-    </Link>
-  )
+  // Whose record this is, INSIDE the header rather than in a strip under it:
+  //
+  //   ←   Details
+  //       karl · Sammy
+  //
+  // It was its own full-width band, which cost about 120px of a phone before a
+  // single detail (Karl, 2026-08-06: "i think we should tighten this up"). One
+  // band, one hairline. The same line on all eight pages so they read as
+  // siblings — and no trailing separator when there is no dog.
+  const identity = dogLine ? `${clientName} · ${dogLine}` : clientName
 
   const shell = (body: React.ReactNode) => (
     <>
-      {header}
+      <PageHeader
+        title={SECTION_TITLE[section]}
+        subtitle={identity}
+        back={{ href: `/clients/${clientId}`, label: `Back to ${clientName}` }}
+      />
+      <ClientSectionChrome />
       <div className="p-4 md:p-8 w-full max-w-5xl xl:max-w-7xl mx-auto">
-        {identity}
         {body}
       </div>
     </>
