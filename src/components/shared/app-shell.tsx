@@ -1647,21 +1647,23 @@ function TrainerShell({
           style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
         >
           <div className="flex h-14 shrink-0 items-center gap-3 border-b border-slate-100 px-3">
-            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">
-              {userName?.[0]?.toUpperCase() ?? '?'}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-slate-900">{userName ?? 'You'}</p>
-              {userEmail && <p className="truncate text-xs text-slate-500">{userEmail}</p>}
-            </div>
+            {/* Close on the LEFT (Karl, 2026-08-06). It is where the back arrow
+                lives on every other screen, so the way out is in one place
+                whether you are a level deep or in this menu — and it is the
+                corner a thumb reaches on a phone. The avatar was decoration
+                sitting in that spot; the name says who you are. */}
             <button
               type="button"
               onClick={() => setMoreOpen(false)}
               aria-label="Close"
-              className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-500 active:bg-slate-100"
+              className="-ml-1 grid h-11 w-11 shrink-0 place-items-center rounded-lg text-slate-500 active:bg-slate-100"
             >
               <X className="h-5 w-5" />
             </button>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-slate-900">{userName ?? 'You'}</p>
+              {userEmail && <p className="truncate text-xs text-slate-500">{userEmail}</p>}
+            </div>
           </div>
 
           {/* no-scrollbar: a phone draws an overlay bar that fades; a desktop
