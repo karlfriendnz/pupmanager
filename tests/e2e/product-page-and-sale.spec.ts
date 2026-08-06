@@ -88,7 +88,7 @@ test.describe('the product editor is its own page', () => {
 
       await login(page, SEED.owner.email, SEED.owner.password)
       await page.goto(`/products/${product.id}`)
-      await page.getByRole('button', { name: /Purchases/ }).click()
+      await page.getByRole('tab', { name: /Purchases/ }).click()
 
       await expect(page.getByText('Requested', { exact: false }).first()).toBeVisible()
     } finally {

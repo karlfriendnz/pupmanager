@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
+import Link from 'next/link'
 import { MoreHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ActionSheet, type SheetAction } from '@/components/shared/action-sheet'
@@ -54,7 +55,17 @@ import { cn } from '@/lib/utils'
  */
 export interface EditScreenAction {
   label: string
-  onClick: () => void
+  /** What it does. Give this OR href, not both. */
+  onClick?: () => void
+  /**
+   * Where it goes, when the action is a navigation rather than a submit.
+   *
+   * A READ screen — an offering, seen rather than edited — has "Edit" as its
+   * primary action and no Cancel at all; the way out is the back arrow. That
+   * was the second use of this component and it fitted without argument, which
+   * is the test a shared layout has to pass.
+   */
+  href?: string
   /** Sits beside the label. Karl asked for icons on these two specifically. */
   icon?: ReactNode
   loading?: boolean
@@ -136,29 +147,54 @@ export function EditScreen({
             likely — they are not. Both stay 44px tall and labelled. From md: up
             the row right-aligns and both go back to their natural width. */}
         {secondary && (
-          <Button
-            variant="secondary"
-            onClick={secondary.onClick}
-            disabled={secondary.disabled}
-            aria-label={secondary.label}
-            className="h-11 whitespace-nowrap px-4 md:px-5"
+          secondary.href ? (
+            <Link
+              href={secondary.href}
+              aria-label={secondary.label}
+              className="inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 md:px-5"
+            >
+              {secondary.icon}
+              {secondary.label}
+            </Link>
+          ) : (
+            <Button
+              variant="secondary"
+              onClick={secondary.onClick}
+              disabled={secondary.disabled}
+              aria-label={secondary.label}
+              className="h-11 whitespace-nowrap px-4 md:px-5"
+            >
+              {secondary.icon}
+              {secondary.label}
+            </Button>
+          )
+        )}
+        {primary.href ? (
+          // A real <a>, not a button that pushes: it is a navigation, so it
+          // middle-clicks, opens in a new tab and shows its target in the
+          // status bar like every other link on the page.
+          <Link
+            href={primary.href}
+            aria-label={primary.label}
+            className="inline-flex h-11 flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-[var(--pm-brand-600)] px-4 text-sm font-medium text-white transition-colors hover:bg-[var(--pm-brand-700)] md:flex-none md:px-5"
           >
-            {secondary.icon}
-            {secondary.label}
+            {primary.icon}
+            {primary.label}
+          </Link>
+        ) : (
+          <Button
+            onClick={primary.onClick}
+            loading={primary.loading}
+            disabled={primary.disabled}
+            aria-label={primary.label}
+            className="h-11 flex-1 whitespace-nowrap px-4 md:flex-none md:px-5"
+          >
+            {/* The spinner takes the icon's place while it saves, rather than
+                standing beside a second glyph. */}
+            {!primary.loading && primary.icon}
+            {primary.label}
           </Button>
         )}
-        <Button
-          onClick={primary.onClick}
-          loading={primary.loading}
-          disabled={primary.disabled}
-          aria-label={primary.label}
-          className="h-11 flex-1 whitespace-nowrap px-4 md:flex-none md:px-5"
-        >
-          {/* The spinner takes the icon's place while it saves, rather than
-              standing beside a second glyph. */}
-          {!primary.loading && primary.icon}
-          {primary.label}
-        </Button>
       </div>
 
       {/* Picking anything closes the sheet — including Delete, which opens a

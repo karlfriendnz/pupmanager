@@ -27,7 +27,8 @@ test('a trainer sets an offering\'s default homework from their library, then ta
   await login(page, SEED.owner.email, SEED.owner.password)
 
   await page.goto(`/packages/${PKG}`)
-  await page.getByRole('button', { name: /Homework/ }).click()
+  // The section strip is a tablist (role=tab), not a row of buttons.
+  await page.getByRole('tab', { name: /Homework/ }).click()
 
   // Both buckets are offered: the "every session" one, and session 1 (this
   // offering runs a single session).

@@ -28,15 +28,7 @@ import { ConfirmSheet } from '@/components/shared/confirm-sheet'
  *   convert  POST   /api/class-runs/:runId/convert  { to }   (between group kinds)
  *   delete   DELETE /api/class-runs/:runId  |  /api/packages/:packageId
  */
-export function OfferingActions({
-  name,
-  noun,
-  editHref,
-  packageId,
-  runId,
-  runKind,
-  backHref,
-}: {
+export interface OfferingActionsProps {
   /** The offering's name — titles the sheet and the confirmation. */
   name: string
   /** What to call it in prose: "class", "event", "package"… */
@@ -57,9 +49,27 @@ export function OfferingActions({
   runKind?: 'class' | 'casual' | 'event'
   /** Where to land once it's deleted or converted away. */
   backHref: string
-}) {
+}
+
+/**
+ * The same actions, as DATA — for a screen that pins them to its foot rather
+ * than floating them inside a card (see EditScreen).
+ *
+ * Split out rather than given the component a `variant`: a prop that reflows one
+ * component two ways is how the offering card ended up crushing its title on a
+ * phone. The behaviour — the routes, the confirmations, the error prose — has
+ * exactly one copy, and the two callers decide only WHERE it is drawn.
+ */
+export function useOfferingActions({
+  name,
+  noun,
+  editHref,
+  packageId,
+  runId,
+  runKind,
+  backHref,
+}: OfferingActionsProps) {
   const router = useRouter()
-  const [sheetOpen, setSheetOpen] = useState(false)
   // Two confirmations, one at a time: deleting, and converting a class (which
   // drops its scheduled sessions). Both are unrecoverable, so neither happens
   // on a single tap — and neither uses window.confirm, the one dialog a phone
@@ -114,7 +124,6 @@ export function OfferingActions({
       setError(await readError(res, `Could not copy this ${noun}.`))
     } finally {
       setBusy(false)
-      setSheetOpen(false)
     }
   }
 
@@ -188,7 +197,7 @@ export function OfferingActions({
       label: `Convert to ${t.to === 'event' ? 'an' : 'a'} ${t.label}`,
       hint: t.hint,
       icon: <Shuffle className="h-5 w-5" strokeWidth={1.75} />,
-      onSelect: () => { setSheetOpen(false); setConfirm({ kind: 'convert', to: t.to, label: t.label }) },
+      onSelect: () => setConfirm({ kind: 'convert', to: t.to, label: t.label }),
       disabled: busy,
     })),
     {
@@ -196,11 +205,50 @@ export function OfferingActions({
       label: `Delete this ${noun}`,
       hint: 'Asks first — this can’t be undone',
       icon: <Trash2 className="h-5 w-5" strokeWidth={1.75} />,
-      onSelect: () => { setSheetOpen(false); setConfirm({ kind: 'delete' }) },
+      onSelect: () => setConfirm({ kind: 'delete' }),
       disabled: busy,
       danger: true,
     },
   ]
+
+  return {
+    /** The ⋯ menu's rows, in order. */
+    menu: actions,
+    editHref,
+    /** Whatever the API refused in prose, if anything. */
+    error,
+    /**
+     * The confirmations, which have to be rendered SOMEWHERE by the caller.
+     * They portal to <body> themselves, so it does not matter where.
+     */
+    overlays: confirm ? (
+      <ConfirmSheet
+        title={confirm.kind === 'delete' ? `Delete \u201c${name}\u201d?` : `Convert to ${confirm.to === 'event' ? 'an' : 'a'} ${confirm.label}?`}
+        body={confirm.kind === 'delete'
+          ? `This ${noun} and everything on it goes. This can\u2019t be undone.`
+          : confirm.to === 'casual'
+            ? `\u201c${name}\u201d becomes a casual class. Clients book single sessions, and the price becomes the price of ONE \u2014 check it before anyone books.`
+            : confirm.to === 'event'
+              ? `\u201c${name}\u201d becomes a one-off event, sold on its own.`
+              : `\u201c${name}\u201d becomes a group class \u2014 a fixed series with a shared roster.`}
+        confirmLabel={confirm.kind === 'delete' ? 'Delete' : 'Convert'}
+        danger={confirm.kind === 'delete'}
+        busy={busy}
+        onCancel={() => setConfirm(null)}
+        onConfirm={confirm.kind === 'delete' ? handleDelete : () => handleConvert(confirm.to)}
+      />
+    ) : null,
+  }
+}
+
+/**
+ * The controls for ONE offering, drawn INSIDE the card they belong to: Edit,
+ * then More. Used by the offering screens that have not moved their actions to
+ * a pinned bar.
+ */
+export function OfferingActions(props: OfferingActionsProps) {
+  const { menu, editHref, error, overlays } = useOfferingActions(props)
+  const [sheetOpen, setSheetOpen] = useState(false)
 
   return (
     <div className="flex items-center gap-1.5">
@@ -217,7 +265,7 @@ export function OfferingActions({
       <button
         type="button"
         onClick={() => setSheetOpen(true)}
-        aria-label={`More actions for this ${noun}`}
+        aria-label={`More actions for this ${props.noun}`}
         aria-haspopup="dialog"
         className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
       >
@@ -225,26 +273,14 @@ export function OfferingActions({
       </button>
 
       {sheetOpen && (
-        <ActionSheet title={name} actions={actions} onClose={() => setSheetOpen(false)} />
-      )}
-
-      {confirm && (
-        <ConfirmSheet
-          title={confirm.kind === 'delete' ? `Delete “${name}”?` : `Convert to ${confirm.to === 'event' ? 'an' : 'a'} ${confirm.label}?`}
-          body={confirm.kind === 'delete'
-            ? `This ${noun} and everything on it goes. This can’t be undone.`
-            : confirm.to === 'casual'
-              ? `“${name}” becomes a casual class. Clients book single sessions, and the price becomes the price of ONE — check it before anyone books.`
-              : confirm.to === 'event'
-                ? `“${name}” becomes a one-off event, sold on its own.`
-                : `“${name}” becomes a group class — a fixed series with a shared roster.`}
-          confirmLabel={confirm.kind === 'delete' ? 'Delete' : 'Convert'}
-          danger={confirm.kind === 'delete'}
-          busy={busy}
-          onCancel={() => setConfirm(null)}
-          onConfirm={confirm.kind === 'delete' ? handleDelete : () => handleConvert(confirm.to)}
+        <ActionSheet
+          title={props.name}
+          actions={menu.map(a => ({ ...a, onSelect: () => { setSheetOpen(false); a.onSelect() } }))}
+          onClose={() => setSheetOpen(false)}
         />
       )}
+
+      {overlays}
     </div>
   )
 }

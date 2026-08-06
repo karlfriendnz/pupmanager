@@ -550,7 +550,9 @@ test.describe('the jobs a trainer does every day', () => {
       // (The edit form ALSO has a Delete, and that one is a window.confirm —
       // two different dialogs for one action, on two screens.)
       await page.goto(`/packages/${id}`)
-      await page.getByRole('button', { name: 'More actions for this package' }).click()
+      // The ⋯ is pinned at the foot of the screen now and names the offering
+      // rather than its noun ("More actions for Puppy Basics").
+      await page.getByRole('button', { name: /^More actions/ }).click()
       await page.getByRole('button', { name: /delete this package/i }).click()
       await page.getByRole('alertdialog').getByRole('button', { name: 'Delete', exact: true }).click()
       await expect
@@ -950,7 +952,7 @@ test.describe('the jobs a trainer does every day', () => {
 
       // ── Enrol ───────────────────────────────────────────────────────────────
       await page.goto(`/classes/${runId}`)
-      await page.getByRole('button', { name: /^Clients/ }).click()
+      await page.getByRole('tab', { name: /^Clients/ }).click()
       await page.getByRole('button', { name: 'Enrol client' }).click()
 
       const modal = page.getByRole('heading', { name: 'Enrol a client' })
@@ -972,7 +974,7 @@ test.describe('the jobs a trainer does every day', () => {
       expect(enrolment.status, 'enrolling produced a row that is not actually enrolled').not.toBe('WITHDRAWN')
 
       await page.goto(`/classes/${runId}`)
-      await page.getByRole('button', { name: /^Clients/ }).click()
+      await page.getByRole('tab', { name: /^Clients/ }).click()
       // `visible: true` because every tab's panel is in the DOM at once — the
       // one you aren't on is `hidden`, so an unfiltered match finds the client
       // in the Details tab's snapshot and proves nothing about the roster.

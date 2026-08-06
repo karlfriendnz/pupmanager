@@ -57,7 +57,7 @@ export function OfferingTabs<T extends string>({
   const phoneBox = useRef<HTMLDivElement>(null)
   const wideBox = useRef<HTMLDivElement>(null)
 
-  // Past four, an even split is narrower than the words.
+  // Past four, an even split is narrower than the words even at full width.
   const scrolls = tabs.length > 4
 
   useEffect(() => {
@@ -86,10 +86,14 @@ export function OfferingTabs<T extends string>({
       {/* Phone — icon over label. Evenly split up to four, scrolling past that. */}
       <div
         ref={phoneBox}
-        className={cn(
-          'sm:hidden flex gap-1 p-1 bg-slate-100 rounded-2xl',
-          scrolls && 'overflow-x-auto no-scrollbar',
-        )}
+        // ALWAYS scrollable, even in the even-split mode. The split is only
+        // even if the box is as wide as the screen, and it is not always: this
+        // strip shares a row with a tab's own actions on the offering detail
+        // screen, which squeezed it to 239px and clipped "Homework" and
+        // "Automation" inside their own columns. A minimum width per tab plus
+        // somewhere to scroll means the words survive the container, whatever
+        // the container turns out to be.
+        className="sm:hidden flex gap-1 p-1 bg-slate-100 rounded-2xl overflow-x-auto no-scrollbar"
       >
         {tabs.map(t => {
           const Icon = t.icon
@@ -104,7 +108,7 @@ export function OfferingTabs<T extends string>({
               onClick={() => onChange(t.id)}
               className={cn(
                 'relative min-w-0 flex flex-col items-center justify-start gap-1 px-1 py-2 rounded-xl transition-all duration-150',
-                scrolls ? 'shrink-0 basis-[5.5rem]' : 'flex-1',
+                scrolls ? 'shrink-0 basis-[5.5rem]' : 'flex-1 min-w-[4.5rem]',
                 active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500',
               )}
             >

@@ -101,3 +101,42 @@ describe('the product form is the screen that proves it', () => {
     expect(productDetail).not.toContain('border-b-2')
   })
 })
+
+/**
+ * The second adopter was a READ screen, which is the test a shared layout has
+ * to pass: an offering you are LOOKING at, whose primary action is Edit and
+ * which has no Cancel at all — the way out is the back arrow the header
+ * already carries (Karl: "this should have the same view as product").
+ */
+describe('a read screen fits the same shell', () => {
+  const packageDetail = src('app/(trainer)/packages/[packageId]/package-detail.tsx')
+  const offeringActions = src('components/trainer/offering-actions.tsx')
+
+  it('takes a primary that navigates instead of submitting', () => {
+    expect(editScreen).toMatch(/href\?: string/)
+    // A real <a>: it middle-clicks, opens in a new tab and shows its target,
+    // which a button that calls router.push does not.
+    expect(editScreen).toMatch(/\{primary\.href \? \(/)
+    expect(editScreen).toMatch(/<Link\s+href=\{primary\.href\}/)
+  })
+
+  it('the offering screen passes Edit as that primary, and no secondary', () => {
+    expect(packageDetail).toMatch(/primary=\{\{ label: 'Edit', href: editHref/)
+    expect(packageDetail).not.toMatch(/secondary=\{/)
+  })
+
+  it('its actions come from the shared hook, not a second copy', () => {
+    // The routes, the confirmations and the refusal prose have ONE copy; the
+    // two callers decide only where they are drawn. A `variant` prop on the
+    // component would have been the other way, and that is how the offering
+    // card ended up crushing its title on a phone.
+    expect(offeringActions).toContain('export function useOfferingActions')
+    expect(offeringActions).toContain('export function OfferingActions')
+    expect(packageDetail).toContain('useOfferingActions({')
+    expect(packageDetail).not.toMatch(/<OfferingActions\b/)
+  })
+
+  it('stops drawing Edit inside the card it used to float in', () => {
+    expect(packageDetail).toMatch(/<CardHeading icon=\{<Info className="h-4 w-4 text-slate-400" \/>\}>/)
+  })
+})

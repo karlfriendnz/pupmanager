@@ -26,8 +26,16 @@ describe('the strip scrolls rather than squeezing', () => {
   })
 
   it('swaps the even split for fixed-width tabs once it scrolls', () => {
-    expect(tabs).toMatch(/scrolls \? 'shrink-0 basis-\[5\.5rem\]' : 'flex-1'/)
-    expect(tabs).toMatch(/scrolls && 'overflow-x-auto no-scrollbar'/)
+    expect(tabs).toMatch(/scrolls \? 'shrink-0 basis-\[5\.5rem\]' : 'flex-1 min-w-\[4\.5rem\]'/)
+  })
+
+  it('can scroll even in the even-split mode, because the box may be narrow', () => {
+    // The split is only even if the box is as wide as the screen. On the
+    // offering detail screen this strip shares a row with a tab's own actions,
+    // which squeezed it to 239px and clipped "Homework" and "Automation"
+    // INSIDE their columns — a four-tab strip, so the count rule never fired.
+    // A minimum width per tab plus somewhere to scroll survives any container.
+    expect(tabs).toMatch(/sm:hidden flex gap-1 p-1 bg-slate-100 rounded-2xl overflow-x-auto no-scrollbar/)
   })
 
   it('hides the rail — a bar here would be the second one on screen', () => {

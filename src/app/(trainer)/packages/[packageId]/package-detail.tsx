@@ -10,8 +10,9 @@ import { PageHeader } from '@/components/shared/page-header'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { ClientSnapshotRow } from '@/components/shared/client-snapshot-row'
 import { CardHeading } from '@/components/shared/card-heading'
-import { OfferingActions } from '@/components/trainer/offering-actions'
-import { Info, Users, Package as PackageIcon, Bell, MessageSquare, ListChecks } from 'lucide-react'
+import { useOfferingActions } from '@/components/trainer/offering-actions'
+import { EditScreen } from '@/components/shared/edit-screen'
+import { Info, Users, Package as PackageIcon, Bell, MessageSquare, ListChecks, Pencil } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
 import { AddSessionButton, SeriesCurriculumEditor } from '@/components/trainer/series-curriculum-editor'
@@ -140,12 +141,22 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
     ...(!pkg.isGroup ? [{ id: 'messages' as const, label: 'Automation', icon: Bell }] : []),
   ]
 
+  // Edit, and everything occasional behind the ⋯ . Same hook the four screens
+  // that still draw them inside a card use, so the routes, the confirmations
+  // and the refusal prose have one copy between them.
+  const { menu, editHref, error: actionError, overlays } = useOfferingActions({
+    name: pkg.name,
+    noun: pkg.isGroup ? 'class' : 'package',
+    editHref: `/packages/${pkg.id}/edit`,
+    packageId: pkg.id,
+    backHref: '/packages',
+  })
+
   return (
     <>
       {/* Name and the way back, nothing else. No subtitle — the session count
-          was repeating what the Details card below already states — and no
-          actions: Edit and Delete are things you do to THIS offering, so they
-          live on the page with it, at the end of the Details card. */}
+          was repeating what the Details card below already states. The actions
+          are the pinned bar's below. */}
       <PageHeader
         title={pkg.name}
         back={{ href: '/packages', label: '1:1 Sessions' }}
@@ -158,6 +169,21 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           minimum size from the table and the whole PAGE scrolls sideways on a
           phone. Only the table's own overflow-x-auto should scroll. */}
       <div className="p-4 md:p-8 w-full min-w-0">
+      {/* A read screen, on the same shell as an edit screen (Karl: "this should
+          have the same view as product"). The search box and the bottom tabs go
+          — you are looking at ONE offering — and the two controls that were
+          floating inside the Details card become the pinned pair at the foot.
+          There is no Cancel: nothing is being edited, and the way out is the
+          back arrow the header already carries. */}
+      <EditScreen
+        menu={menu}
+        menuTitle={pkg.name}
+        primary={{ label: 'Edit', href: editHref, icon: <Pencil className="h-4 w-4" strokeWidth={1.75} /> }}
+      >
+        {actionError && (
+          <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800">{actionError}</p>
+        )}
+        {overlays}
 
         {/* Tabs — Details, Clients, Automation. Icon on top on a
             phone (the labels are too long to sit beside one at 390px).
@@ -165,10 +191,13 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             The tab's own actions sit on the SAME line, at the right, the way
             every other screen in the app puts them. "Add a session" under the
             list meant scrolling past every session to reach it. */}
-        <div className="mb-4 flex items-end justify-between gap-3">
-          <OfferingTabs tabs={tabs} value={tab} onChange={setTab} />
+        {/* The strip gets the whole width on a phone. Sharing the line with
+            the Sessions tab's own controls squeezed it to 239px, and four
+            labels in 239px clip inside their own columns. */}
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <OfferingTabs tabs={tabs} value={tab} onChange={setTab} className="mb-0 min-w-0" />
           {tab === 'homework' && onSessionList && (
-            <span className="flex flex-shrink-0 items-center gap-2 pb-1.5">
+            <span className="flex flex-shrink-0 items-center justify-end gap-2 sm:pb-1.5">
               <OfferingViewToggle value={sessionView} onChange={setSessionView} />
               <AddSessionButton packageId={pkg.id} sessionCount={pkg.sessionCount} />
             </span>
@@ -191,21 +220,11 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             {/* Package details */}
             <Card>
               <CardBody className="py-5">
-                {/* Edit sits here, at the top of what it edits — one tap, no
-                    scrolling to the foot of the card to find it. Everything
-                    occasional (duplicate, convert, delete) is behind More. */}
-                <CardHeading
-                  icon={<Info className="h-4 w-4 text-slate-400" />}
-                  action={
-                    <OfferingActions
-                      name={pkg.name}
-                      noun={pkg.isGroup ? 'class' : 'package'}
-                      editHref={`/packages/${pkg.id}/edit`}
-                      packageId={pkg.id}
-                      backHref="/packages"
-                    />
-                  }
-                >
+                {/* Edit and More used to float here, inside the card. They are
+                    the screen's actions, not the card's — pinned to the foot of
+                    it now, where they are on every other screen (Karl: "this
+                    should have the same view as product"). */}
+                <CardHeading icon={<Info className="h-4 w-4 text-slate-400" />}>
                   Details
                 </CardHeading>
                 <div className="divide-y divide-slate-100">
@@ -399,6 +418,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
         {/* Discounts tab — the system-wide engine, attached to this package.
             Hidden for now (see the Tab type); restore the tab entry and this
             panel together. */}
+      </EditScreen>
       </div>
     </>
   )

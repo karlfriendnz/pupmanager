@@ -264,9 +264,11 @@ test.describe('offering details page — actions on the page', () => {
   // convert the type of offering)". Edit used to be at the FOOT of the details
   // card, a scroll below the card heading — and on classes and events it was in
   // the page header as well, so the same action appeared twice on one screen.
-  // Now: Edit is a button in the card heading, everything occasional is behind
-  // More, and each of them exists exactly once.
-  test('Edit is in the details card heading, once, with More beside it', async ({ page }) => {
+  // Now: Edit and More are PINNED to the foot of the screen (Karl, 2026-08-06:
+  // "this should have the same view as product"), each exactly once. They used
+  // to float inside the Details card, which is a card's chrome for a screen's
+  // actions — and put them a scroll away on any tab but the first.
+  test('Edit and More are pinned at the foot of the screen, once each', async ({ page }) => {
     const prisma = await makePrisma()
     const pkg = await makeOffering(prisma)
     try {
@@ -281,16 +283,22 @@ test.describe('offering details page — actions on the page', () => {
       await expect(page.getByRole('link', { name: 'Edit this package' })).toHaveCount(0)
       await expect(page.getByRole('button', { name: 'Delete this package' })).toHaveCount(0)
 
-      // Edit sits at the TOP of the details card, not below its rows — that's
-      // the whole point of the move, so measure it rather than trust it.
-      const above = await page.evaluate(() => {
+      // Edit sits in the pinned bar at the BOTTOM of the screen, not inside the
+      // details card — that's the whole point of the move, so measure it rather
+      // than trust it. Sticky, so it is on screen wherever the page is scrolled.
+      const pinned = await page.evaluate(() => {
         const link = Array.from(document.querySelectorAll('a'))
           .find(a => a.textContent?.trim() === 'Edit')!
-        const firstRow = Array.from(document.querySelectorAll('div'))
-          .find(d => d.textContent?.trim().startsWith('Sessions'))!
-        return link.getBoundingClientRect().top < firstRow.getBoundingClientRect().top
+        const bar = link.parentElement!
+        const style = getComputedStyle(bar)
+        return {
+          sticky: style.position === 'sticky',
+          atFoot: style.bottom === '0px',
+          insideCard: !!link.closest('[class*="rounded-2xl"][class*="border-slate-200"]'),
+          onScreen: link.getBoundingClientRect().bottom <= window.innerHeight + 1,
+        }
       })
-      expect(above).toBe(true)
+      expect(pinned).toEqual({ sticky: true, atFoot: true, insideCard: false, onScreen: true })
 
       // More opens the house-style sheet with the three occasional actions.
       await page.getByRole('button', { name: /More actions/ }).click()
@@ -354,9 +362,11 @@ test.describe('offering details page — actions on the page', () => {
       await page.goto(`/packages/${pkg.id}`)
 
       // The discount engine is built but not shown to trainers yet.
-      await expect(page.getByRole('button', { name: /Discounts/ })).toHaveCount(0)
+      await expect(page.getByRole('tab', { name: /Discounts/ })).toHaveCount(0)
 
-      await page.getByRole('button', { name: /^Clients/ }).first().click()
+      // role=tab, not role=button: the section strip is a tablist now, which is
+      // what it always was and what every other strip in the app announces.
+      await page.getByRole('tab', { name: /^Clients/ }).first().click()
       const current = page.getByRole('button', { name: /^Current/ })
       await expect(current).toBeVisible()
 
