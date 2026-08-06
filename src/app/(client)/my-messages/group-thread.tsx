@@ -7,6 +7,13 @@ import { ArrowLeft, Lock, Send, Users, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ModalPortal } from '@/components/shared/modal-portal'
 import { FlatBlock } from '@/components/shared/flat-list'
+import {
+  ChatPhotos,
+  PhotoAttachButton,
+  PhotoDraftStrip,
+  usePhotoDrafts,
+} from '@/components/shared/chat-photos'
+import type { ChatAttachmentDto } from '@/lib/message-attachments'
 
 // One group, from the dog owner's side. Everything it shows comes from
 // /api/message-groups/<id>/*, which is the only place the visibility rules live
@@ -26,6 +33,8 @@ interface GroupMessage {
   visibility: 'EVERYONE' | 'TRAINER_ONLY'
   replyToId: string | null
   isMine: boolean
+  /** Photos posted with it. Ids only — the blob path never leaves the server. */
+  attachments?: ChatAttachmentDto[]
 }
 
 interface GroupPayload {
@@ -332,6 +341,8 @@ function JoinedThread({
   const [error, setError] = useState<string | null>(null)
   const [membersOpen, setMembersOpen] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  // The same hook the 1:1 threads use, pointed at a group instead of a client.
+  const photos = usePhotoDrafts({ groupId })
   // Bumped when the server rotates the stream, which re-runs the effect and
   // opens a fresh EventSource.
   const [streamKey, setStreamKey] = useState(0)
@@ -368,14 +379,21 @@ function JoinedThread({
   async function send(e: React.FormEvent) {
     e.preventDefault()
     const text = body.trim()
-    if (!text) return
+    const refs = photos.refs
+    // A photo with no words is a post. Nothing at all is not.
+    if (!text && refs.length === 0) return
     setError(null)
     setBody('')
+    const localPhotos = photos.drafts
+      .filter(d => d.status === 'ready')
+      .map(d => ({ id: d.key, url: d.previewUrl, width: null, height: null }))
+    photos.clear()
 
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const optimistic: GroupMessage = {
       id: tempId,
       body: text,
+      attachments: localPhotos,
       createdAt: new Date().toISOString(),
       senderId: currentUserId,
       senderName: 'You',
@@ -393,7 +411,7 @@ function JoinedThread({
         const res = await fetch(`/api/message-groups/${groupId}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ body: text }),
+          body: JSON.stringify({ body: text, attachments: refs }),
         })
         if (!res.ok) throw new Error('send failed')
         const saved = (await res.json()) as GroupMessage
@@ -450,7 +468,10 @@ function JoinedThread({
                       : 'rounded-bl-md bg-white text-slate-700 shadow-sm'
                   }`}
                 >
-                  <p className="break-words">{msg.body}</p>
+                  {/* A photo-only post must read as a post, not as an empty
+                      bubble with a timestamp. */}
+                  <ChatPhotos attachments={msg.attachments ?? []} className="mb-1.5" />
+                  {msg.body && <p className="break-words">{msg.body}</p>}
                   <p className={`mt-1 text-xs ${msg.isMine ? 'text-white/70' : 'text-slate-400'}`}>
                     {new Date(msg.createdAt).toLocaleTimeString('en-NZ', { hour: '2-digit', minute: '2-digit' })}
                   </p>
@@ -476,7 +497,10 @@ function JoinedThread({
         >
           {error && <p className="mb-2 text-xs text-red-500">{error}</p>}
           {group.canPost ? (
+            <>
+            <PhotoDraftStrip photos={photos} />
             <form onSubmit={send} className="flex gap-2">
+              <PhotoAttachButton photos={photos} disabled={pending} />
               <input
                 type="text"
                 value={body}
@@ -487,10 +511,17 @@ function JoinedThread({
                 className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
                 maxLength={2000}
               />
-              <Button type="submit" size="sm" loading={pending} disabled={!body.trim()}>
+              {/* Send stays off while a photo is still going up. */}
+              <Button
+                type="submit"
+                size="sm"
+                loading={pending || photos.busy}
+                disabled={(!body.trim() && !photos.hasPhotos) || photos.busy}
+              >
                 <Send className="h-4 w-4" />
               </Button>
             </form>
+            </>
           ) : (
             <p className="flex items-center gap-2 py-2 text-sm text-slate-500">
               <Lock className="h-4 w-4 text-slate-700" strokeWidth={1.75} />

@@ -7,6 +7,13 @@ import { RichTextEditor } from '@/components/shared/rich-text-editor'
 import { htmlHasText } from '@/lib/email-html'
 import { BookingProposalCard } from '@/components/shared/booking-proposal-card'
 import { latestProposalIds, type ThreadProposalDto } from '@/lib/thread-proposal'
+import {
+  ChatPhotos,
+  PhotoAttachButton,
+  PhotoDraftStrip,
+  usePhotoDrafts,
+} from '@/components/shared/chat-photos'
+import type { ChatAttachmentDto } from '@/lib/message-attachments'
 
 interface Message {
   id: string
@@ -15,6 +22,8 @@ interface Message {
   createdAt: string
   /** Set only when this message IS a counter-offer on a booking request. */
   proposal?: ThreadProposalDto | null
+  /** Photos sent with it. Ids only — the blob path never leaves the server. */
+  attachments?: ChatAttachmentDto[]
   // Stamped when the OTHER party opens the thread, so on our own messages it
   // is the client's read receipt. Null on an optimistic row until the POST
   // comes back.
@@ -58,6 +67,8 @@ export function MessageThread({
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  // The same hook the client side uses — one implementation, four mounts.
+  const photos = usePhotoDrafts({ clientId })
 
   // Which counter-offers are still live. Presentation only — the approve route
   // refuses a superseded one regardless (see BookingProposalCard).
@@ -163,10 +174,16 @@ export function MessageThread({
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault()
-    if (!body.trim()) return
-    setError(null)
     const text = body.trim()
+    const refs = photos.refs
+    // A photo with no words is a message. Nothing at all is not.
+    if (!text && refs.length === 0) return
+    setError(null)
     setBody('')
+    const localPhotos = photos.drafts
+      .filter(d => d.status === 'ready')
+      .map(d => ({ id: d.key, url: d.previewUrl, width: null, height: null }))
+    photos.clear()
 
     // Optimistic: drop the message into the thread immediately under a
     // tagged temp id so the UI never waits on the API round-trip. The
@@ -181,6 +198,7 @@ export function MessageThread({
       createdAt: new Date().toISOString(),
       readAt: null,
       sender: { name: null, email: '' },
+      attachments: localPhotos,
     }
     setMessages(prev => [...prev, optimistic])
 
@@ -189,7 +207,7 @@ export function MessageThread({
         const res = await fetch('/api/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ clientId, body: text }),
+          body: JSON.stringify({ clientId, body: text, attachments: refs }),
         })
         if (!res.ok) throw new Error('send failed')
         const msg = await res.json() as Message
@@ -233,7 +251,10 @@ export function MessageThread({
                   ? 'bg-blue-600 text-white rounded-br-sm'
                   : 'bg-slate-100 text-slate-900 rounded-bl-sm'
               }`}>
-                <p className="break-words">{msg.body}</p>
+                {/* A photo-only message must read as a message, not as an
+                    empty bubble with a timestamp. */}
+                <ChatPhotos attachments={msg.attachments ?? []} className="mb-1.5" />
+                {msg.body && <p className="break-words">{msg.body}</p>}
                 <p className={`text-xs mt-1 flex items-center gap-1.5 ${isMine ? 'text-blue-200 justify-end' : 'text-slate-400'}`}>
                   {new Date(msg.createdAt).toLocaleTimeString('en-NZ', { hour: '2-digit', minute: '2-digit' })}
                   {/* Only on OUR side: readAt on an incoming message just means
@@ -261,7 +282,13 @@ export function MessageThread({
           copy here is what left a band of white below the input. */}
       <div className="flex-shrink-0 sticky bottom-0 border-t border-slate-100 px-4 py-3 bg-white">
         {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
+        <PhotoDraftStrip photos={photos} />
         <form onSubmit={sendMessage} className="flex gap-2">
+          <PhotoAttachButton
+            photos={photos}
+            disabled={isPending}
+            accentClassName="hover:border-blue-500 hover:text-blue-600"
+          />
           <button
             type="button"
             onClick={openEmail}
@@ -279,7 +306,14 @@ export function MessageThread({
             className="flex-1 h-11 rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
             maxLength={2000}
           />
-          <Button type="submit" size="sm" loading={isPending} disabled={!body.trim()}>
+          {/* Send stays off while a photo is still going up — pressing it then
+              would send the message without the picture. */}
+          <Button
+            type="submit"
+            size="sm"
+            loading={isPending || photos.busy}
+            disabled={(!body.trim() && !photos.hasPhotos) || photos.busy}
+          >
             <Send className="h-4 w-4" />
           </Button>
         </form>

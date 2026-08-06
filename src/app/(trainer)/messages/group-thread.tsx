@@ -9,6 +9,14 @@ import {
 } from 'lucide-react'
 import { GroupComposer, type AudienceOption, type PickableClient } from './group-composer'
 import { cn } from '@/lib/utils'
+import {
+  ChatPhotos,
+  PhotoAttachButton,
+  PhotoDraftStrip,
+  usePhotoDrafts,
+  type PhotoDraftsApi,
+} from '@/components/shared/chat-photos'
+import type { ChatAttachmentDto } from '@/lib/message-attachments'
 
 // The trainer's view of one group.
 //
@@ -30,6 +38,8 @@ interface GroupMessage {
   visibility: 'EVERYONE' | 'TRAINER_ONLY'
   replyToId: string | null
   isMine: boolean
+  /** Photos posted with it. Ids only — the blob path never leaves the server. */
+  attachments?: ChatAttachmentDto[]
 }
 
 interface GroupMeta {
@@ -93,6 +103,8 @@ export function GroupThread({
   const [sending, setSending] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+  // The same hook the 1:1 threads use, pointed at a group.
+  const photos = usePhotoDrafts({ groupId })
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/message-groups/${groupId}/messages`)
@@ -123,18 +135,21 @@ export function GroupThread({
 
   async function post(body: string, replyToId?: string) {
     const text = body.trim()
-    if (!text || sending) return
+    const refs = photos.refs
+    // A photo with no words is a post. Nothing at all is not.
+    if ((!text && refs.length === 0) || sending) return
     setSending(true)
     try {
       const res = await fetch(`/api/message-groups/${groupId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body: text, ...(replyToId ? { replyToId } : {}) }),
+        body: JSON.stringify({ body: text, attachments: refs, ...(replyToId ? { replyToId } : {}) }),
       })
       if (res.ok) {
         const created = await res.json()
         setMessages(prev => (prev.some(x => x.id === created.id) ? prev : [...prev, created]))
         setDraft('')
+        photos.clear()
       }
     } finally {
       setSending(false)
@@ -300,6 +315,7 @@ export function GroupThread({
           onChange={setDraft}
           onSend={() => post(draft)}
           disabled={sending}
+          photos={photos}
           placeholder={`Message ${group.name}`}
         />
       )}
@@ -326,7 +342,11 @@ function Post({
         {!message.isMine && (
           <p className="mb-1 text-xs font-medium text-slate-500">{message.senderName}</p>
         )}
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-900">{message.body}</p>
+        {/* A photo-only post must read as a post, not as an empty card. */}
+        <ChatPhotos attachments={message.attachments ?? []} className="mb-2" />
+        {message.body && (
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-900">{message.body}</p>
+        )}
         <div className="mt-2 flex items-center gap-3">
           <span className="text-[11px] text-slate-400">
             {new Date(message.createdAt).toLocaleString('en-NZ', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
@@ -475,7 +495,14 @@ function PersonView({
 }) {
   const [data, setData] = useState<{
     person: { displayName: string; clientProfileId: string | null; left: boolean }
-    messages: { id: string; body: string; createdAt: string; isMine: boolean; fromPerson: boolean }[]
+    messages: {
+      id: string
+      body: string
+      createdAt: string
+      isMine: boolean
+      fromPerson: boolean
+      attachments?: ChatAttachmentDto[]
+    }[]
   } | null>(null)
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
@@ -539,12 +566,17 @@ function PersonView({
               m.fromPerson ? 'border border-slate-200 bg-white' : 'ml-auto bg-slate-900',
             )}
           >
-            <p className={cn(
-              'whitespace-pre-wrap text-sm leading-relaxed',
-              m.fromPerson ? 'text-slate-900' : 'text-white',
-            )}>
-              {m.body}
-            </p>
+            {/* A client's reply here can be a photo of the harness with no
+                words at all. */}
+            <ChatPhotos attachments={m.attachments ?? []} className="mb-1.5" />
+            {m.body && (
+              <p className={cn(
+                'whitespace-pre-wrap text-sm leading-relaxed',
+                m.fromPerson ? 'text-slate-900' : 'text-white',
+              )}>
+                {m.body}
+              </p>
+            )}
             <p className={cn('mt-1 text-[11px]', m.fromPerson ? 'text-slate-400' : 'text-slate-400')}>
               {new Date(m.createdAt).toLocaleString('en-NZ', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
             </p>
@@ -683,19 +715,31 @@ function MenuRow({
 }
 
 function Composer({
-  value, onChange, onSend, disabled, placeholder,
+  value, onChange, onSend, disabled, placeholder, photos,
 }: {
   value: string
   onChange: (v: string) => void
   onSend: () => void
   disabled: boolean
   placeholder: string
+  /** Omitted on the per-person reply box, which is text-only for now. */
+  photos?: PhotoDraftsApi
 }) {
+  const busy = !!photos?.busy
   return (
     <div
-      className="flex items-end gap-2 border-t border-slate-200 bg-white px-4 pt-3"
+      className="border-t border-slate-200 bg-white px-4 pt-3"
       style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
     >
+      {photos && <PhotoDraftStrip photos={photos} />}
+      <div className="flex items-end gap-2">
+      {photos && (
+        <PhotoAttachButton
+          photos={photos}
+          disabled={disabled}
+          accentClassName="hover:border-slate-400 hover:text-slate-700"
+        />
+      )}
       <textarea
         value={value}
         onChange={e => onChange(e.target.value.slice(0, 2000))}
@@ -708,13 +752,16 @@ function Composer({
       <button
         type="button"
         onClick={onSend}
-        disabled={disabled || !value.trim()}
+        // Off while a photo is still uploading — pressing it then would post
+        // the message without the picture.
+        disabled={disabled || busy || (!value.trim() && !photos?.hasPhotos)}
         aria-label="Send"
         data-testid="group-post"
         className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400"
       >
         <Send className="h-4 w-4" strokeWidth={1.75} />
       </button>
+      </div>
     </div>
   )
 }
