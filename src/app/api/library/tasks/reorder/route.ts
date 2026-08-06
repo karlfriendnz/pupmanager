@@ -23,10 +23,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Duplicate ids' }, { status: 400 })
   }
 
-  // Ownership is two levels up — item → theme → type → trainer. Counting first
-  // means a list with one borrowed id writes nothing at all.
+  // Ownership is the item's own category — item → type → trainer. It is read
+  // off the item rather than through its theme because a theme is optional and
+  // a loose item has none. Counting first means a list with one borrowed id
+  // writes nothing at all.
   const mine = await prisma.libraryTask.count({
-    where: { id: { in: ids }, theme: { type: { trainerId: guard.companyId } } },
+    where: { id: { in: ids }, type: { trainerId: guard.companyId } },
   })
   if (mine !== ids.length) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 

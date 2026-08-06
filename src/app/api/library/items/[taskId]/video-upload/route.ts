@@ -32,11 +32,11 @@ export async function POST(
   const { taskId } = await params
 
   // Only issue a token for an item inside THIS company's library. The tenant
-  // boundary is two relations up (task → theme → type → trainer), and a token
+  // boundary is one relation up (task → type → trainer), and a token
   // issued without checking it would let one business upload into another's
   // catalogue.
   const task = await prisma.libraryTask.findFirst({
-    where: { id: taskId, theme: { type: { trainerId: ctx.companyId } } },
+    where: { id: taskId, type: { trainerId: ctx.companyId } },
     select: { id: true },
   })
   if (!task) return NextResponse.json({ error: 'Item not found' }, { status: 404 })

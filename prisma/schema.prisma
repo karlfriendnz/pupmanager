@@ -3740,6 +3740,10 @@ model LibraryType {
 
   trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
   themes  LibraryTheme[]
+  /// EVERY item in this category — the ones grouped under a theme and the ones
+  /// sitting loose in the category. See LibraryTask.typeId for why the link is
+  /// direct rather than read through the theme.
+  tasks   LibraryTask[]
 
   @@index([trainerId])
   @@map("library_types")
@@ -3762,7 +3766,21 @@ model LibraryTheme {
 
 model LibraryTask {
   id          String   @id @default(cuid())
-  themeId     String
+  /// The category this item lives in. ALWAYS set, theme or no theme.
+  ///
+  /// The library used to be a strict three levels — category → theme → item —
+  /// so adding one exercise meant inventing a theme to put it in. A theme is
+  /// now optional GROUPING, which means the item can no longer learn its
+  /// category by walking up through one: an item with no theme would have no
+  /// tenant, and every ownership filter here is `type.trainerId`.
+  ///
+  /// So the category link is direct. It is also what makes a theme deletable
+  /// without destroying its contents (see `theme` below) — the items simply
+  /// stop being grouped and stay in the category they were always in.
+  typeId      String
+  /// Optional grouping INSIDE the category. Null = the item sits directly in
+  /// the category and is listed there under "In this category".
+  themeId     String?
   title       String
   description String?  @db.Text // Tiptap rich text — render with <RichText />
   repetitions Int?
@@ -3810,7 +3828,12 @@ model LibraryTask {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  theme           LibraryTheme         @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  type            LibraryType          @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  // SetNull, not Cascade. Deleting a theme used to delete every exercise inside
+  // it — a trainer tidying their grouping lost the work. The item keeps its
+  // category (typeId, above) and reappears as a loose item on the category
+  // page, so nothing is ever silently destroyed by a rename-shaped action.
+  theme           LibraryTheme?        @relation(fields: [themeId], references: [id], onDelete: SetNull)
   // Homework rows created FROM this library item — the "who currently has this"
   // list on the item page. Snapshots keep their own copy of the text, so the
   // link is nullable and deleting the library item leaves the homework intact.
@@ -3820,6 +3843,7 @@ model LibraryTask {
   // the default with it.
   packageDefaults PackageDefaultTask[]
 
+  @@index([typeId])
   @@index([themeId])
   @@map("library_tasks")
 }

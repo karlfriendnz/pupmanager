@@ -28,7 +28,8 @@ interface Row {
 }
 
 interface LibTask { id: string; title: string; description: string | null; repetitions: number | null }
-interface LibType { id: string; name: string; themes: { id: string; name: string; tasks: LibTask[] }[] }
+/** `tasks` on the type is the items with no theme — a theme is optional grouping. */
+interface LibType { id: string; name: string; themes: { id: string; name: string; tasks: LibTask[] }[]; tasks?: LibTask[] }
 
 /** null is the "every session" bucket; numbers are session numbers. */
 type Bucket = number | null
@@ -158,7 +159,12 @@ export function DefaultHomeworkEditor({
 
   const allLibraryTasks = useMemo(() => {
     if (!library) return [] as (LibTask & { path: string })[]
-    return library.flatMap(ty => ty.themes.flatMap(th => th.tasks.map(t => ({ ...t, path: `${ty.name} · ${th.name}` }))))
+    return library.flatMap(ty => [
+      ...ty.themes.flatMap(th => th.tasks.map(t => ({ ...t, path: `${ty.name} · ${th.name}` }))),
+      // The loose items, shown by their category alone. Missing them here would
+      // make an item impossible to set as an offering's default homework.
+      ...(ty.tasks ?? []).map(t => ({ ...t, path: ty.name })),
+    ])
   }, [library])
 
   if (rows === null) {

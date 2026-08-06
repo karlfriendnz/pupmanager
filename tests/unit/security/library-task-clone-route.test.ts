@@ -2,9 +2,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NextResponse } from 'next/server'
 
 // POST /api/library/tasks/:taskId/clone — duplicate one library item. The
-// security question is the same one the whole Library asks: ownership lives two
-// levels up (item → theme → type → trainer), and a stranger's item must not be
-// copyable INTO the caller's own library either.
+// security question is the same one the whole Library asks: ownership lives on
+// the item's CATEGORY (item → type → trainer), and a stranger's item must not
+// be copyable INTO the caller's own library either.
+//
+// It used to be read through the item's theme (item → theme → type → trainer).
+// That stopped being a tenant check the moment a theme became optional: a
+// theme-less item has no chain to walk, so the filter would quietly match
+// nothing instead of failing — an ownership check with nothing to check is how
+// a cross-tenant hole opens. The category link is on the item itself and is
+// never null, so it holds for BOTH shapes, which is what the two scoping tests
+// below assert.
 const h = vi.hoisted(() => ({
   guardPermission: vi.fn(),
   findFirst: vi.fn(),
@@ -27,6 +35,7 @@ const OWNER = { companyId: 'company-A', userId: 'u1', membershipId: 'm1', role: 
 
 const ORIGINAL = {
   id: 'item-1',
+  typeId: 'type-1',
   themeId: 'theme-1',
   title: 'Sit',
   description: '<p>Ask for a <strong>sit</strong></p>',
@@ -67,10 +76,21 @@ describe('POST /api/library/tasks/:taskId/clone — permission', () => {
 })
 
 describe('POST /api/library/tasks/:taskId/clone — tenant scoping', () => {
-  it('looks the item up through its theme’s type, scoped to the caller', async () => {
+  it('looks the item up through its own category, scoped to the caller', async () => {
     await call('item-1')
     expect(h.findFirst).toHaveBeenCalledWith({
-      where: { id: 'item-1', theme: { type: { trainerId: 'company-A' } } },
+      where: { id: 'item-1', type: { trainerId: 'company-A' } },
+    })
+  })
+
+  it('scopes a THEME-LESS item the same way — the filter never goes empty', async () => {
+    // The shape that broke the old `theme.type.trainerId` chain. The where
+    // clause must still name the caller's company, whatever the item looks
+    // like: it is derived from the item id and the guard, never from the row.
+    h.findFirst.mockResolvedValue({ ...ORIGINAL, themeId: null })
+    await call('loose-item')
+    expect(h.findFirst).toHaveBeenCalledWith({
+      where: { id: 'loose-item', type: { trainerId: 'company-A' } },
     })
   })
 
@@ -88,6 +108,7 @@ describe('POST /api/library/tasks/:taskId/clone — the copy', () => {
     await call()
     expect(h.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
+        typeId: 'type-1',
         themeId: 'theme-1',
         title: 'Sit (copy)',
         description: ORIGINAL.description,
@@ -111,6 +132,21 @@ describe('POST /api/library/tasks/:taskId/clone — the copy', () => {
     })
     expect(h.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ order: 4 }),
+    }))
+  })
+
+  it('copies a theme-less item into the same category, still theme-less', async () => {
+    // A loose item duplicated must not acquire a theme, and must not lose its
+    // category — and the room-making has to be scoped to the category's loose
+    // items, or it renumbers every trainer's.
+    h.findFirst.mockResolvedValue({ ...ORIGINAL, themeId: null })
+    await call()
+    expect(h.updateMany).toHaveBeenCalledWith({
+      where: { typeId: 'type-1', themeId: null, order: { gt: 3 } },
+      data: { order: { increment: 1 } },
+    })
+    expect(h.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ typeId: 'type-1', themeId: null }),
     }))
   })
 

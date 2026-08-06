@@ -90,7 +90,7 @@ async function tenantData(tag: string, trainerId: string, clientId: string, dogI
   })
   const libType = await prisma.libraryType.create({ data: { trainerId, name: `${MARK} type ${tag}` } })
   const theme = await prisma.libraryTheme.create({ data: { typeId: libType.id, name: `${MARK} theme ${tag}` } })
-  const libTask = await prisma.libraryTask.create({ data: { themeId: theme.id, title: `${MARK} libtask ${tag}`, description: `<p>secret lib ${tag}</p>` } })
+  const libTask = await prisma.libraryTask.create({ data: { typeId: libType.id, themeId: theme.id, title: `${MARK} libtask ${tag}`, description: `<p>secret lib ${tag}</p>` } })
 
   const classRun = await prisma.classRun.create({
     data: { trainerId, packageId: pkg.id, name: `${MARK} run ${tag}`, startDate: new Date(Date.now() + 7 * 864e5), capacity: 6 },

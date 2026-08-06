@@ -24,20 +24,30 @@ export async function POST(_req: Request, { params }: { params: Promise<{ taskId
 
   const { taskId } = await params
 
-  // Ownership is two levels up — item → theme → type → trainer.
+  // Ownership is the item's own category — item → type → trainer. Read off the
+  // item, not through its theme, because a theme is optional and a loose item
+  // has none.
   const original = await prisma.libraryTask.findFirst({
-    where: { id: taskId, theme: { type: { trainerId: guard.companyId } } },
+    where: { id: taskId, type: { trainerId: guard.companyId } },
   })
   if (!original) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const copy = await prisma.$transaction(async tx => {
-    // Make room at original.order + 1 so the copy can sit there.
+    // Make room at original.order + 1 so the copy can sit there. Scoped to the
+    // list the original is actually IN — its theme, or the loose items of its
+    // category when it has no theme. `{ themeId: null }` on its own would
+    // renumber every trainer's loose items.
     await tx.libraryTask.updateMany({
-      where: { themeId: original.themeId, order: { gt: original.order } },
+      where: original.themeId
+        ? { themeId: original.themeId, order: { gt: original.order } }
+        : { typeId: original.typeId, themeId: null, order: { gt: original.order } },
       data: { order: { increment: 1 } },
     })
     return tx.libraryTask.create({
       data: {
+        // The copy lands beside the original — same category, same theme (or
+        // the same absence of one).
+        typeId: original.typeId,
         themeId: original.themeId,
         title: `${original.title} (copy)`,
         description: original.description,

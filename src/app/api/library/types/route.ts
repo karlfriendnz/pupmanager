@@ -13,6 +13,11 @@ export async function GET() {
   const trainer = await prisma.trainerProfile.findUnique({ where: { id: session.user.trainerId ?? '' }, select: { id: true } })
   if (!trainer) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
+  // The whole library, as every item picker in the app reads it. `tasks` on the
+  // TYPE is the items with no theme — a theme is optional grouping, and a picker
+  // that only walked `themes[].tasks` would silently leave those items
+  // unassignable. Filtered to `themeId: null` so a themed item is not listed
+  // twice.
   const types = await prisma.libraryType.findMany({
     where: { trainerId: trainer.id },
     orderBy: { order: 'asc' },
@@ -21,6 +26,7 @@ export async function GET() {
         orderBy: { order: 'asc' },
         include: { tasks: { orderBy: { order: 'asc' } } },
       },
+      tasks: { where: { themeId: null }, orderBy: { order: 'asc' } },
     },
   })
 

@@ -99,11 +99,11 @@ describe('POST /api/library/tasks/reorder', () => {
     expect(h.transaction).not.toHaveBeenCalled()
   })
 
-  it('checks ownership two levels up — item → theme → type → trainer', async () => {
+  it('checks ownership on the item’s own category — item → type → trainer', async () => {
     h.taskCount.mockResolvedValue(2)
     await reorderTasks(req(url, { ids: ['i1', 'i2'] }))
     expect(h.taskCount).toHaveBeenCalledWith({
-      where: { id: { in: ['i1', 'i2'] }, theme: { type: { trainerId: 'company-A' } } },
+      where: { id: { in: ['i1', 'i2'] }, type: { trainerId: 'company-A' } },
     })
   })
 

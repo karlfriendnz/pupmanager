@@ -1996,6 +1996,8 @@ interface LibraryType {
   id: string
   name: string
   themes: LibraryTheme[]
+  /** Items sitting directly in the category, with no theme. */
+  tasks?: LibraryTask[]
 }
 
 function DeleteSessionMenu({ deleting, canDeleteFollowing, onConfirm }: {
@@ -2958,16 +2960,19 @@ function SessionModal({
             {/* Add panel */}
             {showAddPanel && clientId && (() => {
               // Flatten library for search
-              const allLibraryTasks = library.flatMap(type =>
-                type.themes.flatMap(theme =>
-                  theme.tasks.map(lt => ({ ...lt, typeName: type.name, themeName: theme.name }))
-                )
-              )
+              const allLibraryTasks = library.flatMap(type => [
+                ...type.themes.flatMap(theme =>
+                  theme.tasks.map(lt => ({ ...lt, typeName: type.name, themeName: theme.name as string | null }))
+                ),
+                // Items with no theme. A theme is optional grouping, and an item
+                // missing from this list cannot be attached to a session at all.
+                ...(type.tasks ?? []).map(lt => ({ ...lt, typeName: type.name, themeName: null })),
+              ])
               const query = librarySearch.trim().toLowerCase()
               const filteredTasks = query
                 ? allLibraryTasks.filter(lt =>
                     lt.title.toLowerCase().includes(query) ||
-                    lt.themeName.toLowerCase().includes(query) ||
+                    (lt.themeName?.toLowerCase().includes(query) ?? false) ||
                     lt.typeName.toLowerCase().includes(query)
                   )
                 : allLibraryTasks
@@ -3054,7 +3059,7 @@ function SessionModal({
                             <div key={lt.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 transition-colors">
                               <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-slate-800 truncate">{lt.title}</p>
-                                <p className="text-[10px] text-slate-400 truncate">{lt.typeName} · {lt.themeName}{lt.repetitions ? ` · ${lt.repetitions} reps` : ''}</p>
+                                <p className="text-[10px] text-slate-400 truncate">{lt.typeName}{lt.themeName ? ` · ${lt.themeName}` : ''}{lt.repetitions ? ` · ${lt.repetitions} reps` : ''}</p>
                               </div>
                               <button
                                 onClick={() => handleAddLibraryTask(lt)}

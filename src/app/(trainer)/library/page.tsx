@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { PageHeader } from '@/components/shared/page-header'
 import { FlatBlock, SectionHeader } from '@/components/shared/flat-list'
 import { requireLibraryTrainer, getLibraryTree } from './library-data'
+import { countItems } from './library-shape'
 import { LibraryShell } from './library-shell'
 import { LibraryCategories } from './library-categories'
 import { LibraryEmpty } from './library-empty'
@@ -40,7 +41,9 @@ export default async function LibraryPage() {
               id: type.id,
               name: type.name,
               themes: type.themes.length,
-              items: type.themes.reduce((n, th) => n + th.items.length, 0),
+              // Themed AND loose — an item added straight into the category
+              // still counts as one thing in here.
+              items: countItems(type),
             }))}
           />
         )}

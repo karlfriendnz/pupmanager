@@ -42,11 +42,11 @@ describe('POST /api/library/items/[taskId]/video-upload', () => {
     expect(h.handleUpload).toHaveBeenCalled()
   })
 
-  it('scopes the lookup through theme → type → trainer', async () => {
+  it('scopes the lookup through the item’s own category — type → trainer', async () => {
     await POST(req(), { params: params() })
     expect(h.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'task1', theme: { type: { trainerId: 't1' } } },
+        where: { id: 'task1', type: { trainerId: 't1' } },
       }),
     )
   })

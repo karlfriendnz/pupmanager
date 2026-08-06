@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation'
 import { ChevronRight, FileText, FolderTree, Layers } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { FlatBlock } from '@/components/shared/flat-list'
-import type { TreeType } from './library-data'
+import { countItems, type TreeType } from './library-shape'
 
 // The Library's navigation spine: every category and the items inside it, in
 // one expandable tree. It is DESKTOP-ONLY — LibraryShell hangs it in a sticky
@@ -43,8 +43,9 @@ export function LibraryTree({ tree, className }: Props) {
 
   // The path to whatever is open starts expanded; everything else is closed.
   const activeType = activeTypeId
-    ?? tree.find(t => t.themes.some(th =>
-      th.id === activeThemeId || th.items.some(i => i.id === activeItemId)))?.id
+    ?? tree.find(t =>
+      t.items.some(i => i.id === activeItemId)
+      || t.themes.some(th => th.id === activeThemeId || th.items.some(i => i.id === activeItemId)))?.id
   const activeTheme = activeThemeId
     ?? tree.flatMap(t => t.themes).find(th => th.items.some(i => i.id === activeItemId))?.id
 
@@ -82,7 +83,7 @@ export function LibraryTree({ tree, className }: Props) {
 
   for (const type of tree) {
     const typeOpen = openTypes.has(type.id)
-    const itemCount = type.themes.reduce((n, th) => n + th.items.length, 0)
+    const itemCount = countItems(type)
     rows.push(
       <TreeRow
         key={type.id}
@@ -98,8 +99,8 @@ export function LibraryTree({ tree, className }: Props) {
     )
     if (!typeOpen) continue
 
-    if (type.themes.length === 0) {
-      rows.push(<EmptyRow key={`${type.id}-empty`} depth={1} text="No themes yet" />)
+    if (type.themes.length === 0 && type.items.length === 0) {
+      rows.push(<EmptyRow key={`${type.id}-empty`} depth={1} text="Nothing in here yet" />)
     }
 
     for (const theme of type.themes) {
@@ -134,6 +135,22 @@ export function LibraryTree({ tree, className }: Props) {
         )
       }
     }
+
+    // The items with no theme, last — a theme is optional grouping, so these sit
+    // one level in, beside the themes rather than inside one. They carry the
+    // ITEM icon at that depth, which is what tells them apart from a theme.
+    for (const item of type.items) {
+      rows.push(
+        <TreeRow
+          key={item.id}
+          depth={1}
+          icon={FileText}
+          label={item.title}
+          href={`/library/item/${item.id}`}
+          active={activeItemId === item.id}
+        />,
+      )
+    }
   }
 
   return (
@@ -154,7 +171,7 @@ const ICON = [Layers, FolderTree, FileText] as const
  * same problem, so it went here too.
  */
 function TreeRow({
-  depth, label, count, href, active, expandable, expanded, onToggle,
+  depth, label, count, href, active, expandable, expanded, onToggle, icon,
 }: {
   depth: 0 | 1 | 2
   label: string
@@ -164,8 +181,10 @@ function TreeRow({
   expandable?: boolean
   expanded?: boolean
   onToggle?: () => void
+  /** Overrides the icon the depth would pick — a theme-less item is an ITEM at theme depth. */
+  icon?: typeof FileText
 }) {
-  const Icon = ICON[depth]
+  const Icon = icon ?? ICON[depth]
   return (
     <div className={cn('flex items-center gap-1', active && 'bg-slate-50', INDENT[depth])}>
       {expandable ? (

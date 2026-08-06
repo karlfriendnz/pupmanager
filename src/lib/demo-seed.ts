@@ -968,7 +968,9 @@ export async function seedDemoData(
   // Library tree — pre-generate type/theme IDs, three createMany calls.
   const libraryTypeRows: Array<{ id: string; trainerId: string; isSample: boolean; name: string; order: number }> = []
   const libraryThemeRows: Array<{ id: string; typeId: string; name: string; order: number }> = []
-  const libraryTaskRows: Array<{ themeId: string; title: string; description?: string; repetitions?: number; order: number }> = []
+  // typeId as well as themeId: an item stores its category directly, because a
+  // theme is optional grouping and an item can have none.
+  const libraryTaskRows: Array<{ typeId: string; themeId: string; title: string; description?: string; repetitions?: number; order: number }> = []
   for (let ti = 0; ti < libraryContent.length; ti++) {
     const t = libraryContent[ti]
     const typeId = randomUUID()
@@ -980,6 +982,7 @@ export async function seedDemoData(
       for (let tki = 0; tki < th.tasks.length; tki++) {
         const tk = th.tasks[tki]
         libraryTaskRows.push({
+          typeId,
           themeId,
           title: tk.title,
           description: tk.description,

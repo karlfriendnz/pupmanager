@@ -126,7 +126,7 @@ async function victimFixtures(prisma: PrismaClient): Promise<Victim> {
   const form = await prisma.form.create({ data: { trainerId: t, name: `${MARK} victim form`, usableAsEnquiry: true, slug: `${MARK}-victim-form`, questions: [] } })
   const libType = await prisma.libraryType.create({ data: { trainerId: t, name: `${MARK} victim type` } })
   const theme = await prisma.libraryTheme.create({ data: { typeId: libType.id, name: `${MARK} victim theme` } })
-  const libTask = await prisma.libraryTask.create({ data: { themeId: theme.id, title: `${MARK} victim libtask` } })
+  const libTask = await prisma.libraryTask.create({ data: { typeId: libType.id, themeId: theme.id, title: `${MARK} victim libtask` } })
   const classRun = await prisma.classRun.create({ data: { trainerId: t, packageId: pkg.id, name: `${MARK} victim run`, startDate: new Date(Date.now() + 7 * 86_400_000), capacity: 6 } })
   const membership = await prisma.membership.create({ data: { trainerId: t, name: `${MARK} victim membership`, priceCents: 9_900, published: true, slug: `${MARK}-victim-mem` } })
   const location = await prisma.location.create({ data: { trainerId: t, name: `${MARK} victim location` } })

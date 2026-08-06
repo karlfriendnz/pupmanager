@@ -34,12 +34,14 @@ export async function GET() {
       select: { id: true, name: true, isActive: true, usableAsIntake: true, usableAsEnquiry: true },
     }),
     prisma.libraryTask.findMany({
-      // The library is a type → theme → task tree, and only the type carries the
-      // tenant. Filtering on the task alone would return every trainer's
-      // homework.
-      where: { theme: { type: { trainerId } } },
+      // Only the CATEGORY carries the tenant — filtering on the task alone
+      // would return every trainer's homework. The item links to its category
+      // directly, so this reaches items with no theme as well as themed ones.
+      where: { type: { trainerId } },
       orderBy: [{ title: 'asc' }],
-      select: { id: true, title: true, theme: { select: { name: true } } },
+      // The group label is the theme where there is one and the category
+      // otherwise — a loose item must not fall out of the picker's grouping.
+      select: { id: true, title: true, theme: { select: { name: true } }, type: { select: { name: true } } },
       take: 500,
     }),
     prisma.package.findMany({
@@ -52,7 +54,7 @@ export async function GET() {
 
   return NextResponse.json({
     forms: forms.map(f => ({ id: f.id, name: f.name, isActive: f.isActive, intake: f.usableAsIntake, enquiry: f.usableAsEnquiry })),
-    tasks: tasks.map(t => ({ id: t.id, title: t.title, group: t.theme?.name ?? null })),
+    tasks: tasks.map(t => ({ id: t.id, title: t.title, group: t.theme?.name ?? t.type.name })),
     offerings: offerings.map(p => ({ id: p.id, name: p.name })),
   })
 }

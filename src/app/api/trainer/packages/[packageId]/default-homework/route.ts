@@ -28,7 +28,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ package
           description: true,
           repetitions: true,
           videoUrl: true,
-          theme: { select: { name: true, type: { select: { name: true } } } },
+          type: { select: { name: true } },
+          theme: { select: { name: true } },
         },
       },
     },
@@ -46,7 +47,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ package
       repetitions: r.libraryTask?.repetitions ?? r.repetitions,
       videoUrl: r.libraryTask?.videoUrl ?? r.videoUrl,
       // Where the item lives, so the editor can show "Foundations · Loose lead".
-      libraryPath: r.libraryTask ? `${r.libraryTask.theme.type.name} · ${r.libraryTask.theme.name}` : null,
+      // A theme is optional grouping, so an item with none shows just its
+      // category — never a dangling " · " or, worse, a crash on theme.name.
+      libraryPath: r.libraryTask
+        ? r.libraryTask.theme
+          ? `${r.libraryTask.type.name} · ${r.libraryTask.theme.name}`
+          : r.libraryTask.type.name
+        : null,
     })),
   )
 }
@@ -82,7 +89,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ package
   // the id IS the task, so a bad one is refused.
   if (parsed.data.libraryTaskId) {
     const owned = await prisma.libraryTask.findFirst({
-      where: { id: parsed.data.libraryTaskId, theme: { type: { trainerId: ctx.companyId } } },
+      where: { id: parsed.data.libraryTaskId, type: { trainerId: ctx.companyId } },
       select: { id: true },
     })
     if (!owned) return NextResponse.json({ error: 'Library item not found' }, { status: 404 })

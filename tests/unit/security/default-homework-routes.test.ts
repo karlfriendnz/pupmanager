@@ -65,6 +65,26 @@ describe('offering editor — /api/trainer/packages/[packageId]/default-homework
     expect(h.pkgFindFirst.mock.calls[0][0].where).toMatchObject({ id: 'p1', trainerId: 'co1' })
   })
 
+  it('names the library path for a themed item and a theme-less one alike', async () => {
+    // The path used to be read as `libraryTask.theme.type.name` — which throws
+    // the moment an item has no theme, taking the offering editor down with it.
+    // A theme is optional grouping, so an item without one shows its CATEGORY
+    // and no dangling separator.
+    h.pkgFindFirst.mockResolvedValue({ id: 'p1', sessionCount: 6 })
+    h.defFindMany.mockResolvedValue([
+      { id: 'd1', sessionIndex: 1, timing: 'AFTER_SESSION', order: 0, libraryTaskId: 'L1', title: null, description: null, repetitions: null, videoUrl: null,
+        libraryTask: { id: 'L1', title: 'Loose lead', description: null, repetitions: null, videoUrl: null, type: { name: 'Obedience' }, theme: { name: 'Walking' } } },
+      { id: 'd2', sessionIndex: 1, timing: 'AFTER_SESSION', order: 1, libraryTaskId: 'L2', title: null, description: null, repetitions: null, videoUrl: null,
+        libraryTask: { id: 'L2', title: 'Sit at the kerb', description: null, repetitions: null, videoUrl: null, type: { name: 'Obedience' }, theme: null } },
+      { id: 'd3', sessionIndex: 1, timing: 'AFTER_SESSION', order: 2, libraryTaskId: null, title: 'One-off', description: null, repetitions: null, videoUrl: null, libraryTask: null },
+    ])
+
+    const res = await listDefaults(new Request('https://x'), { params: Promise.resolve({ packageId: 'p1' }) })
+    expect(res.status).toBe(200)
+    const rows = await res.json() as { libraryPath: string | null }[]
+    expect(rows.map(r => r.libraryPath)).toEqual(['Obedience \u00b7 Walking', 'Obedience', null])
+  })
+
   it('refuses a library item belonging to someone else', async () => {
     h.pkgFindFirst.mockResolvedValue({ id: 'p1', sessionCount: 6 })
     h.libFindFirst.mockResolvedValue(null)

@@ -3,6 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { hasAddon } from '@/lib/billing'
 import { addonSettingsHref } from '@/lib/configurable-features'
+import type { TreeType } from './library-shape'
 
 // Shared server helpers for the Library screens (/library, /library/type,
 // /library/theme, /library/item).
@@ -18,22 +19,10 @@ import { addonSettingsHref } from '@/lib/configurable-features'
 // each page's header inside the tree's grid column. So every page composes
 // LibraryShell itself and pulls the tree through these helpers.
 
-export interface TreeItem {
-  id: string
-  title: string
-}
-
-export interface TreeTheme {
-  id: string
-  name: string
-  items: TreeItem[]
-}
-
-export interface TreeType {
-  id: string
-  name: string
-  themes: TreeTheme[]
-}
+// The tree's SHAPE and the pure helpers over it live in library-shape.ts, which
+// imports nothing — this module reaches auth and prisma, and a client component
+// importing a value from here pulls all of that into the browser bundle.
+export type { TreeItem, TreeTheme, TreeType } from './library-shape'
 
 /**
  * Auth + add-on gate every Library page runs. Returns the trainer id.
@@ -60,6 +49,14 @@ export async function getLibraryTree(trainerId: string): Promise<TreeType[]> {
         orderBy: { order: 'asc' },
         include: { tasks: { orderBy: { order: 'asc' }, select: { id: true, title: true } } },
       },
+      // The loose ones — `themeId: null` is what makes an item live directly in
+      // the category. Selected here rather than derived from `themes`, because
+      // they are by definition in none of them.
+      tasks: {
+        where: { themeId: null },
+        orderBy: { order: 'asc' },
+        select: { id: true, title: true },
+      },
     },
   })
   return types.map(t => ({
@@ -70,5 +67,6 @@ export async function getLibraryTree(trainerId: string): Promise<TreeType[]> {
       name: th.name,
       items: th.tasks.map(tk => ({ id: tk.id, title: tk.title })),
     })),
+    items: t.tasks.map(tk => ({ id: tk.id, title: tk.title })),
   }))
 }

@@ -58,7 +58,7 @@ export async function POST(req: Request) {
   // would be a worse answer than a task with no link.
   const libraryTaskId = parsed.data.libraryTaskId
     ? (await prisma.libraryTask.findFirst({
-        where: { id: parsed.data.libraryTaskId, theme: { type: { trainerId: access.trainerId } } },
+        where: { id: parsed.data.libraryTaskId, type: { trainerId: access.trainerId } },
         select: { id: true },
       }))?.id ?? null
     : null

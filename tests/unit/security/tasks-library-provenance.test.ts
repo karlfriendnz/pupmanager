@@ -83,7 +83,7 @@ describe('attaching a library item to a session records which item it was', () =
     await post({ ...ATTACH, libraryTaskId: 'lib-1' })
 
     expect(h.libraryTaskFindFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'lib-1', theme: { type: { trainerId: 'trainer-a' } } },
+      where: { id: 'lib-1', type: { trainerId: 'trainer-a' } },
     }))
   })
 

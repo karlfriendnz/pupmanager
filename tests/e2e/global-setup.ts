@@ -409,7 +409,7 @@ export default async function globalSetup() {
     })
     await prisma.libraryTask.create({
       data: {
-        id: LIB.itemId, themeId: LIB.themeId, title: LIB.itemTitle,
+        id: LIB.itemId, typeId: LIB.typeId, themeId: LIB.themeId, title: LIB.itemTitle,
         description: '<p>Ask for a <strong>sit</strong>, then step back.</p>',
         repetitions: 5, order: 0,
       },
@@ -421,7 +421,7 @@ export default async function globalSetup() {
       data: { id: LIB.businessBThemeId, typeId: 'e2eblibtype00000000000000', name: 'Rival Theme', order: 0 },
     })
     await prisma.libraryTask.create({
-      data: { id: LIB.businessBItemId, themeId: LIB.businessBThemeId, title: 'Rival Item', order: 0 },
+      data: { id: LIB.businessBItemId, typeId: 'e2eblibtype00000000000000', themeId: LIB.businessBThemeId, title: 'Rival Item', order: 0 },
     })
 
     // A homework task on the assigned client, dated today so it shows in the

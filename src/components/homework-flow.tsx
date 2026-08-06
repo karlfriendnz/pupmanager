@@ -19,7 +19,8 @@ import { SuggestedHomework } from '@/components/trainer/suggested-homework'
 //                (reps, note, photos) before finishing.
 
 interface LibTask { id: string; title: string; description: string | null; repetitions: number | null; videoUrl: string | null }
-interface LibType { id: string; name: string; themes: { id: string; name: string; tasks: LibTask[] }[] }
+/** `tasks` on the type is the items with no theme — a theme is optional grouping. */
+interface LibType { id: string; name: string; themes: { id: string; name: string; tasks: LibTask[] }[]; tasks?: LibTask[] }
 interface AddedTask {
   id: string
   title: string
@@ -71,14 +72,19 @@ export function HomeworkFlow({
   }, [])
 
   const allTasks = useMemo(() => {
-    if (!library) return [] as (LibTask & { typeName: string; themeName: string })[]
-    return library.flatMap(ty => ty.themes.flatMap(th => th.tasks.map(t => ({ ...t, typeName: ty.name, themeName: th.name }))))
+    if (!library) return [] as (LibTask & { typeName: string; themeName: string | null })[]
+    return library.flatMap(ty => [
+      ...ty.themes.flatMap(th => th.tasks.map(t => ({ ...t, typeName: ty.name, themeName: th.name as string | null }))),
+      // The loose items — an item added straight into a category has to be
+      // handable to a client, or it is invisible work.
+      ...(ty.tasks ?? []).map(t => ({ ...t, typeName: ty.name, themeName: null })),
+    ])
   }, [library])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return allTasks
-    return allTasks.filter(t => t.title.toLowerCase().includes(q) || t.themeName.toLowerCase().includes(q) || t.typeName.toLowerCase().includes(q))
+    return allTasks.filter(t => t.title.toLowerCase().includes(q) || (t.themeName?.toLowerCase().includes(q) ?? false) || t.typeName.toLowerCase().includes(q))
   }, [allTasks, search])
 
   async function addLibrary(t: LibTask) {
@@ -100,13 +106,22 @@ export function HomeworkFlow({
     }
   }
 
-  // The library's themes, flattened for the "save to my library" picker.
-  const themes = useMemo(
-    () => (library ?? []).flatMap(ty => ty.themes.map(th => ({ id: th.id, label: `${ty.name} · ${th.name}` }))),
+  // Where "also save to my library" can put it: the CATEGORY itself, or one of
+  // its themes. Categories are offered because a theme is optional grouping —
+  // and because a trainer with categories but no themes previously got no
+  // picker at all, so the checkbox was there and saved nowhere.
+  //
+  // The value carries which kind it is, since a theme id and a category id are
+  // both opaque strings and the API takes different keys for them.
+  const destinations = useMemo(
+    () => (library ?? []).flatMap(ty => [
+      { id: `type:${ty.id}`, label: ty.name },
+      ...ty.themes.map(th => ({ id: `theme:${th.id}`, label: `${ty.name} · ${th.name}` })),
+    ]),
     [library],
   )
 
-  async function addCustom(data: { title: string; description: string; repetitions: number | null; libraryThemeId?: string }) {
+  async function addCustom(data: { title: string; description: string; repetitions: number | null; libraryDestination?: string }) {
     if (!clientId) return false
     const res = await fetch('/api/tasks', {
       method: 'POST',
@@ -116,12 +131,19 @@ export function HomeworkFlow({
     if (!res.ok) return false
     const created = coerce(await res.json())
     setAdded(prev => [...prev, created])
-    // Optionally also save it as a reusable library task under the chosen theme.
-    if (data.libraryThemeId) {
+    // Optionally also save it as a reusable library item, in the theme or the
+    // category the trainer picked.
+    if (data.libraryDestination) {
+      const [kind, id] = data.libraryDestination.split(':')
       void fetch('/api/library/tasks', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ themeId: data.libraryThemeId, title: data.title, description: data.description || null, repetitions: data.repetitions }),
+        body: JSON.stringify({
+          ...(kind === 'theme' ? { themeId: id } : { typeId: id }),
+          title: data.title,
+          description: data.description || null,
+          repetitions: data.repetitions,
+        }),
       })
     }
     return true
@@ -136,7 +158,7 @@ export function HomeworkFlow({
 
   // ── CUSTOM TASK SCREEN ──────────────────────────────────────────────────
   if (screen === 'custom') {
-    return <CustomTaskScreen themes={themes} onBack={() => setScreen('pick')} onAdd={async d => { const ok = await addCustom(d); if (ok) setScreen('pick'); return ok }} />
+    return <CustomTaskScreen destinations={destinations} onBack={() => setScreen('pick')} onAdd={async d => { const ok = await addCustom(d); if (ok) setScreen('pick'); return ok }} />
   }
 
   // ── REVIEW SCREEN (one per added task) ──────────────────────────────────
@@ -271,7 +293,7 @@ export function HomeworkFlow({
                 <div key={t.id} className="flex items-center gap-3 px-3 py-2.5">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-800 truncate">{t.title}</p>
-                    <p className="text-[10px] text-slate-400 truncate">{t.typeName} · {t.themeName}{t.repetitions ? ` · ${t.repetitions} reps` : ''}</p>
+                    <p className="text-[10px] text-slate-400 truncate">{t.typeName}{t.themeName ? ` · ${t.themeName}` : ''}{t.repetitions ? ` · ${t.repetitions} reps` : ''}</p>
                   </div>
                   <button
                     onClick={() => addLibrary(t)}
@@ -337,17 +359,18 @@ function RepsStepper({ value, onChange }: { value: number | null; onChange: (v: 
 }
 
 function CustomTaskScreen({
-  themes, onBack, onAdd,
+  destinations, onBack, onAdd,
 }: {
-  themes: { id: string; label: string }[]
+  /** Where "also save to my library" can put it — a category or one of its themes. */
+  destinations: { id: string; label: string }[]
   onBack: () => void
-  onAdd: (d: { title: string; description: string; repetitions: number | null; libraryThemeId?: string }) => Promise<boolean>
+  onAdd: (d: { title: string; description: string; repetitions: number | null; libraryDestination?: string }) => Promise<boolean>
 }) {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [reps, setReps] = useState<number | null>(null)
   const [saveToLibrary, setSaveToLibrary] = useState(false)
-  const [themeId, setThemeId] = useState(themes[0]?.id ?? '')
+  const [destination, setDestination] = useState(destinations[0]?.id ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -358,7 +381,7 @@ function CustomTaskScreen({
       title: title.trim(),
       description: description.trim(),
       repetitions: reps,
-      libraryThemeId: saveToLibrary && themeId ? themeId : undefined,
+      libraryDestination: saveToLibrary && destination ? destination : undefined,
     })
     if (!ok) { setError('Could not add the task.'); setSaving(false) }
     // on success the parent switches back to the pick screen (this unmounts)
@@ -390,7 +413,7 @@ function CustomTaskScreen({
       <div className="mt-2"><RepsStepper value={reps} onChange={setReps} /></div>
 
       {/* Optionally also save this as a reusable library task. */}
-      {themes.length > 0 && (
+      {destinations.length > 0 && (
         <div className="mt-6 rounded-xl border border-slate-200 p-3.5">
           <label className="flex items-start gap-2.5 cursor-pointer">
             <input type="checkbox" checked={saveToLibrary} onChange={e => setSaveToLibrary(e.target.checked)} className="h-4 w-4 mt-0.5 rounded border-slate-300 text-accent focus:ring-accent" />
@@ -400,8 +423,8 @@ function CustomTaskScreen({
             </span>
           </label>
           {saveToLibrary && (
-            <select value={themeId} onChange={e => setThemeId(e.target.value)} className="mt-3 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent">
-              {themes.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+            <select aria-label="Where to save it" value={destination} onChange={e => setDestination(e.target.value)} className="mt-3 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent">
+              {destinations.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
             </select>
           )}
         </div>

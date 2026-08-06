@@ -47,10 +47,14 @@ export default async function LibraryThemePage({ params }: { params: Promise<{ t
                 id={theme.id}
                 name={theme.name}
                 afterDeleteHref={`/library/type/${theme.type.id}`}
+                // Deleting a theme no longer deletes what is inside it. The
+                // items keep their category and reappear on it under "In this
+                // category" — say so, because the old wording promised the
+                // opposite and a trainer who believed it would never tidy.
                 childCountNote={
                   theme.tasks.length === 0
                     ? 'This theme is empty.'
-                    : `Its ${theme.tasks.length} item${theme.tasks.length === 1 ? '' : 's'} go with it. Homework already handed out to clients is kept.`
+                    : `Its ${theme.tasks.length} item${theme.tasks.length === 1 ? '' : 's'} ${theme.tasks.length === 1 ? 'is' : 'are'} kept — ${theme.tasks.length === 1 ? 'it moves' : 'they move'} into ${theme.type.name}. Only the grouping goes.`
                 }
               />
             </span>

@@ -6,8 +6,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 //   • assigning an item stamps TrainingTask.libraryTaskId, which is what the
 //     item page's "who has this" list is built from
 //
-// Every route scopes Prisma through `theme.type.trainerId` (or trainerId
-// directly), so a trainer can only touch their own library. We mock auth,
+// Every route scopes Prisma through the item's own category
+// (`type.trainerId`) or trainerId directly, so a trainer can only touch their
+// own library. It is read off the item rather than through its theme because a
+// theme is optional grouping now — a theme-less item has no chain to walk, and
+// a filter with nothing to filter on is not a tenant check. We mock auth,
 // permissions and Prisma and assert real status codes plus that no mutation
 // happens cross-tenant.
 
@@ -21,6 +24,7 @@ const h = vi.hoisted(() => ({
   taskCreate: vi.fn(),
   taskAggregate: vi.fn(),
   themeFindFirst: vi.fn(),
+  typeFindFirst: vi.fn(),
   trainingTaskCreate: vi.fn(),
   clientAccess: vi.fn(),
   dogBelongs: vi.fn(),
@@ -49,6 +53,7 @@ vi.mock('@/lib/prisma', () => ({
       aggregate: h.taskAggregate,
     },
     libraryTheme: { findFirst: h.themeFindFirst },
+    libraryType: { findFirst: h.typeFindFirst },
     trainingTask: { create: h.trainingTaskCreate },
   },
 }))
@@ -79,7 +84,7 @@ beforeEach(() => {
 
 describe('library item media', () => {
   it('persists the image and PDF on create', async () => {
-    h.themeFindFirst.mockResolvedValue({ id: 'theme-1' })
+    h.themeFindFirst.mockResolvedValue({ id: 'theme-1', typeId: 'type-1' })
     h.taskCreate.mockResolvedValue({ id: 'task-1' })
 
     const res = await createTask(jsonReq({
@@ -138,6 +143,53 @@ describe('library item media', () => {
   })
 })
 
+describe('creating an item with no theme', () => {
+  it('lands it directly in the category, with themeId null', async () => {
+    h.typeFindFirst.mockResolvedValue({ id: 'type-1' })
+    h.taskCreate.mockResolvedValue({ id: 'task-1' })
+
+    const res = await createTask(jsonReq({ typeId: 'type-1', title: 'Sit at the kerb' }))
+
+    expect(res.status).toBe(201)
+    expect(h.taskCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ typeId: 'type-1', themeId: null, title: 'Sit at the kerb' }),
+    }))
+    // A theme was never involved, so none was looked up.
+    expect(h.themeFindFirst).not.toHaveBeenCalled()
+  })
+
+  it('orders it after the other LOOSE items, not after some theme\'s last item', async () => {
+    h.typeFindFirst.mockResolvedValue({ id: 'type-1' })
+    h.taskCreate.mockResolvedValue({ id: 'task-1' })
+
+    await createTask(jsonReq({ typeId: 'type-1', title: 'Wait at the door' }))
+
+    expect(h.taskAggregate).toHaveBeenCalledWith(expect.objectContaining({
+      where: { typeId: 'type-1', themeId: null },
+    }))
+    expect(h.taskCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ order: 3 }),
+    }))
+  })
+
+  it('still records the category when a THEME is named — the item never has to walk up', async () => {
+    h.themeFindFirst.mockResolvedValue({ id: 'theme-1', typeId: 'type-1' })
+    h.taskCreate.mockResolvedValue({ id: 'task-1' })
+
+    await createTask(jsonReq({ themeId: 'theme-1', title: 'Loose lead' }))
+
+    expect(h.taskCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ typeId: 'type-1', themeId: 'theme-1' }),
+    }))
+  })
+
+  it('400s when neither a theme nor a category is given', async () => {
+    const res = await createTask(jsonReq({ title: 'Nowhere' }))
+    expect(res.status).toBe(400)
+    expect(h.taskCreate).not.toHaveBeenCalled()
+  })
+})
+
 describe('library item tenant guards', () => {
   it('404s (and never writes) when the item belongs to another trainer', async () => {
     // The route's findFirst is scoped by theme.type.trainerId, so a foreign id
@@ -154,7 +206,7 @@ describe('library item tenant guards', () => {
 
     // …and the scoping is actually asked for.
     expect(h.taskFindFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ theme: { type: { trainerId: 'trainer-a' } } }),
+      where: expect.objectContaining({ type: { trainerId: 'trainer-a' } }),
     }))
   })
 
@@ -163,6 +215,19 @@ describe('library item tenant guards', () => {
     const res = await createTask(jsonReq({ themeId: 'foreign-theme', title: 'Hijack' }))
     expect(res.status).toBe(404)
     expect(h.taskCreate).not.toHaveBeenCalled()
+  })
+
+  it('404s when creating an item straight into another trainer\'s category', async () => {
+    // The theme-less path is a NEW way into someone's library, so it gets the
+    // same guard: the category is looked up scoped to the caller, and a foreign
+    // id simply does not resolve.
+    h.typeFindFirst.mockResolvedValue(null)
+    const res = await createTask(jsonReq({ typeId: 'foreign-type', title: 'Hijack' }))
+    expect(res.status).toBe(404)
+    expect(h.taskCreate).not.toHaveBeenCalled()
+    expect(h.typeFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'foreign-type', trainerId: 'trainer-a' },
+    }))
   })
 
   it('401s an unauthenticated caller', async () => {

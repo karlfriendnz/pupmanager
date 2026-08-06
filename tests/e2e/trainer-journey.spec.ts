@@ -274,7 +274,9 @@ test('a brand-new trainer builds a business, takes on clients, and talks to them
         description: `<p>${title} — five minutes, twice a day.</p>`,
       })
     }
-    const taskCount = await prisma.libraryTask.count({ where: { theme: { typeId: type.id } } })
+    // Counted by the item's OWN category, not through its theme — a theme is
+    // optional grouping and an item may have none.
+    const taskCount = await prisma.libraryTask.count({ where: { typeId: type.id } })
     expect(taskCount).toBeGreaterThanOrEqual(3)
 
     // ── 5. The shop ───────────────────────────────────────────────────────

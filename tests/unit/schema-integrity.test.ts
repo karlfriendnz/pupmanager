@@ -484,6 +484,13 @@ const SETNULL_RELATIONS = [
   'TrainingSession.assignedTrainer',
   'TrainingTask.session',
   'TrainingTask.libraryTask',
+  // A library item survives its THEME being deleted. Cascade here meant a
+  // trainer tidying their grouping — a rename-shaped action — silently
+  // destroyed every exercise inside it, plus the offering defaults pointing at
+  // them. The item keeps its category (LibraryTask.typeId, which is required),
+  // so a null theme is not an orphan: it reappears on the category page under
+  // "In this category", and every reader treats the theme as optional grouping.
+  'LibraryTask.theme',
   'SessionBuddy.dog',
   // Money rows outlive what they were raised for — the amount stays, the link
   // to the deleted thing goes. (See the report: the invoice side does NOT do

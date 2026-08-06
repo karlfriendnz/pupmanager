@@ -740,3 +740,236 @@ test('another business’s library is unreachable', async ({ page }) => {
     await prisma.$disconnect()
   }
 })
+
+// ─── A library item does not need a theme ──────────────────────────────────
+//
+// The library was three required levels — category → theme → item — so adding
+// one exercise meant inventing a theme to put it in. A theme is optional
+// GROUPING now: an item stores its category directly, and can sit in the
+// category with no theme at all.
+//
+// The specs below are the four ways that goes wrong: the item is created but
+// listed nowhere, an EXISTING item quietly gets re-parented, the counts stop
+// adding up, or deleting a theme takes its contents with it.
+
+test('an item is added straight into a category, and is listed there', async ({ page }) => {
+  await login(page, SEED.owner.email, SEED.owner.password)
+  const prisma = db()
+  let itemId: string | null = null
+
+  try {
+    await page.goto(`/library/type/${LIB.typeId}`)
+
+    // Both actions sit on the category, side by side.
+    await expect(page.getByRole('button', { name: 'New theme' })).toBeVisible()
+    await page.getByRole('button', { name: 'New item' }).click()
+    await page.getByLabel('New item').fill('E2E Sit At The Kerb')
+    await page.getByRole('button', { name: 'Add', exact: true }).click()
+
+    // Straight to its own page, as creating one from a theme does.
+    await page.waitForURL(/\/library\/item\/[^/]+$/, { timeout: 15_000 })
+    itemId = page.url().split('/').pop()!
+    await expect(page.getByLabel('Name')).toHaveValue('E2E Sit At The Kerb')
+
+    // It knows its category, and has no theme.
+    const row = await prisma.libraryTask.findUnique({
+      where: { id: itemId },
+      select: { typeId: true, themeId: true },
+    })
+    expect(row).toEqual({ typeId: LIB.typeId, themeId: null })
+
+    // Back goes to the CATEGORY — an item with no theme has no theme to go
+    // back to, and a dead end here is the whole bug.
+    await expect(page.getByRole('link', { name: new RegExp(LIB.typeName) }).first()).toBeVisible()
+    await page.getByRole('link', { name: new RegExp(LIB.typeName) }).first().click()
+    await page.waitForURL(`**/library/type/${LIB.typeId}`, { timeout: 15_000 })
+
+    // …and the category LISTS it, under its own heading. Added and invisible
+    // would be worse than not added at all.
+    await expect(page.getByText('In this category')).toBeVisible()
+    await expect(page.getByRole('link', { name: /E2E Sit At The Kerb/ })).toBeVisible()
+  } finally {
+    if (itemId) await prisma.libraryTask.deleteMany({ where: { id: itemId } })
+    await prisma.$disconnect()
+  }
+})
+
+test('every existing item keeps its theme and its category', async ({ page }) => {
+  await login(page, SEED.owner.email, SEED.owner.password)
+  const prisma = db()
+
+  try {
+    // Nothing was re-parented by the migration: the seeded item is still in its
+    // theme, and now also records the category that theme lives in.
+    const item = await prisma.libraryTask.findUnique({
+      where: { id: LIB.itemId },
+      select: { themeId: true, typeId: true },
+    })
+    expect(item).toEqual({ themeId: LIB.themeId, typeId: LIB.typeId })
+
+    // Every item in the library agrees with its theme about which category it
+    // is in — a mismatch would be an item listed in one place and counted in
+    // another.
+    const themed = await prisma.libraryTask.findMany({
+      where: { themeId: { not: null } },
+      select: { typeId: true, theme: { select: { typeId: true } } },
+    })
+    expect(themed.length).toBeGreaterThan(0)
+    expect(themed.filter(t => t.typeId !== t.theme!.typeId)).toEqual([])
+
+    // And its screen still goes back to its THEME, not to the category.
+    await page.goto(`/library/item/${LIB.itemId}`)
+    await expect(page.getByRole('link', { name: new RegExp(LIB.themeName) }).first()).toBeVisible()
+  } finally {
+    await prisma.$disconnect()
+  }
+})
+
+test('the category counts add its themed and its loose items together', async ({ page }) => {
+  await login(page, SEED.owner.email, SEED.owner.password)
+  const prisma = db()
+  let looseId: string | null = null
+
+  try {
+    const themedCount = await prisma.libraryTask.count({
+      where: { typeId: LIB.typeId, themeId: { not: null } },
+    })
+
+    // The tile on the landing grid, before.
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto('/library')
+    const tile = page.getByRole('link', { name: new RegExp(LIB.typeName) })
+    await expect(tile).toContainText(`${themedCount} item`)
+
+    // Add one with no theme…
+    const made = await page.request.post('/api/library/tasks', {
+      data: { typeId: LIB.typeId, title: 'E2E Loose Counted Item' },
+    })
+    expect(made.ok()).toBeTruthy()
+    looseId = (await made.json()).id as string
+
+    // …and the count goes up. Counting only `themes[].tasks` is the miss that
+    // leaves a trainer looking at "0 items" over an item they just made.
+    await page.goto('/library')
+    await expect(page.getByRole('link', { name: new RegExp(LIB.typeName) }))
+      .toContainText(`${themedCount + 1} item`)
+  } finally {
+    if (looseId) await prisma.libraryTask.deleteMany({ where: { id: looseId } })
+    await prisma.$disconnect()
+  }
+})
+
+test('deleting a theme keeps its items — they fall back into the category', async ({ page }) => {
+  await login(page, SEED.owner.email, SEED.owner.password)
+  const prisma = db()
+  let themeId: string | null = null
+  let itemId: string | null = null
+
+  try {
+    const theme = await page.request.post('/api/library/themes', {
+      data: { typeId: LIB.typeId, name: 'E2E Doomed Theme' },
+    })
+    themeId = (await theme.json()).id as string
+    const item = await page.request.post('/api/library/tasks', {
+      data: { themeId, title: 'E2E Survivor Item' },
+    })
+    itemId = (await item.json()).id as string
+
+    await page.goto(`/library/theme/${themeId}`)
+    await page.getByRole('button', { name: 'Theme settings' }).click()
+    await page.getByRole('dialog', { name: 'Theme settings' })
+      .getByRole('button', { name: /Delete this theme/ }).click()
+
+    // The warning has to say what actually happens. It used to promise the
+    // items went with it, which was true then and is a lie now — and a trainer
+    // who believes it never tidies their grouping.
+    const confirm = page.getByRole('alertdialog')
+    await expect(confirm).toContainText(/kept/i)
+    await confirm.getByRole('button', { name: 'Delete' }).click()
+    await page.waitForURL(`**/library/type/${LIB.typeId}`, { timeout: 15_000 })
+
+    // The item survived, lost only its grouping.
+    await expect(async () => {
+      const after = await prisma.libraryTask.findUnique({
+        where: { id: itemId! },
+        select: { themeId: true, typeId: true },
+      })
+      expect(after).toEqual({ themeId: null, typeId: LIB.typeId })
+    }).toPass({ timeout: 10_000 })
+
+    // And it is on the category screen rather than nowhere.
+    await page.reload()
+    await expect(page.getByRole('link', { name: /E2E Survivor Item/ })).toBeVisible()
+  } finally {
+    if (itemId) await prisma.libraryTask.deleteMany({ where: { id: itemId } })
+    if (themeId) await prisma.libraryTheme.deleteMany({ where: { id: themeId } })
+    await prisma.$disconnect()
+  }
+})
+
+test('an item with no theme can still be handed out as homework', async ({ page }) => {
+  await login(page, SEED.owner.email, SEED.owner.password)
+  const prisma = db()
+  let itemId: string | null = null
+
+  try {
+    const made = await page.request.post('/api/library/tasks', {
+      data: { typeId: LIB.typeId, title: 'E2E Loose Homework', repetitions: 3 },
+    })
+    expect(made.ok()).toBeTruthy()
+    itemId = (await made.json()).id as string
+
+    // The assign route scoped ownership through the item's theme. A theme-less
+    // item has none, so this used to 404 — an item that exists and cannot be
+    // given to anyone.
+    const assigned = await page.request.post(`/api/library/tasks/${itemId}/assign`, {
+      data: { clientId: SEED.unassignedClientId, date: '2030-01-15' },
+    })
+    expect(assigned.status()).toBe(201)
+
+    const handed = await prisma.trainingTask.findFirst({
+      where: { libraryTaskId: itemId, clientId: SEED.unassignedClientId },
+      select: { title: true, repetitions: true },
+    })
+    expect(handed).toEqual({ title: 'E2E Loose Homework', repetitions: 3 })
+
+    // It is also offerable as an offering's DEFAULT homework, which reads the
+    // library through a different query again.
+    const options = await page.request.get('/api/trainer/flow-options')
+    const body = await options.json() as { tasks: { id: string; group: string | null }[] }
+    const listed = body.tasks.find(t => t.id === itemId)
+    // Grouped under its CATEGORY, since it has no theme — not dropped, and not
+    // left with a blank group.
+    expect(listed?.group).toBe(LIB.typeName)
+  } finally {
+    if (itemId) {
+      await prisma.trainingTask.deleteMany({ where: { libraryTaskId: itemId } })
+      await prisma.libraryTask.deleteMany({ where: { id: itemId } })
+    }
+    await prisma.$disconnect()
+  }
+})
+
+test('another business cannot create an item in one of its categories', async ({ page }) => {
+  await login(page, SEED.owner.email, SEED.owner.password)
+  const prisma = db()
+
+  try {
+    // The theme-less create is a NEW way into a library, so it gets the same
+    // guard as every other one. Business B's category, reached through the
+    // theme the seed pins.
+    const theirs = await prisma.libraryTheme.findUnique({
+      where: { id: LIB.businessBThemeId },
+      select: { typeId: true },
+    })
+    const before = await prisma.libraryTask.count()
+
+    const res = await page.request.post('/api/library/tasks', {
+      data: { typeId: theirs!.typeId, title: 'E2E Trespass' },
+    })
+    expect(res.status()).toBe(404)
+    expect(await prisma.libraryTask.count()).toBe(before)
+  } finally {
+    await prisma.$disconnect()
+  }
+})

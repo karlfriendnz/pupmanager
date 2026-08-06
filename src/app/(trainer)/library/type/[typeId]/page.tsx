@@ -3,16 +3,24 @@ import { notFound } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/page-header'
 import { FlatBlock, SectionHeader } from '@/components/shared/flat-list'
+import { richTextToPlain } from '@/lib/rich-text'
 import { requireLibraryTrainer, getLibraryTree } from '../../library-data'
 import { LibraryShell } from '../../library-shell'
 import { LibraryRowList } from '../../library-row-list'
 import { CategorySettingsButton } from '../../library-forms'
 import { AddTheme } from './add-theme'
+import { AddItem } from '../../theme/[themeId]/add-item'
 
 export const metadata: Metadata = { title: 'Library category' }
 
 // One category (LibraryType). Its themes are listed here, and — task 1 — its
 // own name is edited from INSIDE it rather than from a pencil on the index row.
+//
+// It also carries "New item". A theme is optional grouping, not a required
+// step, so adding one exercise no longer means inventing a theme to put it in:
+// the item is created straight into this category and listed below the themes
+// under "In this category". Same creator as the theme screen uses — one way to
+// make a library item, not two.
 export default async function LibraryTypePage({ params }: { params: Promise<{ typeId: string }> }) {
   const trainerId = await requireLibraryTrainer()
   const { typeId } = await params
@@ -24,12 +32,16 @@ export default async function LibraryTypePage({ params }: { params: Promise<{ ty
         orderBy: { order: 'asc' },
         include: { _count: { select: { tasks: true } } },
       },
+      // The loose items — the ones with no theme. `themeId: null` IS the
+      // definition; without this filter every themed item would be listed twice.
+      tasks: { where: { themeId: null }, orderBy: { order: 'asc' } },
     },
   })
   if (!type) notFound()
 
   const tree = await getLibraryTree(trainerId)
-  const itemTotal = type.themes.reduce((n, th) => n + th._count.tasks, 0)
+  const looseItems = type.tasks
+  const itemTotal = type.themes.reduce((n, th) => n + th._count.tasks, 0) + looseItems.length
 
   return (
     <>
@@ -44,7 +56,8 @@ export default async function LibraryTypePage({ params }: { params: Promise<{ ty
           action={
             <span className="flex items-center gap-1.5">
               <AddTheme typeId={type.id} />
-              {/* The category's own settings, beside the only other action on
+              <AddItem typeId={type.id} />
+              {/* The category's own settings, beside the only other actions on
                   the screen — not in a block below everything inside it. */}
               <CategorySettingsButton
                 kind="type"
@@ -52,7 +65,7 @@ export default async function LibraryTypePage({ params }: { params: Promise<{ ty
                 name={type.name}
                 afterDeleteHref="/library"
                 childCountNote={
-                  type.themes.length === 0
+                  type.themes.length === 0 && looseItems.length === 0
                     ? 'This category is empty.'
                     : `Its ${type.themes.length} theme${type.themes.length === 1 ? '' : 's'} and ${itemTotal} item${itemTotal === 1 ? '' : 's'} go with it. Homework already handed out to clients is kept.`
                 }
@@ -63,14 +76,19 @@ export default async function LibraryTypePage({ params }: { params: Promise<{ ty
           Themes
         </SectionHeader>
         {type.themes.length === 0 ? (
-          <FlatBlock>
-            <div className="px-4 py-8 text-center">
-              <p className="text-sm font-medium text-slate-900">No themes yet</p>
-              <p className="mt-1 text-[13px] text-slate-500">
-                Themes group the items inside this category — &ldquo;Basic commands&rdquo;, &ldquo;Leash manners&rdquo;.
-              </p>
-            </div>
-          </FlatBlock>
+          // Only when the category is genuinely empty. A category holding loose
+          // items is being used exactly as intended, and telling it off for
+          // having no themes is the nag AGENTS.md says not to write.
+          looseItems.length === 0 ? (
+            <FlatBlock>
+              <div className="px-4 py-8 text-center">
+                <p className="text-sm font-medium text-slate-900">Nothing in here yet</p>
+                <p className="mt-1 text-[13px] text-slate-500">
+                  Add an item straight into this category, or group several under a theme like &ldquo;Basic commands&rdquo;.
+                </p>
+              </div>
+            </FlatBlock>
+          ) : null
         ) : (
           <LibraryRowList
             endpoint="/api/library/themes/reorder"
@@ -84,6 +102,28 @@ export default async function LibraryTypePage({ params }: { params: Promise<{ ty
           />
         )}
 
+        {/* The items sitting directly in the category. Absent entirely when
+            there are none — an added item that shows up nowhere is worse than
+            no section, and an empty one is just noise. */}
+        {looseItems.length > 0 && (
+          <div className="mt-6">
+            <SectionHeader>In this category</SectionHeader>
+            <LibraryRowList
+              endpoint="/api/library/tasks/reorder"
+              noun="item"
+              rows={looseItems.map(task => {
+                // The description is rich text; a one-line preview wants plain text.
+                const preview = richTextToPlain(task.description).replace(/\s+/g, ' ').trim()
+                return {
+                  id: task.id,
+                  label: task.title,
+                  sub: preview || (task.repetitions ? `${task.repetitions} reps` : undefined),
+                  href: `/library/item/${task.id}`,
+                }
+              })}
+            />
+          </div>
+        )}
       </LibraryShell>
     </>
   )

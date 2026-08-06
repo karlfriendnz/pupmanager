@@ -42,6 +42,8 @@ interface LibraryType {
   id: string
   name: string
   themes: LibraryTheme[]
+  /** Items sitting directly in the category, with no theme. */
+  tasks?: LibraryTask[]
 }
 
 interface AttachedTask {
@@ -105,12 +107,16 @@ export function SessionLibraryTasks({
   }, [reloadAttached])
 
   const allLibraryTasks = useMemo(() => {
-    if (!library) return [] as (LibraryTask & { typeName: string; themeName: string })[]
-    return library.flatMap(type =>
-      type.themes.flatMap(theme =>
-        theme.tasks.map(t => ({ ...t, typeName: type.name, themeName: theme.name }))
-      )
-    )
+    if (!library) return [] as (LibraryTask & { typeName: string; themeName: string | null })[]
+    return library.flatMap(type => [
+      ...type.themes.flatMap(theme =>
+        theme.tasks.map(t => ({ ...t, typeName: type.name, themeName: theme.name as string | null }))
+      ),
+      // The loose items. Without this an item added straight into a category
+      // could never be handed to a client — the worst kind of miss, because
+      // nothing errors and the item simply isn't there.
+      ...(type.tasks ?? []).map(t => ({ ...t, typeName: type.name, themeName: null })),
+    ])
   }, [library])
 
   const filtered = useMemo(() => {
@@ -118,7 +124,7 @@ export function SessionLibraryTasks({
     if (!q) return allLibraryTasks
     return allLibraryTasks.filter(t =>
       t.title.toLocaleLowerCase('en-NZ').includes(q) ||
-      t.themeName.toLocaleLowerCase('en-NZ').includes(q) ||
+      (t.themeName?.toLocaleLowerCase('en-NZ').includes(q) ?? false) ||
       t.typeName.toLocaleLowerCase('en-NZ').includes(q)
     )
   }, [allLibraryTasks, search])
@@ -342,7 +348,8 @@ export function SessionLibraryTasks({
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-slate-800 truncate">{t.title}</p>
                         <p className="text-[10px] text-slate-400 truncate">
-                          {t.typeName} · {t.themeName}
+                          {/* No theme = no trailing " · " with nothing after it. */}
+                          {t.typeName}{t.themeName ? ` · ${t.themeName}` : ''}
                           {t.repetitions ? ` · ${t.repetitions} reps` : ''}
                         </p>
                       </div>

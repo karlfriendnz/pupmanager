@@ -26,7 +26,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ taskId:
 
   // Verify task belongs to this trainer
   const task = await prisma.libraryTask.findFirst({
-    where: { id: taskId, theme: { type: { trainerId: trainer.id } } },
+    where: { id: taskId, type: { trainerId: trainer.id } },
   })
   if (!task) return NextResponse.json({ error: 'Task not found' }, { status: 404 })
 

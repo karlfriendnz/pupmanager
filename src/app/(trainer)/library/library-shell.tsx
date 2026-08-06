@@ -2,7 +2,7 @@ import { SectionHeader } from '@/components/shared/flat-list'
 import { BrowseShell } from '@/components/shared/browse-shell'
 import { LibraryTree } from './library-tree'
 import { AddCategory } from './library-index-actions'
-import type { TreeType } from './library-data'
+import type { TreeType } from './library-shape'
 
 /**
  * The two-column Library frame: the tree on the left, the open thing on the right.

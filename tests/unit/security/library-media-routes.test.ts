@@ -90,14 +90,14 @@ beforeEach(() => {
 })
 
 describe('PATCH /api/library/tasks/[taskId] — tenant guard', () => {
-  it('scopes the lookup through theme → type → trainer', async () => {
+  it('scopes the lookup through the item’s own category — type → trainer', async () => {
     h.taskFindFirst.mockResolvedValue({ id: 'task-1' })
     h.taskUpdate.mockResolvedValue({ id: 'task-1' })
 
     await patchTask(jsonReq({ title: 'Sit', media: MEDIA }, 'PATCH'), taskParams('task-1'))
 
     expect(h.taskFindFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'task-1', theme: { type: { trainerId: 'trainer-a' } } },
+      where: { id: 'task-1', type: { trainerId: 'trainer-a' } },
     }))
   })
 

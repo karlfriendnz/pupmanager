@@ -37,7 +37,7 @@ async function getTask(taskId: string, userId: string) {
   const trainer = await prisma.trainerProfile.findUnique({ where: { userId }, select: { id: true } })
   if (!trainer) return null
   return prisma.libraryTask.findFirst({
-    where: { id: taskId, theme: { type: { trainerId: trainer.id } } },
+    where: { id: taskId, type: { trainerId: trainer.id } },
   })
 }
 

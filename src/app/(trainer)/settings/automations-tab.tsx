@@ -122,10 +122,11 @@ export async function AutomationsTab({
       ? prisma.form.findMany({ where: { id: { in: [...formIds] }, trainerId }, select: { id: true, name: true } })
       : [],
     taskIds.size
-      // The library is a type → theme → task tree and only the TYPE carries the
-      // tenant, exactly as /api/trainer/flow-options resolves it.
+      // Only the CATEGORY carries the tenant, exactly as
+      // /api/trainer/flow-options resolves it. The item links to its category
+      // directly, so an item with no theme is named here too.
       ? prisma.libraryTask.findMany({
-          where: { id: { in: [...taskIds] }, theme: { type: { trainerId } } },
+          where: { id: { in: [...taskIds] }, type: { trainerId } },
           select: { id: true, title: true },
         })
       : [],

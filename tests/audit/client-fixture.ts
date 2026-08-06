@@ -159,13 +159,13 @@ async function main() {
   ]
   const lib1 = await prisma.libraryTask.create({
     data: {
-      themeId: theme.id, title: 'Loose lead walking', description: '<p>Five minutes a day.</p>', repetitions: 5,
+      typeId: libType.id, themeId: theme.id, title: 'Loose lead walking', description: '<p>Five minutes a day.</p>', repetitions: 5,
       media, videos: [{ url: media[1].url, title: 'Demo clip' }], videoUrl: media[1].url,
       imageUrl: media[0].url, fileUrl: media[2].url, fileName: 'handout.pdf', wantsLog: true,
     },
   })
   await prisma.libraryTask.create({
-    data: { themeId: theme.id, title: 'Crate settle', description: '<p>Reading material only.</p>', wantsLog: false, order: 1 },
+    data: { typeId: libType.id, themeId: theme.id, title: 'Crate settle', description: '<p>Reading material only.</p>', wantsLog: false, order: 1 },
   })
 
   // ── Offerings ───────────────────────────────────────────────────────────

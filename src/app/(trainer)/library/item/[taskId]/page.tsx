@@ -19,12 +19,23 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
   const { taskId } = await params
 
   const task = await prisma.libraryTask.findFirst({
-    where: { id: taskId, theme: { type: { trainerId } } },
+    // Scoped by the item's OWN category. It used to be `theme.type.trainerId`,
+    // which stops being a tenant check the moment an item can have no theme —
+    // it would match nothing rather than fail loudly. The category link is on
+    // the item itself and is never null, so this holds for both shapes.
+    where: { id: taskId, type: { trainerId } },
     include: {
-      theme: { select: { id: true, name: true, type: { select: { id: true, name: true } } } },
+      type: { select: { id: true, name: true } },
+      theme: { select: { id: true, name: true } },
     },
   })
   if (!task) notFound()
+
+  // Where "back" goes, and what the delete lands on. An item belongs to a
+  // category whether or not it is grouped under a theme, so a theme-less one
+  // goes back to the category rather than nowhere.
+  const parentHref = task.theme ? `/library/theme/${task.theme.id}` : `/library/type/${task.type.id}`
+  const parentLabel = task.theme?.name ?? task.type.name
 
   // ── Who currently has this item ────────────────────────────────────────────
   // "Has" = there's a homework row (TrainingTask) on one of this trainer's
@@ -91,7 +102,7 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
     <>
       <PageHeader
         title={task.title}
-        back={{ href: `/library/theme/${task.theme.id}`, label: task.theme.name }}
+        back={{ href: parentHref, label: parentLabel }}
       />
       {/* No LibraryShell here, so no rail. Every other Library screen carries
           the tree because you are browsing it; this one IS the thing you
@@ -110,7 +121,10 @@ export default async function LibraryItemPage({ params }: { params: Promise<{ ta
             // columns, and it has to open showing all of them.
             media: readMedia(task),
           }}
-          themeHref={`/library/theme/${task.theme.id}`}
+          // Where deleting this item lands you: its theme, or — when it has
+          // none — the category it sits in. (Prop is still called themeHref;
+          // the item screen's chrome belongs to another change in flight.)
+          themeHref={parentHref}
           holders={holders}
           clients={clients.map(c => ({
             id: c.id,
