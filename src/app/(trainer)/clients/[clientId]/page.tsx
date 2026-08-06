@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { loadClientSessions } from '@/lib/client-sessions'
+import { loadClientCommunications } from '@/lib/client-communications'
 import { hasAddon } from '@/lib/billing'
 import { classSessionSpaces, sessionCapacity } from '@/lib/class-runs'
 import { getClientAccess } from '@/lib/trainer-access'
@@ -10,13 +11,15 @@ import { can } from '@/lib/permissions'
 import { routeDistance } from '@/lib/routing'
 import { mergeClientDogs } from '@/lib/dogs'
 import { formatDate, personLabel } from '@/lib/utils'
-import { ClientProfileTabs } from './client-profile-tabs'
+import { richTextToPlain } from '@/lib/rich-text'
+import { dogsLine } from '@/lib/client-profile-summary'
+import { ClientProfileView } from './client-profile-view'
 import { ClientSummaryCard } from './client-summary-card'
 import { ClientActionsPanel } from './client-actions-panel'
 import { AssignedTrainerControl } from './assigned-trainer-control'
+import { LEGACY_TAB_TO_SECTION } from './client-profile-types'
 import { PageHeader } from '@/components/shared/page-header'
 import { ProfileHero } from '@/components/shared/profile-hero'
-import { dogsLine } from '@/lib/client-profile-summary'
 import { SampleRecordBadge } from '@/components/sample-record-badge'
 import { packageBookingWindow } from '@/lib/package-booking-window'
 import type { Metadata } from 'next'
@@ -25,13 +28,25 @@ export const metadata: Metadata = { title: 'Client profile' }
 
 export default async function ClientDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ clientId: string }>
+  searchParams: Promise<{ tab?: string; sessionId?: string }>
 }) {
   const session = await auth()
   if (!session) redirect('/login')
 
   const { clientId } = await params
+  const sp = await searchParams
+
+  // Every tab is a page now. The old `?tab=` links are in bookmarks, in emails
+  // and in this app's own screens, so they land where they always meant to
+  // rather than silently opening the profile. `?tab=overview` has nowhere to go
+  // and needs none — the profile IS the overview.
+  const legacySection = sp.tab ? LEGACY_TAB_TO_SECTION[sp.tab] : undefined
+  if (legacySection) redirect(`/clients/${clientId}/${legacySection}`)
+  // Likewise `?sessionId=` — the modal that opens it lives on the Sessions page.
+  if (sp.sessionId) redirect(`/clients/${clientId}/sessions?sessionId=${encodeURIComponent(sp.sessionId)}`)
 
   const access = await getClientAccess(clientId, session.user.id)
   if (!access) notFound()
@@ -39,12 +54,17 @@ export default async function ClientDetailPage({
   const { client: clientAccess, canEdit } = access
   const isPrimaryTrainer = clientAccess.trainerId === access.trainerId
 
-  // One parallel fan-out — every query here only needs `access`, which is
-  // already resolved, so there's no reason to run them serially.
+  // One parallel fan-out.
+  //
+  // Deliberately SMALLER than it was. Every section of a client is its own page
+  // now (see `[section]/page.tsx`), so this screen no longer loads custom
+  // fields, custom field values, thirty practice logs, fifty broadcasts, fifty
+  // messages or fifty notifications on the chance that the trainer taps a tab.
+  // What's left is what the summary tiles and the profile's own cards print:
+  // the sessions, the newest few comms, and two counts.
   const [
     client,
     trainingSessions,
-    customFields,
     packages,
     openClasses,
     availabilitySlots,
@@ -52,7 +72,8 @@ export default async function ClientDetailPage({
     products,
     pendingProductRequests,
     baseProfile,
-    trainingLogs,
+    trainingLogCount,
+    communications,
   ] = await Promise.all([
     prisma.clientProfile.findUnique({
       where: { id: clientId },
@@ -60,19 +81,12 @@ export default async function ClientDetailPage({
         user: { select: { name: true, email: true, emailVerified: true, createdAt: true } },
         dog: true,
         dogs: true,
-        diaryEntries: { orderBy: { date: 'desc' }, take: 20, include: { completion: true } },
-        customFieldValues: true,
       },
     }),
     // 1:1 AND class sessions. A class session belongs to the run, not the
     // client, so the old query returned nothing for someone who only does
     // classes — their record read "Sessions 0" while their own app listed them.
     loadClientSessions(clientId),
-    // Custom fields from the client's primary trainer.
-    prisma.customField.findMany({
-      where: { trainerId: clientAccess.trainerId },
-      orderBy: { order: 'asc' },
-    }),
     // Packages owned by the *current* trainer (co-managers see their own).
     canEdit
       ? prisma.package.findMany({
@@ -150,100 +164,32 @@ export default async function ClientDetailPage({
       where: { id: access.trainerId },
       select: { baseLat: true, baseLng: true },
     }),
-    // Recent practice logs across this client's homework tasks (newest first).
-    prisma.trainingLog.findMany({
-      where: { task: { clientId } },
-      orderBy: { loggedAt: 'desc' },
-      take: 30,
-      select: {
-        id: true, loggedAt: true, note: true, repsDone: true, rating: true,
-        imageUrls: true, videoUrl: true, trainerComment: true,
-        task: { select: { id: true, title: true } },
-      },
-    }),
+    // COUNTED, not loaded: the tile only ever prints the number, and the whole
+    // list belongs to /clients/:id/training.
+    prisma.trainingLog.count({ where: { task: { clientId } } }),
+    // The newest few — three for the card, and the first one dates the tile.
+    loadClientCommunications(clientId, 6),
   ])
 
   if (!client) notFound()
 
-  // Communication records for this client — bulk emails received (with
-  // open/click status) + the message/email thread — for the Communication tab.
-  // Billing visibility gates the Invoices tab + the Overview unpaid-invoices card
-  // (both read the new payment-agnostic Invoice model, fetched client-side).
-  const [broadcastEmails, threadMessages, clientNotifications, trainerCtx] = await Promise.all([
-    prisma.emailBroadcastRecipient.findMany({
-      where: { clientProfileId: clientId },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-      select: { id: true, status: true, openedAt: true, createdAt: true, broadcast: { select: { subject: true } } },
-    }),
-    prisma.message.findMany({
-      where: { clientId, channel: 'TRAINER_CLIENT' },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-      select: { id: true, body: true, senderId: true, createdAt: true, readAt: true },
-    }),
-    // Notifications sent TO this client — session notes, homework, reminders.
-    // Sending session notes calls notifyClient(), which writes a Notification
-    // and nothing else, so a trainer who sent notes saw no trace of it here:
-    // the tab read only broadcasts and thread messages. Reported by a live
-    // customer as "no comms show on clients who have had session notes sent".
-    client.userId
-      ? prisma.notification.findMany({
-          where: { userId: client.userId },
-          orderBy: { createdAt: 'desc' },
-          take: 50,
-          select: { id: true, title: true, body: true, createdAt: true, readAt: true },
-        })
-      : Promise.resolve([]),
-    getTrainerContext(),
-  ])
+  // Billing visibility gates the Invoices tile + page and the profile's
+  // unpaid-invoices card (all read the payment-agnostic Invoice model).
+  const trainerCtx = await getTrainerContext()
   const canViewBilling = !!trainerCtx && can('billing.view', trainerCtx.role, trainerCtx.permissions)
-  const communications = [
-    ...broadcastEmails.map(e => ({
-      id: `b-${e.id}`,
-      kind: 'email' as const,
-      direction: 'outbound' as const,
-      subject: e.broadcast.subject,
-      status: e.status as string | null,
-      date: e.createdAt.toISOString(),
-    })),
-    ...threadMessages.map(m => ({
-      id: `m-${m.id}`,
-      kind: m.body.startsWith('📧') ? ('email' as const) : ('message' as const),
-      direction: m.senderId === client.userId ? ('inbound' as const) : ('outbound' as const),
-      subject: m.body.replace(/^📧\s*/, '').split('\n')[0].slice(0, 140),
-      status: null as string | null,
-      date: m.createdAt.toISOString(),
-    })),
-    ...clientNotifications.map(n => ({
-      id: `n-${n.id}`,
-      kind: 'message' as const,
-      // Always outbound: these are things WE sent them, never a reply.
-      direction: 'outbound' as const,
-      subject: n.title,
-      // readAt is a real signal here — the client opened it in their app.
-      status: (n.readAt ? 'OPENED' : 'SENT') as string | null,
-      date: n.createdAt.toISOString(),
-    })),
-  ].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 60)
 
-  // Driving distance from the trainer's base to this client (guarded — null if
-  // either has no location set, or Google is unreachable). Gated on the Route
-  // planner add-on, which covers all address/distance calculations. One external
-  // call after the batch, since it needs both the client's and base's coordinates.
   const clientAppEnabled = await hasAddon(access.trainerId, 'clientapp')
   // The Achievements tab was unconditional while every other optional tab on this
   // screen was gated, so a trainer who had switched achievements off still saw the
   // tab — and its empty panel — on every client. (Karl, 2026-07-30.)
   const achievementsEnabled = await hasAddon(access.trainerId, 'achievements')
 
-  // Two aggregates that exist ONLY to put a true number on the profile's
-  // summary tiles. Both are cheap single queries and both are gated by the same
-  // flag that gates the tile they feed, so a trainer who can't see billing
-  // doesn't pay for the invoice sum.
+  // Two aggregates that exist ONLY to put a true number on the summary tiles.
+  // Both are cheap and both are gated by the same flag that gates the tile they
+  // feed, so a trainer who can't see billing doesn't pay for the invoice sum.
   //
   // The invoice scope is deliberately `trainerCtx.companyId` — exactly what
-  // /api/trainer/finances/receivables uses — so the tile and the Invoices tab
+  // /api/trainer/finances/receivables uses — so the tile and the Invoices page
   // can never quote different money.
   const [openInvoices, achievementsEarned] = await Promise.all([
     canViewBilling && trainerCtx
@@ -266,6 +212,11 @@ export default async function ClientDetailPage({
     count: openInvoices.length,
   }
 
+  // Driving distance from the trainer's base to this client, for the DESKTOP
+  // summary card in the aside (the phone shows the hero instead, and the
+  // Details page works it out for itself). Guarded — null if either has no
+  // location set, or Google is unreachable — and gated on the Route planner
+  // add-on, which covers all address/distance calculations.
   let distanceFromBase: string | null = null
   if (
     client.addressLat != null && client.addressLng != null &&
@@ -279,18 +230,7 @@ export default async function ClientDetailPage({
     if (d) distanceFromBase = `${(d.distanceMeters / 1000).toFixed(1)} km · ${Math.round(d.durationSec / 60)} min drive`
   }
 
-  const fieldValueMap = Object.fromEntries(client.customFieldValues.map(v => [
-    v.dogId ? `${v.fieldId}:${v.dogId}` : v.fieldId,
-    v.value,
-  ]))
-
-  const completedTasks = client.diaryEntries.filter(t => t.completion).length
-  const complianceRate = client.diaryEntries.length > 0
-    ? Math.round((completedTasks / client.diaryEntries.length) * 100)
-    : null
-
   const allDogs = mergeClientDogs(client.dog, client.dogs)
-  const dogNames = Object.fromEntries(allDogs.map(d => [d.id, d.name]))
 
   // Whose photo the hero shows when a client has several dogs. The first LIVING
   // dog with one, in the order the rest of the screen lists them; a deceased
@@ -300,13 +240,12 @@ export default async function ClientDetailPage({
   const heroDog = allDogs.find(d => d.photoUrl && !d.deceasedAt) ?? allDogs.find(d => d.photoUrl) ?? null
   const heroPhoto = heroDog?.photoUrl ? { url: heroDog.photoUrl, dogName: heroDog.name } : null
 
-  // Every per-client action — Edit, View as client, Re-invite, Assign consult,
-  // Share, Delete — now lives ON the page, at the foot of the Overview tab,
-  // instead of behind an "Actions" dropdown in the header. Built here because
-  // the props come from this page's queries; rendered by ClientProfileTabs.
-  //
+  // Comms only makes sense if there's a channel: the client app (in-app
+  // messaging) is on, OR the client has an email. No app + no email → hide it.
+  const showComms = clientAppEnabled || !!client.user.email
+
   // Enrolling and assigning are forward-looking, so a deceased dog is dropped
-  // from those pickers — unlike the Dogs tab below, which keeps showing them
+  // from those pickers — unlike the Dogs page, which keeps showing them
   // (badged) so the owner's history survives.
   const livingDogs = allDogs.filter(d => !d.deceasedAt)
   const actionsPanel = (
@@ -383,10 +322,9 @@ export default async function ClientDetailPage({
         </div>
       )}
 
-      {/* Summary sidebar + tabbed content. Desktop: summary sticks to the left,
-          tabs scroll on the right. Mobile: the heavy summary card is hidden (its
-          contact facts live in the Details tab) in favour of a compact header +
-          tabs-at-the-top, so a trainer isn't buried under a full profile card. */}
+      {/* Summary sidebar + the profile. Desktop: the summary sticks to the
+          left, the tiles and cards scroll on the right. Mobile: the hero
+          replaces the sidebar entirely. */}
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
       <aside className="hidden lg:block lg:w-72 lg:flex-shrink-0 xl:w-80 lg:sticky lg:top-8">
         <ClientSummaryCard
@@ -424,7 +362,8 @@ export default async function ClientDetailPage({
           Phone only. On desktop the summary card in the aside already carries
           the photo, the name and the status, and two of those on one screen is
           the "nothing says the same thing twice" rule broken in the obvious way.
-          Full-bleed: it escapes the page's own p-4. */}
+          It is also the PROFILE's alone — a section page opens straight into
+          its content. */}
       <ProfileHero
         // `w-auto` matters: ProfileHero's base is `w-full`, and a width:100%
         // block does NOT grow into a negative margin — it stays at the parent's
@@ -455,21 +394,20 @@ export default async function ClientDetailPage({
         }
         subtitle={dogsLine(allDogs.map(d => ({ name: d.name, breed: d.breed })))}
       />
-      <ClientProfileTabs
+      <ClientProfileView
         clientId={client.id}
         clientName={personLabel(client.user)}
         canEdit={canEdit}
         actions={actionsPanel}
-        communications={communications}
         canViewBilling={canViewBilling}
-        showAchievements={achievementsEnabled}
         invoiceSummary={invoiceSummary}
+        showAchievements={achievementsEnabled}
         achievementsEarned={achievementsEarned}
-        stats={{
-          complianceRate,
-          completedTasks,
-          totalTasks: client.diaryEntries.length,
-        }}
+        showComms={showComms}
+        communications={communications}
+        trainingLogCount={trainingLogCount}
+        notesPreview={client.notes ? richTextToPlain(client.notes) : null}
+        clientSince={formatDate(client.user.createdAt)}
         dogs={allDogs.map(d => ({
           id: d.id,
           name: d.name,
@@ -477,8 +415,6 @@ export default async function ClientDetailPage({
           weight: d.weight,
           dob: d.dob ? d.dob.toISOString() : null,
           notes: d.notes,
-          // Deliberately NOT filtered here — the Dogs tab keeps a deceased dog
-          // visible (badged) so the owner's history survives.
           deceasedAt: d.deceasedAt ? d.deceasedAt.toISOString() : null,
         }))}
         products={products.map(p => ({
@@ -503,13 +439,6 @@ export default async function ClientDetailPage({
             imageUrl: r.product.imageUrl,
           },
         }))}
-        tasks={client.diaryEntries.map(t => ({
-          id: t.id,
-          title: t.title,
-          date: t.date.toISOString(),
-          dogId: t.dogId,
-          completed: !!t.completion,
-        }))}
         sessions={trainingSessions.map(s => ({
           id: s.id,
           // Class sessions are titled "Session 2" on the run; on a client's
@@ -524,36 +453,6 @@ export default async function ClientDetailPage({
           virtualLink: s.virtualLink,
           description: s.description,
           dogName: s.dogName,
-        }))}
-        customFields={customFields.map(f => ({
-          id: f.id,
-          label: f.label,
-          appliesTo: (f.appliesTo ?? 'OWNER') as 'OWNER' | 'DOG',
-          category: f.category,
-        }))}
-        fieldValueMap={fieldValueMap}
-        dogNames={dogNames}
-        contact={{
-          email: client.user.email,
-          phone: client.phone,
-          clientSince: formatDate(client.user.createdAt),
-          address: client.addressLine,
-          distanceFromBase,
-        }}
-        status={client.status}
-        notes={client.notes}
-        clientAppEnabled={clientAppEnabled}
-        trainingLogs={trainingLogs.map(l => ({
-          id: l.id,
-          taskId: l.task.id,
-          taskTitle: l.task.title,
-          loggedAt: l.loggedAt.toISOString(),
-          note: l.note,
-          repsDone: l.repsDone,
-          rating: l.rating,
-          imageUrls: Array.isArray(l.imageUrls) ? (l.imageUrls as string[]) : [],
-          videoUrl: l.videoUrl,
-          trainerComment: l.trainerComment,
         }))}
       />
       </div>

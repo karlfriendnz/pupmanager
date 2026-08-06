@@ -193,7 +193,7 @@ function AssignModal({
         return
       }
       onClose()
-      router.replace(`/clients/${clientId}?tab=sessions`)
+      router.replace(`/clients/${clientId}/sessions`)
       router.refresh()
     } finally {
       setSubmitting(false)
@@ -314,7 +314,7 @@ function AssignModal({
       return
     }
     onClose()
-    router.replace(`/clients/${clientId}?tab=sessions`)
+    router.replace(`/clients/${clientId}/sessions`)
     router.refresh()
   }
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
 import { Loader2 } from 'lucide-react'
 import { Card, CardBody } from '@/components/ui/card'
 import { money, fmtDate, receivableBadge, XeroLink, ReceivableDocument, RecordPaymentModal, type Rcv } from '@/components/finances/receivable-document'
@@ -170,7 +171,7 @@ export function ClientInvoicesTab({ clientId }: { clientId: string }) {
 }
 
 // Overview "Unpaid invoices" card — the still-open (UNPAID/PARTIAL) invoices only.
-export function ClientUnpaidInvoicesCard({ clientId, onViewAll }: { clientId: string; onViewAll?: () => void }) {
+export function ClientUnpaidInvoicesCard({ clientId, viewAllHref }: { clientId: string; viewAllHref?: string }) {
   const { items, loading, reload } = useClientReceivables(clientId)
   const [open, setOpen] = useState<Rcv | null>(null)
   const openItems = (items ?? []).filter(r => r.status === 'UNPAID' || r.status === 'PARTIAL')
@@ -213,8 +214,10 @@ export function ClientUnpaidInvoicesCard({ clientId, onViewAll }: { clientId: st
       <CardBody className="py-5">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="text-sm font-semibold text-slate-900">Unpaid invoices</h2>
-          {onViewAll && (items?.length ?? 0) > 0 && (
-            <button type="button" onClick={onViewAll} className="text-xs font-medium text-blue-600 hover:underline">View all</button>
+          {/* Invoices are their own PAGE now, so this is a link rather than a
+              tab switch — the trainer can middle-click it and back returns. */}
+          {viewAllHref && (items?.length ?? 0) > 0 && (
+            <Link href={viewAllHref} className="text-xs font-medium text-blue-600 hover:underline">View all</Link>
           )}
         </div>
         {loading && !items ? (

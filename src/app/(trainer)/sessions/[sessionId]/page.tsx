@@ -288,7 +288,7 @@ export default async function SessionPage({
     <>
       <PageHeader
         title="Session notes"
-        back={clientId ? { href: `/clients/${clientId}?tab=sessions`, label: 'Back to client' } : undefined}
+        back={clientId ? { href: `/clients/${clientId}/sessions`, label: 'Back to client' } : undefined}
       />
       {/* Full width. Capped at 5xl the write-up sat in a column down the middle
           of a desktop screen with a third of the room empty either side — and
@@ -565,7 +565,7 @@ export default async function SessionPage({
           <FlatBlock>
             <DeleteSessionRow
               sessionId={trainingSession.id}
-              redirectTo={clientId ? `/clients/${clientId}?tab=sessions` : '/schedule'}
+              redirectTo={clientId ? `/clients/${clientId}/sessions` : '/schedule'}
             />
           </FlatBlock>
         </div>
