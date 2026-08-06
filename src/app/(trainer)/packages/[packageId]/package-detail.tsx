@@ -137,7 +137,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
     },
     // 1:1 packages can send automated session reminders; group packages run
     // through their class page instead.
-    ...(!pkg.isGroup ? [{ id: 'messages' as const, label: 'Reminders', icon: Bell }] : []),
+    ...(!pkg.isGroup ? [{ id: 'messages' as const, label: 'Automation', icon: Bell }] : []),
   ]
 
   return (
@@ -159,7 +159,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           phone. Only the table's own overflow-x-auto should scroll. */}
       <div className="p-4 md:p-8 w-full min-w-0">
 
-        {/* Tabs — Details, Clients, Reminders & messages. Icon on top on a
+        {/* Tabs — Details, Clients, Automation. Icon on top on a
             phone (the labels are too long to sit beside one at 390px).
 
             The tab's own actions sit on the SAME line, at the right, the way
@@ -385,7 +385,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           />
         </div>
 
-        {/* Reminders & messages tab — automated session reminders (1:1 only). */}
+        {/* Automation tab — what this offering does on its own (1:1 only). */}
         {!pkg.isGroup && (
           <div className={tab === 'messages' ? '' : 'hidden'}>
             <CommsFlowEditor

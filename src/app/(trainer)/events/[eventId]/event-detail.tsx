@@ -116,7 +116,7 @@ export function EventDetail({
   const tabs: OfferingTab<Tab>[] = [
     { id: 'details', label: 'Details', icon: Info },
     { id: 'guests', label: 'Guest list', icon: Users, badge: rosterCount > 0 ? rosterCount : undefined },
-    { id: 'messages', label: 'Reminders & messages', icon: Bell },
+    { id: 'messages', label: 'Automation', icon: Bell },
     { id: 'discounts', label: 'Discounts', icon: Tag },
   ]
 

@@ -588,7 +588,7 @@ export function MembershipsView({
               )}
             </div>
 
-            {/* Reminders & messages — timed automatically off each client's
+            {/* Automation — timed automatically off each client's
                 purchase (a membership has no timetable to hang them on). Only
                 once the membership exists: the steps attach to its id. */}
             <div className={tab === 'who' ? 'p-5' : 'hidden'}>
@@ -608,7 +608,7 @@ export function MembershipsView({
             </div>
 
             <div className={tab === 'messages' ? 'p-5' : 'hidden'}>
-              <p className="flex items-center gap-2 text-sm font-medium text-slate-700"><Bell className="h-4 w-4 text-slate-400" strokeWidth={1.75} /> Reminders &amp; messages</p>
+              <p className="flex items-center gap-2 text-sm font-medium text-slate-700"><Bell className="h-4 w-4 text-slate-400" strokeWidth={1.75} /> Automation</p>
               {draft.id ? (
                 <div className="mt-4">
                   <CommsFlowEditor membershipId={draft.id} offeringName={draft.name} />

@@ -213,7 +213,7 @@ export function RunDetail({
     // also one less thing to explain.
     // Shared by /classes, /casual-classes and /doggy-daycare.
     { id: 'homework', label: 'Sessions', icon: ListChecks, badge: steps.length > 0 ? steps.length : undefined },
-    { id: 'messages', label: 'Reminders', icon: Bell },
+    { id: 'messages', label: 'Automation', icon: Bell },
     { id: 'discounts', label: 'Discounts', icon: Tag },
   ]
 
@@ -237,7 +237,7 @@ export function RunDetail({
       <div className="p-4 md:p-8 w-full min-w-0">
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
-      {/* Tabs — Details, Clients, Reminders, Discounts. Icon on top on a phone
+      {/* Tabs — Details, Clients, Automation, Discounts. Icon on top on a phone
           (the labels are too long to sit beside one at 390px).
 
           The tab's own actions sit on the SAME line, at the right, the way
@@ -490,7 +490,7 @@ export function RunDetail({
         />
       </div>
 
-      {/* Reminders & messages tab — automated comms for this class, plus the
+      {/* Automation tab — what this class sends on its own, plus the
           way into a GROUP for it. Its natural home: no new nav, and it is
           where a trainer already comes to think about talking to this class.
           A comms flow is timed and one-way; a group is a conversation. */}
