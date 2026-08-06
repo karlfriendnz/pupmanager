@@ -65,7 +65,10 @@ export default async function ClientSectionAddPage({
       where: { clientId, status: 'PENDING' },
       orderBy: { createdAt: 'asc' },
       select: {
-        id: true, note: true,
+        // quantity: the picker's stepper starts from what is actually on the
+        // order, so a trainer coming back to a client who already has three
+        // sees three rather than a control that has forgotten.
+        id: true, note: true, quantity: true,
         variant: { select: { id: true, name: true } },
         product: { select: { id: true, name: true, kind: true, imageUrl: true } },
       },
@@ -96,6 +99,7 @@ export default async function ClientSectionAddPage({
           pending={pending.map(r => ({
             id: r.id,
             note: r.note,
+            quantity: r.quantity,
             variant: r.variant,
             product: {
               id: r.product.id,

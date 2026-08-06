@@ -81,6 +81,9 @@ export interface ShopProduct {
 export interface PendingProductRequest {
   id: string
   note: string | null
+  /** How many. Always at least 1 — the column is NOT NULL DEFAULT 1, so a row
+   *  written before quantities existed reads back as the one it always was. */
+  quantity: number
   /** Which one was ordered, when the product has options. */
   variant?: { id: string; name: string } | null
   product: { id: string; name: string; kind: 'PHYSICAL' | 'DIGITAL'; imageUrl: string | null }

@@ -342,7 +342,7 @@ export default async function ClientSectionPage({
           where: { clientId, status: { in: ['PENDING', 'FULFILLED'] } },
           orderBy: [{ fulfilledAt: 'desc' }, { createdAt: 'asc' }],
           select: {
-            id: true, note: true, status: true, fulfilledAt: true,
+            id: true, note: true, status: true, fulfilledAt: true, quantity: true,
             variant: { select: { id: true, name: true } },
             product: { select: { id: true, name: true, kind: true, imageUrl: true } },
           },
@@ -353,6 +353,7 @@ export default async function ClientSectionPage({
       const shape = (r: typeof requests[number]) => ({
         id: r.id,
         note: r.note,
+        quantity: r.quantity,
         variant: r.variant,
         product: {
           id: r.product.id,

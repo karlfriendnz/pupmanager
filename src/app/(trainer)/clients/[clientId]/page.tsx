@@ -73,7 +73,7 @@ export default async function ClientDetailPage({
     teamMembers,
     baseProfile,
     trainingLogCount,
-    pendingProductCount,
+    pendingProductUnits,
     communications,
   ] = await Promise.all([
     prisma.clientProfile.findUnique({
@@ -138,7 +138,13 @@ export default async function ClientDetailPage({
     // COUNTED, not loaded: these tiles only ever print the number, and the
     // lists belong to /clients/:id/training and /clients/:id/products.
     prisma.trainingLog.count({ where: { task: { clientId } } }),
-    prisma.productRequest.count({ where: { clientId, status: 'PENDING' } }),
+    // SUMMED, not counted. The tile says how many things to put in the bag, and
+    // one order for three harnesses is three of them — a count of ROWS would
+    // say "1 to bring" and send the trainer out with a third of the order.
+    prisma.productRequest.aggregate({
+      where: { clientId, status: 'PENDING' },
+      _sum: { quantity: true },
+    }),
     // The newest ONE — all the Comms tile prints is how long ago it was.
     loadClientCommunications(clientId, 1),
   ])
@@ -376,7 +382,9 @@ export default async function ClientDetailPage({
         showComms={showComms}
         communications={communications}
         trainingLogCount={trainingLogCount}
-        pendingProductCount={pendingProductCount}
+        // `_sum` is null when there are no pending rows at all — no rows, no
+        // sum. That is zero things to bring.
+        pendingProductCount={pendingProductUnits._sum.quantity ?? 0}
         notesPreview={client.notes ? richTextToPlain(client.notes) : null}
         clientSince={formatDate(client.user.createdAt)}
         dogs={allDogs.map(d => ({

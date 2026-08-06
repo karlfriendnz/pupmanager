@@ -168,6 +168,97 @@ export async function placeProductOrder(input: PlaceOrderInput): Promise<PlaceOr
 }
 
 /**
+ * Set a pending order to an exact number, up or down.
+ *
+ * The stepper on the add screen is the order's quantity, not a counter of taps,
+ * so it has to be able to go back down — someone who taps + one too many times
+ * needs the correction to be a tap, not a cancel-and-start-again.
+ *
+ * DOWN UNDOES AS MUCH AS UP DID. Going 5 → 3 puts two back on the shelf and
+ * re-prices the receivable for three: the same three effects as ordering, run
+ * for the difference. That is the whole rule (AGENTS.md #4) applied to a
+ * partial cancel rather than a whole one.
+ *
+ * Zero is not a quantity — it is a cancellation, and it has its own path
+ * (releaseCancelledRequest) that also cancels the receivable rather than
+ * re-pricing it to nothing. Refused here rather than quietly doing half of it.
+ */
+export async function setProductOrderQuantity(input: {
+  trainerId: string
+  clientId: string
+  requestId: string
+  quantity: number
+  userId?: string | null
+}): Promise<PlaceOrderResult> {
+  const target = normaliseQuantity(input.quantity)
+
+  const row = await prisma.productRequest.findFirst({
+    where: { id: input.requestId, clientId: input.clientId, status: 'PENDING' },
+    select: {
+      id: true, quantity: true, productId: true, variantId: true,
+      product: { select: { name: true, stockCount: true } },
+      variant: { select: { name: true, stockCount: true } },
+    },
+  })
+  if (!row) return { ok: false, status: 409, error: 'That order is no longer pending.' }
+
+  const label = row.variant ? `${row.product.name} — ${row.variant.name}` : row.product.name
+  const shelf = row.variant ? row.variant.stockCount : row.product.stockCount
+  const diff = target - row.quantity
+  if (diff === 0) return { ok: true, request: { id: row.id, quantity: row.quantity }, created: false, added: 0 }
+
+  // A paid order can't be re-sized. Same reasoning as placeProductOrder: the
+  // money has moved, and that is the trainer's decision to reverse.
+  const paid = await prisma.invoice.findFirst({
+    where: {
+      trainerId: input.trainerId,
+      clientId: input.clientId,
+      sourceType: 'PRODUCT',
+      sourceId: row.variantId ?? row.productId,
+      status: { in: ['PAID', 'PARTIAL'] },
+    },
+    select: { id: true },
+  })
+  if (paid) {
+    return { ok: false, status: 409, error: `${label} has already been paid for.` }
+  }
+
+  if (diff > 0) {
+    if (!(await takeStock(prisma, row.productId, {
+      clientId: input.clientId,
+      userId: input.userId ?? null,
+      variantId: row.variantId,
+      note: 'Order quantity increased',
+    }, diff))) {
+      return { ok: false, status: 409, error: shortStockMessage(label, shelf, target) }
+    }
+  } else {
+    await returnStock(prisma, row.productId, -diff, {
+      clientId: input.clientId,
+      userId: input.userId ?? null,
+      variantId: row.variantId,
+      note: 'Order quantity reduced',
+    })
+  }
+
+  const updated = await prisma.productRequest.update({
+    where: { id: row.id },
+    data: { quantity: target },
+    select: { id: true, quantity: true },
+  })
+
+  await syncOrderInvoice({
+    trainerId: input.trainerId,
+    clientId: input.clientId,
+    productId: row.productId,
+    variantId: row.variantId,
+    quantity: updated.quantity,
+  })
+
+  return { ok: true, request: updated, created: false, added: diff }
+}
+
+/**
  * Make the receivable say what the order now says.
  *
  * Raises it the first time, and RE-PRICES it when the quantity has moved —

@@ -87,8 +87,13 @@ export function ClientProductsSection({
                   title={r.note ?? undefined}
                 >
                   {/* The option is part of the name here — "a harness" is not
-                      something anyone can go and fetch. */}
+                      something anyone can go and fetch. Nor is one harness when
+                      three were ordered, so the count rides along whenever it
+                      isn't one. */}
                   {r.variant ? `${r.product.name} — ${r.variant.name}` : r.product.name}
+                  {r.quantity > 1 && (
+                    <span className="ml-0.5 font-semibold tabular-nums">× {r.quantity}</span>
+                  )}
                   {canEdit && (
                     <button
                       onClick={() => dismissRequest(r.id)}
@@ -124,6 +129,9 @@ export function ClientProductsSection({
                 <li key={r.id} className="flex items-center justify-between gap-3 py-2.5">
                   <span className="min-w-0 flex-1 truncate text-sm text-slate-900">
                     {r.variant ? `${r.product.name} — ${r.variant.name}` : r.product.name}
+                    {r.quantity > 1 && (
+                      <span className="ml-1 font-semibold tabular-nums">× {r.quantity}</span>
+                    )}
                   </span>
                   {r.fulfilledAt && (
                     <span className="shrink-0 text-xs text-slate-400">{formatDate(r.fulfilledAt)}</span>
