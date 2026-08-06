@@ -5,6 +5,7 @@
 import { prisma } from './prisma'
 import type { AvailabilityRow, BlackoutRow, BusyInterval } from './availability'
 import { utcToZonedDateAndMinutes, todayInTz } from './timezone'
+import { liveHolds } from './booking-holds'
 
 // How far ahead we consider bookings — matches the my-availability page window.
 const DAYS_AHEAD = 28
@@ -40,7 +41,10 @@ export async function getTrainerAvailabilityForClient(clientId: string): Promise
     },
   })
   if (!profile) return null
-  return loadAvailability(profile.trainerId, profile.trainer.user.timezone, profile.trainer.businessName)
+  // Their own booking holds are excluded: a client half-way through booking 2pm
+  // must still be shown 2pm, and must not be refused their own slot when the
+  // confirm re-validates it. Everybody ELSE'S live hold does block them.
+  return loadAvailability(profile.trainerId, profile.trainer.user.timezone, profile.trainer.businessName, clientId)
 }
 
 /**
@@ -66,6 +70,10 @@ async function loadAvailability(
   trainerId: string,
   tz: string,
   businessName: string,
+  // Whose own booking holds don't count against them. Null on the trainer-side
+  // entry point: a trainer looking at their own openings wants to see every
+  // claim on the diary, including the ones clients are mid-way through making.
+  excludeClientId: string | null = null,
 ): Promise<TrainerAvailability> {
   const cutoff = new Date()
   cutoff.setUTCDate(cutoff.getUTCDate() - 1)
@@ -125,6 +133,26 @@ async function loadAvailability(
       bufferMins: s.bufferMins,
     }
   })
+
+  // Slots somebody else is part-way through booking. A BookingHold is not a
+  // session — nothing that draws a calendar or counts a booking reads that
+  // table — but it does occupy the hour while a client answers the offering's
+  // gating form, or their card clears. Expiry is applied by the QUERY
+  // (expiresAt > now), so a hold that lapsed a moment ago is already gone from
+  // this list whether or not the sweep has run; the cron only tidies rows away.
+  //
+  // Their OWN hold is excluded, or the client holding 2pm would be shown a
+  // picker with 2pm missing and refused their own slot on confirm.
+  const holds = await liveHolds(trainerId, fetchStart, fetchEnd, { excludeClientId, now: new Date() })
+  for (const h of holds) {
+    const { dateStr, minuteOfDay } = utcToZonedDateAndMinutes(h.slotAt, tz)
+    busy.push({
+      dateStr,
+      startMin: minuteOfDay,
+      endMin: minuteOfDay + h.durationMins,
+      bufferMins: h.bufferMins,
+    })
+  }
 
   return {
     trainerId,

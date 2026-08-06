@@ -403,6 +403,31 @@ export function canWaitForCompletion(kind: FlowStepKind, payload?: unknown): boo
 }
 
 /**
+ * Can this step hold up the BOOKING itself?
+ *
+ * Karl's three stages are "before they confirm, during the session, after the
+ * session". `direction` says the last two. This is the first, and it is a
+ * different kind of fact — not a time, but a condition on the booking going
+ * ahead at all.
+ *
+ * Only a FORM qualifies, and only on an offering-anchored flow (a Package or a
+ * ClassRun), which is where a booking exists to hold up. A person-anchored
+ * journey already has `blocking` for sequencing, and a membership has no slot to
+ * hold. A FORM step also has to NAME a form: a gate with nothing to answer is a
+ * wall with no door, which is the exact trap `canWaitForCompletion` exists to
+ * avoid on the other axis.
+ */
+export function canGateBooking(
+  kind: FlowStepKind,
+  anchor: 'SESSION' | 'PURCHASE' | 'PERSON',
+  payload?: unknown,
+): boolean {
+  if (kind !== 'FORM') return false
+  if (anchor !== 'SESSION') return false
+  return !!safeFlowStepPayload('FORM', payload).payload.formId
+}
+
+/**
  * Why this step cannot run yet — or null when it is ready.
  *
  * The parser deliberately accepts a half-built step, because a trainer adds one
@@ -460,6 +485,9 @@ const stepFieldsBase = z.object({
   // step is anchored by `direction`.
   trigger: personTriggerEnum.nullable().optional(),
   blocking: z.boolean().default(false),
+  // "Ask this before they can confirm the booking." FORM steps only — see
+  // canGateBooking and lib/booking-gate.
+  gatesBooking: z.boolean().default(false),
   direction: directionEnum,
   offsetMinutes: z.number().int().min(0).max(MAX_OFFSET_MIN),
   channels: z.array(channelEnum).min(1, 'Pick at least one channel'),
@@ -485,11 +513,19 @@ const stepFieldsBase = z.object({
  *   • a payload must match the kind on the same row.
  */
 function refineStep(
-  s: { kind?: FlowStepKind; title?: string | null; body?: string | null; payload?: unknown },
+  s: { kind?: FlowStepKind; title?: string | null; body?: string | null; payload?: unknown; gatesBooking?: boolean },
   ctx: z.RefinementCtx,
   { requireMessageCopy }: { requireMessageCopy: boolean },
 ): void {
   const kind = s.kind ?? 'MESSAGE'
+  // A gate is a FORM in front of a booking. Nothing else can be one: a message
+  // has nothing to answer, and an upload or a task has no way to say "this is
+  // complete" at the instant somebody is tapping Confirm. Refused rather than
+  // ignored, because a trainer who thinks they have set a gate and hasn't is
+  // worse off than one who is told the step can't be one.
+  if (s.gatesBooking && kind !== 'FORM') {
+    ctx.addIssue({ code: 'custom', path: ['gatesBooking'], message: 'Only a form can hold up a booking' })
+  }
   if (kind === 'MESSAGE') {
     // On a PATCH only the keys that were sent are checked — clearing the title
     // of a message step is still refused, but not sending one is fine.
@@ -548,6 +584,7 @@ export const DEFAULT_STEP_FIELDS: StepFields = {
   actor: 'CLIENT',
   trigger: null,
   blocking: false,
+  gatesBooking: false,
   direction: 'BEFORE_SESSION',
   offsetMinutes: 1440,
   channels: ['PUSH', 'EMAIL'],

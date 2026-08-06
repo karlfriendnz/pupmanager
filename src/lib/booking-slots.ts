@@ -13,6 +13,7 @@ import {
   type BlackoutRow,
 } from './availability'
 import { zonedToUtc } from './timezone'
+import { liveHolds } from './booking-holds'
 
 export interface BookingSlot {
   /** UTC ISO instant of the slot start — what the client submits back. */
@@ -149,6 +150,8 @@ export async function fetchBookingSlots(
   trainerId: string,
   cfg: BookingPageConfig,
   now: Date = new Date(),
+  // Whose own booking hold doesn't count against them — see liveHolds rule 3.
+  opts: { excludeClientId?: string | null } = {},
 ): Promise<DaySlots[]> {
   const todayStr = new Intl.DateTimeFormat('en-CA', {
     timeZone: cfg.tz,
@@ -222,6 +225,30 @@ export async function fetchBookingSlots(
     busyByDate.set(dateStr, arr)
   }
 
+  // …and the slots somebody else is part-way through booking. This engine and
+  // the self-book one (lib/client-availability) must subtract the SAME things,
+  // or a booking page would happily sell an hour a client is mid-form on. Both
+  // read through liveHolds, which applies the expiry in the query — a lapsed
+  // hold is bookable again immediately, with no sweep involved.
+  const holds = await liveHolds(trainerId, fetchStart, fetchEnd, {
+    excludeClientId: opts.excludeClientId ?? null,
+    now,
+  })
+  for (const h of holds) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: cfg.tz,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(h.slotAt)
+    const got: Record<string, string> = {}
+    for (const p of parts) if (p.type !== 'literal') got[p.type] = p.value
+    const dateStr = `${got.year}-${got.month}-${got.day}`
+    const start = Number(got.hour) * 60 + Number(got.minute)
+    const arr = busyByDate.get(dateStr) ?? []
+    arr.push({ start, end: start + h.durationMins, buffer: h.bufferMins })
+    busyByDate.set(dateStr, arr)
+  }
+
   return generateBookingSlots({
     tz: cfg.tz,
     todayStr: today,
@@ -243,7 +270,8 @@ export async function isSlotAvailable(
   cfg: BookingPageConfig,
   iso: string,
   now: Date = new Date(),
+  opts: { excludeClientId?: string | null } = {},
 ): Promise<boolean> {
-  const days = await fetchBookingSlots(trainerId, cfg, now)
+  const days = await fetchBookingSlots(trainerId, cfg, now, opts)
   return days.some(d => d.slots.some(s => s.iso === iso))
 }

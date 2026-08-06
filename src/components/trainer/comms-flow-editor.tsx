@@ -65,6 +65,7 @@ import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
 import { isRichTextEmpty } from '@/lib/rich-text'
 import { sortStepsByTime, channelsForAudience, type FlowStepKind, type FlowStepActor } from '@/lib/comms-flow-steps'
 import { canWaitForCompletion } from '@/lib/flow-anchors'
+import { canGateBooking } from '@/lib/comms-flow-steps'
 import {
   flowStepSummary,
   flowStepKindsFor,
@@ -88,6 +89,9 @@ interface Step {
   actor: FlowStepActor
   trigger: PersonTrigger | null
   blocking: boolean
+  /** "Ask this before they can confirm the booking" — FORM steps on an
+   *  offering only. See lib/booking-gate. */
+  gatesBooking: boolean
   direction: Direction
   offsetMinutes: number
   channels: Channel[]
@@ -226,6 +230,7 @@ function normalizeStep(raw: Partial<Step> & { id: string }): Step {
     actor: 'CLIENT',
     trigger: null,
     blocking: false,
+    gatesBooking: false,
     direction: 'BEFORE_SESSION',
     offsetMinutes: 1440,
     channels: [],
@@ -363,7 +368,7 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
   }
   async function saveDraft() {
     if (!draft) return
-    const { id, kind, actor, blocking, direction, offsetMinutes, channels, audience, customClientIds, important, title, body, emailBody, enabled, payload } = draft
+    const { id, kind, actor, blocking, gatesBooking, direction, offsetMinutes, channels, audience, customClientIds, important, title, body, emailBody, enabled, payload } = draft
     const res = await api(`${base}/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({
@@ -371,6 +376,10 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
         // against it, and a FORM payload checked against MESSAGE's schema
         // (which is `null`) would be refused outright.
         kind, actor, blocking, direction, offsetMinutes, channels, audience, customClientIds, important, title, body,
+        // Only ever sent as a gate a FORM can actually be. Switching the kind
+        // away from FORM takes the gate down with it, so what disappears from
+        // the screen disappears from the booking.
+        gatesBooking: canGateBooking(kind, anchor, payload) ? gatesBooking : false,
         // Only persist an email body when Email is a channel and one was written.
         emailBody: channels.includes('EMAIL') && emailBody?.trim() ? emailBody : null,
         enabled,
@@ -864,9 +873,38 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
           </p>
         )}
 
+        {/* BEFORE THEY CONFIRM — Karl's first stage, and the only one that is
+            not a time. A FORM step with this on holds up the BOOKING: every
+            client path that books this offering has to carry answers that
+            satisfy the form, or the server refuses it (lib/booking-gate).
+
+            Shown only where there is a booking to hold up — an offering, not a
+            person-anchored journey (which has `blocking` for sequencing) and
+            not a membership (which has no slot). And only once a form is
+            actually chosen: a gate with nothing to answer is a wall with no
+            door. */}
+        {canGateBooking(draft.kind, sequenced ? 'PERSON' : isMembership ? 'PURCHASE' : 'SESSION', draft.payload) && (
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <Switch checked={draft.gatesBooking} onChange={() => onPatch({ gatesBooking: !draft.gatesBooking })} onColor="bg-slate-900" className="mt-0.5" aria-label="Ask before they can book" />
+            <span className="text-sm text-slate-700">
+              <span className="font-medium">Ask this before they can book</span>
+              <span className="mt-0.5 block text-xs text-slate-500">
+                {draft.gatesBooking
+                  ? 'They answer it as part of booking, and the booking is not confirmed until they have. Asked again every time they book.'
+                  : 'They can book first and you chase the answers afterwards.'}
+              </span>
+            </span>
+          </label>
+        )}
+
         {/* WHEN — a journey has no clock: the step before it finishing IS the
-            timing, so there is nothing here to choose. */}
-        {sequenced ? (
+            timing, so there is nothing here to choose. A gating step has no
+            clock either: "before they confirm" is not an offset. */}
+        {draft.gatesBooking ? (
+          <Field label="When">
+            <p className="text-sm text-slate-600">While they are booking, before it is confirmed.</p>
+          </Field>
+        ) : sequenced ? (
           <Field label="When">
             <p className="text-sm text-slate-600">{summary.when}.</p>
           </Field>
