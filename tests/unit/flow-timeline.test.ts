@@ -6,12 +6,14 @@ import {
   FLOW_STAGES_BY_ANCHOR,
   flowStagesFor,
   flowStageOf,
+  flowStageAdd,
   groupStepsByStage,
   reorderFlowSteps,
   type FlowStageKey,
   type StageableStep,
 } from '@/lib/flow-timeline'
-import { commsTimelinePos, sortStepsByTime } from '@/lib/comms-flow-steps'
+import type { FlowAnchor } from '@/lib/flow-anchors'
+import { commsTimelinePos, sortStepsByTime, defaultOffsetForDirection } from '@/lib/comms-flow-steps'
 import { flowStepWhenText, type SummarisableStep } from '@/lib/flow-step-summary'
 import {
   FLOW_OWNER_PERMISSION,
@@ -97,9 +99,9 @@ describe('the stages are scaffolding, not slots', () => {
 
   it('renders an empty stage quietly rather than as a job to do', () => {
     const groups = groupStepsByStage([row({ id: 'a', direction: 'BEFORE_SESSION' })], 'SESSION')
-    expect(groups).toHaveLength(3)
+    expect(groups).toHaveLength(4)
     const empty = groups.filter(g => g.steps.length === 0)
-    expect(empty).toHaveLength(2)
+    expect(empty).toHaveLength(3)
     for (const g of empty) {
       // It says something, and what it says is a statement of fact — no call to
       // action, nothing to fix, no exclamation.
@@ -112,7 +114,7 @@ describe('the stages are scaffolding, not slots', () => {
     // A heading that disappears when its stage empties is a heading that cannot
     // tell a trainer nothing follows their class up.
     expect(groupStepsByStage([], 'SESSION').map(g => g.stage?.key)).toEqual([
-      'BEFORE_CONFIRM', 'DURING_SESSION', 'AFTER_SESSION',
+      'BEFORE_CONFIRM', 'ON_ENROLMENT', 'DURING_SESSION', 'AFTER_SESSION',
     ])
   })
 
@@ -125,7 +127,7 @@ describe('the stages are scaffolding, not slots', () => {
       }
     }
     expect(flowStagesFor('SESSION').map(s => s.label)).toEqual([
-      'Before they confirm', 'During the session', 'After the session',
+      'Before they confirm', 'When they enrol', 'During the session', 'After the session',
     ])
   })
 
@@ -160,13 +162,51 @@ describe('the stages are scaffolding, not slots', () => {
     expect(groups[1].steps.map(s => s.id)).toEqual(['b'])
   })
 
-  // "After signup" is a PURCHASE stage and ONLY a PURCHASE stage. A class or a
-  // 1:1 package is scanned by session, so there is nothing on one for an
-  // enrolment-anchored step to fire from — a heading a trainer could drop a
-  // step into that could never run is worse than no heading.
-  it('never offers "after signup" where the engine could not fire it', () => {
+  // A stage must never be offered where the engine could not fire it. Which
+  // means BOTH halves have to hold: the moment "somebody joined" is real on a
+  // membership AND on an offering, but it is a different row, a different
+  // column and a different pass in each — so each anchor gets the one its own
+  // engine pass can actually fire, and never the other's.
+  it('never offers a joining stage the wrong engine pass would have to run', () => {
+    // "After signup" is fired by processMembershipStep counting AFTER_PURCHASE
+    // forward from a MembershipPurchase. Nothing on a class or a 1:1 has one.
     expect(flowStagesFor('SESSION').map(s => s.key)).not.toContain('AFTER_SIGNUP')
     expect(flowStagesFor('PERSON').map(s => s.key)).not.toContain('AFTER_SIGNUP')
+    // "When they enrol" is fired by processEnrolmentStep walking
+    // ClassEnrollment / ClientPackage rows. A membership has neither, and a
+    // person-anchored journey has no clock at all.
+    expect(flowStagesFor('PURCHASE').map(s => s.key)).not.toContain('ON_ENROLMENT')
+    expect(flowStagesFor('PERSON').map(s => s.key)).not.toContain('ON_ENROLMENT')
+  })
+
+  // Karl: "hmm yeah when they enrol is better" — for "things like a thank you
+  // message etc". A class and a 1:1 package DO have a joining moment; it is the
+  // enrolment row, which is why it gets a direction and a pass of its own.
+  it('gives an offering the joining stage, before the run-up to its sessions', () => {
+    expect(flowStagesFor('SESSION').map(s => s.key)).toEqual([
+      'BEFORE_CONFIRM', 'ON_ENROLMENT', 'DURING_SESSION', 'AFTER_SESSION',
+    ])
+    expect(flowStageOf(step({ direction: 'ON_ENROLMENT' }))).toBe('ON_ENROLMENT')
+
+    const groups = groupStepsByStage(
+      [row({ id: 'welcome', direction: 'ON_ENROLMENT' }), row({ id: 'nudge', direction: 'BEFORE_SESSION' })],
+      'SESSION',
+    )
+    expect(groups[1].stage?.key).toBe('ON_ENROLMENT')
+    expect(groups[1].steps.map(s => s.id)).toEqual(['welcome'])
+    expect(groups[2].steps.map(s => s.id)).toEqual(['nudge'])
+  })
+
+  // The words differ because the moments differ: you enrol ON a class, you sign
+  // up FOR a recurring plan. A membership keeps the stage it already had.
+  it('keeps the membership wording, and uses Karl’s for an offering', () => {
+    expect(flowStagesFor('PURCHASE').map(s => s.label)).toEqual(['After signup', 'Before it renews'])
+    expect(flowStagesFor('SESSION').find(s => s.key === 'ON_ENROLMENT')?.label).toBe('When they enrol')
+  })
+
+  // A booking gate still outranks everything, including this.
+  it('files a gating form before the booking even if it says ON_ENROLMENT', () => {
+    expect(flowStageOf(step({ gatesBooking: true, direction: 'ON_ENROLMENT' }))).toBe('BEFORE_CONFIRM')
   })
 
   it('never loses a step off the screen it is edited on', () => {
@@ -193,8 +233,9 @@ describe('the stages are scaffolding, not slots', () => {
       ],
       'SESSION',
     )
-    expect(groups[1].steps.map(s => s.id)).toEqual(['a', 'c'])
-    expect(groups[2].steps.map(s => s.id)).toEqual(['b', 'd'])
+    // [0] the booking gate, [1] joining, [2] the run-up + the session, [3] after.
+    expect(groups[2].steps.map(s => s.id)).toEqual(['a', 'c'])
+    expect(groups[3].steps.map(s => s.id)).toEqual(['b', 'd'])
   })
 })
 
@@ -249,7 +290,7 @@ describe('moving a step', () => {
     // …and the stages still hold what they held: dragging changes the ORDER,
     // never the timing, so it never moves a step to another stage.
     const groups = groupStepsByStage(next, 'SESSION')
-    expect(groups.map(g => g.steps.map(s => s.id))).toEqual([[], ['b', 'a'], ['c']])
+    expect(groups.map(g => g.steps.map(s => s.id))).toEqual([[], [], ['b', 'a'], ['c']])
   })
 
   it('leaves the flow alone when either end of the drag is gone', () => {
@@ -303,9 +344,125 @@ describe('"during the session" on the timeline', () => {
   })
 })
 
+// Karl, on a screenshot of the empty timeline with a box drawn at the right of
+// each stage heading: "please put the add step buttons here". A step added from
+// a heading has to land back under THAT heading — which is the whole point of
+// the change, and exactly the sort of thing that silently regresses.
+describe('adding a step from a stage heading', () => {
+  const ANCHORS: FlowAnchor[] = ['SESSION', 'PERSON', 'PURCHASE']
+
+  it('lands the new step back in the stage it was added from', () => {
+    for (const anchor of ANCHORS) {
+      for (const stage of flowStagesFor(anchor)) {
+        const { seed } = flowStageAdd(stage.key, anchor)
+        // The step the API would create: the app's defaults, with the seed on
+        // top. A person-anchored one carries its trigger, exactly as
+        // withFormDefaults forces it to.
+        const created: StageableStep = {
+          direction: 'BEFORE_SESSION',
+          trigger: anchor === 'PERSON' ? 'ON_ENQUIRY_SUBMITTED' : null,
+          gatesBooking: false,
+          ...seed,
+        }
+        expect(flowStageOf(created), `${anchor} / ${stage.key}`).toBe(stage.key)
+        // …and it is drawn under that heading, not merely classified there.
+        const groups = groupStepsByStage([{ ...created, id: 'new', order: 0 }], anchor)
+        const landed = groups.find(g => g.steps.length === 1)
+        expect(landed?.stage?.key, `${anchor} / ${stage.key}`).toBe(stage.key)
+      }
+    }
+  })
+
+  it('seeds columns the step already has — never a stage of its own', () => {
+    // A stored stage would be a second answer to when a step happens. Everything
+    // seeded here is a column the sheet itself edits.
+    const allowed = new Set(['direction', 'offsetMinutes', 'gatesBooking'])
+    for (const anchor of ANCHORS) {
+      for (const stage of flowStagesFor(anchor)) {
+        for (const key of Object.keys(flowStageAdd(stage.key, anchor).seed)) {
+          expect(allowed.has(key), `${stage.key}: ${key}`).toBe(true)
+        }
+      }
+    }
+  })
+
+  it('starts a "when they enrol" step straight away, not a day later', () => {
+    // A thank-you that arrives tomorrow is not a thank-you (Karl). Every other
+    // direction keeps whatever lead time the step already held.
+    expect(flowStageAdd('ON_ENROLMENT', 'SESSION').seed.offsetMinutes).toBe(0)
+    expect(defaultOffsetForDirection('ON_ENROLMENT')).toBe(0)
+    for (const d of ['BEFORE_SESSION', 'DURING_SESSION', 'AFTER_SESSION', 'AFTER_PURCHASE', 'BEFORE_PERIOD_END']) {
+      expect(defaultOffsetForDirection(d), d).toBeNull()
+    }
+  })
+
+  it('offers only a form from the booking gate, because only a form can be one', () => {
+    // The server REFUSES gatesBooking on any other kind (refineStep), so any
+    // other choice from that heading would be a step that could not stay where
+    // it was put.
+    expect(flowStageAdd('BEFORE_CONFIRM', 'SESSION')).toEqual({ seed: { gatesBooking: true }, kinds: ['FORM'] })
+    // A journey is entirely pre-booking, so its one stage narrows nothing.
+    expect(flowStageAdd('BEFORE_CONFIRM', 'PERSON')).toEqual({ seed: {} })
+  })
+
+  it('is driven by the stage table, so a new stage gets a button for free', () => {
+    const editor = file('src/components/trainer/comms-flow-editor.tsx')
+    // One button, rendered per stage from flowStageAdd(stage.key, anchor) —
+    // not three written out by hand.
+    expect(editor).toContain('setPicking(flowStageAdd(stage.key, anchor))')
+    expect(editor).toContain('Add step: ${stage.label}')
+    // And the generic bottom one is gone: two ways to do the same thing is the
+    // rule this repo keeps breaking. What is left is the no-headings fallback.
+    expect(editor).toContain('stages.every(g => !g.stage)')
+    // The starter stays at the bottom — it fills every stage, not one.
+    expect(editor).toContain('Use starter reminders')
+  })
+})
+
 // A new ENUM VALUE must be alone in its migration: Postgres refuses to use one
 // added in the same transaction, Prisma wraps each migration in one, and the
 // failure only shows up in production at `migrate deploy`.
+describe('the ON_ENROLMENT migration', () => {
+  const path = 'prisma/migrations/20260806240000_flow_on_enrolment/migration.sql'
+  const sql = file(path)
+
+  it('adds the value to both enums that mirror each other', () => {
+    expect(sql).toContain(`ALTER TYPE "CommsFlowDirection" ADD VALUE IF NOT EXISTS 'ON_ENROLMENT'`)
+    expect(sql).toContain(`ALTER TYPE "FlowTrigger" ADD VALUE IF NOT EXISTS 'ON_ENROLMENT'`)
+  })
+
+  it('does nothing else at all — and can be run twice', () => {
+    const statements = sql
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith('--'))
+    expect(statements).toHaveLength(2)
+    for (const s of statements) expect(s).toContain('IF NOT EXISTS')
+  })
+
+  it('ledgers the sends in a SEPARATE migration, which uses neither value', () => {
+    // Anything that reads or writes a new enum value belongs after the file that
+    // adds it — see the header of the file above.
+    const columns = file('prisma/migrations/20260806241000_comms_flow_send_enrolment/migration.sql')
+    const statements = columns.split('\n').filter(l => !l.trim().startsWith('--')).join('\n')
+    expect(statements).not.toContain('ON_ENROLMENT')
+    expect(columns).toContain('ADD COLUMN IF NOT EXISTS "enrollmentId"')
+    expect(columns).toContain('ADD COLUMN IF NOT EXISTS "clientPackageId"')
+    // @@map snake_case table names, never the Prisma model names.
+    expect(columns).toContain('"class_enrollments"')
+    expect(columns).toContain('"client_packages"')
+    expect(columns).not.toMatch(/"ClassEnrollment"|"ClientPackage"|"CommsFlowSend"/)
+  })
+
+  it('is declared in the schema too, on both enums', () => {
+    const schema = file('prisma/schema.prisma')
+    const direction = schema.slice(schema.indexOf('enum CommsFlowDirection'), schema.indexOf('enum CommsFlowAudience'))
+    expect(direction).toMatch(/^\s*ON_ENROLMENT\s*$/m)
+    const trigger = schema.slice(schema.indexOf('enum FlowTrigger'), schema.indexOf('enum FlowRunStatus'))
+    expect(trigger).toMatch(/^\s*ON_ENROLMENT\s*$/m)
+  })
+})
+
 describe('the DURING_SESSION migration', () => {
   const path = 'prisma/migrations/20260806220000_flow_during_session/migration.sql'
   const sql = file(path)

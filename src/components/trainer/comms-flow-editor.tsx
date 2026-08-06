@@ -82,8 +82,8 @@ import {
   type FlowStepActor,
 } from '@/lib/comms-flow-steps'
 import { canWaitForCompletion } from '@/lib/flow-anchors'
-import { canGateBooking } from '@/lib/comms-flow-steps'
-import { groupStepsByStage, reorderFlowSteps } from '@/lib/flow-timeline'
+import { canGateBooking, defaultOffsetForDirection } from '@/lib/comms-flow-steps'
+import { groupStepsByStage, flowStageAdd, reorderFlowSteps, type FlowStageAdd } from '@/lib/flow-timeline'
 import {
   flowStepSummary,
   flowStepKindsFor,
@@ -94,7 +94,7 @@ import {
 import { commsPlaceholderOptionsFor, type PlaceholderOption } from '@/lib/placeholder-labels'
 
 type Channel = 'PUSH' | 'EMAIL' | 'IN_APP'
-type Direction = 'BEFORE_SESSION' | 'DURING_SESSION' | 'AFTER_SESSION' | 'AFTER_PURCHASE' | 'BEFORE_PERIOD_END'
+type Direction = 'BEFORE_SESSION' | 'DURING_SESSION' | 'AFTER_SESSION' | 'ON_ENROLMENT' | 'AFTER_PURCHASE' | 'BEFORE_PERIOD_END'
 type Audience = 'ENROLLED' | 'ENROLLED_AND_WAITLIST' | 'CUSTOM' | 'STAFF'
 type PersonTrigger = 'ON_ENQUIRY_SUBMITTED' | 'ON_SIGNUP' | 'ON_BOOKING'
 
@@ -219,6 +219,9 @@ function humanWhen(direction: Direction, min: number): string {
   if (direction === 'DURING_SESSION') return 'while the session is on'
   const preset = OFFSETS.find(o => o.min === min)
   const label = preset ? preset.label : min < 60 ? `${min} min` : min < 1440 ? `${Math.round(min / 60)} hr` : `${Math.round(min / 1440)} days`
+  // Joining is not a moment in a session, so it is answered before the
+  // before/after wording below could put a lead time either side of one.
+  if (direction === 'ON_ENROLMENT') return min === 0 ? 'Straight away, when they enrol' : `${label} after they enrol`
   if (direction === 'AFTER_PURCHASE') return min === 0 ? 'When they join' : `${label} after they join`
   if (direction === 'BEFORE_PERIOD_END') return `${label} before it renews`
   return `${label} ${direction === 'BEFORE_SESSION' ? 'before' : 'after'}`
@@ -347,7 +350,11 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
   const [options, setOptions] = useState<FlowOptions>(NO_OPTIONS)
   const [draft, setDraft] = useState<Step | null>(null)
   const [previewing, setPreviewing] = useState<Step | null>(null)
-  const [picking, setPicking] = useState(false)
+  // Not a boolean any more: "Add step" is now per stage (Karl, on a screenshot
+  // of the empty timeline with a box drawn at the right of each heading —
+  // "please put the add step buttons here"), and WHICH stage it was tapped from
+  // is what the new step gets seeded with. Null = closed.
+  const [picking, setPicking] = useState<FlowStageAdd | null>(null)
   const [busy, setBusy] = useState(false)
   // Applying a template writes a whole flow server-side and can take a beat —
   // it gets its own flag so the screen can say so, rather than looking dead.
@@ -411,7 +418,7 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
    *  puts the message at the SAME moment as the step it was added beside so the
    *  two sit next to each other on the timeline rather than a day apart. */
   async function addStep(kind: FlowStepKind, extra: Partial<Step> = {}) {
-    setPicking(false)
+    setPicking(null)
     const res = await api(base, { method: 'POST', body: JSON.stringify({ kind, ...extra }) })
     if (!res) return
     const step = normalizeStep(await res.json())
@@ -578,12 +585,31 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
       {stages.map(({ stage, steps: inStage }) => (
         <section key={stage?.key ?? 'all'} className="border-t border-slate-200">
           {stage && (
-            <div className="px-4 pt-3.5 sm:px-5">
-              {/* The stage headings carry the shape of the whole flow, so they
-                  read as headings rather than as the smallest text on screen
-                  (Karl, 2026-08-06: "make these bigger"). */}
-              <h4 className="text-sm font-semibold text-slate-900">{stage.label}</h4>
-              <p className="mt-0.5 text-[13px] text-slate-500">{stage.hint}</p>
+            /* Heading left, "Add step" hard right (Karl drew a box there).
+               `items-start` + `min-w-0 flex-1` is what keeps a 390px screen
+               honest: the HINT wraps under the label and the button holds its
+               place, rather than the button being squeezed off the row. */
+            <div className="flex items-start gap-2 px-4 pt-3.5 sm:px-5">
+              <div className="min-w-0 flex-1">
+                {/* The stage headings carry the shape of the whole flow, so they
+                    read as headings rather than as the smallest text on screen
+                    (Karl, 2026-08-06: "make these bigger"). */}
+                <h4 className="text-sm font-semibold text-slate-900">{stage.label}</h4>
+                <p className="mt-0.5 text-[13px] text-slate-500">{stage.hint}</p>
+              </div>
+              {/* Quiet by design — three filled buttons down an empty screen
+                  would shout louder than the one this replaces. globals.css
+                  already forces a 44px minimum on every button, so the tap
+                  target is real without an exemption. */}
+              <button
+                type="button"
+                onClick={() => setPicking(flowStageAdd(stage.key, anchor))}
+                disabled={busy}
+                aria-label={`Add step: ${stage.label}`}
+                className="-mt-1 -mr-1 inline-flex shrink-0 items-center gap-1 rounded-lg px-2 text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 disabled:opacity-60"
+              >
+                <Plus className="h-4 w-4" strokeWidth={1.75} /> Add step
+              </button>
             </div>
           )}
           {inStage.length === 0 ? (
@@ -695,11 +721,22 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
       ) : rows}
 
       <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 p-4 sm:px-5">
-        <button onClick={() => setPicking(true)} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
-          <Plus className="h-4 w-4" strokeWidth={1.75} /> Add step
-        </button>
-        {/* Only worth offering into an empty flow — it seeds two reminders, and
-            a trainer who has built their own does not want them appended. */}
+        {/* No generic "Add step" here any more: every step belongs to a stage,
+            and one button at the bottom could only ever guess which. The
+            per-heading ones above replaced it — two ways to do the same thing is
+            the rule this repo keeps breaking.
+            The fallback survives for a flow with NO stage headings to hang a
+            button off. No anchor is in that shape today; groupStepsByStage still
+            allows it, and a flow you cannot add to would be unusable. */}
+        {stages.every(g => !g.stage) && (
+          <button onClick={() => setPicking({ seed: {} })} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+            <Plus className="h-4 w-4" strokeWidth={1.75} /> Add step
+          </button>
+        )}
+        {/* Only worth offering into an empty flow — it seeds a whole starter
+            flow, and a trainer who has built their own does not want it
+            appended. It stays at the bottom rather than moving onto a heading:
+            it fills EVERY stage, not one. */}
         {steps.length === 0 && !sequenced && (
           <button onClick={seedStarter} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
             <Sparkles className="h-4 w-4 text-slate-500" strokeWidth={1.75} /> Use starter reminders
@@ -712,8 +749,12 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
         <StepKindPicker
           anchor={anchor}
           busy={busy}
-          onPick={addStep}
-          onClose={() => setPicking(false)}
+          only={picking.kinds}
+          // The seed is what puts the new step back under the heading it was
+          // added from. A stage is DERIVED from these columns (flowStageOf), so
+          // seeding them is the whole mechanism — there is no stage to store.
+          onPick={kind => addStep(kind, picking.seed as Partial<Step>)}
+          onClose={() => setPicking(null)}
         />
       )}
 
@@ -901,14 +942,22 @@ function FlowStepRow({ step, index, first, last, names, draggable, busy, onEdit,
  * The kinds offered depend on the anchor: three of the seven cannot be fired by
  * a clock, so a class's flow never lists them. Offering a choice whose only
  * outcome is silence is worse than a shorter menu.
+ *
+ * `only` narrows it further, for a STAGE that can hold fewer than its anchor
+ * can. "Before they confirm" is the one: holding up a booking is something only
+ * a form can do (the server refuses `gatesBooking` on any other kind), so
+ * offering "Send a message" from that heading would offer a step that could not
+ * stay where it was put.
  */
-function StepKindPicker({ anchor, busy, onPick, onClose }: {
+function StepKindPicker({ anchor, busy, only, onPick, onClose }: {
   anchor: 'PERSON' | 'SESSION' | 'PURCHASE'
   busy: boolean
+  only?: FlowStepKind[]
   onPick: (kind: FlowStepKind) => void
   onClose: () => void
 }) {
-  const kinds = flowStepKindsFor(anchor)
+  const allowed = flowStepKindsFor(anchor)
+  const kinds = only ? allowed.filter(o => only.includes(o.kind)) : allowed
   const theirs = kinds.filter(k => k.actor === 'CLIENT')
   const yours = kinds.filter(k => k.actor === 'TRAINER')
 
@@ -1096,10 +1145,25 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
               <div className="inline-flex rounded-lg border border-slate-200 p-0.5">
                 {(isMembership
                   ? (['AFTER_PURCHASE', 'BEFORE_PERIOD_END'] as Direction[])
-                  : (['BEFORE_SESSION', 'DURING_SESSION', 'AFTER_SESSION'] as Direction[])
+                  // Enrolling comes first because it happens first: it is the
+                  // moment they join, before any of the sessions they joined for.
+                  : (['ON_ENROLMENT', 'BEFORE_SESSION', 'DURING_SESSION', 'AFTER_SESSION'] as Direction[])
                 ).map(d => (
-                  <button key={d} onClick={() => onPatch({ direction: d })} className={`px-3 h-8 text-sm font-medium rounded-md ${draft.direction === d ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>
-                    {d === 'BEFORE_SESSION' ? 'Before' : d === 'DURING_SESSION' ? 'During' : d === 'AFTER_SESSION' ? 'After' : d === 'AFTER_PURCHASE' ? 'After they join' : 'Before it renews'}
+                  <button
+                    key={d}
+                    // Switching direction adopts that direction's starting lead
+                    // time where it has one — "when they enrol" starts at
+                    // straight away, because the case it exists for is a
+                    // thank-you and a thank-you inheriting a 1-day reminder's
+                    // lead time would be wrong every time. Every other direction
+                    // returns null and keeps whatever the trainer had chosen.
+                    onClick={() => {
+                      const seed = defaultOffsetForDirection(d)
+                      onPatch(seed === null ? { direction: d } : { direction: d, offsetMinutes: seed })
+                    }}
+                    className={`px-3 h-8 text-sm font-medium rounded-md ${draft.direction === d ? 'bg-slate-900 text-white' : 'text-slate-600'}`}
+                  >
+                    {d === 'ON_ENROLMENT' ? 'When they enrol' : d === 'BEFORE_SESSION' ? 'Before' : d === 'DURING_SESSION' ? 'During' : d === 'AFTER_SESSION' ? 'After' : d === 'AFTER_PURCHASE' ? 'After they join' : 'Before it renews'}
                   </button>
                 ))}
               </div>
@@ -1110,16 +1174,26 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
               {draft.direction !== 'DURING_SESSION' && (
                 <>
                   <select value={draft.offsetMinutes} onChange={e => onPatch({ offsetMinutes: Number(e.target.value) })} aria-label="How long" className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700">
-                    {OFFSETS.map(o => <option key={o.min} value={o.min}>{o.label}</option>)}
+                    {OFFSETS.map(o => (
+                      <option key={o.min} value={o.min}>
+                        {/* "right on the session" is the session wording. There
+                            is no session here — 0 means the instant they joined. */}
+                        {o.min === 0 && draft.direction === 'ON_ENROLMENT' ? 'straight away' : o.label}
+                      </option>
+                    ))}
                   </select>
-                  {!isMembership && <span className="text-sm text-slate-500">the session</span>}
+                  {draft.direction === 'ON_ENROLMENT'
+                    ? draft.offsetMinutes > 0 && <span className="text-sm text-slate-500">after they enrol</span>
+                    : !isMembership && <span className="text-sm text-slate-500">the session</span>}
                 </>
               )}
             </div>
             <p className="mt-1.5 text-xs text-slate-500">
               {draft.direction === 'DURING_SESSION'
                 ? 'Goes out while the session is actually running — any time between it starting and finishing.'
-                : `Sends ${humanWhen(draft.direction, draft.offsetMinutes).toLowerCase()}.`}
+                : draft.direction === 'ON_ENROLMENT'
+                  ? `Goes out ${humanWhen(draft.direction, draft.offsetMinutes).toLowerCase()} — when they get a place, not around any one session.`
+                  : `Sends ${humanWhen(draft.direction, draft.offsetMinutes).toLowerCase()}.`}
             </p>
           </Field>
         )}

@@ -38,22 +38,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS "comms_flow_sends_stepId_clientPackageId_userI
 -- otherwise a replay fails on the constraint already being there.
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'comms_flow_sends_enrollmentId_fkey'
-  ) THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'comms_flow_sends_enrollmentId_fkey') THEN
     ALTER TABLE "comms_flow_sends"
       ADD CONSTRAINT "comms_flow_sends_enrollmentId_fkey"
       FOREIGN KEY ("enrollmentId") REFERENCES "class_enrollments"("id")
       ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'comms_flow_sends_clientPackageId_fkey'
-  ) THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'comms_flow_sends_clientPackageId_fkey') THEN
     ALTER TABLE "comms_flow_sends"
       ADD CONSTRAINT "comms_flow_sends_clientPackageId_fkey"
       FOREIGN KEY ("clientPackageId") REFERENCES "client_packages"("id")
       ON DELETE CASCADE ON UPDATE CASCADE;
   END IF;
+EXCEPTION WHEN duplicate_object THEN NULL;
 END
 $$;

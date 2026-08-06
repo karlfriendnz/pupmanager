@@ -25,7 +25,7 @@
 //
 // PURE. No Prisma, no React — the builder imports it into the browser bundle.
 import { flowAnchorFor, type FlowAnchor } from './flow-anchors'
-import type { FlowTrigger } from './comms-flow-steps'
+import type { FlowStepKind, FlowTrigger } from './comms-flow-steps'
 
 /**
  * The stages, as keys, in the order they happen. The LABELS depend on what the
@@ -183,6 +183,65 @@ export function flowStageOf(step: StageableStep): FlowStageKey {
   if (step.direction === 'BEFORE_PERIOD_END') return 'BEFORE_RENEWAL'
   if (step.direction === 'AFTER_SESSION') return 'AFTER_SESSION'
   return 'DURING_SESSION'
+}
+
+// ─── Adding INTO a stage ────────────────────────────────────────────────────
+//
+// Karl, on a screenshot of the empty timeline with a box drawn at the right-hand
+// end of each stage heading: "please put the add step buttons here".
+//
+// So "Add step" is per stage, and a step added from a heading has to land back
+// under THAT heading. A stage is DERIVED (see flowStageOf) and must stay that
+// way — a stored stage column would be a second answer to when a step happens,
+// and there is a test asserting the builder never sends one. So adding into a
+// stage works backwards instead: seed the columns the derivation reads, and it
+// puts the step where it was asked for.
+
+/** What "add a step here" means for one stage. */
+export interface FlowStageAdd {
+  /**
+   * The columns to seed so `flowStageOf` files the new step under this stage.
+   * Deliberately the SAME columns the sheet edits — nothing here is a new fact
+   * about the step, only a starting value for one it already has.
+   */
+  seed: { direction?: string; offsetMinutes?: number; gatesBooking?: boolean }
+  /**
+   * The step kinds this stage can actually hold, or undefined for "whatever the
+   * anchor allows". Only the booking gate narrows it: holding up a booking is
+   * something only a FORM can do (see canGateBooking / refineStep, which REFUSES
+   * `gatesBooking` on any other kind), so offering "Send a message" from that
+   * heading would offer a step the server would not accept there.
+   */
+  kinds?: FlowStepKind[]
+}
+
+export function flowStageAdd(stage: FlowStageKey, anchor: FlowAnchor): FlowStageAdd {
+  switch (stage) {
+    case 'BEFORE_CONFIRM':
+      // A journey is entirely pre-booking, so every step of one is already in
+      // this stage and there is nothing to seed or narrow. On an offering it is
+      // the booking gate, which only a form can be.
+      return anchor === 'PERSON' ? { seed: {} } : { seed: { gatesBooking: true }, kinds: ['FORM'] }
+    case 'ON_ENROLMENT':
+      // Straight away, because the case this stage exists for is a thank-you.
+      return { seed: { direction: 'ON_ENROLMENT', offsetMinutes: 0 } }
+    case 'DURING_SESSION':
+      // The stage spans the run-up AND the session itself; a step added into it
+      // starts as the run-up reminder, which is what it is nearly always for and
+      // which is also the app's long-standing default.
+      return { seed: { direction: 'BEFORE_SESSION', offsetMinutes: 1440 } }
+    case 'AFTER_SESSION':
+      return { seed: { direction: 'AFTER_SESSION' } }
+    case 'AFTER_SIGNUP':
+      return { seed: { direction: 'AFTER_PURCHASE', offsetMinutes: 0 } }
+    case 'BEFORE_RENEWAL':
+      return { seed: { direction: 'BEFORE_PERIOD_END' } }
+    default: {
+      const unhandled: never = stage
+      void unhandled
+      return { seed: {} }
+    }
+  }
 }
 
 export interface FlowStageGroup<T> {

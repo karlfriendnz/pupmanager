@@ -29,13 +29,17 @@ const h = vi.hoisted(() => ({
   runFindUnique: vi.fn(),
   runUpdate: vi.fn(),
   completionFindMany: vi.fn(),
+  // "When they enrol" — a pass that walks enrolments rather than sessions.
+  sessionFindFirst: vi.fn(),
+  clientPackageFindMany: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     commsFlowStep: { findMany: h.stepFindMany },
-    trainingSession: { findMany: h.sessionFindMany },
+    trainingSession: { findMany: h.sessionFindMany, findFirst: h.sessionFindFirst },
     classEnrollment: { findMany: h.enrollmentFindMany },
+    clientPackage: { findMany: h.clientPackageFindMany },
     commsFlowSend: { findMany: h.sendFindMany, create: h.sendCreate },
     notification: { create: h.notificationCreate },
     membershipPurchase: { findMany: h.purchaseFindMany },
@@ -121,6 +125,8 @@ beforeEach(() => {
   h.runFindUnique.mockResolvedValue(null)
   h.runUpdate.mockResolvedValue({})
   h.completionFindMany.mockResolvedValue([])
+  h.sessionFindFirst.mockResolvedValue(null)
+  h.clientPackageFindMany.mockResolvedValue([])
 })
 
 describe('renderCommsMessage', () => {
@@ -1324,5 +1330,298 @@ describe('processFlowRun', () => {
     // It is still what they are waiting on — the trainer finishing it is what
     // gets them moving, and nothing was recorded to stop the ask happening then.
     expect(res.waitingOn).toBe('intake')
+  })
+})
+
+// ─── "When they enrol" ───────────────────────────────────────────────────────
+//
+// Karl asked for a stage that fires on somebody JOINING rather than on one of
+// their sessions — "hmm yeah when they enrol is better" — and said what it is
+// for: "its for things like a thank you message etc".
+//
+// So the thing to prove first is the one that could embarrass a real business:
+// a trainer writes a warm "thanks for joining!" and switches it on for a class
+// that has been running a year. If it back-fires, every past client is thanked
+// for enrolling in something they finished months ago.
+
+const enrolStep = (over: Record<string, unknown> = {}) => ({
+  id: 'estep',
+  classRunId: 'run1',
+  packageId: null,
+  membershipId: null,
+  kind: 'MESSAGE',
+  actor: 'CLIENT',
+  trigger: null,
+  direction: 'ON_ENROLMENT',
+  offsetMinutes: 0,
+  channels: ['PUSH', 'EMAIL'],
+  audience: 'ENROLLED',
+  customClientIds: [],
+  important: false,
+  title: "You're in, {{name}} 🎉",
+  body: 'Thanks for signing {{dog}} up for {{class}} — first one is {{date}} at {{time}}.',
+  emailBody: null,
+  enabled: true,
+  classRun: { name: 'Puppy Class', location: 'The Hall', trainerId: 'co1', trainer },
+  package: null,
+  membership: null,
+  ...over,
+})
+
+const joined = (over: Record<string, unknown> = {}) => ({
+  id: 'enr1',
+  clientId: 'c1',
+  dogId: 'd1',
+  dog: { name: 'Bailey' },
+  dropInSession: null,
+  client: { user: { id: 'u1', name: 'Sam', email: 'sam@x.com', notifyPush: true, productEmailOptOut: false } },
+  ...over,
+})
+
+describe('processCommsFlows — when they enrol', () => {
+  it('CANNOT back-fire at a year of past enrolees', async () => {
+    h.stepFindMany.mockResolvedValue([enrolStep()])
+    h.enrollmentFindMany.mockResolvedValue([])
+
+    await processCommsFlows(NOW)
+
+    // The scan window is bounded at BOTH ends — thirty days, the same floor
+    // AFTER_SESSION and AFTER_PURCHASE already use. Switching this on today is a
+    // forward-looking act, not a mailout.
+    const where = h.enrollmentFindMany.mock.calls[0][0].where
+    expect(where.enrolledAt.lte).toEqual(NOW)
+    expect(where.enrolledAt.gte).toEqual(new Date(NOW.getTime() - 30 * 86_400_000))
+    // A year-old enrolment is outside it by a mile.
+    const yearAgo = new Date(NOW.getTime() - 365 * 86_400_000)
+    expect(yearAgo.getTime()).toBeLessThan(where.enrolledAt.gte.getTime())
+    expect(h.sendPush).not.toHaveBeenCalled()
+  })
+
+  it('thanks somebody the moment they enrol', async () => {
+    h.stepFindMany.mockResolvedValue([enrolStep()])
+    h.enrollmentFindMany.mockResolvedValue([joined()])
+    h.sessionFindFirst.mockResolvedValue({ scheduledAt: SESSION_AT })
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.sendPush).toHaveBeenCalledTimes(1)
+    expect(h.sendPush.mock.calls[0][0]).toBe('u1')
+    expect(h.sendPush.mock.calls[0][1].alert.title).toBe("You're in, Sam 🎉")
+    // {{date}}/{{time}} still mean THE SESSION — the picker promises they do,
+    // so a "your first one is…" welcome says the truth about the class rather
+    // than about the day they signed up.
+    expect(h.sendPush.mock.calls[0][1].alert.body).toContain('Bailey')
+    expect(h.sendPush.mock.calls[0][1].alert.body).toContain('Puppy Class')
+    expect(h.sendPush.mock.calls[0][1].alert.body).not.toContain('{{')
+  })
+
+  it('never touches the session scan — no firing after every class', async () => {
+    // The trap the previous attempt stopped at: a non-session anchor falling
+    // through to the session pass would land in its `else` branch and send a
+    // "thanks for signing up!" after EVERY session of the run.
+    h.stepFindMany.mockResolvedValue([enrolStep()])
+    h.enrollmentFindMany.mockResolvedValue([joined()])
+
+    await processCommsFlows(NOW)
+
+    expect(h.sessionFindMany).not.toHaveBeenCalled()
+    // …and the send is ledgered against the ENROLMENT, not a session.
+    expect(h.sendCreate).toHaveBeenCalledWith({ data: { stepId: 'estep', enrollmentId: 'enr1', userId: 'u1' } })
+    expect(h.sendCreate.mock.calls[0][0].data.sessionId).toBeUndefined()
+  })
+
+  it('does not thank a WAITLISTED person for a place they have not got', async () => {
+    h.stepFindMany.mockResolvedValue([enrolStep()])
+    h.enrollmentFindMany.mockResolvedValue([])
+
+    await processCommsFlows(NOW)
+
+    expect(h.enrollmentFindMany.mock.calls[0][0].where.status).toEqual({ in: ['ENROLLED'] })
+  })
+
+  it('…unless the trainer explicitly asked for the waitlist too', async () => {
+    h.stepFindMany.mockResolvedValue([enrolStep({ audience: 'ENROLLED_AND_WAITLIST' })])
+    h.enrollmentFindMany.mockResolvedValue([])
+
+    await processCommsFlows(NOW)
+
+    expect(h.enrollmentFindMany.mock.calls[0][0].where.status).toEqual({ in: ['ENROLLED', 'WAITLISTED'] })
+  })
+
+  it('says nothing to somebody who has WITHDRAWN or already COMPLETED', async () => {
+    // Both are excluded by the same filter: withdrawing is un-enrolling, and
+    // somebody who finished the run months ago has not just joined it.
+    h.stepFindMany.mockResolvedValue([enrolStep()])
+    h.enrollmentFindMany.mockResolvedValue([])
+
+    await processCommsFlows(NOW)
+
+    const statuses = h.enrollmentFindMany.mock.calls[0][0].where.status.in
+    expect(statuses).not.toContain('WITHDRAWN')
+    expect(statuses).not.toContain('COMPLETED')
+  })
+
+  it('never thanks the same enrolment twice, however many ticks run', async () => {
+    h.stepFindMany.mockResolvedValue([enrolStep()])
+    h.enrollmentFindMany.mockResolvedValue([joined()])
+    h.sendFindMany.mockResolvedValue([{ enrollmentId: 'enr1', clientPackageId: null, userId: 'u1' }])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(0)
+    expect(h.sendPush).not.toHaveBeenCalled()
+  })
+
+  it('…but a FRESH enrolment row is a fresh enrolment, and may be thanked', async () => {
+    // Karl's rule exactly. Somebody who withdrew and signed up again has a new
+    // row, and the ledger is per row — so the old send does not silence it.
+    h.stepFindMany.mockResolvedValue([enrolStep()])
+    h.enrollmentFindMany.mockResolvedValue([joined({ id: 'enr2' })])
+    h.sendFindMany.mockResolvedValue([{ enrollmentId: 'enr1', clientPackageId: null, userId: 'u1' }])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.sendCreate).toHaveBeenCalledWith({ data: { stepId: 'estep', enrollmentId: 'enr2', userId: 'u1' } })
+  })
+
+  it('respects an offset — "3 days after they enrol" waits three days', async () => {
+    h.stepFindMany.mockResolvedValue([enrolStep({ offsetMinutes: 3 * 24 * 60 })])
+    h.enrollmentFindMany.mockResolvedValue([])
+
+    await processCommsFlows(NOW)
+
+    const where = h.enrollmentFindMany.mock.calls[0][0].where
+    // Due only once they enrolled + 3 days ago; still floored 30 days behind that.
+    expect(where.enrolledAt.lte).toEqual(new Date(NOW.getTime() - 3 * 86_400_000))
+    expect(where.enrolledAt.gte).toEqual(new Date(NOW.getTime() - 3 * 86_400_000 - 30 * 86_400_000))
+  })
+
+  it('a drop-in hears about the ONE session they dropped into', async () => {
+    const dropInAt = new Date('2026-08-03T05:00:00.000Z')
+    h.stepFindMany.mockResolvedValue([enrolStep()])
+    h.enrollmentFindMany.mockResolvedValue([joined({ dropInSession: { scheduledAt: dropInAt } })])
+    // The run's next session is a different one, and must not win.
+    h.sessionFindFirst.mockResolvedValue({ scheduledAt: SESSION_AT })
+
+    await processCommsFlows(NOW)
+
+    const body = h.sendPush.mock.calls[0][1].alert.body
+    expect(body).toContain('Monday') // 3 Aug 2026, in Pacific/Auckland
+  })
+
+  it('narrows to the chosen people on a CUSTOM audience', async () => {
+    h.stepFindMany.mockResolvedValue([enrolStep({ audience: 'CUSTOM', customClientIds: ['c7'] })])
+    h.enrollmentFindMany.mockResolvedValue([])
+
+    await processCommsFlows(NOW)
+
+    expect(h.enrollmentFindMany.mock.calls[0][0].where.clientId).toEqual({ in: ['c7'] })
+  })
+
+  it('a half-built step is skipped without being marked delivered', async () => {
+    h.stepFindMany.mockResolvedValue([enrolStep({ kind: 'FORM', payload: {}, title: null, body: null })])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.skipped).toBe(1)
+    expect(h.enrollmentFindMany).not.toHaveBeenCalled()
+    expect(h.sendCreate).not.toHaveBeenCalled()
+  })
+})
+
+describe('processCommsFlows — when they enrol, on a 1:1 package', () => {
+  const pkgStep = (over: Record<string, unknown> = {}) =>
+    enrolStep({
+      id: 'pestep',
+      classRunId: null,
+      packageId: 'pkg1',
+      classRun: null,
+      package: { name: 'Puppy 101', trainerId: 'co1', trainer },
+      ...over,
+    })
+
+  const assigned = (over: Record<string, unknown> = {}) => ({
+    id: 'cp1',
+    clientId: 'c9',
+    sessions: [{ scheduledAt: SESSION_AT }],
+    client: {
+      dogId: 'd9',
+      dog: { name: 'Rex', deceasedAt: null },
+      dogs: [],
+      user: { id: 'u9', name: 'Pat', email: 'pat@x.com', notifyPush: true, productEmailOptOut: false },
+      assignedTrainer: null,
+    },
+    ...over,
+  })
+
+  it('treats being ASSIGNED the package as the moment they joined it', async () => {
+    // There is no other row that records it — a 1:1 has no enrolment table.
+    h.stepFindMany.mockResolvedValue([pkgStep()])
+    h.clientPackageFindMany.mockResolvedValue([assigned()])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.enrollmentFindMany).not.toHaveBeenCalled()
+    expect(h.sendPush.mock.calls[0][1].alert.title).toBe("You're in, Pat 🎉")
+    expect(h.sendPush.mock.calls[0][1].alert.body).toContain('Rex')
+    // Ledgered against the assignment row, on its own column.
+    expect(h.sendCreate).toHaveBeenCalledWith({ data: { stepId: 'pestep', clientPackageId: 'cp1', userId: 'u9' } })
+  })
+
+  it('is floored the same thirty days, off assignedAt', async () => {
+    h.stepFindMany.mockResolvedValue([pkgStep()])
+    h.clientPackageFindMany.mockResolvedValue([])
+
+    await processCommsFlows(NOW)
+
+    const where = h.clientPackageFindMany.mock.calls[0][0].where
+    expect(where.packageId).toBe('pkg1')
+    expect(where.assignedAt.lte).toEqual(NOW)
+    expect(where.assignedAt.gte).toEqual(new Date(NOW.getTime() - 30 * 86_400_000))
+    // An assignment paused for non-payment is not somebody to welcome.
+    expect(where.suspendedAt).toBeNull()
+  })
+
+  it('does not re-thank an assignment already recorded', async () => {
+    h.stepFindMany.mockResolvedValue([pkgStep()])
+    h.clientPackageFindMany.mockResolvedValue([assigned()])
+    h.sendFindMany.mockResolvedValue([{ enrollmentId: null, clientPackageId: 'cp1', userId: 'u9' }])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(0)
+    expect(h.sendPush).not.toHaveBeenCalled()
+  })
+})
+
+describe('nothing that already worked changed', () => {
+  // The session pass and the membership pass are untouched by any of it: a step
+  // that does not say ON_ENROLMENT never reaches the new code.
+  it('a BEFORE_SESSION reminder still scans sessions and ledgers by session', async () => {
+    h.stepFindMany.mockResolvedValue([step()])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.sessionFindMany).toHaveBeenCalledTimes(1)
+    expect(h.clientPackageFindMany).not.toHaveBeenCalled()
+    expect(h.sendCreate).toHaveBeenCalledWith({ data: { stepId: 'step1', sessionId: 'sess1', userId: 'u1' } })
+  })
+
+  it('a membership welcome still counts from the purchase and ledgers by purchase', async () => {
+    h.stepFindMany.mockResolvedValue([membershipStep()])
+    h.purchaseFindMany.mockResolvedValue([PURCHASE])
+    h.clientFindMany.mockResolvedValue([CLIENT])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.enrollmentFindMany).not.toHaveBeenCalled()
+    expect(h.clientPackageFindMany).not.toHaveBeenCalled()
+    expect(h.sendCreate).toHaveBeenCalledWith({ data: { stepId: 'mstep', purchaseId: 'pur1', userId: 'u1' } })
   })
 })

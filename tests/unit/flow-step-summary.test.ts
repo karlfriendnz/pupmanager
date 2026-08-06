@@ -120,6 +120,22 @@ describe('flowStepWhenText — the timing, in words', () => {
       .toBe('1 week before it renews')
   })
 
+  it('reads joining as joining, in Karl’s words, not as a lead time', () => {
+    expect(flowStepWhenText(step({ direction: 'ON_ENROLMENT', offsetMinutes: 0 }))).toBe('When they enrol')
+    expect(flowStepWhenText(step({ direction: 'ON_ENROLMENT', offsetMinutes: 4320 })))
+      .toBe('3 days after they enrol')
+  })
+
+  it('is not moved by a lead time left over from when it was a reminder', () => {
+    // A step switched from "1 day before" to "when they enrol" still holds 1440
+    // in the column. Answered BEFORE the before/after wording, so the row cannot
+    // read "1 day before" about a step that fires the instant somebody joins.
+    expect(flowStepWhenText(step({ direction: 'ON_ENROLMENT', offsetMinutes: 1440 })))
+      .toBe('1 day after they enrol')
+    expect(flowStepWhenText(step({ direction: 'ON_ENROLMENT', offsetMinutes: 1440 })))
+      .not.toContain('before')
+  })
+
   it('a journey’s FIRST step reads off its trigger', () => {
     const s = step({ trigger: 'ON_ENQUIRY_SUBMITTED', offsetMinutes: 0 })
     expect(flowStepWhenText(s, 0)).toBe('As soon as they enquire')
