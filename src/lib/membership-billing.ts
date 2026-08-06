@@ -325,6 +325,20 @@ export async function syncSubscription(sub: Stripe.Subscription, sandbox: boolea
         data: { stripeSubscriptionId: sub.id },
       })
     }
+
+    // The client paid, so any invitation to pay is answered — close it out.
+    //
+    // This is what makes the trainer's "waiting on them to pay" row honest.
+    // Without it an INVITED request sits on the dashboard for ever, telling the
+    // trainer to chase someone who subscribed weeks ago. Scoped to INVITED so a
+    // self-serve subscriber's untouched PENDING request is left for the trainer
+    // to answer, and so re-delivery of this event matches nothing the second
+    // time. updateMany: there may be no request at all (most subscriptions are
+    // self-serve), and that is not an error.
+    await tx.membershipRequest.updateMany({
+      where: { clientId, membershipId, status: 'INVITED' },
+      data: { status: 'FULFILLED', fulfilledAt: new Date() },
+    })
   })
 
   // enrollInRun opens its own transaction, so class places are enrolled after

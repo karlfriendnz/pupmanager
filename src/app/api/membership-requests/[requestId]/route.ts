@@ -6,6 +6,7 @@ import { trainerRequestScope } from '@/lib/membership-requests'
 import { fulfilMembershipInTx, enrolMembershipClasses } from '@/lib/memberships'
 import { notifyClient } from '@/lib/client-notify'
 import { safeEvaluate } from '@/lib/achievements'
+import { canChargeRecurring, RECURRING_CAPABILITY_SELECT } from '@/lib/connect'
 
 // The trainer acting on a client's "Request this" for a package checkout can't
 // take. Deliberately shaped like PATCH /api/product-requests/[requestId], the
@@ -60,15 +61,30 @@ export async function PATCH(
 
   // Already decided — return it rather than granting the package twice because
   // two tabs were open.
-  if (request.status !== 'PENDING') {
+  //
+  // INVITED is the exception, and only for DECLINED: withdrawing an invitation
+  // is a real thing a trainer needs to do (they sorted it in person, the client
+  // changed their mind), and it is SAFE precisely because inviting granted
+  // nothing and charged nothing. There is no purchase to unwind, no package to
+  // take back and no Stripe object to cancel — the row simply closes. Any live
+  // subscription the client did start is untouched by this: it is a
+  // MembershipPurchase, and its own cancellation route is the only thing that
+  // stops money moving.
+  const withdrawingInvite = request.status === 'INVITED' && parsed.data.status === 'DECLINED'
+  if (request.status !== 'PENDING' && !withdrawingInvite) {
     return NextResponse.json({ ok: true, alreadyActioned: true, status: request.status })
   }
 
   if (parsed.data.status === 'DECLINED') {
-    await prisma.membershipRequest.update({
-      where: { id: requestId },
+    // updateMany + the status guard, so two tabs declining at once (or a decline
+    // racing an accept) settles on one answer instead of stamping over a grant.
+    const declined = await prisma.membershipRequest.updateMany({
+      where: { id: requestId, status: { in: ['PENDING', 'INVITED'] } },
       data: { status: 'DECLINED', fulfilledAt: null },
     })
+    if (declined.count === 0) {
+      return NextResponse.json({ ok: true, alreadyActioned: true, status: request.status })
+    }
     return NextResponse.json({ ok: true, status: 'DECLINED' })
   }
 
@@ -81,15 +97,34 @@ export async function PATCH(
   if (parsed.data.status === 'INVITED') {
     const trainerForInvite = await prisma.trainerProfile.findUnique({
       where: { id: trainerId },
-      select: { businessName: true, recurringPaymentsEnabled: true },
+      select: { ...RECURRING_CAPABILITY_SELECT, businessName: true },
     })
     const membership = await prisma.membership.findFirst({
       where: { id: request.membershipId, trainerId },
-      select: { cadence: true, plans: { where: { archivedAt: null }, select: { id: true } } },
+      select: {
+        cadence: true,
+        // Current AND priced. An archived plan can never start a new
+        // subscription, and the buy route refuses a zero-priced one with "This
+        // package has no price set" — either would send the client to a button
+        // that fails, which is the one thing this branch must never do.
+        plans: { where: { archivedAt: null, priceCents: { gt: 0 } }, select: { id: true } },
+      },
     })
-    if (membership?.cadence !== 'RECURRING' || !membership.plans.length || !trainerForInvite?.recurringPaymentsEnabled) {
+
+    // Gate on the FACT — can this trainer actually take a recurring card
+    // payment — not on the recurringPaymentsEnabled allowlist alone. That flag
+    // being true says a trainer is permitted to sell subscriptions; it says
+    // nothing about whether Stripe will accept a charge. An allowlisted trainer
+    // with no connected account (or one restricted mid-verification) would be
+    // told the invitation was sent, and their client would tap through to a 409
+    // neither of them could do anything about. AGENTS.md #6.
+    if (membership?.cadence !== 'RECURRING' || !membership.plans.length || !canChargeRecurring(trainerForInvite ?? {})) {
       return NextResponse.json(
-        { error: 'This package can’t be subscribed to yet — set up an ongoing price first.' },
+        {
+          error: canChargeRecurring(trainerForInvite ?? {})
+            ? 'This package can’t be subscribed to yet — set up an ongoing price first.'
+            : 'You need Stripe connected before you can ask a client to pay for a plan.',
+        },
         { status: 409 },
       )
     }
@@ -108,12 +143,20 @@ export async function PATCH(
         trainerId,
         type: 'CLIENT_ADDED_TO_PLAN',
         vars: {
-          trainerName: trainerForInvite.businessName ?? 'Your trainer',
+          trainerName: trainerForInvite?.businessName ?? 'Your trainer',
           dogName: request.client.dog?.name ?? 'you',
           planName: request.membership.name,
           detail: 'It’s ready for you to start — tap to see the price and subscribe.',
         },
-        link: '/my-memberships',
+        // Deep-linked to THIS package, which opens its consent screen on
+        // arrival. Deliberately NOT a Stripe Checkout URL minted here: the
+        // subscription must be authorised by the client, and the consent row
+        // the buy route writes is their recorded agreement to a repeating
+        // charge. Creating a session on their behalf would be us agreeing to it
+        // for them — and the link would be a bearer token for a live payment
+        // page sitting in an email. One code path through money: they go to the
+        // same Subscribe button as everyone else.
+        link: `/my-memberships?plan=${request.membershipId}`,
         ctaLabel: 'See the plan',
       }).catch(err => console.error('[membership request] invite notify failed', err))
     }

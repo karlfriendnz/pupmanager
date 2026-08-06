@@ -12,7 +12,14 @@ export const metadata: Metadata = { title: 'Packages' }
 // memberships. Memberships now also appear as a type inside the Offerings flow
 // (/my-availability) — this page stays as the checkout return target and a
 // direct link, it's just no longer in the nav.
-export default async function ClientMembershipsPage() {
+export default async function ClientMembershipsPage({
+  searchParams,
+}: {
+  // `?plan=<membershipId>` — set by the "your trainer has a plan ready for you"
+  // notification, so an invited client lands ON the package rather than on a
+  // list they have to search.
+  searchParams: Promise<{ plan?: string }>
+}) {
   const active = await getActiveClient()
   if (!active) redirect('/login')
   const profile = await prisma.clientProfile.findUnique({
@@ -34,11 +41,17 @@ export default async function ClientMembershipsPage() {
   // self-serve cancellation exists to prevent.
   const subscriptions = await loadClientSubscriptions(profile.id, currency)
 
+  // Nothing is trusted from the query string beyond "which card to open": the
+  // list it indexes into is already tenant-scoped and eligibility-filtered, so
+  // an id for another trainer's package simply matches nothing.
+  const { plan } = await searchParams
+
   return (
     <ClientMembershipsView
       currency={currency}
       memberships={memberships}
       subscriptions={subscriptions}
+      autoOpenId={typeof plan === 'string' ? plan : null}
     />
   )
 }

@@ -10,10 +10,13 @@ export function ClientMembershipsView({
   memberships,
   currency,
   subscriptions,
+  /** `?plan=<id>` — opens that package's agreement on arrival. */
+  autoOpenId = null,
 }: {
   memberships: ClientMembership[]
   currency: string
   subscriptions: ClientSubscription[]
+  autoOpenId?: string | null
 }) {
   // The trainer's word for these, same as the booking flow and the menu use.
   const title = clientLabelFor('/my-memberships', 'Packages', useNavLabelOverrides())
@@ -36,6 +39,7 @@ export function ClientMembershipsView({
           // for. CANCELLING is excluded on purpose: someone who has asked to
           // stop should not be nudged sideways into another plan.
           currentPlan={subscriptions.find(s => s.status === 'ACTIVE' || s.status === 'PAST_DUE') ?? null}
+          autoOpenId={autoOpenId}
         />
       ) : null}
     </div>

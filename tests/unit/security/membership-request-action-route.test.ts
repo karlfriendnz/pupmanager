@@ -163,13 +163,15 @@ describe('PATCH /api/membership-requests/[requestId] — accepting', () => {
 
 describe('PATCH /api/membership-requests/[requestId] — declining', () => {
   it('closes the row without granting anything or telling the client', async () => {
-    h.requestUpdate.mockResolvedValue({ id: 'req-1', status: 'DECLINED' })
     const res = await PATCH(patch({ status: 'DECLINED' }), PARAMS)
 
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ ok: true, status: 'DECLINED' })
-    expect(h.requestUpdate.mock.calls[0][0]).toMatchObject({
-      where: { id: 'req-1' },
+    // updateMany with a status guard, not a bare update: a decline racing an
+    // accept must settle on one answer rather than stamping DECLINED over a
+    // grant that already happened.
+    expect(h.requestUpdateMany.mock.calls[0][0]).toMatchObject({
+      where: { id: 'req-1', status: { in: ['PENDING', 'INVITED'] } },
       data: { status: 'DECLINED', fulfilledAt: null },
     })
     expect(h.fulfilMembershipInTx).not.toHaveBeenCalled()

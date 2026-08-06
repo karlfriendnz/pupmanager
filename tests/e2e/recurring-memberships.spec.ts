@@ -101,7 +101,21 @@ async function seedRecurring(prisma: Awaited<ReturnType<typeof makePrisma>>, opt
   return trainer.id
 }
 
+/** A client's PENDING request for the seeded recurring plan. */
+async function seedRequest(prisma: Awaited<ReturnType<typeof makePrisma>>) {
+  const row = await prisma.membershipRequest.create({
+    data: {
+      clientId: SEED.assignedClientId,
+      membershipId: RECURRING_ID,
+      reason: 'RECURRING',
+      status: 'PENDING',
+    },
+  })
+  return row.id
+}
+
 async function cleanup(prisma: Awaited<ReturnType<typeof makePrisma>>) {
+  await prisma.membershipRequest.deleteMany({ where: { membershipId: RECURRING_ID } })
   await prisma.membershipConsent.deleteMany({ where: { membershipId: RECURRING_ID } })
   await prisma.membershipPurchase.deleteMany({ where: { id: { in: [PURCHASE_ID, RIVAL_PURCHASE_ID] } } })
   await prisma.membershipPurchase.deleteMany({ where: { membershipId: RECURRING_ID } })
@@ -111,6 +125,219 @@ async function cleanup(prisma: Awaited<ReturnType<typeof makePrisma>>) {
     data: { connectAccountId: null, recurringPaymentsEnabled: false },
   })
 }
+
+// A client asked for an ongoing plan; the trainer accepts it LATER, when the
+// client isn't there to put a card in. The answer is to ask them to pay rather
+// than hand the plan over — and the whole point is that nothing is granted until
+// the money actually arrives.
+test.describe('recurring memberships — a request becomes a paid subscription', () => {
+  test('inviting the client to pay grants nothing and takes nothing', async ({ page }) => {
+    const prisma = await makePrisma()
+    try {
+      await seedRecurring(prisma)
+      const requestId = await seedRequest(prisma)
+      await login(page, SEED.owner.email, SEED.owner.password)
+
+      const res = await page.request.patch(`/api/membership-requests/${requestId}`, {
+        data: { status: 'INVITED' },
+      })
+      expect(res.status()).toBe(200)
+      expect((await res.json()).status).toBe('INVITED')
+
+      // Waiting on the client — NOT accepted-and-active.
+      const req = await prisma.membershipRequest.findUnique({ where: { id: requestId } })
+      expect(req?.status).toBe('INVITED')
+
+      // THE point of the whole change: no purchase, so no package handed over.
+      // Granting on accept and charging later is the shape that gives plans away.
+      expect(await prisma.membershipPurchase.count({ where: { membershipId: RECURRING_ID } })).toBe(0)
+      // And no consent either — only the client can agree to a repeating charge.
+      expect(await prisma.membershipConsent.count({ where: { membershipId: RECURRING_ID } })).toBe(0)
+    } finally {
+      await cleanup(prisma)
+      await prisma.$disconnect()
+    }
+  })
+
+  test('the trainer can see it is waiting on the client, not done', async ({ page }) => {
+    const prisma = await makePrisma()
+    try {
+      await seedRecurring(prisma)
+      const requestId = await seedRequest(prisma)
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.request.patch(`/api/membership-requests/${requestId}`, { data: { status: 'INVITED' } })
+
+      await page.goto('/dashboard')
+      // The dashboard renders the panel twice (phone + desktop); take the
+      // visible copy. An invited request must STAY on screen — dropping it would
+      // read exactly like having dealt with it.
+      const row = page.getByTestId('request-row')
+        .filter({ hasText: 'E2E Ongoing Plan' })
+        .filter({ visible: true })
+        .first()
+      await expect(row).toBeVisible({ timeout: 20_000 })
+      await expect(row).toContainText('Waiting on them to pay')
+      // No Accept button: it would hand over free the very plan they were just
+      // asked to pay for.
+      await expect(row.getByRole('button', { name: 'Accept' })).toHaveCount(0)
+      await expect(row.getByRole('button', { name: 'Withdraw' })).toBeVisible()
+    } finally {
+      await cleanup(prisma)
+      await prisma.$disconnect()
+    }
+  })
+
+  test('a trainer with no Stripe account is not offered the paid route at all', async ({ page }) => {
+    const prisma = await makePrisma()
+    try {
+      await seedRecurring(prisma)
+      // Allowlisted for recurring, but no connected account — the exact state
+      // that used to pass the old `recurringPaymentsEnabled` check and send the
+      // client to a checkout that 409s. AGENTS.md #6.
+      await prisma.trainerProfile.updateMany({
+        where: { businessName: 'E2E Dog School' },
+        data: { connectAccountId: null },
+      })
+      const requestId = await seedRequest(prisma)
+      await login(page, SEED.owner.email, SEED.owner.password)
+
+      const res = await page.request.patch(`/api/membership-requests/${requestId}`, {
+        data: { status: 'INVITED' },
+      })
+      expect(res.status()).toBe(409)
+      expect((await res.json()).error).toMatch(/Stripe/i)
+
+      // Untouched: still theirs to answer, and nothing was granted on the way out.
+      const req = await prisma.membershipRequest.findUnique({ where: { id: requestId } })
+      expect(req?.status).toBe('PENDING')
+      expect(await prisma.membershipPurchase.count({ where: { membershipId: RECURRING_ID } })).toBe(0)
+    } finally {
+      await cleanup(prisma)
+      await prisma.$disconnect()
+    }
+  })
+
+  test('inviting twice does not double anything', async ({ page }) => {
+    const prisma = await makePrisma()
+    try {
+      await seedRecurring(prisma)
+      const requestId = await seedRequest(prisma)
+      await login(page, SEED.owner.email, SEED.owner.password)
+
+      const first = await page.request.patch(`/api/membership-requests/${requestId}`, { data: { status: 'INVITED' } })
+      const second = await page.request.patch(`/api/membership-requests/${requestId}`, { data: { status: 'INVITED' } })
+
+      expect(first.status()).toBe(200)
+      expect(second.status()).toBe(200)
+      expect((await second.json()).alreadyActioned).toBe(true)
+      expect(await prisma.membershipPurchase.count({ where: { membershipId: RECURRING_ID } })).toBe(0)
+    } finally {
+      await cleanup(prisma)
+      await prisma.$disconnect()
+    }
+  })
+
+  test('an invitation cannot be turned back into a free grant', async ({ page }) => {
+    const prisma = await makePrisma()
+    try {
+      await seedRecurring(prisma)
+      const requestId = await seedRequest(prisma)
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.request.patch(`/api/membership-requests/${requestId}`, { data: { status: 'INVITED' } })
+
+      const res = await page.request.patch(`/api/membership-requests/${requestId}`, { data: { status: 'FULFILLED' } })
+      expect((await res.json()).alreadyActioned).toBe(true)
+      // The trainer already said "make them pay". Accepting now would hand over
+      // the plan they asked to be paid for.
+      expect(await prisma.membershipPurchase.count({ where: { membershipId: RECURRING_ID } })).toBe(0)
+    } finally {
+      await cleanup(prisma)
+      await prisma.$disconnect()
+    }
+  })
+
+  test('withdrawing an invitation leaves nothing behind', async ({ page }) => {
+    const prisma = await makePrisma()
+    try {
+      await seedRecurring(prisma)
+      const requestId = await seedRequest(prisma)
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.request.patch(`/api/membership-requests/${requestId}`, { data: { status: 'INVITED' } })
+
+      const res = await page.request.patch(`/api/membership-requests/${requestId}`, { data: { status: 'DECLINED' } })
+      expect(res.status()).toBe(200)
+
+      const req = await prisma.membershipRequest.findUnique({ where: { id: requestId } })
+      expect(req?.status).toBe('DECLINED')
+      // Safe precisely BECAUSE inviting granted nothing: no purchase to unwind,
+      // no consent, and no Stripe object that could charge later.
+      expect(await prisma.membershipPurchase.count({ where: { membershipId: RECURRING_ID } })).toBe(0)
+      expect(await prisma.membershipConsent.count({ where: { membershipId: RECURRING_ID } })).toBe(0)
+    } finally {
+      await cleanup(prisma)
+      await prisma.$disconnect()
+    }
+  })
+
+  test('a client following the invitation twice gets ONE subscription', async ({ page }) => {
+    const prisma = await makePrisma()
+    try {
+      await seedRecurring(prisma)
+      const requestId = await seedRequest(prisma)
+      await login(page, SEED.owner.email, SEED.owner.password)
+      await page.request.patch(`/api/membership-requests/${requestId}`, { data: { status: 'INVITED' } })
+
+      // The client follows the link twice and agrees twice. Both attempts reuse
+      // ONE consent row, which is what makes the Stripe idempotency key stable —
+      // without it they are billed twice every period, forever.
+      await login(page, SEED.client.email, SEED.client.password)
+      await page.request.post(`/api/my/memberships/${RECURRING_ID}/buy`, { data: { consent: true, planId: PLAN_ID } })
+      await page.request.post(`/api/my/memberships/${RECURRING_ID}/buy`, { data: { consent: true, planId: PLAN_ID } })
+
+      // Nothing here reaches Stripe, so no subscription is created either way —
+      // the assertion that matters is that the SECOND attempt did not mint a
+      // second agreement to be charged.
+      expect(await prisma.membershipConsent.count({ where: { membershipId: RECURRING_ID } })).toBe(1)
+    } finally {
+      await cleanup(prisma)
+      await prisma.$disconnect()
+    }
+  })
+
+  test('a CANCELLED plan does not bar them from joining again', async ({ page }) => {
+    const prisma = await makePrisma()
+    try {
+      const trainerId = await seedRecurring(prisma)
+      // AGENTS.md #7 — an idempotency check must ignore cancelled rows. The
+      // shop's version of this made a re-order free; here, counting a finished
+      // plan as live would permanently lock someone out of re-joining.
+      await prisma.membershipPurchase.create({
+        data: {
+          id: PURCHASE_ID,
+          trainerId,
+          clientId: SEED.assignedClientId,
+          membershipId: RECURRING_ID,
+          planId: PLAN_ID,
+          status: 'CANCELLED',
+          stripeSubscriptionId: 'sub_e2e_dead',
+          cancelledAt: new Date(),
+        },
+      })
+
+      await login(page, SEED.client.email, SEED.client.password)
+      const res = await page.request.post(`/api/my/memberships/${RECURRING_ID}/buy`, {
+        data: { consent: true, planId: PLAN_ID },
+      })
+
+      // Not the "You're already on this plan" 409 — the cancelled row is history.
+      expect(res.status()).not.toBe(409)
+      expect(await prisma.membershipConsent.count({ where: { membershipId: RECURRING_ID } })).toBe(1)
+    } finally {
+      await cleanup(prisma)
+      await prisma.$disconnect()
+    }
+  })
+})
 
 test.describe('recurring memberships — buying', () => {
   test('a client must agree before a recurring charge can start', async ({ page }) => {

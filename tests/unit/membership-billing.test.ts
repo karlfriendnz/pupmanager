@@ -37,6 +37,7 @@ const h = vi.hoisted(() => ({
   syncPaymentToXero: vi.fn(),
   notifyClient: vi.fn(),
   notifyTrainer: vi.fn(),
+  requestUpdateMany: vi.fn(),
 }))
 
 vi.mock('@/lib/prisma', () => {
@@ -48,6 +49,7 @@ vi.mock('@/lib/prisma', () => {
     },
     membershipPlan: { findUnique: h.planFindUnique },
     membershipConsent: { updateMany: h.consentUpdateMany },
+    membershipRequest: { updateMany: h.requestUpdateMany },
     membershipInvoice: {
       findUnique: h.invoiceFindUnique,
       create: h.invoiceCreate,
@@ -97,7 +99,45 @@ import {
   recordInvoicePaid,
   recordInvoicePaymentFailed,
   handleAccountDeauthorized,
+  findLiveSubscription,
 } from '@/lib/membership-billing'
+
+// The "one live subscription per client per membership" guard. It is what stops
+// a double-tapped Subscribe — or a client following an invitation link twice —
+// stacking a second recurring charge on the same plan. Mocked out in the buy
+// route's own spec, so the query it actually runs is only checked here.
+describe('findLiveSubscription', () => {
+  it('treats ACTIVE, PAST_DUE and CANCELLING as live', async () => {
+    h.purchaseFindFirst.mockResolvedValue(null)
+    await findLiveSubscription('c1', 'm1')
+
+    const where = h.purchaseFindFirst.mock.calls[0][0].where
+    expect(where).toMatchObject({ clientId: 'c1', membershipId: 'm1' })
+    // CANCELLING counts: they are still inside a period they have paid for, and
+    // re-subscribing on top would double-bill them for the overlap.
+    expect(where.status.in).toEqual(['ACTIVE', 'PAST_DUE', 'CANCELLING'])
+    // A row with no Stripe subscription behind it cannot be charging anyone.
+    expect(where.stripeSubscriptionId).toEqual({ not: null })
+  })
+
+  // AGENTS.md #7 — an idempotency check must IGNORE cancelled rows. The shop's
+  // version of this found a CANCELLED invoice, decided the thing was already
+  // paid for, and raised nothing, so the re-order was free. Here the failure is
+  // the mirror image: counting a finished plan as live would permanently bar
+  // someone from ever re-joining a package they used to be on.
+  for (const dead of ['CANCELLED', 'PAUSED', 'ORPHANED', 'LAPSED']) {
+    it(`does not let a ${dead} purchase block a fresh subscription`, async () => {
+      h.purchaseFindFirst.mockResolvedValue(null)
+      await findLiveSubscription('c1', 'm1')
+      expect(h.purchaseFindFirst.mock.calls[0][0].where.status.in).not.toContain(dead)
+    })
+  }
+
+  it('reports the live row when there genuinely is one', async () => {
+    h.purchaseFindFirst.mockResolvedValue({ id: 'p1', status: 'ACTIVE', stripeSubscriptionId: 'sub_1' })
+    expect(await findLiveSubscription('c1', 'm1')).toMatchObject({ id: 'p1' })
+  })
+})
 
 const SUB_META = { membershipId: 'm1', trainerId: 't1', clientId: 'c1', planId: 'plan1', consentId: 'con1' }
 
@@ -260,6 +300,39 @@ describe('syncSubscription', () => {
     expect(h.notifyClient).toHaveBeenCalledTimes(1)
     expect(h.notifyTrainer).toHaveBeenCalledTimes(1)
     expect(h.notifyClient.mock.calls[0][0]).toMatchObject({ userId: 'cu1', type: 'CLIENT_ADDED_TO_PLAN' })
+  })
+
+  // When a trainer accepts a request by asking the client to PAY, the grant
+  // happens here — on Stripe's confirmation — and nowhere else. These cover the
+  // other half: the trainer's "waiting on them to pay" row has to close, or it
+  // sits on the dashboard telling them to chase someone who already paid.
+  it('closes the trainer’s invitation once the client has actually paid', async () => {
+    h.purchaseFindUnique.mockResolvedValue(null)
+    await syncSubscription(subscription(), false)
+
+    expect(h.requestUpdateMany).toHaveBeenCalledTimes(1)
+    expect(h.requestUpdateMany.mock.calls[0][0]).toMatchObject({
+      where: { clientId: 'c1', membershipId: 'm1', status: 'INVITED' },
+      data: { status: 'FULFILLED' },
+    })
+  })
+
+  it('leaves an untouched PENDING request for the trainer to answer', async () => {
+    // Most subscriptions are self-serve. If someone buys a plan they had also
+    // requested, the trainer still has a request to answer — silently marking
+    // it FULFILLED would hide a decision they never made.
+    h.purchaseFindUnique.mockResolvedValue(null)
+    await syncSubscription(subscription(), false)
+    expect(h.requestUpdateMany.mock.calls[0][0].where.status).toBe('INVITED')
+  })
+
+  it('does not re-close the invitation when the event is delivered twice', async () => {
+    // The second delivery takes the "already exists" branch, so it never
+    // reaches the request at all — and the status guard means it would match
+    // nothing even if it did.
+    h.purchaseFindUnique.mockResolvedValue({ id: 'p1', status: 'ACTIVE', accessPausedAt: null, accessGraceUntil: null })
+    await syncSubscription(subscription(), false)
+    expect(h.requestUpdateMany).not.toHaveBeenCalled()
   })
 })
 

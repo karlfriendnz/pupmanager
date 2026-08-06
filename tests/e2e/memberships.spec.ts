@@ -335,12 +335,19 @@ test.describe('memberships — trainer builds, client sees', () => {
       // exactly how this failed in the full suite while passing on its own.
       await row.getByRole('button', { name: 'Accept' }).first().click()
 
-      // The confirmation is where the money promise is kept — it must say
-      // outright that nothing is charged, and what the trainer still has to do.
+      // Accepting is now TWO decisions — charge them, or hand it over and
+      // invoice. This trainer has no connected Stripe account, so the paid
+      // choice is not offered at all (AGENTS.md #6: the server decides that from
+      // the real capability, never the browser).
       const dialog = page.getByRole('dialog')
-      await expect(dialog).toContainText('No payment is taken')
-      await expect(dialog).toContainText(/invoice/i)
-      await dialog.getByRole('button', { name: 'Accept & grant' }).click()
+      await expect(dialog.getByTestId('request-charge')).toHaveCount(0)
+
+      // The money promise is kept on the choice it belongs to: this one grants
+      // the package and takes nothing, and must say so before it is tapped.
+      const grant = dialog.getByTestId('request-grant')
+      await expect(grant).toContainText('No payment is taken')
+      await expect(grant).toContainText(/invoice/i)
+      await grant.click()
 
       // The REQUEST is gone — not every mention of the package name. Once it is
       // accepted the client is on it, so the name legitimately turns up

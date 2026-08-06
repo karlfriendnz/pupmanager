@@ -25,6 +25,26 @@ export interface PendingMembershipRequest {
   id: string
   createdAt: string
   reason: MembershipRequestReasonValue
+  /**
+   * PENDING — the trainer hasn't answered.
+   * INVITED — the trainer asked the client to subscribe and pay, and nothing has
+   * been granted. The row stays on the dashboard in that state deliberately: an
+   * invitation nobody has acted on is still an unfinished job, and dropping it
+   * off the list would make "I asked them to pay" indistinguishable from
+   * "nothing happened".
+   */
+  status: 'PENDING' | 'INVITED'
+  /**
+   * Can the trainer be offered the PAID route for this row — i.e. would
+   * inviting the client actually lead to a checkout that works?
+   *
+   * Resolved on the SERVER from the trainer's real Connect capability plus this
+   * package having a current, priced ongoing option. Never inferred in the
+   * browser: offering "send them a payment link" to a trainer who cannot take
+   * cards sends the client to a button that 409s, and the trainer never learns
+   * why nobody paid.
+   */
+  canCharge: boolean
   client: { id: string; name: string | null }
   membership: {
     id: string
@@ -42,22 +62,49 @@ export const INTERVAL_LABEL: Record<MembershipInterval, string> = {
   MONTH: 'month',
 }
 
+// ─── COPY ───────────────────────────────────────────────────────────────────
+// PLACEHOLDER WORDING — Karl approves every client- and trainer-facing sentence,
+// and none of the strings below have been through him yet. They are written to
+// be accurate rather than final; the shapes they describe are the part that
+// matters. Anything here can be reworded without touching a decision.
+
 /**
- * What accepting actually does to the money — stated once, in words, and shown
- * verbatim to the trainer before they confirm.
+ * What GRANTING does to the money — stated once, in words, shown verbatim to
+ * the trainer before they confirm, and shown ONLY against the grant-it choice.
  *
- * PupManager cannot charge either of these:
- *  - RECURRING has no mandate layer (no saved payment method, no subscription
- *    on the connected account), so there is nothing to bill against.
- *  - NO_PRICE has no amount to charge.
- *
- * Accepting therefore grants the package and records the purchase, and takes
- * NOTHING. Never phrase this as "paid", "purchased" or "active subscription".
+ * This no longer says PupManager cannot bill an ongoing plan, because it can:
+ * the trainer's other choice on that screen is to send the client a payment
+ * link, and the subscription then bills itself. What is still true, and what
+ * this sentence is for, is that choosing to grant takes NOTHING — the trainer
+ * has said they will collect it themselves. Never phrase this as "paid",
+ * "purchased" or "active subscription".
  */
 export function paymentCaveat(reason: MembershipRequestReasonValue): string {
   return reason === 'RECURRING'
-    ? 'No payment is taken. PupManager can’t bill an ongoing plan yet, so you’ll need to invoice them each period or collect it another way.'
+    ? 'No payment is taken. You’re giving them the plan and collecting for it yourself — invoice them each period or arrange it another way.'
     : 'No payment is taken — this package has no price set. Invoice them or collect it another way.'
+}
+
+/**
+ * The other choice: ask the client to pay for it themselves.
+ *
+ * Says the two things a trainer needs before choosing it — that nothing is
+ * handed over until the money arrives, and that they then never chase it again.
+ */
+export function chargeExplainer(): string {
+  return 'They get a link to set up payment. Nothing is handed over until they’ve paid, and after that it bills itself every period.'
+}
+
+/** Why the paid choice isn't on offer, so its absence isn't a mystery. */
+export function cannotChargeReason(cadence: 'ONE_OFF' | 'RECURRING'): string {
+  return cadence === 'RECURRING'
+    ? 'To charge for this you need Stripe connected in Settings → Payments, and an ongoing price on the package.'
+    : 'Ongoing payment only applies to a repeating plan.'
+}
+
+/** The state line on a row the trainer has already invited the client to pay. */
+export function waitingOnClientLine(): string {
+  return 'Waiting on them to pay — nothing has been handed over yet'
 }
 
 /** One line saying why checkout wouldn't take it, for the request row. */

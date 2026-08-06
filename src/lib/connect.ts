@@ -346,3 +346,51 @@ export function readAccountFlags(account: Stripe.Account): {
     connectDetailsSubmitted: !!account.details_submitted,
   }
 }
+
+/**
+ * Can this trainer actually take a RECURRING card payment from a client right
+ * now? The single answer to that question, so nothing has to re-derive it.
+ *
+ * ALL FOUR conditions, because every one of them is a way the subscription
+ * checkout in /api/my/memberships/[id]/buy refuses:
+ *  - `acceptPaymentsEnabled` — the trainer's own switch.
+ *  - `connectChargesEnabled` — Stripe's answer, mirrored off `account.updated`.
+ *    An account mid-onboarding, or restricted after a verification failure, has
+ *    this false while everything else still looks fine.
+ *  - `connectAccountId` — there is no account to charge on without it.
+ *  - `recurringPaymentsEnabled` — the recurring allowlist specifically.
+ *
+ * WHY THIS EXISTS (AGENTS.md #6 — gate on the fact, not a proxy for it). Both
+ * the client storefront and the request-invite path used to read
+ * `recurringPaymentsEnabled` ALONE. That flag is a per-trainer allowlist, not a
+ * statement that Stripe will accept a charge: a trainer who was allowlisted and
+ * then never finished Connect onboarding showed clients a live Subscribe button
+ * that 409s at the buy route with "Payments aren't switched on yet". The client
+ * cannot fix that and the trainer never finds out it happened. Same shape as the
+ * paid-download bug: the wrong flag, read confidently.
+ *
+ * Pure, and takes the flags rather than an id, so callers that have already
+ * loaded the TrainerProfile don't pay for a second query — and so it can be
+ * tested without a database.
+ */
+export function canChargeRecurring(flags: {
+  acceptPaymentsEnabled?: boolean | null
+  connectChargesEnabled?: boolean | null
+  connectAccountId?: string | null
+  recurringPaymentsEnabled?: boolean | null
+}): boolean {
+  return (
+    !!flags.acceptPaymentsEnabled &&
+    !!flags.connectChargesEnabled &&
+    !!flags.connectAccountId &&
+    !!flags.recurringPaymentsEnabled
+  )
+}
+
+/** The TrainerProfile columns `canChargeRecurring` needs, as a Prisma select. */
+export const RECURRING_CAPABILITY_SELECT = {
+  acceptPaymentsEnabled: true,
+  connectChargesEnabled: true,
+  connectAccountId: true,
+  recurringPaymentsEnabled: true,
+} as const

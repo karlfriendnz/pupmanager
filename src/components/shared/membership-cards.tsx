@@ -50,10 +50,21 @@ export function MembershipCards({
    * alongside it rather than a change of plan.
    */
   currentPlan = null,
+  /**
+   * Open this membership's consent screen on arrival.
+   *
+   * Set from `?plan=<id>` when a trainer invites a client to pay for a package
+   * they asked for: the notification links here, and landing on a list of cards
+   * with no idea which one was meant is how an invitation quietly goes nowhere.
+   * It only OPENS the agreement — nothing is bought, and nothing is charged,
+   * until they read it and tap through themselves.
+   */
+  autoOpenId = null,
 }: {
   memberships: ClientMembership[]
   currency: string
   currentPlan?: ClientSubscription | null
+  autoOpenId?: string | null
 }) {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -62,7 +73,17 @@ export function MembershipCards({
   const [switched, setSwitched] = useState<string | null>(null)
   // Which membership's consent screen is open. A recurring plan never goes
   // straight to Stripe — it has to be agreed to first.
-  const [consentFor, setConsentFor] = useState<string | null>(null)
+  //
+  // Seeded from `autoOpenId`, but only for a card that is genuinely BUYABLE
+  // right now. A stale invite link to a package that has since been unpublished,
+  // gone up in price, been made invite-only, or that they already subscribed to
+  // must land on the page rather than open an agreement to something they can't
+  // have — an expired link is a no-op, never a broken screen.
+  const [consentFor, setConsentFor] = useState<string | null>(() => {
+    if (!autoOpenId) return null
+    const target = memberships.find(m => m.id === autoOpenId)
+    return target && resolveCardAction(target, currentPlan).kind === 'BUY' ? target.id : null
+  })
   // Seeded from the server (a PENDING MembershipRequest row), so "Requested"
   // is still there after a reload rather than a state flip that forgets.
   const [requested, setRequested] = useState<Record<string, boolean>>(
@@ -206,8 +227,9 @@ export function MembershipCards({
                     ))}
                   </ul>
                 )}
-                {/* Recurring plans have no mandate layer yet and an unpriced one
-                    has nothing to charge, so the buy route 409s both. Rather
+                {/* A recurring plan this trainer can't yet take payment for (no
+                    Stripe connected, or not on the recurring allowlist), and an
+                    unpriced one, are both refused by the buy route. Rather
                     than a dead sentence telling the client to go and message
                     someone, they get one tap that tells the trainer — with the
                     reason still stated right above it, and the trainer's own

@@ -29,6 +29,19 @@ const CARD = {
   buttonBgColor: '#0d9488', buttonTextColor: '#ffffff', buttonText: 'Join',
 }
 
+/**
+ * A trainer who can genuinely take a recurring card payment.
+ *
+ * All four flags, because the storefront gates on the real capability rather
+ * than the recurringPaymentsEnabled allowlist alone — see canChargeRecurring.
+ */
+const CAN_CHARGE = {
+  acceptPaymentsEnabled: true,
+  connectChargesEnabled: true,
+  connectAccountId: 'acct_1',
+  recurringPaymentsEnabled: true,
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   h.package.findMany.mockResolvedValue([])
@@ -44,7 +57,7 @@ beforeEach(() => {
   // Recurring is OFF by default for every trainer — that column is the rollout
   // allowlist now that the env var is gone.
   h.trainerProfile.findUnique.mockResolvedValue({
-    recurringPaymentsEnabled: false, businessName: 'E2E Dog School', payoutCurrency: 'nzd',
+    ...CAN_CHARGE, recurringPaymentsEnabled: false, businessName: 'E2E Dog School', payoutCurrency: 'nzd',
   })
 })
 
@@ -168,7 +181,7 @@ describe('loadPublishedMemberships', () => {
 
   it('makes a recurring plan buyable once the trainer is switched on', async () => {
     h.trainerProfile.findUnique.mockResolvedValue({
-      recurringPaymentsEnabled: true, businessName: 'E2E Dog School', payoutCurrency: 'nzd',
+      ...CAN_CHARGE, businessName: 'E2E Dog School', payoutCurrency: 'nzd',
     })
     h.membership.findMany.mockResolvedValue([RECURRING])
 
@@ -186,9 +199,45 @@ describe('loadPublishedMemberships', () => {
     expect(m.consent).toBeNull()
   })
 
+  // AGENTS.md #6 — gate on the fact, not a proxy for it.
+  //
+  // This used to read recurringPaymentsEnabled ALONE. That column says a
+  // trainer is PERMITTED to sell subscriptions; it says nothing about whether
+  // Stripe will accept a charge. An allowlisted trainer who never finished
+  // Connect onboarding (or whose account got restricted mid-verification) had a
+  // live Subscribe button on every card, and every client who tapped it got the
+  // buy route's "Payments aren't switched on yet" 409 — which neither of them
+  // could do anything about, and which the trainer never heard about at all.
+  for (const missing of ['acceptPaymentsEnabled', 'connectChargesEnabled', 'connectAccountId'] as const) {
+    it(`offers "Request this", not Subscribe, when the trainer has no ${missing}`, async () => {
+      h.trainerProfile.findUnique.mockResolvedValue({
+        ...CAN_CHARGE,
+        [missing]: missing === 'connectAccountId' ? null : false,
+        businessName: 'E2E Dog School', payoutCurrency: 'nzd',
+      })
+      h.membership.findMany.mockResolvedValue([RECURRING])
+
+      const [m] = await loadPublishedMemberships('t1', 'c1')
+      expect(m).toMatchObject({ buyable: false, blockedReason: 'RECURRING' })
+      // No agreement is offered for something that cannot be bought.
+      expect(m.consent).toBeNull()
+    })
+  }
+
+  it('asks for the whole capability, not just the allowlist column', async () => {
+    h.membership.findMany.mockResolvedValue([RECURRING])
+    await loadPublishedMemberships('t1', 'c1')
+    expect(h.trainerProfile.findUnique.mock.calls[0][0].select).toMatchObject({
+      acceptPaymentsEnabled: true,
+      connectChargesEnabled: true,
+      connectAccountId: true,
+      recurringPaymentsEnabled: true,
+    })
+  })
+
   it('builds the consent copy server-side from the plan', async () => {
     h.trainerProfile.findUnique.mockResolvedValue({
-      recurringPaymentsEnabled: true, businessName: 'Mersea Mutts', payoutCurrency: 'gbp',
+      ...CAN_CHARGE, businessName: 'Mersea Mutts', payoutCurrency: 'gbp',
     })
     h.membership.findMany.mockResolvedValue([{
       ...RECURRING,
@@ -206,7 +255,7 @@ describe('loadPublishedMemberships', () => {
   it('stops selling a plan the client is already subscribed to', async () => {
     // Otherwise a second tap stacks a second monthly charge on the same plan.
     h.trainerProfile.findUnique.mockResolvedValue({
-      recurringPaymentsEnabled: true, businessName: 'X', payoutCurrency: 'nzd',
+      ...CAN_CHARGE, businessName: 'X', payoutCurrency: 'nzd',
     })
     h.membership.findMany.mockResolvedValue([RECURRING])
     h.membershipPurchase.findMany.mockResolvedValue([{ membershipId: 'm9' }])
@@ -226,7 +275,7 @@ describe('loadPublishedMemberships', () => {
     // A weekly and a monthly plan are two different agreements. One set of
     // words for both would store a consent that didn't match the screen.
     h.trainerProfile.findUnique.mockResolvedValue({
-      recurringPaymentsEnabled: true, businessName: 'E2E Dog School', payoutCurrency: 'nzd',
+      ...CAN_CHARGE, businessName: 'E2E Dog School', payoutCurrency: 'nzd',
     })
     h.membership.findMany.mockResolvedValue([{
       ...RECURRING,
@@ -255,7 +304,7 @@ describe('loadPublishedMemberships', () => {
     // so this is the storefront half of the same guarantee the consent copy
     // makes: what is on screen is what is charged.
     h.trainerProfile.findUnique.mockResolvedValue({
-      recurringPaymentsEnabled: true, businessName: 'Mersea Mutts', payoutCurrency: 'nzd',
+      ...CAN_CHARGE, businessName: 'Mersea Mutts', payoutCurrency: 'nzd',
     })
     h.membership.findMany.mockResolvedValue([{
       ...RECURRING,
@@ -276,7 +325,7 @@ describe('loadPublishedMemberships', () => {
 
   it('reads a plan with no stored count as one cycle — a row this deploy hasn’t reached', async () => {
     h.trainerProfile.findUnique.mockResolvedValue({
-      recurringPaymentsEnabled: true, businessName: 'X', payoutCurrency: 'nzd',
+      ...CAN_CHARGE, businessName: 'X', payoutCurrency: 'nzd',
     })
     h.membership.findMany.mockResolvedValue([{
       ...RECURRING,

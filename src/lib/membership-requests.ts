@@ -11,6 +11,7 @@
 // has no prisma import so the panel can use them too.
 import { prisma } from './prisma'
 import { personLabel } from '@/lib/utils'
+import { canChargeRecurring, RECURRING_CAPABILITY_SELECT } from './connect'
 import type { Prisma } from '@/generated/prisma'
 import type { MembershipInterval, MembershipRequestReasonValue, PendingMembershipRequest } from './membership-request-shape'
 
@@ -30,26 +31,60 @@ export function trainerRequestScope(trainerId: string): Prisma.MembershipRequest
 }
 
 /**
- * Every request still waiting on the trainer, oldest first — an unactioned one
- * is a lead going cold, so the one that has waited longest is at the top.
+ * Every request still open on the trainer, oldest first — an unactioned one is a
+ * lead going cold, so the one that has waited longest is at the top.
+ *
+ * PENDING **and** INVITED. An invited request is not finished: nothing has been
+ * granted and no money has arrived, so it is still a thing the trainer is
+ * waiting on. It used to load PENDING only, which meant asking a client to pay
+ * made the row VANISH from the dashboard — indistinguishable, from the
+ * trainer's side, from having dealt with it. FULFILLED and DECLINED stay out
+ * because both are genuinely closed.
  */
 export async function loadPendingMembershipRequests(trainerId: string): Promise<PendingMembershipRequest[]> {
   const rows = await prisma.membershipRequest.findMany({
-    where: { status: 'PENDING', ...trainerRequestScope(trainerId) },
+    where: { status: { in: ['PENDING', 'INVITED'] }, ...trainerRequestScope(trainerId) },
     orderBy: { createdAt: 'asc' },
     select: {
       id: true,
       createdAt: true,
       reason: true,
+      status: true,
       client: { select: { id: true, user: { select: { name: true, email: true } } } },
-      membership: { select: { id: true, name: true, priceCents: true, cadence: true, interval: true } },
+      membership: {
+        select: {
+          id: true, name: true, priceCents: true, cadence: true, interval: true,
+          // Is there a CURRENT, PRICED ongoing option to sell? Archived plans
+          // keep billing existing subscribers but can never start a new
+          // subscription, and a £0 plan is refused by the buy route — so
+          // neither can hold up an offer to charge.
+          plans: { where: { archivedAt: null, priceCents: { gt: 0 } }, select: { id: true }, take: 1 },
+        },
+      },
     },
   })
+  if (rows.length === 0) return []
+
+  // The trainer's real ability to take a recurring payment, read ONCE for the
+  // whole list rather than per row. See canChargeRecurring for why this is four
+  // columns and not the allowlist flag on its own.
+  const trainer = await prisma.trainerProfile.findUnique({
+    where: { id: trainerId },
+    select: RECURRING_CAPABILITY_SELECT,
+  })
+  const trainerCanCharge = canChargeRecurring(trainer ?? {})
 
   return rows.map(r => ({
     id: r.id,
     createdAt: r.createdAt.toISOString(),
     reason: r.reason as MembershipRequestReasonValue,
+    status: r.status as 'PENDING' | 'INVITED',
+    // Both halves have to hold: the trainer can take the money, AND this
+    // package has something a subscription can actually be sold against.
+    canCharge:
+      trainerCanCharge &&
+      r.membership.cadence === 'RECURRING' &&
+      r.membership.plans.length > 0,
     client: { id: r.client.id, name: personLabel(r.client.user) },
     membership: {
       id: r.membership.id,
@@ -67,6 +102,10 @@ export async function loadPendingMembershipRequests(trainerId: string): Promise<
  * How many people are waiting on each package, for the badge on the Packages
  * list. Only packages with at least one come back — the caller reads `.get(id)`
  * and renders nothing for undefined.
+ *
+ * PENDING only, deliberately: this badge means "you have something to answer".
+ * An INVITED request is waiting on the CLIENT, and counting it here would nag
+ * the trainer to act on something they have already dealt with.
  */
 export async function countPendingMembershipRequests(trainerId: string): Promise<Map<string, number>> {
   const grouped = await prisma.membershipRequest.groupBy({

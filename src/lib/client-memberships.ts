@@ -9,6 +9,7 @@ import { describePlanCommitment } from './membership-consent-copy'
 import { accessPausedReason } from './membership-access'
 import { formatMoney } from './money'
 import { intervalLabel, type PlanInterval } from './billing-interval'
+import { canChargeRecurring, RECURRING_CAPABILITY_SELECT } from './connect'
 
 // The client-facing shape of a published membership (matches ClientMembershipsView's
 // card): card styling + resolved included-item labels/images/descriptions.
@@ -263,13 +264,20 @@ export async function loadPublishedMemberships(trainerId: string, clientId?: str
       })).map(r => r.membershipId))
     : new Set<string>()
 
-  // Recurring is gated per trainer (the old CONNECT_LIVE_ALLOWLIST env var is
-  // gone, so this column is the allowlist). Read once for the whole list.
+  // Recurring is gated on whether this trainer can ACTUALLY take a recurring
+  // card payment, not merely on the allowlist column. Read once for the list.
+  //
+  // This used to be `!!trainer.recurringPaymentsEnabled` alone. That column is
+  // the allowlist (the old CONNECT_LIVE_ALLOWLIST env var, moved into the DB),
+  // and it says nothing about whether Stripe will accept a charge — so an
+  // allowlisted trainer who never finished Connect onboarding, or whose account
+  // got restricted, showed every client a live Subscribe button that dead-ends
+  // at the buy route's "Payments aren't switched on yet" 409. AGENTS.md #6.
   const trainer = await prisma.trainerProfile.findUnique({
     where: { id: trainerId },
-    select: { recurringPaymentsEnabled: true, businessName: true, payoutCurrency: true },
+    select: { ...RECURRING_CAPABILITY_SELECT, businessName: true, payoutCurrency: true },
   })
-  const recurringOn = !!trainer?.recurringPaymentsEnabled
+  const recurringOn = canChargeRecurring(trainer ?? {})
   const businessName = trainer?.businessName ?? 'Your trainer'
   const currency = trainer?.payoutCurrency ?? 'nzd'
 
