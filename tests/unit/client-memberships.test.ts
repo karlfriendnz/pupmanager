@@ -250,6 +250,43 @@ describe('loadPublishedMemberships', () => {
     expect(m.consent?.text).toBe(m.plans[0].consent?.text)
   })
 
+  it('prices an every-6-weeks option as "/ 6 weeks" on the storefront, not "/ week"', async () => {
+    // The client's card and the sentence they tick come from the same function,
+    // so this is the storefront half of the same guarantee the consent copy
+    // makes: what is on screen is what is charged.
+    h.trainerProfile.findUnique.mockResolvedValue({
+      recurringPaymentsEnabled: true, businessName: 'Mersea Mutts', payoutCurrency: 'nzd',
+    })
+    h.membership.findMany.mockResolvedValue([{
+      ...RECURRING,
+      plans: [
+        { id: 'sixweek', interval: 'WEEK', intervalCount: 6, priceCents: 6000, minTermCount: 0, earlyTermFeeCents: null },
+        { id: 'monthly', interval: 'MONTH', intervalCount: 1, priceCents: 3500, minTermCount: 0, earlyTermFeeCents: null },
+      ],
+    }])
+
+    const [m] = await loadPublishedMemberships('t1', 'c1')
+
+    expect(m.plans.map(p => p.priceLabel)).toEqual(['$60.00 / 6 weeks', '$35.00 / month'])
+    expect(m.plans[0].intervalCount).toBe(6)
+    expect(m.plans[0].consent?.text).toContain('$60.00 every 6 weeks')
+    // The single-cycle option is untouched — never "/ 1 month".
+    expect(m.plans[1].consent?.text).toContain('$35.00 every month')
+  })
+
+  it('reads a plan with no stored count as one cycle — a row this deploy hasn’t reached', async () => {
+    h.trainerProfile.findUnique.mockResolvedValue({
+      recurringPaymentsEnabled: true, businessName: 'X', payoutCurrency: 'nzd',
+    })
+    h.membership.findMany.mockResolvedValue([{
+      ...RECURRING,
+      plans: [{ id: 'legacy', interval: 'FORTNIGHT', priceCents: 4800, minTermCount: 0, earlyTermFeeCents: null }],
+    }])
+
+    const [m] = await loadPublishedMemberships('t1', 'c1')
+    expect(m.plans[0].priceLabel).toBe('$48.00 / fortnight')
+  })
+
   it('leaves plan consent null when the plan cannot be bought', async () => {
     h.membership.findMany.mockResolvedValue([RECURRING])
     const [m] = await loadPublishedMemberships('t1', 'c1')

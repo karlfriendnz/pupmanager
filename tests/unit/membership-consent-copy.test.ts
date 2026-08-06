@@ -94,3 +94,65 @@ describe('describePlanCommitment', () => {
     expect(c.consentText).toBe(buildConsentText({ ...base, interval: 'MONTH' }))
   })
 })
+
+describe('a cycle of N weeks in the words the client agrees to', () => {
+  // The failure this block exists to prevent: a count honoured at Stripe and
+  // missing from the consent sentence, so the client agrees to "every week" and
+  // is charged every six.
+  const base = {
+    businessName: 'Mersea Mutts',
+    priceCents: 6000,
+    currency: 'nzd',
+    interval: 'WEEK' as const,
+    from: new Date('2026-01-14T00:00:00Z'),
+  }
+
+  it('says "every 6 weeks" in the sentence they tick', () => {
+    expect(buildConsentText({ ...base, intervalCount: 6 }))
+      .toBe('I agree Mersea Mutts can charge my card $60.00 every 6 weeks until I cancel.')
+  })
+
+  it('never says "every 1 week" — a count of one keeps the bare singular', () => {
+    expect(buildConsentText({ ...base, intervalCount: 1 }))
+      .toBe('I agree Mersea Mutts can charge my card $60.00 every week until I cancel.')
+    // …and the sentence is character-for-character what it was with no count
+    // at all, which is what every existing row reads back as.
+    expect(buildConsentText({ ...base, intervalCount: 1 })).toBe(buildConsentText(base))
+  })
+
+  it('prices the plan as "every 6 weeks", not "per week"', () => {
+    const c = describePlanCommitment({ ...base, intervalCount: 6, minTermCount: 0, earlyTermFeeCents: null })
+    expect(c.priceLabel).toBe('$60.00 every 6 weeks')
+  })
+
+  it('dates the next charge six weeks out, not one', () => {
+    const c = describePlanCommitment({ ...base, intervalCount: 6, minTermCount: 0, earlyTermFeeCents: null })
+    expect(c.nextChargeAt.toISOString().slice(0, 10)).toBe('2026-02-25')
+  })
+
+  it('states a minimum term in WEEKS, not in cycles', () => {
+    // "2 cycles" means nothing to somebody handing over a card, and
+    // "2 6 weekss" is what naive pluralisation produces.
+    const c = describePlanCommitment({ ...base, intervalCount: 6, minTermCount: 2, earlyTermFeeCents: null })
+    expect(c.termLabel).toBe("You're committing to 12 weeks.")
+    expect(c.committedUntil?.toISOString().slice(0, 10)).toBe('2026-04-08')
+  })
+
+  it('leaves the single-cycle term wording exactly as it has always read', () => {
+    const monthly = { ...base, interval: 'MONTH' as const }
+    expect(describePlanCommitment({ ...monthly, intervalCount: 1, minTermCount: 3, earlyTermFeeCents: null }).termLabel)
+      .toBe("You're committing to 3 months.")
+    expect(describePlanCommitment({ ...monthly, minTermCount: 1, earlyTermFeeCents: null }).termLabel)
+      .toBe("You're committing to 1 month.")
+  })
+
+  it('leaves a stored FORTNIGHT saying "fortnight", untouched', () => {
+    const c = describePlanCommitment({
+      ...base, interval: 'FORTNIGHT', intervalCount: 1, minTermCount: 3, earlyTermFeeCents: null,
+    })
+    expect(c.consentText).toContain('every fortnight')
+    expect(c.priceLabel).toBe('$60.00 every fortnight')
+    expect(c.termLabel).toBe("You're committing to 3 fortnights.")
+    expect(c.nextChargeAt.toISOString().slice(0, 10)).toBe('2026-01-28')
+  })
+})

@@ -66,7 +66,7 @@ vi.mock('@/lib/prisma', () => ({
 
 import { POST } from '@/app/api/my/memberships/[membershipId]/buy/route'
 
-const PLAN = { id: 'plan1', interval: 'MONTH', priceCents: 4000, minTermCount: 0, earlyTermFeeCents: null }
+const PLAN = { id: 'plan1', interval: 'MONTH', intervalCount: 1, priceCents: 4000, minTermCount: 0, earlyTermFeeCents: null }
 
 function req(body: unknown = { consent: true }) {
   return new Request('https://app.pupmanager.com/api/my/memberships/m1/buy', {
@@ -228,6 +228,37 @@ describe('consent', () => {
     await POST(req(), params())
     expect(h.ensureConsent.mock.invocationCallOrder[0])
       .toBeLessThan(h.createSubscriptionCheckout.mock.invocationCallOrder[0])
+  })
+
+  it('agrees to the cycle the PLAN actually bills on — "every 6 weeks"', async () => {
+    // The failure this stops: a count honoured when the Stripe Price is minted
+    // and missing from the sentence, so the client ticks a box saying "every
+    // week" and their card is charged every six.
+    h.membershipFindFirst.mockResolvedValue({
+      id: 'm1', name: '6 week grooming', priceCents: 0, cadence: 'RECURRING', interval: 'MONTH',
+      eligibility: 'PUBLIC',
+      plans: [{ id: 'plan6', interval: 'WEEK', intervalCount: 6, priceCents: 6000, minTermCount: 0, earlyTermFeeCents: null }],
+    })
+
+    await POST(req(), params())
+
+    const stored = h.ensureConsent.mock.calls[0][0]
+    expect(stored.consentText)
+      .toBe('I agree E2E Dog School can charge my card $60.00 every 6 weeks until I cancel.')
+    // The cycle is snapshotted on the consent row too, so the record of what
+    // they agreed to stands on its own if the plan is edited afterwards.
+    expect(stored).toMatchObject({ interval: 'WEEK', intervalCount: 6 })
+  })
+
+  it('leaves a plain weekly plan saying "every week", not "every 1 week"', async () => {
+    h.membershipFindFirst.mockResolvedValue({
+      id: 'm1', name: 'Weekly', priceCents: 0, cadence: 'RECURRING', interval: 'WEEK',
+      eligibility: 'PUBLIC',
+      plans: [{ id: 'planw', interval: 'WEEK', intervalCount: 1, priceCents: 2500, minTermCount: 0, earlyTermFeeCents: null }],
+    })
+    await POST(req(), params())
+    expect(h.ensureConsent.mock.calls[0][0].consentText)
+      .toBe('I agree E2E Dog School can charge my card $25.00 every week until I cancel.')
   })
 })
 

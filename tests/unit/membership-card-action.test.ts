@@ -20,7 +20,7 @@ function membership(over: Partial<ClientMembership> = {}): ClientMembership {
     imageUrl: null, bgColor: null, headerColor: null, textColor: null, featuredColor: null,
     buttonBgColor: null, buttonTextColor: null, buttonText: null,
     items: [], cadence: 'RECURRING', interval: 'MONTH',
-    plans: [{ id: 'p1', interval: 'MONTH', priceCents: 10000, priceLabel: '$100.00 / month', consent: null }],
+    plans: [{ id: 'p1', interval: 'MONTH', intervalCount: 1, priceCents: 10000, priceLabel: '$100.00 / month', consent: null }],
     buyable: true, blockedReason: null, requested: false, needsConsent: true, subscribed: false,
     eligible: true, lockedReason: null, missingAchievements: [],
     consent: null,
@@ -62,13 +62,13 @@ describe('switching beats buying', () => {
   it('offers a move, not a second subscription, when they are on another plan', () => {
     // Buying here would leave them paying for two packages at once — the shape
     // that produced a live double charge in July.
-    const a = resolveCardAction(membership({ id: 'seniors', priceCents: 15000, plans: [{ id: 'p2', interval: 'MONTH', priceCents: 15000, priceLabel: '$150.00 / month', consent: null }] }), onJuniors)
+    const a = resolveCardAction(membership({ id: 'seniors', priceCents: 15000, plans: [{ id: 'p2', interval: 'MONTH', intervalCount: 1, priceCents: 15000, priceLabel: '$150.00 / month', consent: null }] }), onJuniors)
     expect(a.kind).toBe('SWITCH')
   })
 
   it('calls a dearer plan a move UP and warns money is taken now', () => {
     const a = resolveCardAction(
-      membership({ id: 'seniors', plans: [{ id: 'p2', interval: 'MONTH', priceCents: 15000, priceLabel: '$150', consent: null }] }),
+      membership({ id: 'seniors', plans: [{ id: 'p2', interval: 'MONTH', intervalCount: 1, priceCents: 15000, priceLabel: '$150', consent: null }] }),
       onJuniors,
     )
     expect(a).toMatchObject({ kind: 'SWITCH', movingUp: true })
@@ -77,7 +77,7 @@ describe('switching beats buying', () => {
 
   it('calls a cheaper plan a move down and promises nothing is taken now', () => {
     const a = resolveCardAction(
-      membership({ id: 'puppies', plans: [{ id: 'p3', interval: 'MONTH', priceCents: 5000, priceLabel: '$50', consent: null }] }),
+      membership({ id: 'puppies', plans: [{ id: 'p3', interval: 'MONTH', intervalCount: 1, priceCents: 5000, priceLabel: '$50', consent: null }] }),
       onJuniors,
     )
     expect(a).toMatchObject({ kind: 'SWITCH', movingUp: false })

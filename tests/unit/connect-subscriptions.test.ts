@@ -41,6 +41,9 @@ import {
   stripeRecurring,
   intervalLabel,
   addCycles,
+  editorInterval,
+  isValidIntervalCount,
+  maxIntervalCount,
   applicationFeePercentFor,
   periodFromSubscription,
   subscriptionIdFromInvoice,
@@ -56,6 +59,10 @@ beforeEach(() => {
 })
 
 describe('interval translation', () => {
+  // Every assertion in this block is the OLD behaviour, unchanged. A count
+  // defaulted to 1 has to leave WEEK / FORTNIGHT / MONTH reading and billing
+  // exactly as they did before the column existed — that is the entire promise
+  // made to rows this deploy has not reached.
   it('maps a fortnight to every 2 weeks — Stripe has no fortnight', () => {
     expect(stripeRecurring('FORTNIGHT')).toEqual({ interval: 'week', interval_count: 2 })
     expect(stripeRecurring('WEEK')).toEqual({ interval: 'week', interval_count: 1 })
@@ -73,6 +80,94 @@ describe('interval translation', () => {
     expect(addCycles(from, 'WEEK', 2).toISOString().slice(0, 10)).toBe('2026-01-28')
     expect(addCycles(from, 'FORTNIGHT', 1).toISOString().slice(0, 10)).toBe('2026-01-28')
     expect(addCycles(from, 'MONTH', 3).toISOString().slice(0, 10)).toBe('2026-04-14')
+  })
+})
+
+describe('a cycle of N weeks — Karl’s "6 week grooming"', () => {
+  it('bills every 6 weeks at Stripe, as week × 6', () => {
+    // The whole reason this is a count and not a SIX_WEEK enum value: Stripe's
+    // recurring shape was always {interval, interval_count}.
+    expect(stripeRecurring('WEEK', 6)).toEqual({ interval: 'week', interval_count: 6 })
+    expect(stripeRecurring('WEEK', 4)).toEqual({ interval: 'week', interval_count: 4 })
+    expect(stripeRecurring('WEEK', 8)).toEqual({ interval: 'week', interval_count: 8 })
+  })
+
+  it('multiplies a fortnight rather than losing its ×2', () => {
+    expect(stripeRecurring('FORTNIGHT', 3)).toEqual({ interval: 'week', interval_count: 6 })
+  })
+
+  it('bills every 3 months as month × 3, not week × 13', () => {
+    expect(stripeRecurring('MONTH', 3)).toEqual({ interval: 'month', interval_count: 3 })
+  })
+
+  it('treats a missing, zero or nonsense count as one cycle', () => {
+    // A legacy row read through a stale client, or a null that survives a bad
+    // migration, must never become `interval_count: 0` — Stripe rejects it and
+    // the client's subscribe simply fails.
+    expect(stripeRecurring('WEEK', 0)).toEqual({ interval: 'week', interval_count: 1 })
+    expect(stripeRecurring('WEEK', -4)).toEqual({ interval: 'week', interval_count: 1 })
+    expect(stripeRecurring('WEEK', NaN)).toEqual({ interval: 'week', interval_count: 1 })
+  })
+
+  it('says "every 6 weeks", never "per week ×6" and never "per month"', () => {
+    expect(intervalLabel('WEEK', 6)).toBe('6 weeks')
+    expect(intervalLabel('MONTH', 3)).toBe('3 months')
+    expect(intervalLabel('FORTNIGHT', 2)).toBe('2 fortnights')
+  })
+
+  it('keeps the SINGULAR bare — "per week", never "per 1 week"', () => {
+    expect(intervalLabel('WEEK', 1)).toBe('week')
+    expect(intervalLabel('MONTH', 1)).toBe('month')
+    expect(intervalLabel('FORTNIGHT', 1)).toBe('fortnight')
+  })
+
+  it('advances the term date by count × cycles', () => {
+    const from = new Date('2026-01-14T00:00:00Z')
+    // One 6-week cycle.
+    expect(addCycles(from, 'WEEK', 1, 6).toISOString().slice(0, 10)).toBe('2026-02-25')
+    // Two of them is twelve weeks, not two.
+    expect(addCycles(from, 'WEEK', 2, 6).toISOString().slice(0, 10)).toBe('2026-04-08')
+    expect(addCycles(from, 'MONTH', 2, 3).toISOString().slice(0, 10)).toBe('2026-07-14')
+  })
+})
+
+describe('bounds', () => {
+  it('refuses 0, negatives and fractions — a cycle has to come round', () => {
+    expect(isValidIntervalCount('WEEK', 0)).toBe(false)
+    expect(isValidIntervalCount('WEEK', -1)).toBe(false)
+    expect(isValidIntervalCount('WEEK', 1.5)).toBe(false)
+  })
+
+  it('caps one cycle at a year, which is also Stripe’s own limit on a Price', () => {
+    expect(maxIntervalCount('WEEK')).toBe(52)
+    expect(maxIntervalCount('MONTH')).toBe(12)
+    expect(maxIntervalCount('FORTNIGHT')).toBe(26)
+    expect(isValidIntervalCount('WEEK', 52)).toBe(true)
+    expect(isValidIntervalCount('WEEK', 53)).toBe(false)
+    expect(isValidIntervalCount('WEEK', 500)).toBe(false)
+    expect(isValidIntervalCount('MONTH', 12)).toBe(true)
+    expect(isValidIntervalCount('MONTH', 13)).toBe(false)
+    expect(isValidIntervalCount('FORTNIGHT', 26)).toBe(true)
+    expect(isValidIntervalCount('FORTNIGHT', 27)).toBe(false)
+  })
+})
+
+describe('what the plan editor shows for a stored cycle', () => {
+  it('shows a legacy fortnight as "every 2 weeks" — the identical cycle', () => {
+    // The editor offers weeks and months plus a number. A FORTNIGHT row must
+    // not land in an empty dropdown and silently save itself as WEEK × 1, which
+    // would halve the client's billing period.
+    expect(editorInterval('FORTNIGHT', 1)).toEqual({ interval: 'WEEK', intervalCount: 2 })
+  })
+
+  it('leaves weeks and months exactly as stored', () => {
+    expect(editorInterval('WEEK', 6)).toEqual({ interval: 'WEEK', intervalCount: 6 })
+    expect(editorInterval('MONTH', 1)).toEqual({ interval: 'MONTH', intervalCount: 1 })
+  })
+
+  it('reads a null count as one, for a row written before the column existed', () => {
+    expect(editorInterval('WEEK', null)).toEqual({ interval: 'WEEK', intervalCount: 1 })
+    expect(editorInterval('MONTH', undefined)).toEqual({ interval: 'MONTH', intervalCount: 1 })
   })
 })
 
@@ -216,7 +311,7 @@ describe('ensureCustomer', () => {
 
 describe('ensurePlanPrice', () => {
   const plan = {
-    id: 'plan1', interval: 'MONTH', priceCents: 4000,
+    id: 'plan1', interval: 'MONTH', intervalCount: 1, priceCents: 4000,
     stripePriceId: null, stripePriceIdTest: null,
     stripeProductId: null, stripeProductIdTest: null,
     membership: { trainerId: 't1', trainer: { payoutCurrency: 'nzd' } },
@@ -246,8 +341,49 @@ describe('ensurePlanPrice', () => {
     expect(opts.stripeAccount).toBe('acct_1')
     // The key includes the amount, so a price EDIT mints a genuinely new Price
     // rather than replaying the request that produced the old one.
-    expect(opts.idempotencyKey).toBe('price:plan1:4000:MONTH:live')
+    expect(opts.idempotencyKey).toBe('price:plan1:4000:MONTH:1:live')
     expect(h.planUpdate.mock.calls[0][0].data).toEqual({ stripePriceId: 'price_1', stripeProductId: 'prod_1' })
+  })
+
+  it('mints a week × 6 Price for a "6 week grooming" plan', async () => {
+    h.planFindUnique.mockResolvedValue({ ...plan, interval: 'WEEK', intervalCount: 6, priceCents: 6000 })
+    h.productsCreate.mockResolvedValue({ id: 'prod_g' })
+    h.pricesCreate.mockResolvedValue({ id: 'price_g' })
+    h.planUpdate.mockResolvedValue({})
+
+    await ensurePlanPrice({ planId: 'plan1', connectAccountId: 'acct_1', sandbox: false, productName: '6 week grooming' })
+
+    const [body, opts] = h.pricesCreate.mock.calls[0]
+    expect(body.recurring).toEqual({ interval: 'week', interval_count: 6 })
+    // The COUNT is in the key too. Without it, changing a monthly plan to
+    // "every 6 weeks" at the same price would replay the monthly request and
+    // hand back the monthly Price — a cycle change that silently didn't happen.
+    expect(opts.idempotencyKey).toBe('price:plan1:6000:WEEK:6:live')
+  })
+
+  it('reads the count off the plan row, so nothing can mint a Price from a stale cycle', async () => {
+    // The row is the single source of truth for what a client is charged; the
+    // caller passes no interval at all.
+    h.planFindUnique.mockResolvedValue({ ...plan, interval: 'WEEK', intervalCount: 4 })
+    h.productsCreate.mockResolvedValue({ id: 'prod_x' })
+    h.pricesCreate.mockResolvedValue({ id: 'price_x' })
+    h.planUpdate.mockResolvedValue({})
+
+    await ensurePlanPrice({ planId: 'plan1', connectAccountId: 'acct_1', sandbox: false, productName: 'X' })
+
+    expect(h.pricesCreate.mock.calls[0][0].recurring).toEqual({ interval: 'week', interval_count: 4 })
+    expect(h.planFindUnique.mock.calls[0][0].select.intervalCount).toBe(true)
+  })
+
+  it('never MUTATES a Price — a cached one is returned untouched whatever the cycle', async () => {
+    // Stripe Prices are immutable. An existing subscriber bills against the
+    // Price minted from their plan row, and this is the guard that it is never
+    // rewritten underneath them.
+    h.planFindUnique.mockResolvedValue({ ...plan, interval: 'WEEK', intervalCount: 6, stripePriceId: 'price_agreed' })
+    expect(await ensurePlanPrice({ planId: 'plan1', connectAccountId: 'acct_1', sandbox: false, productName: 'X' }))
+      .toBe('price_agreed')
+    expect(h.pricesCreate).not.toHaveBeenCalled()
+    expect(h.planUpdate).not.toHaveBeenCalled()
   })
 
   it('writes the TEST columns when the trainer is in sandbox mode', async () => {

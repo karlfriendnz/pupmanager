@@ -89,6 +89,9 @@ test.describe('memberships — trainer builds, client sees', () => {
       expect(plans[0].earlyTermFeeCents).toBe(5000)
       // An option with no minimum term is cancel-any-time, not null.
       expect(plans[1].minTermCount).toBe(0)
+      // Sent without a count, every one of these means ONE cycle — exactly what
+      // it meant before the column existed. FORTNIGHT is untouched.
+      expect(plans.map(p => p.intervalCount)).toEqual([1, 1, 1])
 
       // PATCH replaces the whole set rather than appending to it.
       const patch = await page.request.patch(`/api/trainer/memberships/${id}`, {
@@ -97,6 +100,64 @@ test.describe('memberships — trainer builds, client sees', () => {
       expect(patch.status(), await patch.text()).toBe(200)
       const after = await prisma.membershipPlan.findMany({ where: { membershipId: id! } })
       expect(after.map(p => [p.interval, p.priceCents])).toEqual([['MONTH', 7500]])
+    } finally {
+      if (id) await prisma.membership.delete({ where: { id } }).catch(() => {})
+      await prisma.$disconnect()
+    }
+  })
+
+  test('“6 week grooming” — a cycle of 6 weeks saves, survives a reload, and refuses nonsense', async ({ page }) => {
+    // The round trip against a real database. A field the trainer typed is only
+    // proven to have persisted by save → reload → assert, and this is the
+    // single most repeated bug in this codebase.
+    const prisma = await makePrisma()
+    let id: string | null = null
+    try {
+      await login(page, SEED.owner.email, SEED.owner.password)
+
+      const res = await page.request.post('/api/trainer/memberships', {
+        data: {
+          name: 'E2E 6 Week Grooming', priceCents: 0, cadence: 'RECURRING', published: true,
+          plans: [{ interval: 'WEEK', intervalCount: 6, priceCents: 6000, minTermCount: 2 }],
+          items: [],
+        },
+      })
+      expect(res.status(), await res.text()).toBe(201)
+      id = (await res.json()).id
+
+      // It is in the DATABASE as six weeks, not as a week and not as a month.
+      const stored = await prisma.membershipPlan.findFirst({ where: { membershipId: id! } })
+      expect([stored?.interval, stored?.intervalCount, stored?.priceCents]).toEqual(['WEEK', 6, 6000])
+
+      // …and it comes back out of the editor's own GET as six weeks.
+      const reload = await page.request.get(`/api/trainer/memberships/${id}`)
+      expect(reload.status()).toBe(200)
+      const body = await reload.json()
+      expect(body.plans).toHaveLength(1)
+      expect(body.plans[0].interval).toBe('WEEK')
+      expect(body.plans[0].intervalCount).toBe(6)
+
+      // Editing to 8 weeks round-trips too, and the plan row it writes carries
+      // no Stripe ids — so the next sale mints a NEW immutable Price.
+      const patch = await page.request.patch(`/api/trainer/memberships/${id}`, {
+        data: { plans: [{ interval: 'WEEK', intervalCount: 8, priceCents: 6000 }] },
+      })
+      expect(patch.status(), await patch.text()).toBe(200)
+      const edited = await prisma.membershipPlan.findFirst({ where: { membershipId: id! } })
+      expect(edited?.intervalCount).toBe(8)
+      expect(edited?.stripePriceId).toBeNull()
+      expect(edited?.stripeProductId).toBeNull()
+
+      // The bounds are the SERVER's, not the number input's. A request straight
+      // at the route with 0 and with 500 is refused, and nothing is written.
+      for (const bad of [0, -6, 500]) {
+        const refused = await page.request.patch(`/api/trainer/memberships/${id}`, {
+          data: { plans: [{ interval: 'WEEK', intervalCount: bad, priceCents: 6000 }] },
+        })
+        expect(refused.status(), `intervalCount ${bad} must be refused`).toBe(400)
+      }
+      const untouched = await prisma.membershipPlan.findFirst({ where: { membershipId: id! } })
+      expect(untouched?.intervalCount).toBe(8)
     } finally {
       if (id) await prisma.membership.delete({ where: { id } }).catch(() => {})
       await prisma.$disconnect()
