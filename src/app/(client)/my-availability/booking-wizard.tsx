@@ -288,7 +288,20 @@ export function BookingWizard(props: {
   // drills into a list. A tag is `tag:<id>` rather than its own state, so there
   // is still exactly ONE thing that says what step 1 is showing — two would go
   // out of step the first time someone forgot to clear the other.
-  const [category, setCategory] = useState<'sessions' | 'classes' | 'events' | 'memberships' | `tag:${string}` | null>(null)
+  // Every way in that step 1 would draw. A chooser holding ONE row asks the
+  // client to pick between one thing (Karl, 2026-08-06: "clicking on
+  // appointments is pointless"), so with a single way in we open it directly
+  // and there is nothing to go back to.
+  const waysIn = [
+    packages.length > 0 ? 'sessions' as const : null,
+    classes.length > 0 ? 'classes' as const : null,
+    events.length > 0 ? 'events' as const : null,
+    memberships.length > 0 ? 'memberships' as const : null,
+    ...tags.map(t => `tag:${t.id}` as const),
+  ].filter(Boolean) as ('sessions' | 'classes' | 'events' | 'memberships' | `tag:${string}`)[]
+  const onlyWayIn = waysIn.length === 1 ? waysIn[0] : null
+
+  const [category, setCategory] = useState<'sessions' | 'classes' | 'events' | 'memberships' | `tag:${string}` | null>(onlyWayIn)
   const [selection, setSelection] = useState<Selection | null>(null)
 
   // ─── Browse by tag ────────────────────────────────────────────────────────
@@ -852,18 +865,33 @@ export function BookingWizard(props: {
               </>
             ) : (
               <>
-                <button type="button" onClick={() => setCategory(null)} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 self-start"><ChevronLeft className="h-4 w-4" /> All offerings</button>
+                {/* Nothing to go back TO when this is the only way in. */}
+                {!onlyWayIn && (
+                  <button type="button" onClick={() => setCategory(null)} className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 self-start"><ChevronLeft className="h-4 w-4" /> All offerings</button>
+                )}
 
-            {/* A tag says its own name at the top, because the row that opened
-                it is now off screen and "Puppy" is the answer the client came
-                for — not "1-on-1 sessions". */}
-            {activeTag && (
+            {/* The screen says what it is showing. A tag says its own name
+                because the row that opened it is now off screen and "Puppy" is
+                the answer the client came for — not "1-on-1 sessions"; and a
+                category needs one too, or the list arrives with no title at all
+                (Karl, 2026-08-06: "on this page i want a heading please"). */}
+            {activeTag ? (
               <StepIntro title={activeTag.name} sub={`Everything ${businessName} has under this tag.`} />
+            ) : (
+              <StepIntro
+                title={
+                  category === 'sessions' ? term.oneToOne
+                    : category === 'classes' ? term.classes
+                    : category === 'events' ? term.events
+                    : term.memberships
+                }
+                sub={`What ${businessName} has available.`}
+              />
             )}
 
             {(category === 'sessions' || activeTag) && shownPackages.length > 0 && (
               <section>
-                <SectionLabel icon={<CalendarPlus className="h-3.5 w-3.5" />} text={term.oneToOne} />
+                {activeTag && <SectionLabel icon={<CalendarPlus className="h-3.5 w-3.5" />} text={term.oneToOne} />}
                 <div className="flex flex-col gap-2.5">
                   {shownPackages.map(p => (
                     <OfferingRow
@@ -895,7 +923,7 @@ export function BookingWizard(props: {
 
             {(category === 'classes' || activeTag) && shownClasses.length > 0 && (
               <section>
-                <SectionLabel icon={<GraduationCap className="h-3.5 w-3.5" />} text={term.classes} />
+                {activeTag && <SectionLabel icon={<GraduationCap className="h-3.5 w-3.5" />} text={term.classes} />}
                 <div className="flex flex-col gap-2.5">
                   {shownClasses.map(c => {
                     const isFull = c.seatsLeft === 0
@@ -921,7 +949,7 @@ export function BookingWizard(props: {
 
             {(category === 'events' || activeTag) && shownEvents.length > 0 && (
               <section>
-                <SectionLabel icon={<PartyPopper className="h-3.5 w-3.5" />} text={term.events} />
+                {activeTag && <SectionLabel icon={<PartyPopper className="h-3.5 w-3.5" />} text={term.events} />}
                 <div className="flex flex-col gap-2.5">
                   {shownEvents.map(e => {
                     const isFull = e.seatsLeft === 0
@@ -959,7 +987,7 @@ export function BookingWizard(props: {
 
             {category === 'memberships' && memberships.length > 0 && (
               <section>
-                <SectionLabel icon={<Ticket className="h-3.5 w-3.5" />} text={term.memberships} />
+                {activeTag && <SectionLabel icon={<Ticket className="h-3.5 w-3.5" />} text={term.memberships} />}
                 <p className="text-xs text-slate-500 -mt-1 mb-2.5">Bundles from {businessName} — everything below is included.</p>
                 {/* Checkout is its own flow (Stripe), so these cards buy directly
                     rather than continuing through the wizard's steps 2–3. */}
