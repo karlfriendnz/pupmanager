@@ -12,7 +12,9 @@ import { isRichTextEmpty, richTextToPlain } from '@/lib/rich-text'
 import { compressImageFile } from '@/lib/compress-image'
 import { readApiError } from '@/lib/api-error'
 import { cn } from '@/lib/utils'
-import { ImagePlus, Loader2, Trash2 } from 'lucide-react'
+import { Check, ImagePlus, Loader2, Trash2, X } from 'lucide-react'
+import { EditScreen } from '@/components/shared/edit-screen'
+import { ConfirmSheet } from '@/components/shared/confirm-sheet'
 import {
   COLORS, COLOR_BY_KEY, COMMON_ICONS, DEFAULT_COLOR, TRIGGERS, TRIGGER_GROUPS, TRIGGER_META,
   type AchievementRecord, type Color, type TriggerType,
@@ -137,7 +139,29 @@ export function AchievementForm({ initial, isNew }: { initial: AchievementRecord
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <EditScreen
+      // Delete is occasional and unrecoverable, so it goes in the ⋯ with a real
+      // confirmation sheet. It used to be a grey line of text at the foot of
+      // the form that turned into two buttons in place — quiet enough to miss
+      // and, once found, one tap from gone.
+      menu={isNew ? undefined : [{
+        key: 'delete',
+        label: 'Delete this achievement',
+        hint: 'Asks first — this can’t be undone',
+        icon: <Trash2 className="h-5 w-5" strokeWidth={1.75} />,
+        onSelect: () => setConfirmDelete(true),
+        danger: true,
+      }]}
+      menuTitle={name.trim() || 'This achievement'}
+      secondary={{ label: 'Cancel', icon: <X className="h-4 w-4" strokeWidth={1.75} />, onClick: () => router.push('/achievements') }}
+      primary={{
+        label: isNew ? 'Create achievement' : 'Save changes',
+        icon: <Check className="h-4 w-4" strokeWidth={2} />,
+        onClick: save,
+        loading: saving,
+        disabled: !name.trim(),
+      }}
+    >
       {/* Live preview — what a client will actually see. */}
       <section>
         <SectionLabel>Preview</SectionLabel>
@@ -355,30 +379,17 @@ export function AchievementForm({ initial, isNew }: { initial: AchievementRecord
 
       {error && <Alert variant="error">{error}</Alert>}
 
-      {!isNew && (
-        <div>
-          {confirmDelete ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="danger" size="sm" loading={deleting} onClick={remove}>Confirm delete</Button>
-              <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>Cancel</Button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-red-500"
-            >
-              <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} /> Delete this achievement
-            </button>
-          )}
-        </div>
+      {confirmDelete && (
+        <ConfirmSheet
+          title={`Delete “${name.trim() || 'this achievement'}”?`}
+          body="It comes off your list for good. Anything a client has already earned keeps its record."
+          confirmLabel="Delete"
+          danger
+          busy={deleting}
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={remove}
+        />
       )}
-
-      <div className="sticky bottom-0 -mx-4 flex items-center justify-end gap-2 border-t border-slate-200 bg-white/90 px-4 py-3 backdrop-blur md:mx-0 md:rounded-xl md:border md:px-5">
-        <Button variant="ghost" size="sm" onClick={() => router.push('/achievements')}>Cancel</Button>
-        <Button size="sm" loading={saving} onClick={save} disabled={!name.trim()}>
-          {isNew ? 'Create achievement' : 'Save changes'}
-        </Button>
-      </div>
-    </div>
+    </EditScreen>
   )
 }

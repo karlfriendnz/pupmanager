@@ -140,3 +140,26 @@ describe('a read screen fits the same shell', () => {
     expect(packageDetail).toMatch(/<CardHeading icon=\{<Info className="h-4 w-4 text-slate-400" \/>\}>/)
   })
 })
+
+describe('achievements, the third adopter', () => {
+  const form = src('app/(trainer)/achievements/achievement-form.tsx')
+
+  it('renders through EditScreen and drops its own sticky row', () => {
+    expect(form).toContain('<EditScreen')
+    expect(form).not.toMatch(/sticky bottom-0/)
+  })
+
+  it('moves Delete into the ⋯ behind the house confirm sheet', () => {
+    // It was a grey line of text under the last field that turned into two
+    // buttons in place: quiet enough to miss, and once found, one tap from
+    // gone. Every other offering asks in the same sheet.
+    expect(form).toMatch(/key: 'delete'/)
+    expect(form).toContain('<ConfirmSheet')
+    expect(form).not.toContain('Confirm delete')
+  })
+
+  it('keeps the disabled and loading states on Save', () => {
+    expect(form).toMatch(/loading: saving/)
+    expect(form).toMatch(/disabled: !name\.trim\(\)/)
+  })
+})

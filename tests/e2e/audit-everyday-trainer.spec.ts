@@ -418,11 +418,13 @@ test.describe('the jobs a trainer does every day', () => {
         .toBe(renamed)
 
       // ── Delete ──────────────────────────────────────────────────────────────
-      // A two-tap confirm in place, not a dialog: the quiet grey row becomes a
-      // red "Confirm delete" beside a Cancel.
+      // In the ⋯ at the foot of the screen, behind the house confirm sheet —
+      // the same shape as every other offering. It used to be a grey line of
+      // text under the last field that turned into two buttons in place.
       await page.goto(`/achievements/${id}`)
-      await page.getByRole('button', { name: 'Delete this achievement' }).click()
-      await page.getByRole('button', { name: 'Confirm delete' }).click()
+      await page.getByRole('button', { name: /^More actions/ }).click()
+      await page.getByRole('button', { name: /Delete this achievement/ }).click()
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Delete', exact: true }).click()
       await expect
         .poll(async () => await prisma.achievement.count({ where: { id } }), { timeout: 20_000 })
         .toBe(0)
