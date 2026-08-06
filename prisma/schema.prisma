@@ -4513,6 +4513,14 @@ enum MembershipEligibility {
   INVITE_ONLY // only people the trainer has individually invited
 }
 
+// The UNIT of a billing cycle. The LENGTH is this unit times an `intervalCount`
+// on the row (MembershipPlan / MembershipConsent), so "every 6 weeks" is
+// WEEK × 6 and no new enum value is needed per cycle length a groomer wants.
+//
+// FORTNIGHT is kept, not migrated. Every fortnightly plan already sold bills as
+// `week × 2` at Stripe and reads back as "fortnight" everywhere, and rewriting
+// live billing rows to prove they are equivalent is not worth the risk. New
+// plans are offered weeks/months + a number instead — see lib/billing-interval.
 enum MembershipInterval {
   WEEK
   FORTNIGHT
@@ -4697,6 +4705,11 @@ model MembershipPlan {
   id                String             @id @default(cuid())
   membershipId      String
   interval          MembershipInterval // WEEK | FORTNIGHT | MONTH
+  // How many of that unit make ONE cycle: WEEK × 6 is "every 6 weeks". Defaults
+  // to 1, so every row written before this column existed reads back as exactly
+  // the cycle it has always billed on. Bounded to one year server-side
+  // (lib/billing-interval) because that is Stripe's own limit on a Price.
+  intervalCount     Int                @default(1)
   priceCents        Int
   minTermCount      Int                @default(0) // cycles; 0 = cancel any time
   earlyTermFeeCents Int?
@@ -4846,6 +4859,11 @@ model MembershipConsent {
   priceCents   Int
   currency     String
   interval     MembershipInterval
+  // The cycle they agreed to, snapshotted with everything else on this row. A
+  // count honoured at Stripe but missing here would mean the record of what
+  // somebody consented to says "every week" while their card is charged every
+  // six. Defaults to 1 so pre-existing consents read back unchanged.
+  intervalCount Int    @default(1)
 
   consentText          String  @db.Text
   consentVersion       String
