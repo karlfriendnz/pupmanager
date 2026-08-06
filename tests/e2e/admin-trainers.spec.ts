@@ -118,13 +118,19 @@ test.describe('admin /admin — companies, not individual trainers', () => {
   const header = (page: Page, name: string) =>
     page.locator('table thead').getByRole('link', { name, exact: true })
 
-  test('no sort param leaves the default order alone', async ({ page }) => {
+  // In Trial answers "who just signed up", so it leads with the newest join
+  // without anyone clicking Joined first (Karl, 2026-08-06). The tab now names
+  // its sorted column instead of arriving in an unnamed order.
+  test('In Trial defaults to newest joined, and says so', async ({ page }) => {
     await loginAdmin(page)
     await page.goto('/admin?q=Dog')
-    // Default is newest-first, so the business seeded second leads.
+    // Newest-first either way, so the business seeded second still leads.
     await expect(firstBusiness(page)).toContainText(SEED.businessB.businessName)
-    // Nothing claims to be the sorted column.
-    await expect(page.locator('table th[aria-sort="ascending"], table th[aria-sort="descending"]')).toHaveCount(0)
+    // Exactly one column claims the sort, and it is Joined.
+    const sorted = page.locator('table th[aria-sort="ascending"], table th[aria-sort="descending"]')
+    await expect(sorted).toHaveCount(1)
+    await expect(sorted).toHaveAttribute('aria-sort', 'descending')
+    await expect(sorted).toContainText('Joined')
   })
 
   test('clicking a column header sorts, and clicking it again reverses', async ({ page }) => {
@@ -194,9 +200,12 @@ test.describe('admin /admin — companies, not individual trainers', () => {
     await expect(page.locator('table th[aria-sort="descending"]')).toHaveCount(1)
 
     // …but In Trial hides Value, so the same URL must not sort by an invisible
-    // column (which reads as a random order) — it reverts to newest-first.
+    // column (which reads as a random order). It falls back to that tab's own
+    // default — Joined, newest first — rather than to no sort at all.
     await page.goto('/admin?tab=trial&q=Dog&sort=value&dir=desc')
-    await expect(page.locator('table th[aria-sort="ascending"], table th[aria-sort="descending"]')).toHaveCount(0)
+    const fallback = page.locator('table th[aria-sort="ascending"], table th[aria-sort="descending"]')
+    await expect(fallback).toHaveCount(1)
+    await expect(fallback).toContainText('Joined')
     await expect(firstBusiness(page)).toContainText(SEED.businessB.businessName)
 
     // Switching tabs doesn't carry a sort into a tab that can't show it.
