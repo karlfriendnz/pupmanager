@@ -727,6 +727,20 @@ model TrainerProfile {
   // "our words", and a menu item we later rename picks up the new default for
   // everyone who never chose their own.
   navLabels                 Json?
+  // The PICTURE on the same things navLabels gives a WORD to — a map of nav key
+  // to an image URL ({"/classes": "https://…/blob.jpg"}). Same column shape and
+  // the same screen (Settings → "What you call things"), because setting the
+  // word and setting the picture for a row is one job, not two.
+  //
+  // Only the keys a CLIENT actually sees as a way in may carry one (see
+  // NAV_IMAGE_CATALOG in lib/nav-labels.ts) — there is no point offering a
+  // picture for a nav item no client ever looks at.
+  //
+  // NULL/{} is not "no picture": the client's category row falls back to
+  // BORROWING one off the first offering inside it, exactly as it did before
+  // this column existed. So a trainer_profiles row in a database behind on
+  // migrations reads back as today's behaviour.
+  navImages                 Json?
   // Master switch the trainer flips once onboarded — lets them connect but keep
   // prices display-only until they're ready to actually take payments. Defaults
   // ON (and the connect webhook turns it on at onboarding) so a freshly-
@@ -1762,6 +1776,17 @@ model Tag {
   // The trainer's own arrangement, lowest first — same idea as
   // ProductCategory.order, and the order clients browse them in.
   order     Int    @default(0)
+  // The picture on the tag's row in the client's booking screen, set
+  // deliberately at Settings → Tags. NULL is not "no picture": the row falls
+  // back to BORROWING one off the first thing in the tag (booking-wizard's
+  // firstImage), which is what every tag did before this column existed — so an
+  // untouched row in a database behind on migrations reads back as today's
+  // behaviour. Setting it overrides the borrow; clearing it borrows again.
+  //
+  // A URL, not a blob key: it is written from the same /api/upload/image path
+  // as an offering's cover, and every other image column in this schema stores
+  // the public URL the uploader returned.
+  imageUrl  String? @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

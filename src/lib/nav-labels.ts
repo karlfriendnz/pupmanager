@@ -17,6 +17,8 @@
  * Everything else is theirs.
  */
 
+import { sanitizeImageUrl } from '@/lib/image-url'
+
 /** Keys are the nav item's href, or `section:<name>` for a group heading.
  *  The href is already unique per item and needs no second identifier — the cost
  *  is that changing an href orphans a stored label, which reverts to the default
@@ -130,6 +132,80 @@ export const NAV_LABEL_CATALOG: readonly RenameableEntry[] = [
   // The daily three sit above the group headings, so they come last in the
   // editor — a trainer scanning for "Offerings" shouldn't wade past them.
 ]
+
+/* ─────────────────────────── pictures, not just words ─────────────────────── */
+
+/**
+ * The nav keys that may carry a PICTURE as well as a word.
+ *
+ * Karl, 2026-08-06: "make it so you can from the /settings?tab=naming page …
+ * upload a image on the offerings". Same screen, same rows — you set the word
+ * AND the picture in one place, because for a trainer that is one job.
+ *
+ * DELIBERATELY THE FOUR THE CLIENT SEES, and no more. These are exactly the
+ * `CategoryRow`s the booking wizard opens with (my-availability/booking-wizard),
+ * which are the only places a category picture is ever rendered. Offering a
+ * picture for /library or the Clients section would be a control that changes
+ * nothing on any screen — worse than not having it, because a trainer would
+ * upload one and go looking for where it went.
+ *
+ * Kept as keys into the SAME catalogue the words use, so a row's picture and its
+ * word can never end up filed under two different names for the same thing.
+ * `tests/unit/nav-images.test.ts` fails if a key here isn't renameable.
+ */
+export const NAV_IMAGE_CATALOG: readonly NavLabelKey[] = [
+  '/packages',
+  '/classes',
+  '/events',
+  '/memberships',
+]
+
+const IMAGEABLE: ReadonlySet<NavLabelKey> = new Set(NAV_IMAGE_CATALOG)
+
+/** May this nav key carry a picture? */
+export function isImageable(key: NavLabelKey): boolean {
+  return IMAGEABLE.has(key)
+}
+
+/**
+ * A stored picture map, cleaned up — the mirror of `sanitizeNavLabels`.
+ *
+ * Anything keyed on something a client never sees, or that isn't a real
+ * http(s) URL, is dropped rather than stored. So the column can only ever hold
+ * pictures that some row will actually render, and a trainer can't smuggle a
+ * `javascript:` URL onto their clients' screens through it.
+ */
+export function sanitizeNavImages(input: unknown): Record<NavLabelKey, string> {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return {}
+  const out: Record<NavLabelKey, string> = {}
+  for (const [key, raw] of Object.entries(input as Record<string, unknown>)) {
+    if (!IMAGEABLE.has(key)) continue
+    const url = sanitizeImageUrl(raw)
+    // A key present with a null/blank value is a CLEARED picture, and a cleared
+    // picture is stored by being absent — one representation, so "no picture"
+    // can't mean two different things depending on how it got there.
+    if (!url) continue
+    out[key] = url
+  }
+  return out
+}
+
+/**
+ * The picture to show on a category row: theirs if they set one, else null.
+ *
+ * null is the signal to BORROW — the caller falls back to the first offering
+ * inside the category that has an image, exactly as every row did before this
+ * existed. Setting a picture overrides the borrow; clearing it borrows again.
+ */
+export function navImageFor(
+  key: NavLabelKey,
+  images: Record<NavLabelKey, string> | null | undefined,
+): string | null {
+  if (!images) return null
+  if (!IMAGEABLE.has(key)) return null
+  const url = images[key]
+  return url && url.trim() ? url : null
+}
 
 /** Prefix for a label that belongs to a CLIENT-app surface, not the trainer menu. */
 export const CLIENT_KEY_PREFIX = 'client:'
