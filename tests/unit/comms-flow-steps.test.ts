@@ -26,6 +26,8 @@ import {
   uploadSpecFor,
   taskSpecFor,
   defaultsForKind,
+  stepSendsNotification,
+  deliveryChannelsFor,
   homeworkTimingEnum,
   type Channel,
 } from '@/lib/comms-flow-steps'
@@ -547,5 +549,63 @@ describe('canWaitForCompletion — what may block a journey', () => {
     // An UPLOAD starts unconfigured, so it starts as a nudge rather than a wall.
     expect(withFormDefaults({ kind: 'UPLOAD' }).blocking).toBe(false)
     expect(withFormDefaults({ kind: 'UPLOAD', payload: { target: 'DOG_PHOTO' } }).blocking).toBe(true)
+  })
+})
+
+// ─── A step does ONE thing ──────────────────────────────────────────────────
+//
+// Karl, on the "Give them homework" editor asking him for push/email channels
+// and a message to write: "i don't think we need notifications if people are
+// doing homework or forms this should be its own step".
+//
+// This predicate is the single source of that fact. The engine reads it to
+// decide what to deliver on; the builder reads it to decide whether to show Who
+// / How / What it says / Always send at all. Testing it here is testing both.
+describe('stepSendsNotification — which kinds send anything of their own', () => {
+  it('is false for the three kinds that ARE an action', () => {
+    expect(stepSendsNotification('FORM')).toBe(false)
+    expect(stepSendsNotification('UPLOAD')).toBe(false)
+    expect(stepSendsNotification('TASK')).toBe(false)
+  })
+
+  // A MESSAGE is the sending. The three journey kinds have no screen of their
+  // own to be discovered on — there is no "an account you haven't set up yet"
+  // list — so their notification is the only way anybody learns of them.
+  it('is true for a MESSAGE and for the journey kinds', () => {
+    expect(stepSendsNotification('MESSAGE')).toBe(true)
+    expect(stepSendsNotification('ACCOUNT')).toBe(true)
+    expect(stepSendsNotification('CHOOSE_OFFERING')).toBe(true)
+    expect(stepSendsNotification('APPROVAL')).toBe(true)
+  })
+
+  it('answers for every kind in the enum', () => {
+    for (const kind of flowStepKindEnum.options) {
+      expect(typeof stepSendsNotification(kind), kind).toBe('boolean')
+    }
+  })
+})
+
+describe('deliveryChannelsFor — what a step actually delivers on', () => {
+  // The stored column is left alone (a step switched back to a message must
+  // still have the trainer's channels), so this is what decides its meaning.
+  it('narrows a silent step to the in-app feed, whatever it stored', () => {
+    expect(deliveryChannelsFor('TASK', ['PUSH', 'EMAIL'])).toEqual(['IN_APP'])
+    expect(deliveryChannelsFor('FORM', ['EMAIL'])).toEqual(['IN_APP'])
+    expect(deliveryChannelsFor('UPLOAD', [])).toEqual(['IN_APP'])
+  })
+
+  // Not silence. A silently-assigned piece of homework nobody ever sees is a
+  // worse outcome than the noisy version — the feed row is what makes it
+  // findable, and it is the one channel deliver() writes without a mute check.
+  it('never leaves a silent step with nothing at all', () => {
+    for (const kind of ['FORM', 'UPLOAD', 'TASK'] as const) {
+      expect(deliveryChannelsFor(kind, []).length, kind).toBeGreaterThan(0)
+    }
+  })
+
+  it('leaves a MESSAGE exactly as its trainer configured it', () => {
+    expect(deliveryChannelsFor('MESSAGE', ['PUSH', 'EMAIL'])).toEqual(['PUSH', 'EMAIL'])
+    expect(deliveryChannelsFor('MESSAGE', ['IN_APP'])).toEqual(['IN_APP'])
+    expect(deliveryChannelsFor('APPROVAL', ['PUSH'])).toEqual(['PUSH'])
   })
 })

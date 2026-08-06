@@ -349,6 +349,70 @@ export function taskSpecFor(payload: z.infer<typeof taskStepPayloadSchema> | nul
   }
 }
 
+// ─── A step does ONE thing ──────────────────────────────────────────────────
+//
+// Karl, looking at the "Give them homework" editor, which was asking him for
+// push/email channels and a message to write: "i don't think we need
+// notifications if people are doing homework or forms this should be its own
+// step".
+//
+// So assigning homework is one step, sending a form is one step, and TELLING
+// somebody about it is a different step — a MESSAGE the trainer adds if they
+// want one. The two sit next to each other on the timeline.
+
+/**
+ * Does this kind of step SEND a notification of its own?
+ *
+ * False for the three kinds that ARE an action: FORM, UPLOAD and TASK. They
+ * still land — the homework becomes a real TrainingTask on /my-homework, the
+ * form is opened at /form/<id>, a dog photo at /my-dogs — and the client's
+ * in-app feed still gets a row so the thing is findable (see
+ * `deliveryChannelsFor`). What stops is the push and the email.
+ *
+ * True for MESSAGE (that IS the step) and for the three journey kinds, whose
+ * notification is the only way anybody learns they have to do them: there is no
+ * "an account you have not set up yet" screen to discover it on.
+ */
+export function stepSendsNotification(kind: FlowStepKind): boolean {
+  switch (kind) {
+    case 'FORM':
+    case 'UPLOAD':
+    case 'TASK':
+      return false
+    case 'MESSAGE':
+    case 'ACCOUNT':
+    case 'CHOOSE_OFFERING':
+    case 'APPROVAL':
+      return true
+    default: {
+      // A kind added to the enum and not answered for here is a compile error,
+      // not a step that quietly starts emailing people.
+      const unhandled: never = kind
+      void unhandled
+      return true
+    }
+  }
+}
+
+/**
+ * The channels a step ACTUALLY delivers on, whatever its row happens to store.
+ *
+ * The `channels` column is not cleared for the three silent kinds and must not
+ * be: a step switched from a form to a message would otherwise come back with
+ * nothing to send on, and a trainer's "push + email" would be gone for good.
+ * The column stays where it is and this decides what it means — one place, read
+ * by the engine, so a row configured before this rule cannot go on sending.
+ *
+ * IN_APP rather than nothing, deliberately. A silently-assigned piece of
+ * homework nobody ever sees is a worse outcome than the noisy version: the feed
+ * row is what makes the thing findable in the app, and it neither buzzes a
+ * phone nor lands in an inbox. It is also the one channel `deliver()` writes
+ * without consulting a mute, which is right — the feed is the app, not a push.
+ */
+export function deliveryChannelsFor<T extends string>(kind: FlowStepKind, channels: T[]): T[] {
+  return stepSendsNotification(kind) ? channels : (['IN_APP'] as unknown as T[])
+}
+
 // ─── What may be waited for ─────────────────────────────────────────────────
 
 /**

@@ -22,6 +22,7 @@ import {
   flowStepConfigProblem,
   uploadSpecFor,
   taskSpecFor,
+  deliveryChannelsFor,
   type FlowStepKind,
   type FlowStepActor,
 } from './comms-flow-steps'
@@ -239,11 +240,16 @@ async function deliver(args: {
 // it". It is now one step of a flow, and four kinds of it can come round on a
 // clock: a MESSAGE, a FORM to fill in, an UPLOAD to send, a TASK to practise.
 //
-// All four go out through `deliver()` — the same channels, the same opt-out
-// rules, the same email renderer. There is deliberately no second sender: the
-// difference between "here's a reminder" and "here's a form" is a link and some
-// default copy, and a second path would be a second place for a client's mute
-// to be forgotten.
+// All four still go out through `deliver()` — one sender, one place a client's
+// mute can be honoured, one email renderer. What differs is WHICH CHANNELS they
+// are allowed to use, and that is `deliveryChannelsFor`, not a second path:
+//
+//   MESSAGE — whatever the trainer picked. That IS the step.
+//   FORM / UPLOAD / TASK — IN_APP only. The step's job is to ASSIGN the thing:
+//     the homework becomes a real TrainingTask, the form is reachable at
+//     /form/<id>, a dog photo at /my-dogs. It lands in the client's feed so it
+//     can be found, and nothing is pushed or emailed. A trainer who wants them
+//     told adds a MESSAGE step beside it (Karl: "this should be its own step").
 
 /**
  * Where a step's notification takes them.
@@ -461,7 +467,10 @@ export async function executeFlowStep(args: {
   }
 
   await deliver({
-    channels: step.channels,
+    // NOT step.channels. A FORM/UPLOAD/TASK step assigns the thing and puts a
+    // row in the client's feed; it does not push and does not email, whatever
+    // the column stored before this rule existed. See deliveryChannelsFor.
+    channels: deliveryChannelsFor(step.kind, step.channels),
     important: step.important,
     user,
     trainer,

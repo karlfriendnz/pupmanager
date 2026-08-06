@@ -65,7 +65,7 @@ describe('what a flow says it does', () => {
       { forms: { f1: 'Pre-class questions' } },
     )
     // flowStepWhatText, not a second phrasing invented for this screen.
-    expect(flow.rows[0].what).toBe('Send form: Pre-class questions')
+    expect(flow.rows[0].what).toBe('Ask them to fill in: Pre-class questions')
   })
 
   it('counts the steps and the live ones', () => {

@@ -166,7 +166,10 @@ export function flowStepWhatText(step: SummarisableStep, names: FlowStepNames = 
     case 'FORM': {
       const formId = safeFlowStepPayload('FORM', step.payload).payload.formId
       const name = formId ? names.forms?.[formId] : undefined
-      return `Send form: ${name ?? (formId ? 'a form that no longer exists' : 'not chosen yet')}`
+      // NOT "Send form". This step sends nothing — it puts the form in front of
+      // them (see stepSendsNotification); the trainer adds a message step
+      // beside it if they want one, and the row must not claim otherwise.
+      return `Ask them to fill in: ${name ?? (formId ? 'a form that no longer exists' : 'not chosen yet')}`
     }
     case 'UPLOAD': {
       const spec = uploadSpecFor(safeFlowStepPayload('UPLOAD', step.payload).payload)

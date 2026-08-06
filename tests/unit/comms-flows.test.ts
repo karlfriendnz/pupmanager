@@ -717,16 +717,20 @@ describe('renderCommsMessage — null copy', () => {
 //
 // Phase 1 routed every non-MESSAGE step to a clean no-op, because nothing could
 // create one. Four kinds mean something on a clock now — a reminder, a form due
-// before each class, a photo asked for after one, homework handed out with it —
-// and all four go out through the SAME deliver(): same channels, same opt-out
-// rules, same email renderer. A second sender would be a second place for a
-// client's mute to be forgotten.
+// before each class, a photo asked for after one, homework handed out with it.
+//
+// They all go through the SAME deliver() — one place a client's mute can be
+// forgotten is enough — but they do NOT all send. A step does one thing (Karl:
+// "i don't think we need notifications if people are doing homework or forms
+// this should be its own step"), so a FORM/UPLOAD/TASK step ASSIGNS the thing
+// and puts a row in the client's feed, and nothing is pushed or emailed. The
+// trainer adds a MESSAGE step beside it if they want them told.
 
 describe('processCommsFlows — a FORM step', () => {
   const formStep = (over: Record<string, unknown> = {}) =>
     step({ kind: 'FORM', title: null, body: null, payload: { formId: 'form-9' }, channels: ['PUSH', 'IN_APP'], ...over })
 
-  it('asks the client to fill it in, and links to that form', async () => {
+  it('puts the form in their app, and links to that form', async () => {
     h.stepFindMany.mockResolvedValue([formStep()])
     h.enrollmentFindMany.mockResolvedValue([enrollment()])
 
@@ -734,20 +738,45 @@ describe('processCommsFlows — a FORM step', () => {
 
     expect(res.sent).toBe(1)
     expect(h.notificationCreate.mock.calls[0][0].data).toMatchObject({ userId: 'u1', link: '/form/form-9' })
-    expect(h.sendPush.mock.calls[0][1].customData).toEqual({ path: '/form/form-9' })
     expect(h.sendCreate).toHaveBeenCalledWith({ data: { stepId: 'step1', sessionId: 'sess1', userId: 'u1' } })
   })
 
-  // title/body are nullable BECAUSE a form step has no copy — but a
-  // notification still has to say something, and an empty push is worse than a
-  // plain one.
+  // THE RULE. The step's own channels say push, and it does not push.
+  it('sends no push and no email, whatever its channels say', async () => {
+    h.stepFindMany.mockResolvedValue([formStep({ channels: ['PUSH', 'EMAIL'] })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.sendPush).not.toHaveBeenCalled()
+    expect(h.sendEmail).not.toHaveBeenCalled()
+    // It still LANDS — a silently-assigned thing nobody ever sees would be a
+    // worse outcome than the noisy version.
+    expect(h.notificationCreate).toHaveBeenCalledTimes(1)
+  })
+
+  // `important` overrides a client's mute for a push/email. It cannot resurrect
+  // a send that was never made.
+  it('an "always send" form step still sends nothing', async () => {
+    h.stepFindMany.mockResolvedValue([formStep({ channels: ['PUSH', 'EMAIL'], important: true })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+
+    await processCommsFlows(NOW)
+
+    expect(h.sendPush).not.toHaveBeenCalled()
+    expect(h.sendEmail).not.toHaveBeenCalled()
+  })
+
+  // title/body are nullable BECAUSE a form step has no copy — but the feed row
+  // still has to say something, and an empty one is worse than a plain one.
   it('writes plain copy when the trainer wrote none', async () => {
     h.stepFindMany.mockResolvedValue([formStep()])
     h.enrollmentFindMany.mockResolvedValue([enrollment()])
 
     await processCommsFlows(NOW)
 
-    const { title, body } = h.sendPush.mock.calls[0][1].alert
+    const { title, body } = h.notificationCreate.mock.calls[0][0].data
     expect(title).toBeTruthy()
     expect(`${title} ${body}`).not.toContain('null')
     expect(`${title} ${body}`).not.toContain('{{')
@@ -760,22 +789,10 @@ describe('processCommsFlows — a FORM step', () => {
 
     await processCommsFlows(NOW)
 
-    expect(h.sendPush.mock.calls[0][1].alert).toEqual({
+    expect(h.notificationCreate.mock.calls[0][0].data).toMatchObject({
       title: 'Before we meet, Sam',
       body: 'Two questions about Bailey.',
     })
-  })
-
-  it('still respects a client’s mute', async () => {
-    h.stepFindMany.mockResolvedValue([formStep({ channels: ['PUSH', 'EMAIL'] })])
-    h.enrollmentFindMany.mockResolvedValue([
-      enrollment({ client: { user: { id: 'u1', name: 'Sam', email: 'sam@x.com', notifyPush: false, productEmailOptOut: true } } }),
-    ])
-
-    await processCommsFlows(NOW)
-
-    expect(h.sendPush).not.toHaveBeenCalled()
-    expect(h.sendEmail).not.toHaveBeenCalled()
   })
 
   it('does not ask twice', async () => {
@@ -784,7 +801,7 @@ describe('processCommsFlows — a FORM step', () => {
     h.sendFindMany.mockResolvedValue([{ userId: 'u1' }])
 
     expect((await processCommsFlows(NOW)).sent).toBe(0)
-    expect(h.sendPush).not.toHaveBeenCalled()
+    expect(h.notificationCreate).not.toHaveBeenCalled()
   })
 })
 
@@ -801,7 +818,9 @@ describe('processCommsFlows — an UPLOAD step', () => {
 
     expect(res.sent).toBe(1)
     expect(h.notificationCreate.mock.calls[0][0].data.link).toBe('/my-dogs')
-    expect(h.sendPush.mock.calls[0][1].alert.body).toContain('a photo of Bailey in their harness')
+    expect(h.notificationCreate.mock.calls[0][0].data.body).toContain('a photo of Bailey in their harness')
+    expect(h.sendPush).not.toHaveBeenCalled()
+    expect(h.sendEmail).not.toHaveBeenCalled()
   })
 
   it('a general attachment is answered where they were asked', async () => {
@@ -811,6 +830,7 @@ describe('processCommsFlows — an UPLOAD step', () => {
     await processCommsFlows(NOW)
 
     expect(h.notificationCreate.mock.calls[0][0].data.link).toBe('/my-sessions')
+    expect(h.sendPush).not.toHaveBeenCalled()
   })
 })
 
@@ -845,8 +865,27 @@ describe('processCommsFlows — a TASK step', () => {
       libraryTaskId: 'lib-1',
       timing: 'BEFORE_SESSION',
     })
-    expect(h.sendPush).toHaveBeenCalledTimes(1)
-    expect(h.notificationCreate.mock.calls.length + h.sendPush.mock.calls.length).toBeGreaterThan(0)
+    // The homework is REAL, and nobody was buzzed about it. It lands in their
+    // homework list and in their feed; a message step is what tells them.
+    expect(h.sendPush).not.toHaveBeenCalled()
+    expect(h.sendEmail).not.toHaveBeenCalled()
+    expect(h.notificationCreate.mock.calls[0][0].data.link).toBe('/my-homework')
+  })
+
+  // Handing out homework is the step. Saying "there's new homework" is a
+  // different step, which the trainer adds beside it.
+  it('sends nothing even when the trainer had picked push and email', async () => {
+    h.stepFindMany.mockResolvedValue([
+      step({ kind: 'TASK', title: null, body: null, payload: { libraryTaskId: 'lib-1' }, channels: ['PUSH', 'EMAIL'] }),
+    ])
+    h.enrollmentFindMany.mockResolvedValue([enrolled()])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.taskCreate).toHaveBeenCalledTimes(1)
+    expect(h.sendPush).not.toHaveBeenCalled()
+    expect(h.sendEmail).not.toHaveBeenCalled()
   })
 
   it('takes an inline one-off instead of a library item', async () => {
@@ -861,7 +900,7 @@ describe('processCommsFlows — a TASK step', () => {
 
   // The notification says there is something new to practise, so it must not go
   // out before there is.
-  it('sends nothing when the library item has been deleted underneath it', async () => {
+  it('does nothing at all when the library item has been deleted underneath it', async () => {
     h.stepFindMany.mockResolvedValue([taskStep({ libraryTaskId: 'lib-gone' })])
     h.enrollmentFindMany.mockResolvedValue([enrolled()])
     h.libraryFindUnique.mockResolvedValue(null)
@@ -870,7 +909,7 @@ describe('processCommsFlows — a TASK step', () => {
 
     expect(res.sent).toBe(0)
     expect(h.taskCreate).not.toHaveBeenCalled()
-    expect(h.sendPush).not.toHaveBeenCalled()
+    expect(h.notificationCreate).not.toHaveBeenCalled()
     expect(h.sendCreate).not.toHaveBeenCalled()
   })
 
@@ -1087,6 +1126,21 @@ describe('MESSAGE behaviour is untouched by any of it', () => {
     expect(h.sendPush.mock.calls[0][1].alert).toEqual({ title: '', body: '' })
   })
 
+  // The rule that silenced FORM/UPLOAD/TASK is keyed on the KIND, so the one
+  // way to get it wrong is to apply it to everything. A MESSAGE keeps every
+  // channel its trainer picked, mute rules and all.
+  it('keeps every channel a MESSAGE step was given', async () => {
+    h.stepFindMany.mockResolvedValue([step({ channels: ['PUSH', 'EMAIL'] })])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+
+    await processCommsFlows(NOW)
+
+    expect(h.sendPush).toHaveBeenCalledTimes(1)
+    expect(h.sendEmail).toHaveBeenCalledTimes(1)
+    // IN_APP was not asked for, so no feed row is invented for it either.
+    expect(h.notificationCreate).not.toHaveBeenCalled()
+  })
+
   it('a membership welcome is unchanged too', async () => {
     h.stepFindMany.mockResolvedValue([membershipStep()])
     h.purchaseFindMany.mockResolvedValue([PURCHASE])
@@ -1137,8 +1191,11 @@ describe('processFlowRun', () => {
     expect(res.asked).toBe(1)
     expect(res.waitingOn).toBe('intake')
     expect(res.completed).toBe(false)
-    expect(h.sendPush).toHaveBeenCalledTimes(1)
-    expect(h.sendPush.mock.calls[0][1].customData).toEqual({ path: '/form/f_intake' })
+    // A FORM step sends nothing — it puts the form in their app. The feed row
+    // is what makes it findable, and it points at the form itself.
+    expect(h.sendPush).not.toHaveBeenCalled()
+    expect(h.notificationCreate).toHaveBeenCalledTimes(1)
+    expect(h.notificationCreate.mock.calls[0][0].data.link).toBe('/form/f_intake')
     expect(h.sendCreate).toHaveBeenCalledWith({ data: { stepId: 'intake', runId: 'run1', userId: 'u1' } })
     // Nothing behind the blocker is touched.
     expect(h.sendCreate.mock.calls.some(c => c[0].data.stepId === 'photos')).toBe(false)

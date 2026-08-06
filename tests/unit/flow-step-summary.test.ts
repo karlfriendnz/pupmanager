@@ -46,13 +46,13 @@ describe('flowStepWhatText — every kind says what it does', () => {
   it('a FORM names the form, resolved from the ids the builder holds', () => {
     const s = step({ kind: 'FORM', title: null, payload: { formId: 'f1' } })
     expect(flowStepWhatText(s, { forms: { f1: 'Pre-groom questions' } }))
-      .toBe('Send form: Pre-groom questions')
+      .toBe('Ask them to fill in: Pre-groom questions')
   })
 
   it('a FORM with nothing chosen says so, and a deleted form is distinguished', () => {
-    expect(flowStepWhatText(step({ kind: 'FORM', payload: {} }))).toBe('Send form: not chosen yet')
+    expect(flowStepWhatText(step({ kind: 'FORM', payload: {} }))).toBe('Ask them to fill in: not chosen yet')
     expect(flowStepWhatText(step({ kind: 'FORM', payload: { formId: 'gone' } })))
-      .toBe('Send form: a form that no longer exists')
+      .toBe('Ask them to fill in: a form that no longer exists')
   })
 
   it('an UPLOAD uses the trainer’s own words, and falls back per target', () => {
@@ -163,7 +163,7 @@ describe('flowStepSummary — the two lines a row shows', () => {
     const names = { forms: { f1: 'Pre-groom questions' } }
 
     const first = flowStepSummary(journey[0], { index: 0, names })
-    expect(first.what).toBe('Send form: Pre-groom questions')
+    expect(first.what).toBe('Ask them to fill in: Pre-groom questions')
     expect(first.line).toBe('wait for their answers')
 
     const second = flowStepSummary(journey[1], { index: 1, names })
