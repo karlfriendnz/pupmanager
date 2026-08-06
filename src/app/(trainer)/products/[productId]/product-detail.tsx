@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { Layers, Pencil, Receipt } from 'lucide-react'
+import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tabs'
 import type { ProductCategoryOption } from '../product-form'
 import { ProductForm, type ProductDraft } from '../product-form'
 import { ProductPurchases, type Purchase } from './product-purchases'
@@ -35,36 +37,18 @@ export function ProductDetail({
   // Options is a TAB, not a section of the details form: it is a list with its
   // own drag order and its own save, and hanging that off the bottom of a form
   // whose Save means something else is how two saves end up on one screen.
-  const tabs: { id: Tab; label: string; count?: number }[] = [
-    { id: 'details', label: 'Details' },
-    { id: 'options', label: 'Options', count: variants.length || undefined },
-    { id: 'purchases', label: 'Purchases', count: purchases.length },
+  const tabs: OfferingTab<Tab>[] = [
+    { id: 'details', label: 'Details', icon: Pencil },
+    { id: 'options', label: 'Options', icon: Layers, badge: variants.length || undefined },
+    { id: 'purchases', label: 'Purchases', icon: Receipt, badge: purchases.length },
   ]
 
-  // Flat underline tabs, not a pill track: the house style has no chip
-  // controls, and this is what every offering list already does.
-  const strip = (
-    <div className="flex gap-5">
-      {tabs.map(t => (
-        <button
-          key={t.id}
-          type="button"
-          onClick={() => setTab(t.id)}
-          aria-pressed={tab === t.id}
-          className={`-mb-px shrink-0 border-b-2 py-2 text-sm font-medium transition-colors ${
-            tab === t.id
-              ? 'border-slate-900 text-slate-900'
-              : 'border-transparent text-slate-500 hover:text-slate-700'
-          }`}
-        >
-          {t.label}
-          {t.count != null && (
-            <span className="ml-1.5 text-[11px] font-normal tabular-nums text-slate-400">{t.count}</span>
-          )}
-        </button>
-      ))}
-    </div>
-  )
+  // The same pill strip the offering detail screens use — Karl pointed at that
+  // screen ("here is an example") when he asked for this layout. It was a flat
+  // underline row here, which is the LIST style; a detail screen you switch
+  // views on is the other one, and there is no reason for products to be the
+  // odd one out.
+  const strip = <OfferingTabs tabs={tabs} value={tab} onChange={setTab} className="mb-0" />
 
   return (
     <div className="flex flex-col gap-4">
@@ -78,7 +62,7 @@ export function ProductDetail({
         />
       ) : tab === 'options' ? (
         <>
-          <div className="flex items-end justify-between gap-3 border-b border-slate-200">{strip}</div>
+          {strip}
           <ProductVariants
             productId={product.id}
             productName={product.name}
@@ -94,7 +78,7 @@ export function ProductDetail({
         </>
       ) : (
         <>
-          <div className="flex items-end justify-between gap-3 border-b border-slate-200">{strip}</div>
+          {strip}
           <ProductPurchases purchases={purchases} />
         </>
       )}

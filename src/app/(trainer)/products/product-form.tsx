@@ -10,15 +10,15 @@ import { XeroAccountField } from '@/components/shared/xero-account-field'
 import { SectionLabel } from '@/components/shared/flat-list'
 import { TagPicker, saveTags } from '@/components/shared/tag-picker'
 import { isRichTextEmpty } from '@/lib/rich-text'
-import { SetPageImmersive } from '@/components/shared/page-title'
+import { EditScreen } from '@/components/shared/edit-screen'
 import { compressImageFile } from '@/lib/compress-image'
 import { readApiError } from '@/lib/api-error'
 import { useCurrency } from '@/components/currency-context'
 import { currencySymbol, formatMoney } from '@/lib/money'
 import { savingPercent, validateSalePrice } from '@/lib/product-price'
 import { cn } from '@/lib/utils'
-import { Copy, Eye, EyeOff, ImagePlus, Loader2, MoreHorizontal, Star, Trash2 } from 'lucide-react'
-import { ActionSheet, type SheetAction } from '@/components/shared/action-sheet'
+import { Check, Copy, Eye, EyeOff, ImagePlus, Loader2, Star, Trash2, X } from 'lucide-react'
+import { type SheetAction } from '@/components/shared/action-sheet'
 import { ConfirmSheet } from '@/components/shared/confirm-sheet'
 import { StockSheet } from './stock-sheet'
 
@@ -92,7 +92,7 @@ export function ProductForm({
   initial: ProductDraft
   isNew: boolean
   existingCategories: ProductCategoryOption[]
-  /** The page's tab strip. Given one, it shares the actions' row and hairline. */
+  /** The page's tab strip, rendered by EditScreen above the first field. */
   heading?: React.ReactNode
   /**
    * How many options this product has. Above zero the counts live on THEM, so
@@ -111,6 +111,8 @@ export function ProductForm({
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [cloning, setCloning] = useState(false)
+  const [cloneFailed, setCloneFailed] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   // '' is Uncategorised; this sentinel opens the "type a new name" field. A
   // real category can never be called it — it is not a name a select shows.
@@ -262,6 +264,68 @@ export function ProductForm({
     }
   }
 
+  async function clone() {
+    if (cloning) return
+    setCloning(true)
+    setCloneFailed(null)
+    try {
+      const res = await fetch(`/api/products/${draft.id}/clone`, { method: 'POST' })
+      const body = await res.json().catch(() => null) as { id?: string } | null
+      if (res.ok && body?.id) {
+        // Land on the copy — a duplicate is never finished as it stands, and it
+        // is hidden until the trainer says otherwise.
+        router.push(`/products/${body.id}`)
+        router.refresh()
+        return
+      }
+      setCloneFailed('Could not copy this product.')
+    } finally {
+      setCloning(false)
+    }
+  }
+
+  /**
+   * What the ⋯ holds. Save is pressed every visit so it stays a labelled
+   * button; these three are occasional and one is unrecoverable, so they go in
+   * the house sheet — the same one every offering and library screen opens.
+   */
+  const menuActions: SheetAction[] = [
+    {
+      key: 'preview',
+      label: 'Preview in your shop',
+      // A NEW TAB, deliberately. Preview renders what is SAVED, so navigating
+      // away from a form with unsaved edits would throw them out to look at a
+      // version that does not include them — losing work to go and see the
+      // wrong thing. A tab also lets the trainer keep editing on one side and
+      // re-read the client's view on the other.
+      //
+      // window.open, not router.push: the target is a route handler that has to
+      // set the preview cookie on its own redirect, which the client router
+      // would swallow. It is a real user gesture, so no popup blocker.
+      hint: 'Opens a new tab, as a client sees it — shows what’s saved',
+      icon: <Eye className="h-5 w-5" strokeWidth={1.75} />,
+      onSelect: () => window.open(`/products/${draft.id}/preview`, '_blank', 'noopener,noreferrer'),
+      disabled: cloning,
+    },
+    {
+      key: 'clone',
+      label: 'Duplicate this product',
+      hint: 'Opens a hidden copy for you to change',
+      icon: <Copy className="h-5 w-5" strokeWidth={1.75} />,
+      onSelect: clone,
+      disabled: cloning,
+    },
+    {
+      key: 'delete',
+      label: 'Delete this product',
+      hint: 'Asks first — this can’t be undone',
+      icon: <Trash2 className="h-5 w-5" strokeWidth={1.75} />,
+      onSelect: () => setConfirmDelete(true),
+      disabled: cloning,
+      danger: true,
+    },
+  ]
+
   async function remove() {
     if (!draft.id) return
     setDeleting(true)
@@ -276,70 +340,25 @@ export function ProductForm({
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Filling in a form is one job. The bottom tabs and the global "+" both
-          offer to start something ELSE mid-sentence, and the + floats over the
-          last field (Karl, 2026-08-06: "these should not be there its
-          confusing"). The shell already knows how to stand down — this is the
-          same switch an open message thread uses.
-
-          keepTopBar, because a form is not a message thread: the thread has a
-          header of its own to fall back on and this has none, so hiding the
-          shell's bar left the product with no name, no back arrow and no way
-          out (Karl, 2026-08-06: "the header should always be there"). With it,
-          the bar is the product's name and the way back — no search, no menu. */}
-      <SetPageImmersive value keepTopBar />
-      {/* Save leads the form rather than sitting at the foot of it, and shares
-          the tab strip's row and hairline — one band of chrome above the first
-          field, not two stacked ones. It STICKS, which is what the pinned
-          bottom bar was really buying (it is always reachable) without a bar
-          that has to dodge the desktop sidebar and the phone's safe area. */}
-      {/* On a phone the tabs and the actions cannot share one row: the tabs are
-          as wide as their words and the actions got pushed off the edge, so
-          "Cancel" was clipped mid-word. Actions take their own row above, and
-          the tabs scroll sideways under them. From md: up there is room for the
-          original single band. */}
-      <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-1 border-b border-slate-200 bg-slate-50/95 px-4 pb-1.5 pt-1 backdrop-blur md:mx-0 md:flex-row md:items-end md:justify-between md:gap-3 md:px-0">
-        <div className="order-2 min-w-0 overflow-x-auto no-scrollbar md:order-1">{heading ?? <span />}</div>
-        <span className="order-1 flex flex-shrink-0 items-center justify-end gap-2 md:order-2 md:pb-1">
-        {/* See it the way a client does. A plain <a>, not router.push: the
-            target is a route handler that has to set the preview cookie on its
-            own redirect, which the client router would swallow.
-
-            Only on a saved product — a preview renders what is IN the database,
-            so offering it beside an unsaved draft would show the trainer the
-            old version of the thing they are looking at. */}
-        {!isNew && (
-          <a
-            href={`/products/${draft.id}/preview`}
-            // A NEW TAB, deliberately. Preview renders what is SAVED, so
-            // navigating away from a form with unsaved edits would throw them
-            // out to look at a version that does not include them — losing work
-            // to go and see the wrong thing. A tab also lets the trainer keep
-            // editing on one side and re-read the client's view on the other.
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Opens your shop in a new tab, as one of your clients sees it. Shows what's saved."
-            className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 rounded-xl px-3 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 active:bg-slate-200"
-          >
-            <Eye className="h-4 w-4" strokeWidth={1.75} />
-            Preview
-          </a>
-        )}
-        <Button variant="ghost" size="sm" onClick={() => router.push('/products')}>Cancel</Button>
-        <Button size="sm" loading={saving} onClick={save} disabled={!draft.name.trim()}>
-          {isNew ? 'Create product' : 'Save changes'}
-        </Button>
-        {/* Nothing to duplicate or delete until it exists. */}
-        {!isNew && (
-          <ProductActions
-            productId={draft.id}
-            name={draft.name}
-            onDelete={() => setConfirmDelete(true)}
-          />
-        )}
-        </span>
-      </div>
+    <EditScreen
+      tabs={heading}
+      // Nothing to preview, duplicate or delete until the product exists.
+      menu={isNew ? undefined : menuActions}
+      menuTitle={draft.name}
+      secondary={{
+        label: 'Cancel',
+        icon: <X className="h-4 w-4" strokeWidth={1.75} />,
+        onClick: () => router.push('/products'),
+      }}
+      primary={{
+        label: isNew ? 'Create product' : 'Save changes',
+        icon: <Check className="h-4 w-4" strokeWidth={2} />,
+        onClick: save,
+        loading: saving,
+        disabled: !draft.name.trim(),
+      }}
+    >
+      {cloneFailed && <Alert variant="error">{cloneFailed}</Alert>}
 
       {stockOpen && (
         <StockSheet
@@ -704,88 +723,7 @@ export function ProductForm({
 
       {error && <Alert variant="error">{error}</Alert>}
 
-    </div>
+    </EditScreen>
   )
 }
 
-
-/**
- * Duplicate and Delete for one product, behind ⋯ .
- *
- * Save is pressed every visit so it stays a labelled button; these two are
- * occasional and one is unrecoverable, so they go in the house sheet — the same
- * one every offering and library screen uses.
- */
-function ProductActions({
-  productId,
-  name,
-  onDelete,
-}: {
-  productId: string
-  name: string
-  onDelete: () => void
-}) {
-  const router = useRouter()
-  const [open, setOpen] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [failed, setFailed] = useState<string | null>(null)
-
-  async function clone() {
-    if (busy) return
-    setBusy(true)
-    setFailed(null)
-    try {
-      const res = await fetch(`/api/products/${productId}/clone`, { method: 'POST' })
-      const body = await res.json().catch(() => null) as { id?: string } | null
-      if (res.ok && body?.id) {
-        // Land on the copy — a duplicate is never finished as it stands, and it
-        // is hidden until the trainer says otherwise.
-        router.push(`/products/${body.id}`)
-        router.refresh()
-        return
-      }
-      setFailed('Could not copy this product.')
-    } finally {
-      setBusy(false)
-      setOpen(false)
-    }
-  }
-
-  const actions: SheetAction[] = [
-    {
-      key: 'clone',
-      label: 'Duplicate this product',
-      hint: 'Opens a hidden copy for you to change',
-      icon: <Copy className="h-5 w-5" strokeWidth={1.75} />,
-      onSelect: clone,
-      disabled: busy,
-    },
-    {
-      key: 'delete',
-      label: 'Delete this product',
-      hint: 'Asks first — this can’t be undone',
-      icon: <Trash2 className="h-5 w-5" strokeWidth={1.75} />,
-      onSelect: () => { setOpen(false); onDelete() },
-      disabled: busy,
-      danger: true,
-    },
-  ]
-
-  return (
-    <>
-      {failed && (
-        <span role="alert" className="max-w-[12rem] truncate text-xs text-red-600" title={failed}>{failed}</span>
-      )}
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-label="More actions for this product"
-        aria-haspopup="dialog"
-        className="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-      >
-        <MoreHorizontal className="h-4 w-4" strokeWidth={1.75} />
-      </button>
-      {open && <ActionSheet title={name} actions={actions} onClose={() => setOpen(false)} />}
-    </>
-  )
-}

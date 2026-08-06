@@ -1,0 +1,103 @@
+import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+/**
+ * The shape of an edit screen, held still.
+ *
+ * Karl asked for this layout on the product form and then, in the same breath,
+ * for it everywhere: "I want to reuse this layout for the offerings as well. or
+ * achievements etc". A layout that is a shared component is a layout; four
+ * hand-rolled copies of it are four screens that will drift. So these pin the
+ * decisions the copies would get wrong.
+ */
+const src = (rel: string) => readFileSync(resolve(__dirname, '../../src/', rel), 'utf8')
+
+const editScreen = src('components/shared/edit-screen.tsx')
+const productForm = src('app/(trainer)/products/product-form.tsx')
+const productDetail = src('app/(trainer)/products/[productId]/product-detail.tsx')
+
+describe('the actions pin to the bottom of the screen', () => {
+  it('sticks rather than fixes, so it cannot fight the desktop sidebar', () => {
+    // The form's old comment refused a bottom bar because it "has to dodge the
+    // desktop sidebar and the phone's safe area". Both are problems with
+    // `fixed`, which is measured against the viewport; `sticky` is measured
+    // against this column, which the shell has already inset past the rail.
+    expect(editScreen).toMatch(/sticky bottom-0/)
+    expect(editScreen).not.toMatch(/fixed (inset-x-0 )?bottom-0/)
+  })
+
+  it('clears the home indicator on a phone', () => {
+    expect(editScreen).toContain('env(safe-area-inset-bottom, 0px)')
+  })
+
+  it('reclaims the room the shell reserves for the bottom tabs', () => {
+    // The screen is immersive, so those tabs are not there to reserve room for
+    // — left alone it is a band of nothing under the action bar.
+    expect(editScreen).toMatch(/\.pm-main \{ padding-bottom: 0 !important; \}/)
+  })
+})
+
+describe('the buttons are reachable and have names', () => {
+  it('Cancel and Save are 44px tall and labelled', () => {
+    // aria-label as well as the visible word: the label is what a screen reader
+    // and voice control read, and "tap Save" only works if they match.
+    expect(editScreen).toMatch(/aria-label=\{secondary\.label\}/)
+    expect(editScreen).toMatch(/aria-label=\{primary\.label\}/)
+    expect(editScreen.match(/className="h-11[^"]*"/g)?.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('Cancel is a bordered button, not a bare glyph', () => {
+    // Next to a filled Save, a ghost icon at 44px reads as disabled — which is
+    // the one thing the way out of a form must not do.
+    expect(editScreen).toMatch(/variant="secondary"[\s\S]{0,200}aria-label=\{secondary\.label\}/)
+  })
+
+  it('Save stays the primary button and keeps its loading and disabled states', () => {
+    expect(editScreen).toMatch(/loading=\{primary\.loading\}/)
+    expect(editScreen).toMatch(/disabled=\{primary\.disabled\}/)
+    // The spinner replaces the tick rather than standing beside it.
+    expect(editScreen).toMatch(/\{!primary\.loading && primary\.icon\}/)
+  })
+
+  it('the ⋯ opens the shared sheet, not a menu hanging off a corner', () => {
+    expect(editScreen).toContain('ActionSheet')
+    expect(editScreen).not.toMatch(/absolute right-0 (top|mt)/)
+    // 44px, and it says what it is for.
+    expect(editScreen).toMatch(/aria-label=\{menuTitle \? `More actions for \$\{menuTitle\}` : 'More actions'\}/)
+  })
+
+  it('picking from the ⋯ closes it, so a confirm cannot open behind it', () => {
+    expect(editScreen).toMatch(/setMenuOpen\(false\); a\.onSelect\(\)/)
+  })
+})
+
+describe('the product form is the screen that proves it', () => {
+  it('renders through EditScreen rather than its own chrome', () => {
+    expect(productForm).toContain("from '@/components/shared/edit-screen'")
+    expect(productForm).toContain('<EditScreen')
+    // The old top row of actions is gone — it is the bottom bar's job now.
+    expect(productForm).not.toMatch(/sticky top-\[/)
+  })
+
+  it('Preview lives in the ⋯ and nowhere else', () => {
+    // Karl said it twice: "preview should be in the 3 dots".
+    expect(productForm).not.toMatch(/<a[^>]*href=\{`\/products\/\$\{draft\.id\}\/preview`\}/)
+    expect(productForm).toMatch(/key: 'preview'/)
+    // A new tab, because Preview renders what is SAVED — navigating there from
+    // a form with unsaved edits would throw them away to show the old version.
+    expect(productForm).toMatch(/window\.open\(`\/products\/\$\{draft\.id\}\/preview`, '_blank'/)
+  })
+
+  it('offers nothing that needs a saved product before there is one', () => {
+    expect(productForm).toMatch(/menu=\{isNew \? undefined : menuActions\}/)
+  })
+
+  it('uses the house pill tabs the offering screens use', () => {
+    // Karl pointed at the offering detail screen — "here is an example" — when
+    // he asked for this layout. This was a flat underline row, which is the
+    // LIST style.
+    expect(productDetail).toContain('OfferingTabs')
+    expect(productDetail).not.toContain('border-b-2')
+  })
+})

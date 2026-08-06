@@ -1,0 +1,164 @@
+'use client'
+
+import { useState, type ReactNode } from 'react'
+import { MoreHorizontal } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { ActionSheet, type SheetAction } from '@/components/shared/action-sheet'
+import { SetPageImmersive } from '@/components/shared/page-title'
+import { cn } from '@/lib/utils'
+
+/**
+ * The shape every edit screen in the trainer app takes.
+ *
+ * Karl, 2026-08-06, after editing a product on a phone: "I want to reuse this
+ * layout for the offerings as well. or achievements etc". So this is that
+ * layout, written once, rather than a fourth screen that gets it nearly right:
+ *
+ *   ┌──────────────────────────────┐
+ *   │ ←  Name of the thing         │  the shell's phone top bar, stripped
+ *   ├──────────────────────────────┤
+ *   │  ( Details )( Options )( … ) │  tabs, optional
+ *   │                              │
+ *   │  the form                    │
+ *   │                              │
+ *   ├──────────────────────────────┤
+ *   │  ⋯      Cancel        Save   │  pinned, always reachable
+ *   └──────────────────────────────┘
+ *
+ * Three decisions worth knowing before you change one of them.
+ *
+ * **It declares itself immersive.** Filling something in is one job: the five
+ * bottom tabs and the floating "+" both offer to start something ELSE
+ * mid-sentence ("these should not be there its confusing"). keepTopBar, so the
+ * shell's phone bar stays — minus its search and menu — and the screen keeps
+ * the name of the thing and the way back out. A form has no header of its own,
+ * and an immersive page without one is a screen with no way off it.
+ *
+ * **The action bar is `sticky`, not `fixed`.** The form's old comment argued
+ * against a bottom bar because it "has to dodge the desktop sidebar and the
+ * phone's safe area", and both problems are real — but they are problems with
+ * `position: fixed`, which is measured against the viewport and therefore has
+ * to be told about a sidebar it cannot see. Sticky is measured against this
+ * column, which the shell has already inset past the sidebar. It pins to the
+ * bottom of the screen while there is form below it and settles at the end of
+ * the content when there isn't, which is what a pinned bar is for. The safe
+ * area is a padding, below.
+ *
+ * **Everything else lives in the ⋯.** Preview, Duplicate, Delete — the actions
+ * you use once — go in the overflow, as a full-width sheet (ActionSheet), never
+ * a 56px menu hanging off a corner. Karl: "preview should be in the 3 dots".
+ *
+ * LAYOUT CONTRACT: render inside the page's standard `p-4 md:p-8` wrapper. The
+ * action bar bleeds to the screen edge on a phone with `-mx-4`, which is what
+ * that assumes.
+ */
+export interface EditScreenAction {
+  label: string
+  onClick: () => void
+  /** Sits beside the label. Karl asked for icons on these two specifically. */
+  icon?: ReactNode
+  loading?: boolean
+  disabled?: boolean
+}
+
+export function EditScreen({
+  tabs,
+  menu,
+  menuTitle,
+  primary,
+  secondary,
+  children,
+  className,
+}: {
+  /** The tab strip, if this screen has one. OfferingTabs is the house strip. */
+  tabs?: ReactNode
+  /** The ⋯ menu's contents. Omit it and no ⋯ appears. */
+  menu?: SheetAction[]
+  /** What the sheet calls itself — the name of the thing being edited. */
+  menuTitle?: string
+  /** Save. Stays the filled brand button at every width. */
+  primary: EditScreenAction
+  /** Cancel. A bordered white button — a bare glyph next to a filled Save
+   *  reads as disabled, which is the one thing a way out must not do. */
+  secondary?: EditScreenAction
+  children: ReactNode
+  className?: string
+}) {
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  return (
+    <div className={cn('flex flex-col gap-6', className)}>
+      <SetPageImmersive value keepTopBar />
+      {/* The shell reserves room at the foot of every phone screen for the five
+          bottom tabs. They are gone here, so that reservation is a band of
+          nothing under the action bar. Same trick the create circle uses to
+          claim its own room, and the two are never on screen together. */}
+      <style>{`@media (max-width: 767px) { .pm-main { padding-bottom: 0 !important; } }`}</style>
+
+      {tabs}
+
+      {children}
+
+      {/* Pinned actions. `mt-auto` is deliberately absent: this sits after the
+          last field, and sticky does the pinning. */}
+      <div
+        className="sticky bottom-0 z-30 -mx-4 flex items-center gap-2 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:mx-0 md:justify-end"
+        // The home indicator on an iPhone sits over the bottom 34px of the
+        // screen. Without this the Save button is under it.
+        style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+      >
+        {menu && menu.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            aria-label={menuTitle ? `More actions for ${menuTitle}` : 'More actions'}
+            aria-haspopup="dialog"
+            className="inline-flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+          >
+            <MoreHorizontal className="h-5 w-5" strokeWidth={1.75} />
+          </button>
+        )}
+        {/* Save takes the width that is left; Cancel takes only what its word
+            needs. Splitting the row evenly gave "Save changes" 131px and it
+            wrapped onto two lines, and an even split says the two are equally
+            likely — they are not. Both stay 44px tall and labelled. From md: up
+            the row right-aligns and both go back to their natural width. */}
+        {secondary && (
+          <Button
+            variant="secondary"
+            onClick={secondary.onClick}
+            disabled={secondary.disabled}
+            aria-label={secondary.label}
+            className="h-11 whitespace-nowrap px-4 md:px-5"
+          >
+            {secondary.icon}
+            {secondary.label}
+          </Button>
+        )}
+        <Button
+          onClick={primary.onClick}
+          loading={primary.loading}
+          disabled={primary.disabled}
+          aria-label={primary.label}
+          className="h-11 flex-1 whitespace-nowrap px-4 md:flex-none md:px-5"
+        >
+          {/* The spinner takes the icon's place while it saves, rather than
+              standing beside a second glyph. */}
+          {!primary.loading && primary.icon}
+          {primary.label}
+        </Button>
+      </div>
+
+      {/* Picking anything closes the sheet — including Delete, which opens a
+          confirm of its own and would otherwise open it BEHIND this one. Done
+          here so no caller has to remember it. */}
+      {menuOpen && menu && (
+        <ActionSheet
+          title={menuTitle ?? 'More actions'}
+          actions={menu.map(a => ({ ...a, onSelect: () => { setMenuOpen(false); a.onSelect() } }))}
+          onClose={() => setMenuOpen(false)}
+        />
+      )}
+    </div>
+  )
+}

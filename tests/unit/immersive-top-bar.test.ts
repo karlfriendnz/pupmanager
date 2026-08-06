@@ -86,7 +86,7 @@ describe('what the immersive bar keeps and drops', () => {
     // otherwise be a screen with no control on it at all.
     expect(header).toMatch(/\{!hasBack && \(/)
     expect(header).not.toMatch(/\{!hasBack && !immersive/)
-    expect(header).not.toMatch(/immersive && !hasBack.*Menu/s)
+    expect(header).not.toMatch(/immersive && !hasBack/)
   })
 
   it('gives that back arrow a 44px target on a phone', () => {
@@ -102,8 +102,12 @@ describe('a page declares which kind of takeover it is', () => {
     expect(pageTitle).toContain('usePageImmersiveKeepsTopBar')
   })
 
-  it('the product form keeps the bar — it has no header of its own', () => {
-    expect(productForm).toMatch(/<SetPageImmersive value keepTopBar \/>/)
+  it('an edit screen keeps the bar — a form has no header of its own', () => {
+    // Declared once, by the shared shell, so no screen adopting it can forget.
+    expect(src('components/shared/edit-screen.tsx')).toMatch(/<SetPageImmersive value keepTopBar \/>/)
+    // …and the product form gets it by using that shell rather than repeating it.
+    expect(productForm).toContain('<EditScreen')
+    expect(productForm).not.toContain('SetPageImmersive')
   })
 
   it('the message thread does not — it renders its own header', () => {
