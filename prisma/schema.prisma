@@ -4095,6 +4095,17 @@ model BookingAutomationSend {
 enum CommsFlowDirection {
   BEFORE_SESSION // offsetMinutes before session start
   AFTER_SESSION // offsetMinutes after session start
+  // WHILE the session is actually running — between scheduledAt and
+  // scheduledAt + durationMins. Karl's middle stage ("before they confirm,
+  // during the session, after the session"), and the one thing the other two
+  // could not say: BEFORE_SESSION only ever looks at sessions that have not
+  // started, and AFTER_SESSION keeps firing for thirty days once one has.
+  //
+  // It is a WINDOW, not an offset. `offsetMinutes` means nothing here and the
+  // engine never reads it — a "during" step has no lead time to count down.
+  // The column is left alone rather than zeroed so switching a step back to
+  // BEFORE_SESSION restores the lead time the trainer had chosen.
+  DURING_SESSION
   // Membership steps have no sessions to hang off, so they anchor on the
   // purchase instead: offsetMinutes after they bought it (welcome, day-7
   // check-in), or before the current period ends (renewal, expiry).
@@ -4166,6 +4177,10 @@ enum FlowStepActor {
 enum FlowTrigger {
   BEFORE_SESSION
   AFTER_SESSION
+  // Mirrors CommsFlowDirection.DURING_SESSION. Added with it, in the same
+  // migration, so "the clock-anchored triggers are the direction values spelled
+  // identically" stays true — flowTriggerFor() is a lookup on exactly that.
+  DURING_SESSION
   AFTER_PURCHASE
   BEFORE_PERIOD_END
   // Person-anchored. No session, no clock — the run advances as they finish.

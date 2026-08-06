@@ -131,9 +131,17 @@ export function flowStepWhenText(step: SummarisableStep, index = 0): string {
     return step.offsetMinutes === 0 ? 'When they join' : `${offsetLabel(step.offsetMinutes)} after they join`
   }
 
-  // SESSION. Zero is not "0 min before" — it is the moment itself, and a step
-  // added from the picker starts at zero, so this is the common case rather
-  // than the odd one.
+  // SESSION.
+  //
+  // "During" is a window, not an offset: it happens while the session is
+  // actually running, so there is no number to say. Answered before the zero
+  // case below precisely so a stale offsetMinutes left over from when the step
+  // was a "1 day before" reminder cannot put a lead time on it.
+  if (step.direction === 'DURING_SESSION') return 'While the session is on'
+
+  // Zero is not "0 min before" — it is the moment itself, and a step added from
+  // the picker starts at zero, so this is the common case rather than the odd
+  // one.
   if (step.offsetMinutes === 0) {
     return step.direction === 'BEFORE_SESSION' ? 'When the session starts' : 'When the session ends'
   }

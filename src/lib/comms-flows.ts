@@ -108,6 +108,11 @@ function fmtDate(date: Date, tz: string): string {
 }
 
 const DAY_MS = 86_400_000
+// The widest a session can be and still be "on right now". Only a bound on the
+// QUERY for a DURING_SESSION step — the exact end is scheduledAt + durationMins,
+// checked per session (see stillRunning). A day covers a full daycare session
+// with room to spare, and keeps the scan off the whole table.
+const MAX_SESSION_MS = DAY_MS
 
 // A starter flow offered when a trainer first opens the editor: a friendly
 // day-before nudge + a 15-minute heads-up. Trainers tweak or delete freely.
@@ -627,10 +632,40 @@ export async function processCommsFlows(
     const location = step.classRunId ? (step.classRun?.location ?? '') : ''
     const offsetMs = step.offsetMinutes * 60_000
 
-    const scheduledWhere =
-      step.direction === 'BEFORE_SESSION'
+    // ── "During the session" is a WINDOW, not an offset ──────────────────────
+    // The other two directions are lead times either side of the start:
+    // BEFORE_SESSION only ever looks at sessions that have not begun, and
+    // AFTER_SESSION keeps looking for thirty days once one has. Neither can say
+    // "while it is actually running", which is Karl's middle stage.
+    //
+    // So this one is bounded at BOTH ends: the session has started, and it has
+    // not finished. Postgres cannot compare scheduledAt against
+    // scheduledAt + durationMins in a where clause, so the query takes the
+    // widest possible window and `stillRunning` closes it exactly — which is
+    // also why `durationMins` is selected below.
+    //
+    // `offsetMinutes` is deliberately NOT read. A during-step has no lead time
+    // to count down, and inventing one from whatever the column happens to hold
+    // would fire it before the session it is supposed to be inside.
+    const during = step.direction === 'DURING_SESSION'
+    const scheduledWhere = during
+      ? { lte: now, gte: new Date(now.getTime() - MAX_SESSION_MS) }
+      : step.direction === 'BEFORE_SESSION'
         ? { gte: now, lte: new Date(now.getTime() + offsetMs) }
         : { lte: new Date(now.getTime() - offsetMs), gte: new Date(now.getTime() - offsetMs - 30 * DAY_MS) }
+
+    /**
+     * Is this session on RIGHT NOW? Always true for the other directions, whose
+     * bounds are already the whole of their rule.
+     *
+     * The cron ticks every five minutes, so a during-step lands on the first
+     * tick after the session starts. A session shorter than one tick can slip
+     * between two, and that is the honest behaviour of a window rather than a
+     * bug to paper over with a fake offset: the window opened and closed
+     * without us looking.
+     */
+    const stillRunning = (s: { scheduledAt: Date; durationMins: number }) =>
+      !during || now.getTime() < s.scheduledAt.getTime() + s.durationMins * 60_000
 
     // Build, per session, the map of recipient user → their dog name(s). For a
     // run that comes from its enrolments; for a 1:1 package each session has its
@@ -652,7 +687,9 @@ export async function processCommsFlows(
     if (step.classRunId) {
       const sessions = await prisma.trainingSession.findMany({
         where: { classRunId: step.classRunId, scheduledAt: scheduledWhere },
-        select: { id: true, scheduledAt: true, assignedTrainer: { select: ASSIGNED_MEMBER_SELECT } },
+        // durationMins says where the session ENDS, which is the far edge of the
+        // "during" window — see stillRunning.
+        select: { id: true, scheduledAt: true, durationMins: true, assignedTrainer: { select: ASSIGNED_MEMBER_SELECT } },
       })
       if (sessions.length === 0) continue
       // Everyone on the run in an allowed status (CUSTOM narrows to picked clients).
@@ -676,6 +713,7 @@ export async function processCommsFlows(
         },
       })
       for (const s of sessions) {
+        if (!stillRunning(s)) continue
         // FULL enrolments (dropInSessionId null) attend every session; a drop-in
         // only its one. Dedup by user, collecting their dog name(s).
         const byUser = new Map<string, FlowRecipient>()
@@ -715,12 +753,13 @@ export async function processCommsFlows(
           ...(step.audience === 'CUSTOM' ? { clientId: { in: step.customClientIds } } : {}),
         },
         select: {
-          id: true, scheduledAt: true, clientId: true, dogId: true, dog: { select: { name: true } },
+          id: true, scheduledAt: true, durationMins: true, clientId: true, dogId: true, dog: { select: { name: true } },
           assignedTrainer: { select: ASSIGNED_MEMBER_SELECT },
           client: { select: { user: { select: RECIPIENT_USER_SELECT } } },
         },
       })
       for (const s of sessions) {
+        if (!stillRunning(s)) continue
         const dogs = s.dog?.name ? [s.dog.name] : []
         if (staffFor) {
           // A 1:1 has no run to fall back on — "assigned to the session" is the

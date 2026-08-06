@@ -951,6 +951,101 @@ describe('a trainer-actor step', () => {
   })
 })
 
+// ─── "During the session" ───────────────────────────────────────────────────
+//
+// Karl's middle stage, and the one thing the other two directions could not
+// say. BEFORE_SESSION only ever looks at sessions that have NOT started;
+// AFTER_SESSION keeps looking for thirty days once one HAS. This is a window
+// with both ends closed: the session has begun, and it has not finished.
+//
+// It is not a timed send and carries no offset — `offsetMinutes` is inert for
+// this direction and the engine must never read it.
+
+describe('processCommsFlows — during the session', () => {
+  // NOW is 00:00. This one started at 23:30 and runs an hour, so it is on.
+  const RUNNING = { id: 'sess1', scheduledAt: new Date('2026-07-31T23:30:00.000Z'), durationMins: 60 }
+  // Started two hours ago and ran for one — over before the cron looked.
+  const FINISHED = { id: 'sess1', scheduledAt: new Date('2026-07-31T22:00:00.000Z'), durationMins: 60 }
+
+  it('looks for sessions that have already started, not upcoming ones', async () => {
+    h.stepFindMany.mockResolvedValue([step({ direction: 'DURING_SESSION', offsetMinutes: 0 })])
+    h.sessionFindMany.mockResolvedValue([RUNNING])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+
+    await processCommsFlows(NOW)
+
+    const where = h.sessionFindMany.mock.calls[0][0].where.scheduledAt
+    expect(where.lte).toEqual(NOW)
+    // Bounded, so the scan never walks the whole table looking for one class.
+    expect(where.gte.getTime()).toBe(NOW.getTime() - 86_400_000)
+  })
+
+  it('sends while the session is still running', async () => {
+    h.stepFindMany.mockResolvedValue([step({ direction: 'DURING_SESSION', offsetMinutes: 0 })])
+    h.sessionFindMany.mockResolvedValue([RUNNING])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    expect(h.sendCreate).toHaveBeenCalledWith({ data: { stepId: 'step1', sessionId: 'sess1', userId: 'u1' } })
+  })
+
+  it('says nothing once the session has finished', async () => {
+    // The window closed. A "during" step that fired afterwards would be an
+    // AFTER_SESSION step wearing the wrong name.
+    h.stepFindMany.mockResolvedValue([step({ direction: 'DURING_SESSION', offsetMinutes: 0 })])
+    h.sessionFindMany.mockResolvedValue([FINISHED])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(0)
+    expect(h.sendPush).not.toHaveBeenCalled()
+  })
+
+  it('ignores a lead time left over from when it was a reminder', async () => {
+    // A step switched from "1 day before" to "during" keeps its 1440 in the
+    // column (so switching back restores it) and the engine must not read it.
+    h.stepFindMany.mockResolvedValue([step({ direction: 'DURING_SESSION', offsetMinutes: 1440 })])
+    h.sessionFindMany.mockResolvedValue([RUNNING])
+    h.enrollmentFindMany.mockResolvedValue([enrollment()])
+
+    const res = await processCommsFlows(NOW)
+
+    expect(res.sent).toBe(1)
+    const where = h.sessionFindMany.mock.calls[0][0].where.scheduledAt
+    expect(where.lte).toEqual(NOW)
+    expect(where.gte.getTime()).toBe(NOW.getTime() - 86_400_000)
+  })
+
+  it('works the same on a 1:1 package, which has its own sessions', async () => {
+    h.stepFindMany.mockResolvedValue([
+      step({
+        classRunId: null,
+        classRun: null,
+        packageId: 'pkg1',
+        package: { name: '1:1 Groom', trainerId: 'co1', trainer },
+        direction: 'DURING_SESSION',
+        offsetMinutes: 0,
+      }),
+    ])
+    h.sessionFindMany.mockResolvedValue([
+      {
+        ...RUNNING,
+        clientId: 'c1',
+        dogId: 'd1',
+        dog: { name: 'Bailey' },
+        assignedTrainer: null,
+        client: { user: { id: 'u1', name: 'Sam', email: 'sam@x.com', notifyPush: true, productEmailOptOut: false } },
+      },
+    ])
+
+    const res = await processCommsFlows(NOW)
+    expect(res.sent).toBe(1)
+  })
+})
+
 // ─── The one thing this phase must not break ────────────────────────────────
 //
 // Every reminder that fires today has to keep firing identically. The routing

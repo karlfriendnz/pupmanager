@@ -8,9 +8,15 @@ import { z } from 'zod'
 import type { Prisma } from '@/generated/prisma'
 
 export const channelEnum = z.enum(['PUSH', 'EMAIL', 'IN_APP'])
-// BEFORE/AFTER_SESSION are for offerings with a timetable; the PURCHASE and
-// PERIOD_END anchors are for memberships, which have no sessions.
-export const directionEnum = z.enum(['BEFORE_SESSION', 'AFTER_SESSION', 'AFTER_PURCHASE', 'BEFORE_PERIOD_END'])
+// BEFORE/DURING/AFTER_SESSION are for offerings with a timetable; the PURCHASE
+// and PERIOD_END anchors are for memberships, which have no sessions.
+export const directionEnum = z.enum([
+  'BEFORE_SESSION',
+  'DURING_SESSION',
+  'AFTER_SESSION',
+  'AFTER_PURCHASE',
+  'BEFORE_PERIOD_END',
+])
 // STAFF targets the trainer's own team rather than clients.
 export const audienceEnum = z.enum(['ENROLLED', 'ENROLLED_AND_WAITLIST', 'CUSTOM', 'STAFF'])
 export type Audience = z.infer<typeof audienceEnum>
@@ -40,6 +46,7 @@ export type FlowStepActor = z.infer<typeof flowStepActorEnum>
 /** Every trigger the engine knows, including the four that live in `direction`. */
 export const flowTriggerEnum = z.enum([
   'BEFORE_SESSION',
+  'DURING_SESSION',
   'AFTER_SESSION',
   'AFTER_PURCHASE',
   'BEFORE_PERIOD_END',
@@ -795,6 +802,11 @@ export function commsTimelinePos(s: { direction: string; offsetMinutes: number }
   // within them the biggest lead time is the earliest.
   if (s.direction === 'BEFORE_PERIOD_END') return 1_000_000 - s.offsetMinutes
   if (s.direction === 'AFTER_PURCHASE') return s.offsetMinutes
+  // The session itself is zero on this number line, and a "during" step happens
+  // AT it — its offsetMinutes is not a lead time and must not move it (see the
+  // enum comment in schema.prisma). It ties with "right on" either side, and
+  // `order` breaks the tie, exactly as those two already tie with each other.
+  if (s.direction === 'DURING_SESSION') return 0
   return s.direction === 'BEFORE_SESSION' ? -s.offsetMinutes : s.offsetMinutes
 }
 
