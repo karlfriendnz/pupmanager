@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Layers, Pencil, Receipt } from 'lucide-react'
 import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tabs'
+import { SetPageImmersive } from '@/components/shared/page-title'
 import type { ProductCategoryOption } from '../product-form'
 import { ProductForm, type ProductDraft } from '../product-form'
 import { ProductPurchases, type Purchase } from './product-purchases'
@@ -52,6 +53,17 @@ export function ProductDetail({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Immersive for the WHOLE screen, not just the tab with a form on it.
+          Declaring it inside the Details tab meant the search box and the five
+          bottom tabs came back the moment you tapped Options and vanished again
+          on the way back — a screen whose chrome moves as you move around
+          inside it, which is the "jumpy" complaint Karl has already made twice.
+          You are inside ONE product on all three tabs.
+
+          Two declarations are on screen at once here (this and the EditScreen
+          in the Details tab). The provider counts them, so leaving that tab
+          does not cancel this one. */}
+      <SetPageImmersive value keepTopBar />
       {tab === 'details' ? (
         <ProductForm
           initial={product}

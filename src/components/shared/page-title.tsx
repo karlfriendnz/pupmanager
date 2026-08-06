@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useId, useState, type ReactNode } from 'react'
 
 // Lets any page push its title into the desktop top bar. The shared PageHeader
 // component sets this automatically, so existing pages need no changes; pages
@@ -15,7 +15,8 @@ type PageTitleCtx = {
   immersive: boolean
   /** Whether that immersive page still wants the shell's phone top bar. */
   immersiveKeepsTopBar: boolean
-  setImmersive: (b: boolean, keepTopBar: boolean) => void
+  /** Register/withdraw one declaration. Counted, not a single flag — see below. */
+  setImmersive: (id: string, on: boolean, keepTopBar: boolean) => void
 }
 
 const Ctx = createContext<PageTitleCtx | null>(null)
@@ -23,12 +24,33 @@ const Ctx = createContext<PageTitleCtx | null>(null)
 export function PageTitleProvider({ children }: { children: ReactNode }) {
   const [title, setTitle] = useState<string | null>(null)
   const [hasBack, setHasBack] = useState(false)
-  const [immersive, setImmersiveOn] = useState(false)
-  const [immersiveKeepsTopBar, setKeepsTopBar] = useState(false)
-  const setImmersive = useCallback((b: boolean, keepTopBar: boolean) => {
-    setImmersiveOn(b)
-    setKeepsTopBar(b && keepTopBar)
+  /**
+   * Who is currently declaring this page immersive, and whether each wants the
+   * top bar. COUNTED rather than a single boolean, because two of them can be
+   * on screen at once: a detail screen declares it for all of its tabs, and the
+   * EditScreen inside one of those tabs declares it too. With one flag, moving
+   * off that tab unmounted the inner declaration, its cleanup set the flag
+   * false, and the outer one — still mounted, its effect not re-running — never
+   * put it back. The chrome came flooding back mid-screen.
+   */
+  const [immersiveBy, setImmersiveBy] = useState<Record<string, boolean>>({})
+  const setImmersive = useCallback((id: string, on: boolean, keepTopBar: boolean) => {
+    setImmersiveBy(prev => {
+      if (!on) {
+        if (!(id in prev)) return prev
+        const next = { ...prev }
+        delete next[id]
+        return next
+      }
+      if (prev[id] === keepTopBar) return prev
+      return { ...prev, [id]: keepTopBar }
+    })
   }, [])
+  const declarations = Object.values(immersiveBy)
+  const immersive = declarations.length > 0
+  // EVERY declaration has to want the bar. One of them bringing its own header
+  // (a message thread) is the case that must win, or the thread grows two.
+  const immersiveKeepsTopBar = immersive && declarations.every(Boolean)
   return (
     <Ctx.Provider value={{ title, setTitle, hasBack, setHasBack, immersive, immersiveKeepsTopBar, setImmersive }}>
       {children}
@@ -90,10 +112,13 @@ export function usePageImmersiveKeepsTopBar(): boolean {
  */
 export function SetPageImmersive({ value, keepTopBar = false }: { value: boolean; keepTopBar?: boolean }) {
   const setImmersive = useContext(Ctx)?.setImmersive
+  // One id per mounted instance, so withdrawing this declaration cannot cancel
+  // somebody else's.
+  const id = useId()
   useEffect(() => {
-    setImmersive?.(value, keepTopBar)
-    return () => setImmersive?.(false, false)
-  }, [value, keepTopBar, setImmersive])
+    setImmersive?.(id, value, keepTopBar)
+    return () => setImmersive?.(id, false, false)
+  }, [id, value, keepTopBar, setImmersive])
   return null
 }
 

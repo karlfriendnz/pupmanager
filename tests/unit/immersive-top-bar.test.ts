@@ -127,3 +127,37 @@ describe('a page that is not immersive is untouched', () => {
     expect(src('components/shared/floating-create-button.tsx')).toContain('const immersive = usePageImmersive()')
   })
 })
+
+/**
+ * Two declarations can be on screen at once.
+ *
+ * A detail screen declares itself immersive for ALL of its tabs; the EditScreen
+ * inside one of those tabs declares it too. With a single boolean, moving off
+ * that tab unmounted the inner one, its cleanup set the flag false, and the
+ * outer declaration — still mounted, its effect not re-running — never put it
+ * back. The chrome came flooding back mid-screen, which is the "jumpy"
+ * complaint from the other direction.
+ */
+describe('immersive is counted, not a single flag', () => {
+  it('tracks WHO declared it, one entry per mounted instance', () => {
+    expect(pageTitle).toMatch(/const \[immersiveBy, setImmersiveBy\] = useState<Record<string, boolean>>\(\{\}\)/)
+    expect(pageTitle).toMatch(/const id = useId\(\)/)
+    expect(pageTitle).toMatch(/setImmersive\?\.\(id, value, keepTopBar\)/)
+    expect(pageTitle).toMatch(/return \(\) => setImmersive\?\.\(id, false, false\)/)
+  })
+
+  it('stays immersive while any declaration stands', () => {
+    expect(pageTitle).toMatch(/const immersive = declarations\.length > 0/)
+  })
+
+  it('keeps the top bar only if EVERY declaration wants it', () => {
+    // A page bringing its own header (a message thread) is the case that has to
+    // win, or it grows two.
+    expect(pageTitle).toMatch(/declarations\.every\(Boolean\)/)
+  })
+
+  it('a product screen is immersive on every one of its tabs', () => {
+    const productDetail = src('app/(trainer)/products/[productId]/product-detail.tsx')
+    expect(productDetail).toMatch(/<SetPageImmersive value keepTopBar \/>/)
+  })
+})
