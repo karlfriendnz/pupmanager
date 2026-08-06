@@ -136,6 +136,11 @@ const KIND_ICON: Record<FlowStepKind, React.ComponentType<{ className?: string; 
 }
 
 const OFFSETS: { label: string; min: number }[] = [
+  // 0 is a real answer — "as it starts" / "as it ends" — and without it a step
+  // holding 0 rendered a select whose value matched no option, so the browser
+  // showed the FIRST one instead: the box said "15 minutes" while the line
+  // under it said "Sends 0 min before."
+  { label: 'right on', min: 0 },
   { label: '15 minutes', min: 15 },
   { label: '30 minutes', min: 30 },
   { label: '1 hour', min: 60 },
@@ -982,8 +987,9 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
         )}
 
         {/* WHO — before HOW, because who it's for decides what can carry it.
-            A journey has one person in it, so there is nobody to pick. */}
-        {!sequenced && (
+            A journey has one person in it, so there is nobody to pick. Nor does
+            a gating step: it is answered by whoever is doing the booking. */}
+        {!sequenced && !draft.gatesBooking && (
           <Field label="Who">
             <select value={draft.audience} onChange={e => onPatch({ audience: e.target.value as Audience })} aria-label="Who it goes to" className="h-9 w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700">
               {AUDIENCES.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
@@ -1008,7 +1014,12 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
           </Field>
         )}
 
-        {/* HOW */}
+        {/* HOW — a gating step sends nothing. The form is a step inside the
+            booking itself, so there is no push, no email and no words to write
+            (Karl, 2026-08-06: "the notifications should not show if i'm talking
+            about forms"). Hiding them is not cosmetic — a trainer who filled
+            them in would be writing a message nobody could ever receive. */}
+        {!draft.gatesBooking && (
         <Field label="How">
           <div className="flex flex-wrap gap-2">
             {channels.map(({ key, label, Icon }) => {
@@ -1026,10 +1037,12 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
               : 'In‑app is for your team only — clients get the push and the email.'}
           </p>
         </Field>
+        )}
 
         {/* WHAT IT SAYS. Required on a MESSAGE (that IS the step); optional on
             every other kind, which sends sensible words of its own when the
             trainer writes none — see flowStepCopy. */}
+        {!draft.gatesBooking && (
         <Field label={isMessage ? 'Message' : 'What it says (optional)'}>
           {!isMessage && (
             <p className="mb-2 text-xs text-slate-500">
@@ -1066,8 +1079,11 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
             </div>
           )}
         </Field>
+        )}
 
-        {/* IMPORTANT */}
+        {/* IMPORTANT — also a delivery setting, so also meaningless on a step
+            that never sends anything. */}
+        {!draft.gatesBooking && (
         <label className="flex items-start gap-2.5 cursor-pointer">
           <Switch checked={draft.important} onChange={() => onPatch({ important: !draft.important })} onColor="bg-slate-900" className="mt-0.5" aria-label="Always send" />
           <span className="text-sm text-slate-700">
@@ -1075,6 +1091,7 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
             <span className="mt-0.5 block text-xs text-slate-500">Goes out even to someone who muted their notifications. Use it for cancellations or a change of venue.</span>
           </span>
         </label>
+        )}
       </div>
     </Sheet>
   )
