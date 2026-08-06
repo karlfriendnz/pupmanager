@@ -56,8 +56,30 @@ export function FloatingCreateButton({
   const immersive = usePageImmersive()
   const hideOnPhone = immersive || pathname !== '/dashboard'
 
+  // A screen that is HIDDEN is a screen that is closed.
+  //
+  // This component does not unmount when you navigate — the shell keeps it
+  // mounted and it simply renders nothing off the home screen. So an open
+  // create screen that gets hidden by a navigation stayed "open" forever: the
+  // lock below never re-ran its cleanup, and `document.body.overflow` was left
+  // at `hidden` on EVERY page afterwards. A page that will not scroll, with
+  // nothing on screen to say why (Karl, on /settings?tab=configure).
+  //
+  // The lock is therefore keyed on whether the screen is actually SHOWING, not
+  // on a flag that can outlive it, and the flag is cleared to match.
+  const showingScreen = open && !hideOnPhone
+
+  // Syncing state to something OUTSIDE React (the route this component is
+  // mounted across) is what this escape hatch is for: without it, leaving the
+  // dashboard with the screen open and coming back later re-opens it, mid-way
+  // through whatever you came back to do.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
-    if (!open) return
+    if (hideOnPhone) { setOpen(false); setSaleOpen(false) }
+  }, [hideOnPhone])
+
+  useEffect(() => {
+    if (!showingScreen) return
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false) }
     document.addEventListener('keydown', onKey)
     const prev = document.body.style.overflow
@@ -66,7 +88,7 @@ export function FloatingCreateButton({
       document.removeEventListener('keydown', onKey)
       document.body.style.overflow = prev
     }
-  }, [open])
+  }, [showingScreen])
 
   // The home grid's "Instant sale" tile opens this composer — it's mounted
   // here, so it asks by event rather than mounting a second one.
@@ -171,7 +193,10 @@ export function FloatingCreateButton({
       {/* Portaled to <body>: this button lives in the mobile header, which uses
           backdrop-blur — and a filtered ancestor becomes the containing block
           for fixed descendants, so inset-0 would size to the 56px bar. */}
-      {open && (
+      {/* showingScreen, not `open`: this sits OUTSIDE the block above, so an
+          open screen left behind by a navigation would otherwise still be
+          painted over whatever page you landed on. */}
+      {showingScreen && (
         <ModalPortal>
         <div
           role="dialog"
