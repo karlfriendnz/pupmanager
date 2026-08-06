@@ -95,10 +95,16 @@ export default async function AutomationTimelinePage({
         >
           <ChevronLeft className="h-5 w-5" strokeWidth={1.75} />
         </Link>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="truncate text-base font-semibold text-slate-900">{owner.name}</h1>
           <p className="text-xs text-slate-500">{flowSectionLabel(owner.kind)}</p>
         </div>
+        {/* The editor's own actions ("Save as template") land HERE, portaled in
+            — Karl wanted them at the top right of the header rather than buried
+            under a description. The button stays inside the editor, which is
+            the only thing holding the api/load/runId it needs; a copy in this
+            page would be a second implementation to keep in step. */}
+        <div id="flow-header-actions" className="flex shrink-0 items-center gap-2" />
       </div>
 
       <div className="border-t border-slate-200 sm:rounded-xl sm:border">

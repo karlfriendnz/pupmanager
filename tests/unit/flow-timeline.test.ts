@@ -141,14 +141,32 @@ describe('the stages are scaffolding, not slots', () => {
     expect(groups[0].steps.map(s => s.id)).toEqual(['a', 'b'])
   })
 
-  it('gives a membership one plain spine — it has no session to be during', () => {
+  // Karl: "there should also be an 'after signup' section". A membership is the
+  // one anchor where that moment is real and the engine can fire it —
+  // AFTER_PURCHASE is somebody joining (processMembershipStep counts forward
+  // from their purchase). It gets that stage and the renewal run-up, and none
+  // of the session ones.
+  it('gives a membership its own two stages — joining, and the run-up to renewal', () => {
+    expect(flowStagesFor('PURCHASE').map(s => s.key)).toEqual(['AFTER_SIGNUP', 'BEFORE_RENEWAL'])
+
     const groups = groupStepsByStage(
       [row({ id: 'a', direction: 'AFTER_PURCHASE' }), row({ id: 'b', direction: 'BEFORE_PERIOD_END' })],
       'PURCHASE',
     )
-    expect(groups).toHaveLength(1)
-    expect(groups[0].stage).toBeNull()
-    expect(groups[0].steps.map(s => s.id)).toEqual(['a', 'b'])
+    expect(groups).toHaveLength(2)
+    expect(groups[0].stage?.key).toBe('AFTER_SIGNUP')
+    expect(groups[0].steps.map(s => s.id)).toEqual(['a'])
+    expect(groups[1].stage?.key).toBe('BEFORE_RENEWAL')
+    expect(groups[1].steps.map(s => s.id)).toEqual(['b'])
+  })
+
+  // "After signup" is a PURCHASE stage and ONLY a PURCHASE stage. A class or a
+  // 1:1 package is scanned by session, so there is nothing on one for an
+  // enrolment-anchored step to fire from — a heading a trainer could drop a
+  // step into that could never run is worse than no heading.
+  it('never offers "after signup" where the engine could not fire it', () => {
+    expect(flowStagesFor('SESSION').map(s => s.key)).not.toContain('AFTER_SIGNUP')
+    expect(flowStagesFor('PERSON').map(s => s.key)).not.toContain('AFTER_SIGNUP')
   })
 
   it('never loses a step off the screen it is edited on', () => {

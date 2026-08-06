@@ -27,8 +27,16 @@
 import { flowAnchorFor, type FlowAnchor } from './flow-anchors'
 import type { FlowTrigger } from './comms-flow-steps'
 
-/** The stages, as keys. The LABELS depend on what the flow hangs off. */
-export type FlowStageKey = 'BEFORE_CONFIRM' | 'DURING_SESSION' | 'AFTER_SESSION'
+/**
+ * The stages, as keys, in the order they happen. The LABELS depend on what the
+ * flow hangs off, and no single flow has all five — see FLOW_STAGES_BY_ANCHOR.
+ */
+export type FlowStageKey =
+  | 'BEFORE_CONFIRM'
+  | 'AFTER_SIGNUP'
+  | 'DURING_SESSION'
+  | 'AFTER_SESSION'
+  | 'BEFORE_RENEWAL'
 
 export interface FlowStage {
   key: FlowStageKey
@@ -52,9 +60,27 @@ export interface FlowStage {
  *              "you accepted their booking", so the WHOLE of it is the first
  *              stage. Showing it a "During the session" heading that could
  *              never fill would be an invitation to put something nowhere.
- *   PURCHASE — a membership. It has no session at all, so it has no stages;
- *              its two anchors (when they join / before it renews) already say
- *              everything a heading would, and it renders as one plain spine.
+ *   PURCHASE — a membership or recurring plan. It has no session at all, so
+ *              none of the session stages mean anything — but it has the one
+ *              moment Karl asked for by name ("there should also be an 'after
+ *              signup' section"): AFTER_PURCHASE, which is somebody joining.
+ *              Its other anchor is the run-up to a renewal, so it gets two.
+ *
+ * ── "After signup" is a PURCHASE stage and only a PURCHASE stage ─────────────
+ *
+ * Because that is the only anchor the engine can actually fire it from.
+ * `processMembershipStep` counts AFTER_PURCHASE forward from the client's
+ * purchase, which IS "they joined". A class or a 1:1 package has nothing
+ * equivalent: `processCommsFlows` scans SESSIONS, so a step on one anchors to a
+ * session or to nothing, and an AFTER_PURCHASE direction stored on a class step
+ * would be read by the scan as "after the session" and fire against every one
+ * of them. Offering the heading there would be a stage a trainer could drop a
+ * step into that could never run — the exact failure `flowStepKindsFor` exists
+ * to prevent on the other axis.
+ *
+ * Enrolling on a class IS a real moment and a trainer will want it. It needs a
+ * trigger of its own and a pass in the engine that walks enrolments rather than
+ * sessions; it is not a heading. See the report accompanying this change.
  */
 export const FLOW_STAGES_BY_ANCHOR: Record<FlowAnchor, FlowStage[]> = {
   SESSION: [
@@ -85,7 +111,20 @@ export const FLOW_STAGES_BY_ANCHOR: Record<FlowAnchor, FlowStage[]> = {
       empty: 'Nothing happens yet.',
     },
   ],
-  PURCHASE: [],
+  PURCHASE: [
+    {
+      key: 'AFTER_SIGNUP',
+      label: 'After signup',
+      hint: 'From the moment somebody joins.',
+      empty: 'Nothing happens when somebody joins.',
+    },
+    {
+      key: 'BEFORE_RENEWAL',
+      label: 'Before it renews',
+      hint: 'The run-up to the end of the period they have paid for.',
+      empty: 'Nothing warns them before it renews.',
+    },
+  ],
 }
 
 export function flowStagesFor(anchor: FlowAnchor): FlowStage[] {
@@ -113,7 +152,9 @@ export interface StageableStep {
  *      before the trainer switched the gate on.
  *   2. A person-anchored journey is entirely pre-booking: it ends with the
  *      trainer accepting one. Every step of it is in the first stage.
- *   3. Then the clock: after the session, during it, or the run-up to it.
+ *   3. Then the PURCHASE anchors, which are moments in a client's membership
+ *      rather than in a session: joining, and the period running out.
+ *   4. Then the clock: after the session, during it, or the run-up to it.
  *
  * The run-up (BEFORE_SESSION) lands in "During the session" because the three
  * stages are cut at two moments — the booking being confirmed, and the session
@@ -125,6 +166,8 @@ export interface StageableStep {
 export function flowStageOf(step: StageableStep): FlowStageKey {
   if (step.gatesBooking) return 'BEFORE_CONFIRM'
   if (flowAnchorFor(step) === 'PERSON') return 'BEFORE_CONFIRM'
+  if (step.direction === 'AFTER_PURCHASE') return 'AFTER_SIGNUP'
+  if (step.direction === 'BEFORE_PERIOD_END') return 'BEFORE_RENEWAL'
   if (step.direction === 'AFTER_SESSION') return 'AFTER_SESSION'
   return 'DURING_SESSION'
 }
