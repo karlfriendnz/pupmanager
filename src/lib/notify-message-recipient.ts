@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { notifyTrainer } from '@/lib/trainer-notify'
 import { notifyClient } from '@/lib/client-notify'
+import { messagePreview } from '@/lib/message-preview'
 
 // Push the recipient of a freshly-created Message. "Recipient" = whichever
 // party in the trainer↔client thread didn't send it. Fire-and-forget from
@@ -12,6 +13,10 @@ interface NotifyArgs {
   clientId: string
   senderId: string
   body: string
+  /** Photos sent with it. A photo-only message has an EMPTY body, and without
+   *  this the push notification, the fallback email and the in-app feed row
+   *  would all be blank — the failure people actually notice. */
+  attachmentCount?: number
 }
 
 export async function notifyMessageRecipient(args: NotifyArgs): Promise<void> {
@@ -23,7 +28,7 @@ export async function notifyMessageRecipient(args: NotifyArgs): Promise<void> {
   }
 }
 
-async function doNotify({ clientId, senderId, body }: NotifyArgs) {
+async function doNotify({ clientId, senderId, body, attachmentCount }: NotifyArgs) {
   // Resolve the two parties: the client (User attached to ClientProfile)
   // and the trainer (User attached to the ClientProfile's trainer's
   // TrainerProfile). Whichever isn't `senderId` is the recipient.
@@ -59,7 +64,7 @@ async function doNotify({ clientId, senderId, body }: NotifyArgs) {
 
   const senderName = senderUser.name ?? senderUser.email ?? 'Someone'
   const clientName = clientUser.name ?? clientUser.email ?? 'Your client'
-  const preview = previewMessage(body)
+  const preview = messagePreview({ body, attachmentCount })
   const subs = { senderName, clientName, preview }
   const isTrainerRecipient = recipientUser.id === trainerUser.id
 
@@ -86,11 +91,7 @@ async function doNotify({ clientId, senderId, body }: NotifyArgs) {
   }
 }
 
-// 120 chars is enough to read the gist on the lock screen without making
-// iOS truncate at an awkward boundary. Collapses newlines to spaces so a
-// "Hi\n\nQuestion about…" doesn't show a blank line in the body.
-function previewMessage(body: string): string {
-  const trimmed = body.trim().replace(/\s+/g, ' ')
-  if (trimmed.length <= 120) return trimmed
-  return trimmed.slice(0, 117) + '…'
-}
+// The 120-char lock-screen clip that used to live here is now messagePreview()
+// in lib/message-preview, shared with the thread lists, the group push and the
+// deferred-email cron — because "📷 Photo" has to be the same string in all of
+// them.

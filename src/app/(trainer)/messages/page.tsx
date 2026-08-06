@@ -8,6 +8,8 @@ import type { AudienceOption } from './group-composer'
 import type { Metadata } from 'next'
 import { addonSettingsHref } from '@/lib/configurable-features'
 import { THREAD_PROPOSAL_SELECT, toThreadProposal } from '@/lib/thread-proposal'
+import { messagePreview } from '@/lib/message-preview'
+import { CHAT_ATTACHMENT_SELECT, toChatAttachments } from '@/lib/message-attachments'
 
 export const metadata: Metadata = { title: 'Messages' }
 
@@ -52,7 +54,13 @@ export default async function MessagesPage({
         take: 1,
         // senderId + readAt drive the row's delivery status: when the last
         // word was OURS, the row says whether the client has opened it yet.
-        select: { body: true, createdAt: true, senderId: true, readAt: true, sender: { select: { name: true } } },
+        select: {
+          body: true, createdAt: true, senderId: true, readAt: true,
+          sender: { select: { name: true } },
+          // Photo-only messages have no body — the count is what the preview
+          // falls back to.
+          _count: { select: { attachments: true } },
+        },
       },
       _count: {
         select: {
@@ -97,7 +105,9 @@ export default async function MessagesPage({
       unread: c._count.messages,
       lastMessage: last
         ? {
-            body: last.body,
+            // A photo-only message has an empty body — this is what stops the
+            // list rendering a blank line under the client's name.
+            body: messagePreview({ body: last.body, attachmentCount: last._count.attachments }),
             createdAt: last.createdAt.toISOString(),
             senderName: last.sender.name ?? null,
             // "Ours" = anyone on this side of the thread, not just the signed-in
@@ -227,7 +237,10 @@ async function loadGroups(trainerId: string, userId: string): Promise<GroupRow[]
         where: { deletedAt: null },
         orderBy: { createdAt: 'desc' },
         take: 1,
-        select: { body: true, createdAt: true, senderId: true },
+        select: {
+          body: true, createdAt: true, senderId: true,
+          _count: { select: { attachments: true } },
+        },
       },
       participants: {
         select: { id: true, userId: true, role: true, displayName: true, leftAt: true, joinedAt: true, lastReadAt: true },
@@ -276,7 +289,7 @@ async function loadGroups(trainerId: string, userId: string): Promise<GroupRow[]
       unread: unread.get(g.id) ?? 0,
       lastMessage: last
         ? {
-            body: last.body,
+            body: messagePreview({ body: last.body, attachmentCount: last._count.attachments }),
             createdAt: last.createdAt.toISOString(),
             senderName: nameOf.get(last.senderId) ?? 'Removed member',
           }
@@ -343,6 +356,7 @@ async function loadMessages(clientId: string, trainerId: string) {
       sender: { select: { name: true, email: true } },
       // Null on all but a counter-offer; those render as a card in the thread.
       bookingProposal: { select: THREAD_PROPOSAL_SELECT },
+      attachments: { select: CHAT_ATTACHMENT_SELECT },
     },
     orderBy: { createdAt: 'asc' },
   })
@@ -356,5 +370,8 @@ async function loadMessages(clientId: string, trainerId: string) {
     readAt: m.readAt ? m.readAt.toISOString() : null,
     sender: { name: m.sender.name, email: m.sender.email ?? '' },
     proposal: toThreadProposal(m.bookingProposal),
+    // Ids, not storage paths — a prop on a 'use client' component is page
+    // source (AGENTS.md #5).
+    attachments: toChatAttachments(m.attachments),
   }))
 }

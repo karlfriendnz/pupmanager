@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getGroupAccess } from '@/lib/message-group-access'
 import { visibleMessagesWhere, REMOVED_MEMBER_LABEL } from '@/lib/message-groups'
+import { CHAT_ATTACHMENT_SELECT, toChatAttachments } from '@/lib/message-attachments'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -66,6 +67,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ groupId
               select: {
                 id: true, body: true, senderId: true, createdAt: true,
                 visibility: true, replyToId: true,
+                attachments: { select: CHAT_ATTACHMENT_SELECT },
               },
             })
             if (fresh.length === 0) continue
@@ -92,6 +94,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ groupId
                 visibility: m.visibility,
                 replyToId: m.replyToId,
                 isMine: m.senderId === access.userId,
+                attachments: toChatAttachments(m.attachments),
               })
             }
           }

@@ -1,6 +1,8 @@
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { THREAD_PROPOSAL_SELECT, toThreadProposal } from '@/lib/thread-proposal'
+import { CHAT_ATTACHMENT_SELECT, toChatAttachments } from '@/lib/message-attachments'
+import { canAccessDirectThread } from '@/lib/chat-access'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -100,6 +102,8 @@ export async function GET(req: Request) {
               include: {
                 sender: { select: { name: true } },
                 bookingProposal: { select: THREAD_PROPOSAL_SELECT },
+                // Ids only — never the storage path.
+                attachments: { select: CHAT_ATTACHMENT_SELECT },
               },
             })
             if (fresh.length > 0) {
@@ -113,6 +117,7 @@ export async function GET(req: Request) {
                   readAt: m.readAt ? m.readAt.toISOString() : null,
                   sender: { name: m.sender.name },
                   proposal: toThreadProposal(m.bookingProposal),
+                  attachments: toChatAttachments(m.attachments),
                 })
               }
             }
@@ -168,32 +173,9 @@ export async function GET(req: Request) {
   })
 }
 
-async function isAllowed(userId: string, clientId: string): Promise<boolean> {
-  const trainerProfile = await prisma.trainerProfile.findUnique({
-    where: { userId },
-    select: { id: true },
-  })
-  if (trainerProfile) {
-    const owned = await prisma.clientProfile.findFirst({
-      where: { id: clientId, trainerId: trainerProfile.id },
-      select: { id: true },
-    })
-    if (owned) return true
-    // Co-managed clients — ClientShare uses sharedWithId for the
-    // accessing trainer.
-    const shared = await prisma.clientShare.findFirst({
-      where: { clientId, sharedWithId: trainerProfile.id },
-      select: { id: true },
-    })
-    if (shared) return true
-  }
-  // Client themselves: ClientProfile.userId matches
-  const own = await prisma.clientProfile.findFirst({
-    where: { id: clientId, userId },
-    select: { id: true },
-  })
-  return !!own
-}
+// Moved to lib/chat-access — the photo upload route and the image-serving route
+// have to apply the SAME rule, and three copies of it is how one of them drifts.
+const isAllowed = canAccessDirectThread
 
 function sleep(ms: number) {
   return new Promise<void>(r => setTimeout(r, ms))

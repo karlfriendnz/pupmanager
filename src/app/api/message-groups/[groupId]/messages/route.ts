@@ -8,6 +8,12 @@ import {
   visibilityForPost,
   REMOVED_MEMBER_LABEL,
 } from '@/lib/message-groups'
+import {
+  attachmentCreateRows,
+  attachmentRefsSchema,
+  CHAT_ATTACHMENT_SELECT,
+  toChatAttachments,
+} from '@/lib/message-attachments'
 
 // GET  /api/message-groups/<id>/messages — the thread, as this viewer sees it
 // POST /api/message-groups/<id>/messages — post into it
@@ -48,6 +54,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ groupId:
       select: {
         id: true, body: true, bodyHtml: true, senderId: true, createdAt: true,
         visibility: true, replyToId: true,
+        // Ids only — the storage path stays on the server.
+        attachments: { select: CHAT_ATTACHMENT_SELECT },
       },
       orderBy: { createdAt: 'asc' },
       take: 500,
@@ -113,6 +121,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ groupId:
       visibility: m.visibility,
       replyToId: m.replyToId,
       isMine: m.senderId === access.userId,
+      attachments: toChatAttachments(m.attachments),
     })),
     // In BROADCAST a client must not learn who else is here, so the member
     // list is trainer-side only.
@@ -123,11 +132,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ groupId:
 }
 
 const postSchema = z.object({
-  body: z.string().min(1).max(2000),
+  // Empty is allowed only when a photo rides with it — see the refine. A
+  // photo-only post ("here's the class, look at Bailey") is a real post.
+  body: z.string().max(2000).default(''),
   /** The broadcast being answered, so a group with three questions in it can
    *  tell which reply belongs to which. */
   replyToId: z.string().min(1).optional(),
-})
+  attachments: attachmentRefsSchema,
+}).refine(
+  v => v.body.trim().length > 0 || (v.attachments?.length ?? 0) > 0,
+  { message: 'Write something or add a photo', path: ['body'] },
+)
 
 export async function POST(req: Request, { params }: { params: Promise<{ groupId: string }> }) {
   const { groupId } = await params
@@ -146,7 +161,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ groupId
   const parsed = postSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 })
   const body = parsed.data.body.trim()
-  if (!body) return NextResponse.json({ error: 'Write something first' }, { status: 400 })
+
+  // Every photo path must belong to THIS group. The upload route already proved
+  // the poster may write into that prefix; this stops one group's picture being
+  // stapled onto a post in another.
+  const built = attachmentCreateRows(parsed.data.attachments, { kind: 'group', groupId })
+  if (!built.ok) {
+    return NextResponse.json({ error: 'Those photos do not belong to this group' }, { status: 400 })
+  }
+  if (!body && built.rows.length === 0) {
+    return NextResponse.json({ error: 'Write something first' }, { status: 400 })
+  }
 
   // A replyTo must be a post in THIS group, or a crafted request could staple
   // a reply onto another group's broadcast.
@@ -177,8 +202,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ groupId
     replyToId = latestBroadcast?.id ?? null
   }
   const message = await prisma.groupMessage.create({
-    data: { groupId, senderId: access.userId, body, visibility, replyToId },
-    select: { id: true, body: true, createdAt: true, senderId: true, visibility: true, replyToId: true },
+    data: {
+      groupId, senderId: access.userId, body, visibility, replyToId,
+      ...(built.rows.length > 0 ? { attachments: { create: built.rows } } : {}),
+    },
+    select: {
+      id: true, body: true, createdAt: true, senderId: true, visibility: true, replyToId: true,
+      attachments: { select: CHAT_ATTACHMENT_SELECT },
+    },
   })
 
   await prisma.messageGroup.update({
@@ -194,6 +225,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ groupId
       body,
       visibility,
       isTrainerSide: access.isTrainerSide,
+      // A photo-only post has no body — without this the push says nothing.
+      attachmentCount: built.rows.length,
     })
   })
 
@@ -207,6 +240,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ groupId
       visibility: message.visibility,
       replyToId: message.replyToId,
       isMine: true,
+      attachments: toChatAttachments(message.attachments),
     },
     { status: 201 },
   )

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getGroupAccess } from '@/lib/message-group-access'
 import { canSeeResponses, REMOVED_MEMBER_LABEL } from '@/lib/message-groups'
+import { CHAT_ATTACHMENT_SELECT, toChatAttachments } from '@/lib/message-attachments'
+import { messagePreview } from '@/lib/message-preview'
 
 // GET /api/message-groups/<id>/responses/<messageId>
 //
@@ -48,7 +50,12 @@ export async function GET(
 
   const replies = await prisma.groupMessage.findMany({
     where: { groupId, replyToId: messageId, deletedAt: null },
-    select: { id: true, senderId: true, body: true, createdAt: true },
+    select: {
+      id: true, senderId: true, body: true, createdAt: true,
+      // A reply can be a photo with no words at all — both the "last reply"
+      // snippet and the drill-down bubbles need to know.
+      attachments: { select: CHAT_ATTACHMENT_SELECT },
+    },
     orderBy: { createdAt: 'asc' },
   })
 
@@ -87,6 +94,7 @@ export async function GET(
         senderId: m.senderId,
         isMine: m.senderId === access.userId,
         fromPerson: m.senderId === person.userId,
+        attachments: toChatAttachments(m.attachments),
       })),
     })
   }
@@ -94,7 +102,12 @@ export async function GET(
   const byUser = new Map<string, { count: number; last: string; lastAt: Date }>()
   for (const r of replies) {
     const prev = byUser.get(r.senderId)
-    byUser.set(r.senderId, { count: (prev?.count ?? 0) + 1, last: r.body, lastAt: r.createdAt })
+    byUser.set(r.senderId, {
+      count: (prev?.count ?? 0) + 1,
+      // "📷 Photo" rather than an empty cell in the who-replied list.
+      last: messagePreview({ body: r.body, attachmentCount: r.attachments?.length }),
+      lastAt: r.createdAt,
+    })
   }
 
   const rows = participants.map(p => {

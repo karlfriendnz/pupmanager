@@ -17,6 +17,7 @@
 import { prisma } from './prisma'
 import { visibleMessagesWhere } from './message-groups'
 import { countUnreadMessages } from './unread-messages'
+import { messagePreview } from './message-preview'
 import type { MessageGroupMode } from '@/generated/prisma'
 
 export interface ClientThreadRow {
@@ -158,7 +159,9 @@ export async function listClientMessageThreads(
     prisma.message.findFirst({
       where: { clientId: scope.clientId, channel: 'TRAINER_CLIENT' },
       orderBy: { createdAt: 'desc' },
-      select: { body: true, createdAt: true },
+      // A photo-only message has an empty body — the count is what turns that
+      // into "📷 Photo" instead of a blank line in the list.
+      select: { body: true, createdAt: true, _count: { select: { attachments: true } } },
     }),
     countUnreadMessages({ kind: 'client', clientId: scope.clientId, userId: scope.userId }),
     prisma.messageGroupParticipant.findMany({
@@ -187,7 +190,7 @@ export async function listClientMessageThreads(
           ...visibleMessagesWhere({ userId: scope.userId, isTrainerSide: false }),
         },
         orderBy: { createdAt: 'desc' },
-        select: { body: true, createdAt: true },
+        select: { body: true, createdAt: true, _count: { select: { attachments: true } } },
       }),
     ),
   )
@@ -212,7 +215,9 @@ export async function listClientMessageThreads(
       kind: 'direct',
       id: scope.clientId,
       name: scope.trainerName,
-      preview: directLast?.body ?? null,
+      preview: directLast
+        ? messagePreview({ body: directLast.body, attachmentCount: directLast._count?.attachments })
+        : null,
       lastActivity: directLast?.createdAt.toISOString() ?? null,
       unread: directUnread,
       mode: null,
@@ -228,7 +233,9 @@ export async function listClientMessageThreads(
         name: m.group.name,
         // An invitation shows no content at all. Consent comes first; a preview
         // line is still the conversation.
-        preview: pendingInvite ? null : preview?.body ?? null,
+        preview: pendingInvite || !preview
+          ? null
+          : messagePreview({ body: preview.body, attachmentCount: preview._count?.attachments }),
         lastActivity:
           (pendingInvite ? null : preview?.createdAt.toISOString()) ??
           m.group.lastMessageAt?.toISOString() ??

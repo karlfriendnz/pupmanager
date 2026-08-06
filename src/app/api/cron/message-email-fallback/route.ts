@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { notifyClient } from '@/lib/client-notify'
 import { resolvePref } from '@/lib/notification-prefs'
 import { NOTIFICATION_TYPES } from '@/lib/notification-types'
+import { messagePreview } from '@/lib/message-preview'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,6 +37,9 @@ export async function GET(req: Request) {
       senderId: true,
       client: { select: { id: true, trainerId: true, userId: true } },
       sender: { select: { name: true, email: true } },
+      // A photo-only message has an empty body. Without this the "you have
+      // unread messages" email would say nothing at all.
+      _count: { select: { attachments: true } },
     },
   })
 
@@ -62,8 +66,7 @@ export async function GET(req: Request) {
     if (!pref.enabled) continue
 
     const senderName = latest.sender.name ?? latest.sender.email ?? 'Your trainer'
-    const trimmed = latest.body.trim().replace(/\s+/g, ' ')
-    const base = trimmed.length > 120 ? trimmed.slice(0, 117) + '…' : trimmed
+    const base = messagePreview({ body: latest.body, attachmentCount: latest._count.attachments })
     const preview = msgs.length > 1 ? `${base}  (+${msgs.length - 1} more)` : base
 
     await notifyClient({

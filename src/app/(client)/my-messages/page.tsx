@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { getActiveClient } from '@/lib/client-context'
 import { listClientMessageThreads } from '@/lib/client-message-threads'
 import { THREAD_PROPOSAL_SELECT, toThreadProposal } from '@/lib/thread-proposal'
+import { CHAT_ATTACHMENT_SELECT, toChatAttachments } from '@/lib/message-attachments'
 import { MessageThread } from './message-thread'
 import { MessagesList } from './messages-list'
 import { GroupThread } from './group-thread'
@@ -97,6 +98,7 @@ export default async function ClientMessagesPage({
       // Null on all but a counter-offer; those render as an Approve /
       // Suggest-another card so the client can answer where they are already.
       bookingProposal: { select: THREAD_PROPOSAL_SELECT },
+      attachments: { select: CHAT_ATTACHMENT_SELECT },
     },
     orderBy: { createdAt: 'asc' },
   })
@@ -153,6 +155,8 @@ export default async function ClientMessagesPage({
           createdAt: m.createdAt.toISOString(),
           sender: m.sender,
           proposal: toThreadProposal(m.bookingProposal),
+          // Ids only — never the blob path (AGENTS.md #5).
+          attachments: toChatAttachments(m.attachments),
         }))}
       />
     </div>

@@ -14,6 +14,7 @@ import { notifyClient } from '@/lib/client-notify'
 import { notifyTrainer } from '@/lib/trainer-notify'
 import { NOTIFICATION_TYPES } from '@/lib/notification-types'
 import { chunk } from '@/lib/message-groups'
+import { messagePreview } from '@/lib/message-preview'
 import type { GroupMessageVisibility } from '@/generated/prisma'
 
 interface Args {
@@ -23,6 +24,9 @@ interface Args {
   body: string
   visibility: GroupMessageVisibility
   isTrainerSide: boolean
+  /** Photos posted with it — a photo-only post has an empty body, and a push
+   *  with no text reads as a broken app. */
+  attachmentCount?: number
 }
 
 export async function notifyGroupPost(args: Args): Promise<void> {
@@ -33,7 +37,7 @@ export async function notifyGroupPost(args: Args): Promise<void> {
   }
 }
 
-async function run({ groupId, senderId, body, visibility, isTrainerSide }: Args) {
+async function run({ groupId, senderId, body, visibility, isTrainerSide, attachmentCount }: Args) {
   const group = await prisma.messageGroup.findUnique({
     where: { id: groupId },
     select: { id: true, name: true, trainerId: true, important: true },
@@ -42,7 +46,7 @@ async function run({ groupId, senderId, body, visibility, isTrainerSide }: Args)
 
   const sender = await prisma.user.findUnique({ where: { id: senderId }, select: { name: true } })
   const senderName = sender?.name?.split(/\s+/)[0] ?? 'Someone'
-  const preview = previewOf(body)
+  const preview = messagePreview({ body, attachmentCount })
 
   // A TRAINER_ONLY post is a client's private reply in a BROADCAST group —
   // it goes to the business, not to the other members.
@@ -124,9 +128,4 @@ async function pushAllowed(userIds: string[], important: boolean): Promise<Set<s
   })
   const explicit = new Map(rows.map(r => [r.userId, r.enabled]))
   return new Set(userIds.filter(id => explicit.get(id) ?? onByDefault))
-}
-
-function previewOf(body: string): string {
-  const trimmed = body.trim().replace(/\s+/g, ' ')
-  return trimmed.length <= 120 ? trimmed : trimmed.slice(0, 117) + '…'
 }
