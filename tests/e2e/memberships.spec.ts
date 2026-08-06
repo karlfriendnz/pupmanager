@@ -46,6 +46,8 @@ test.describe('memberships — trainer builds, client sees', () => {
       const row = page.locator('select').filter({ hasText: 'Choose…' }).first()
       await row.selectOption({ label: 'Self-Book Session' })
 
+      // Published sits with the package's other facts on Details.
+      await page.getByRole('tab', { name: 'Details' }).click()
       await page.getByLabel('Published').click()
       await page.getByRole('button', { name: 'Save' }).click()
 
@@ -577,15 +579,15 @@ test.describe('memberships — trainer builds, client sees', () => {
     await expect(page.getByRole('button', { name: 'New package' }).first()).toBeVisible()
   })
 
-  // The screen used to be one endless column. It's four tabs, and the publish /
-  // delete / save row belongs to the package as a whole, so it stays put no
-  // matter which tab is showing.
-  test('the builder is four tabs, one panel at a time, with the save row always there', async ({ page }) => {
+  // The screen used to be one endless column. It's tabs now, and Save belongs
+  // to the package as a whole, so it stays put no matter which tab is showing —
+  // it is the pinned bar's, along with Cancel and the ⋯ that holds Delete.
+  test('the builder is tabs, one panel at a time, with the save bar always there', async ({ page }) => {
     await login(page, SEED.owner.email, SEED.owner.password)
     await page.goto('/memberships')
     await page.getByRole('main').getByRole('button', { name: 'New package' }).first().click()
 
-    for (const name of ['Details', 'Included', 'Appearance', 'Messages']) {
+    for (const name of ['Details', 'Included', 'Appearance', 'Automation']) {
       await expect(page.getByRole('tab', { name })).toBeVisible()
     }
 
@@ -603,14 +605,20 @@ test.describe('memberships — trainer builds, client sees', () => {
     // don't unmount — a remounted rich-text editor loses what's in it).
     await page.getByRole('tab', { name: 'Details' }).click()
     await page.getByPlaceholder('Package name (e.g. Puppy Starter)').fill('E2E Tab Memory')
-    await page.getByRole('tab', { name: 'Messages' }).click()
+    await page.getByRole('tab', { name: 'Automation' }).click()
     await page.getByRole('tab', { name: 'Details' }).click()
     await expect(page.getByPlaceholder('Package name (e.g. Puppy Starter)')).toHaveValue('E2E Tab Memory')
 
-    // Publish + Save sit below the tabs, reachable from every one of them.
-    await page.getByRole('tab', { name: 'Messages' }).click()
-    await expect(page.getByLabel('Published')).toBeVisible()
+    // Save is pinned to the foot of the screen, reachable from every tab.
+    await page.getByRole('tab', { name: 'Automation' }).click()
     await expect(page.getByRole('button', { name: 'Save' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible()
+
+    // Published is a fact about the package, so it lives with the package's
+    // other facts on Details rather than in a row of buttons that no longer
+    // exists. It is still ONE tap from anywhere — the tab is right there.
+    await page.getByRole('tab', { name: 'Details' }).click()
+    await expect(page.getByLabel('Published')).toBeVisible()
   })
 
   // Karl struck the eye / pencil / bin off the card: the row IS the way in, and

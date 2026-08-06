@@ -7,7 +7,7 @@ import { isRichTextEmpty } from '@/lib/rich-text'
 import { ImageUploadButton } from '@/components/image-uploader'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
-import { Ticket, Plus, Trash2, Loader2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon, Palette, GripVertical, Lock } from 'lucide-react'
+import { Ticket, Plus, Trash2, Check, X, GraduationCap, Users, ShoppingBag, Image as ImageIcon, Palette, GripVertical, Lock } from 'lucide-react'
 import { EligibilityEditor, type Eligibility, type AchievementOption, type ClientOption } from './eligibility-editor'
 import { closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { DndArea } from '@/components/shared/dnd-area'
@@ -30,6 +30,11 @@ import {
   OfferingTabEmpty,
   type OfferingFact,
 } from '@/components/shared/offering-card'
+// The DETAIL-screen pill strip, aliased: offering-card exports a different
+// component under the same name for the Current/Past tabs on a LIST, and this
+// file uses both.
+import { OfferingTabs as SectionTabs, type OfferingTab } from '@/components/shared/offering-tabs'
+import { EditScreen } from '@/components/shared/edit-screen'
 import { useOfferingReorder } from '@/lib/use-offering-reorder'
 import { resolveButtonColors, MIN_CONTRAST, type ButtonColors } from '@/lib/membership-card-colors'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
@@ -198,12 +203,14 @@ function SortableItemShell({ id, children }: { id: string; children: (handle: HT
 // and the To-do screen. Panels stay MOUNTED and hide, because remounting a
 // Tiptap editor mid-edit loses what's in it.
 type BuilderTab = 'details' | 'included' | 'appearance' | 'who' | 'messages'
-const BUILDER_TABS: { id: BuilderTab; label: string; Icon: React.ComponentType<{ className?: string; strokeWidth?: number }> }[] = [
-  { id: 'details', label: 'Details', Icon: Ticket },
-  { id: 'included', label: 'Included', Icon: PackageIcon },
-  { id: 'appearance', label: 'Appearance', Icon: Palette },
-  { id: 'who', label: 'Who it’s for', Icon: Lock },
-  { id: 'messages', label: 'Messages', Icon: Bell },
+const BUILDER_TABS: OfferingTab<BuilderTab>[] = [
+  { id: 'details', label: 'Details', icon: Ticket },
+  { id: 'included', label: 'Included', icon: PackageIcon },
+  { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'who', label: 'Who it’s for', icon: Lock },
+  // "Automation", matching the heading inside the panel and the tab of the same
+  // name on every offering screen. It said "Messages" here alone.
+  { id: 'messages', label: 'Automation', icon: Bell },
 ]
 
 let seq = 0
@@ -410,25 +417,36 @@ export function MembershipsView({
         {error && <div className="mb-4 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm px-3 py-2">{error}</div>}
 
         {draft ? (
+          <EditScreen
+            // Delete is occasional and unrecoverable, so it goes in the ⋯ with
+            // the house sheet rather than sitting beside Save where a thumb
+            // lands. Nothing to delete until the package exists.
+            menu={draft.id ? [{
+              key: 'delete',
+              label: 'Delete this package',
+              hint: 'Only while nobody has bought it',
+              icon: <Trash2 className="h-5 w-5" strokeWidth={1.75} />,
+              onSelect: () => remove(draft.id!),
+              disabled: busy,
+              danger: true,
+            }] : undefined}
+            menuTitle={draft.name.trim() || 'This package'}
+            secondary={{ label: 'Cancel', icon: <X className="h-4 w-4" />, onClick: () => setDraft(null), disabled: busy }}
+            primary={{ label: 'Save', icon: <Check className="h-4 w-4" />, onClick: save, loading: busy }}
+          >
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           <div className="lg:col-span-7">
-            {/* One job at a time. The rail scrolls rather than wraps at 390px,
-                and the icons drop out before the labels do — a label you can
-                read beats an icon you can't name. */}
-            <div role="tablist" aria-label="Package sections" className="mb-4 flex gap-1 border-b border-slate-200 overflow-x-auto no-scrollbar">
-              {BUILDER_TABS.map(t => {
-                const active = tab === t.id
-                const count = t.id === 'included' ? draft.items.length : null
-                return (
-                  <button key={t.id} type="button" role="tab" aria-selected={active} onClick={() => setTab(t.id)}
-                    className={`relative flex items-center gap-2 whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors sm:px-4 ${active ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
-                    <t.Icon className="hidden h-4 w-4 sm:block" strokeWidth={1.75} /> {t.label}
-                    {count != null && count > 0 && <span className="text-xs tabular-nums text-slate-400">{count}</span>}
-                    {active && <span className="absolute -bottom-px left-3 right-3 h-0.5 rounded-full bg-slate-900" />}
-                  </button>
-                )
-              })}
-            </div>
+            {/* One job at a time. The house pill strip, not an underline rail:
+                five labels on one line put "Automation" off the right edge at
+                394px (Karl: "bit messy"). Past four tabs the strip scrolls and
+                keeps the active one in view — see OfferingTabs. */}
+            <SectionTabs
+              tabs={BUILDER_TABS.map(t => (t.id === 'included' && draft.items.length ? { ...t, badge: draft.items.length } : t))}
+              value={tab}
+              onChange={setTab}
+              label="Package sections"
+              className="mb-4"
+            />
             <div className="rounded-2xl border border-slate-200 bg-white">
             <div className={tab === 'details' ? 'p-5 flex flex-col gap-3' : 'hidden'}>
               <input value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Package name (e.g. Puppy Starter)" className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm" />
@@ -461,53 +479,129 @@ export function MembershipsView({
                   {draft.plans.length === 0 && (
                     <p className="text-xs text-violet-700/80">Clients can&apos;t subscribe until there&apos;s at least one option here.</p>
                   )}
+                  {/* One thing per row (Karl, at 394px: "messy - one thing per
+                      row"). It was one sentence — "$100 every 6 weeks · min 0
+                      cycles · fee $0" — and a sentence breaks wherever it runs
+                      out of width, which left "weeks ▾ · min 0 cycles · fee" as
+                      a line of debris. The connectives were doing a label's job;
+                      now each field has a real <label>, which is also what the
+                      review widget reads and what a screen reader announces.
+                      From sm: up the rows sit two to a line, which reads fine
+                      with the labels still attached. */}
                   {draft.plans.map(pl => (
-                    <div key={pl.key} className="flex flex-wrap items-center gap-2 text-sm rounded-lg bg-white border border-violet-100 p-2">
-                      <div className="relative">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">{sym}</span>
-                        <input value={pl.price} onChange={e => patchPlan(pl.key, { price: e.target.value.replace(/[^0-9.]/g, '') })} inputMode="decimal" placeholder="Price" className="h-9 w-24 rounded-lg border border-slate-200 pl-5 pr-2 text-sm" />
+                    <div key={pl.key} className="rounded-lg bg-white border border-violet-100 p-3 text-sm">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-medium text-slate-600" htmlFor={`price-${pl.key}`}>Price</label>
+                          <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">{sym}</span>
+                            <input
+                              id={`price-${pl.key}`}
+                              value={pl.price}
+                              onChange={e => patchPlan(pl.key, { price: e.target.value.replace(/[^0-9.]/g, '') })}
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              className="h-10 w-full rounded-lg border border-slate-200 pl-6 pr-2 text-sm"
+                            />
+                          </div>
+                        </div>
+
+                        {/* "every ⟨6⟩ ⟨weeks⟩" — a number, not one dropdown value
+                            per cycle length. Groomers work on 4, 6 and 8-week
+                            cycles and this is the only shape that fits them all.
+                            The count and the unit stay on ONE row: they are two
+                            halves of a single answer, and splitting them would
+                            be the same mistake in the other direction. */}
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-medium text-slate-600" htmlFor={`cycle-${pl.key}`}>Billed every</label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              id={`cycle-${pl.key}`}
+                              value={pl.intervalCount}
+                              onChange={e => patchPlan(pl.key, { intervalCount: e.target.value.replace(/[^0-9]/g, '') })}
+                              inputMode="numeric"
+                              className="h-10 w-16 rounded-lg border border-slate-200 px-2 text-sm"
+                            />
+                            <label className="sr-only" htmlFor={`unit-${pl.key}`}>Weeks or months</label>
+                            <select id={`unit-${pl.key}`} value={pl.interval} onChange={e => patchPlan(pl.key, { interval: e.target.value as EditorInterval })} className="h-10 flex-1 rounded-lg border border-slate-200 bg-white px-2 text-sm">
+                              <option value="WEEK">{Number(pl.intervalCount) > 1 ? 'weeks' : 'week'}</option>
+                              <option value="MONTH">{Number(pl.intervalCount) > 1 ? 'months' : 'month'}</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-medium text-slate-600" htmlFor={`minterm-${pl.key}`}>Minimum term</label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              id={`minterm-${pl.key}`}
+                              value={pl.minTerm}
+                              onChange={e => patchPlan(pl.key, { minTerm: e.target.value.replace(/[^0-9]/g, '') })}
+                              inputMode="numeric"
+                              className="h-10 w-16 rounded-lg border border-slate-200 px-2 text-sm"
+                            />
+                            <span className="text-xs text-slate-500">cycles — 0 lets them cancel any time</span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs font-medium text-slate-600" htmlFor={`earlyfee-${pl.key}`}>Fee for finishing early</label>
+                          <div className="relative">
+                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">{sym}</span>
+                            <input
+                              id={`earlyfee-${pl.key}`}
+                              value={pl.earlyTermFee}
+                              onChange={e => patchPlan(pl.key, { earlyTermFee: e.target.value.replace(/[^0-9.]/g, '') })}
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              className="h-10 w-full rounded-lg border border-slate-200 pl-6 pr-2 text-sm"
+                            />
+                          </div>
+                        </div>
                       </div>
-                      {/* "every ⟨6⟩ ⟨weeks⟩" — a number, not one dropdown value
-                          per cycle length. Groomers work on 4, 6 and 8-week
-                          cycles and this is the only shape that fits them all. */}
-                      <label className="sr-only" htmlFor={`cycle-${pl.key}`}>Bill every how many</label>
-                      <span className="text-slate-500">every</span>
-                      <input
-                        id={`cycle-${pl.key}`}
-                        value={pl.intervalCount}
-                        onChange={e => patchPlan(pl.key, { intervalCount: e.target.value.replace(/[^0-9]/g, '') })}
-                        inputMode="numeric"
-                        title="how many weeks or months between payments"
-                        className="h-9 w-12 rounded-lg border border-slate-200 px-2 text-sm"
-                      />
-                      <label className="sr-only" htmlFor={`unit-${pl.key}`}>Cycle unit</label>
-                      <select id={`unit-${pl.key}`} value={pl.interval} onChange={e => patchPlan(pl.key, { interval: e.target.value as EditorInterval })} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm">
-                        <option value="WEEK">{Number(pl.intervalCount) > 1 ? 'weeks' : 'week'}</option>
-                        <option value="MONTH">{Number(pl.intervalCount) > 1 ? 'months' : 'month'}</option>
-                      </select>
-                      <span className="text-slate-500">· min</span>
-                      <input value={pl.minTerm} onChange={e => patchPlan(pl.key, { minTerm: e.target.value.replace(/[^0-9]/g, '') })} inputMode="numeric" title="minimum term in cycles (0 = cancel any time)" className="h-9 w-12 rounded-lg border border-slate-200 px-2 text-sm" />
-                      <span className="text-slate-500">cycles · fee</span>
-                      <div className="relative">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">{sym}</span>
-                        <input value={pl.earlyTermFee} onChange={e => patchPlan(pl.key, { earlyTermFee: e.target.value.replace(/[^0-9.]/g, '') })} inputMode="decimal" placeholder="0" title="early-termination fee" className="h-9 w-20 rounded-lg border border-slate-200 pl-5 pr-2 text-sm" />
-                      </div>
-                      <button onClick={() => removePlan(pl.key)} title="Remove option" className="ml-auto p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /></button>
+
                       {/* A hint, not the rule — the route refuses the same
                           numbers whatever the browser was persuaded to send.
                           One cycle can't be longer than a year, which is also
                           Stripe's own limit on a price. */}
                       {Number(pl.intervalCount) > maxIntervalCount(pl.interval) && (
-                        <p className="w-full text-xs text-rose-600">A payment has to come round at least once a year — {maxIntervalCount(pl.interval)} {pl.interval === 'MONTH' ? 'months' : 'weeks'} at most.</p>
+                        <p className="mt-3 text-xs text-rose-600">A payment has to come round at least once a year — {maxIntervalCount(pl.interval)} {pl.interval === 'MONTH' ? 'months' : 'weeks'} at most.</p>
                       )}
-                      {pl.price.trim() && (
-                        <p className="w-full text-xs text-slate-500">Charged {formatMoney(Math.round(Number(pl.price) * 100), currency)} every {intervalLabel(pl.interval, Math.max(1, Number(pl.intervalCount) || 1))}.</p>
-                      )}
+
+                      {/* The summary and the way to remove this option share the
+                          last row — the bin had been sitting at the end of a
+                          field it has nothing to do with. */}
+                      <div className="mt-3 flex items-center justify-between gap-3 border-t border-violet-100 pt-2.5">
+                        <p className="min-w-0 text-xs text-slate-500">
+                          {pl.price.trim()
+                            ? `Charged ${formatMoney(Math.round(Number(pl.price) * 100), currency)} every ${intervalLabel(pl.interval, Math.max(1, Number(pl.intervalCount) || 1))}.`
+                            : 'Add a price and this option becomes buyable.'}
+                        </p>
+                        <button
+                          onClick={() => removePlan(pl.key)}
+                          aria-label="Remove this billing option"
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
                   ))}
                   <button onClick={addPlan} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-dashed border-violet-300 text-violet-700 hover:bg-violet-50 self-start"><Plus className="h-4 w-4" /> Add pricing option</button>
                 </div>
               )}
+
+              {/* Published is a FACT about the package — like its name and its
+                  price — so it sits with them rather than in a row of buttons.
+                  That row is gone (Save and Cancel are pinned to the foot of the
+                  screen now), and burying the one switch that decides whether
+                  anyone can buy this in a ⋯ menu would be worse than moving it.
+                  It is the same shape as the product form's "Visible to
+                  clients". */}
+              <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
+                <span className="text-sm text-slate-700">Published (buyable on your booking page)</span>
+                <Switch checked={draft.published} onChange={() => patch({ published: !draft.published })} onColor="bg-violet-600" aria-label="Published" />
+              </label>
             </div>
 
             {/* Card appearance — its own tab, and everything in it is present:
@@ -685,21 +779,9 @@ export function MembershipsView({
               )}
             </div>
 
-            {/* Publish, delete and save belong to the whole package, so they sit
-                below every tab rather than inside one of them. */}
-            <div className="border-t border-slate-100 p-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2 text-sm text-slate-700">
-                <Switch checked={draft.published} onChange={() => patch({ published: !draft.published })} onColor="bg-violet-600" aria-label="Published" />
-                Published (buyable on your booking page)
-              </div>
-              <div className="flex items-center gap-2">
-                {draft.id && (
-                  <button onClick={() => remove(draft.id!)} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 mr-auto"><Trash2 className="h-4 w-4" strokeWidth={1.75} /> Delete</button>
-                )}
-                <button onClick={() => setDraft(null)} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm rounded-lg text-slate-600 hover:bg-slate-100"><X className="h-4 w-4" /> Cancel</button>
-                <button onClick={save} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-4 text-sm font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Save</button>
-              </div>
-            </div>
+            {/* Save, Cancel and Delete used to sit in a row down here. They are
+                the pinned bar's now, so they are in the same place on every tab
+                and on every edit screen in the app. */}
             </div>
           </div>
           {/* Live preview — exactly how the card looks in the client
@@ -722,6 +804,7 @@ export function MembershipsView({
             />
           </div>
           </div>
+          </EditScreen>
         ) : list.length === 0 ? (
           <OfferingEmpty
             icon={<Ticket className="h-6 w-6" />}
