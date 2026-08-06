@@ -337,15 +337,23 @@ export async function POST(req: Request) {
   // diary look double-booked to the picker.
   if (hold) await consumeBookingHold(hold.id)
 
-  // createBookingAssignment uses createMany (no ids), so re-read the rows by
-  // the assignment we just created. Read OUTSIDE the Google try/catch: the
-  // answers are the record of what was said to get this booking, and a flaky
-  // calendar sync must not be able to swallow them.
-  const createdRows = await prisma.trainingSession.findMany({
-    where: { clientPackageId: assignmentId },
-    orderBy: { scheduledAt: 'asc' },
-    select: { id: true },
-  })
+  // createBookingAssignment uses createMany (no ids), so re-read the rows by the
+  // assignment we just created. On its OWN, not inside the Google try/catch
+  // below: the answers are the record of what was said to get this booking, and
+  // a flaky calendar sync must not be able to swallow them.
+  //
+  // Guarded in turn, because the booking has already committed — a read that
+  // fails here must not report a successful booking as an error.
+  let createdRows: { id: string }[] = []
+  try {
+    createdRows = await prisma.trainingSession.findMany({
+      where: { clientPackageId: assignmentId },
+      orderBy: { scheduledAt: 'asc' },
+      select: { id: true },
+    })
+  } catch (err) {
+    console.error('[self-book] could not re-read the booked sessions', assignmentId, err)
+  }
   // The answers go on the session they got booked — the FIRST one, which is the
   // slot they actually chose and held. Not on all of them: this records what was
   // said to make THIS booking, and the next booking asks again.

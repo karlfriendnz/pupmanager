@@ -38,6 +38,11 @@ const JOBS: Array<{ name: string; schedule: string; path: string }> = [
   // is that the next person to pick up a phone is not inside the last person's
   // workspace. See prisma/migrations/*_purge_demo_cron.
   { name: 'pm-purge-demo', schedule: '*/5 * * * *', path: 'purge-demo' },
+  // Deletes booking holds that lapsed while somebody was answering an
+  // offering's booking-gate form. Deliberately relaxed: a hold stops making a
+  // slot busy the instant it expires (every read filters expiresAt > now), so
+  // this only tidies rows away. See prisma/migrations/*_booking_holds_cron.
+  { name: 'pm-booking-holds', schedule: '*/10 * * * *', path: 'booking-holds' },
   // These two were already returning 200s on an inlined token — but that token
   // is the OLD secret. Rotating CRON_SECRET (which is the only way to fix the
   // others, since the Production value is marked Sensitive in Vercel and cannot

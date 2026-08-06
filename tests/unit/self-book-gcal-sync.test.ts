@@ -24,6 +24,12 @@ vi.mock('@/lib/client-context', () => ({ getActiveClient: h.getActiveClient }))
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     clientProfile: { findUnique: h.clientProfileFindUnique },
+    // The booking gate reads these. findFirst → null means "this offering has
+    // no form in front of it", which is what every fixture in this file means.
+    commsFlowStep: { findFirst: vi.fn(async () => null) },
+    form: { findUnique: vi.fn(async () => null) },
+    bookingFormAnswer: { create: vi.fn(async () => ({ id: 'bfa' })), findFirst: vi.fn(async () => null), findMany: vi.fn(async () => []), update: vi.fn(async () => ({})) },
+    bookingHold: { findFirst: vi.fn(async () => null), findUnique: vi.fn(async () => null), findMany: vi.fn(async () => []), create: vi.fn(async () => ({ id: 'hold', expiresAt: new Date(), createdAt: new Date() })), update: vi.fn(async () => ({})), delete: vi.fn(async () => ({})), deleteMany: vi.fn(async () => ({ count: 0 })) },
     package: { findFirst: h.packageFindFirst },
     trainingSession: { findMany: h.sessionFindMany },
     bookingRequest: { create: vi.fn().mockResolvedValue({ id: 'br-1' }) },
@@ -78,7 +84,13 @@ describe('POST /api/my/self-book — Google Calendar sync', () => {
     const res = await POST(req(`${DATE}T10:00:00.000Z`))
     expect(res.status).toBe(201)
     expect((await res.json()).mode).toBe('booked')
-    expect(h.sessionFindMany).toHaveBeenCalledWith({ where: { clientPackageId: 'asg-1' }, select: { id: true } })
+    // Ordered: the booking gate records its answers against the FIRST session,
+    // which is the slot the client actually chose and held.
+    expect(h.sessionFindMany).toHaveBeenCalledWith({
+      where: { clientPackageId: 'asg-1' },
+      orderBy: { scheduledAt: 'asc' },
+      select: { id: true },
+    })
     expect(h.syncSessionsToGoogle).toHaveBeenCalledWith(['sb-1'])
   })
 

@@ -81,14 +81,20 @@ export async function confirmBookingRequest(args: ConfirmArgs): Promise<ConfirmR
   })
 
   await safeEvaluate(reqRow.clientId)
-  // createMany returns no ids, so re-read them by the new assignment. Read
-  // OUTSIDE the Google try/catch below: the answers move on the back of this,
-  // and a flaky calendar sync must not be able to swallow them.
-  const createdRows = await prisma.trainingSession.findMany({
-    where: { clientPackageId: assignmentId },
-    orderBy: { scheduledAt: 'asc' },
-    select: { id: true },
-  })
+  // createMany returns no ids, so re-read them by the new assignment. On its
+  // OWN, not inside the Google try/catch below: the answers move on the back of
+  // this, and a flaky calendar sync must not be able to swallow them. Guarded in
+  // turn — the booking has committed and must not be reported as failed.
+  let createdRows: { id: string }[] = []
+  try {
+    createdRows = await prisma.trainingSession.findMany({
+      where: { clientPackageId: assignmentId },
+      orderBy: { scheduledAt: 'asc' },
+      select: { id: true },
+    })
+  } catch (err) {
+    console.error('[booking-request-confirm] could not re-read the booked sessions', assignmentId, err)
+  }
   // An approval-required offering asks its gating questions BEFORE anybody has
   // said yes, so the answers were parked on the request. This is where they move
   // onto the session the trainer has just created — otherwise the client would

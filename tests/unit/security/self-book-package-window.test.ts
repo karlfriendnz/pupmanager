@@ -30,6 +30,12 @@ vi.mock('@/lib/client-context', () => ({ getActiveClient: h.getActiveClient }))
 vi.mock('@/lib/prisma', () => ({
   prisma: {
     clientProfile: { findUnique: h.clientProfileFindUnique },
+    // The booking gate reads these. findFirst → null means "this offering has
+    // no form in front of it", which is what every fixture in this file means.
+    commsFlowStep: { findFirst: vi.fn(async () => null) },
+    form: { findUnique: vi.fn(async () => null) },
+    bookingFormAnswer: { create: vi.fn(async () => ({ id: 'bfa' })), findFirst: vi.fn(async () => null), findMany: vi.fn(async () => []), update: vi.fn(async () => ({})) },
+    bookingHold: { findFirst: vi.fn(async () => null), findUnique: vi.fn(async () => null), findMany: vi.fn(async () => []), create: vi.fn(async () => ({ id: 'hold', expiresAt: new Date(), createdAt: new Date() })), update: vi.fn(async () => ({})), delete: vi.fn(async () => ({})), deleteMany: vi.fn(async () => ({ count: 0 })) },
     package: { findFirst: h.packageFindFirst, findMany: h.packageFindMany },
     trainingSession: { findMany: vi.fn(() => []) },
     bookingRequest: { create: vi.fn() },
