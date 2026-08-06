@@ -48,6 +48,17 @@ export interface BasketClassLine {
   /** Ticketed events only — the tier bought and how many. */
   ticketTierId: string | null
   ticketQuantity: number
+  /**
+   * Answers to the offering's booking gate, when it has one.
+   *
+   * They ride along with the line rather than being collected at the review
+   * screen, because the questions belong to the moment of choosing — and the
+   * checkout refuses a gated line that arrives without them. NOT part of
+   * basketLineKey: two adds of the same class with different answers are still
+   * the same booking, and the later answers replace the earlier ones exactly as
+   * the rest of a class line does.
+   */
+  answers?: Record<string, string | string[]>
   // ── Display only, as above ────────────────────────────────────────────────
   name: string
   detail: string | null
@@ -205,6 +216,7 @@ export type BasketRequestLine =
       dogIds: (string | null)[]
       ticketTierId: string | null
       quantity: number
+      answers?: Record<string, string | string[]>
     }
 
 /**
@@ -232,6 +244,9 @@ export function toRequestLines(lines: BasketLine[]): BasketRequestLine[] {
           dogIds: l.dogIds,
           ticketTierId: l.ticketTierId,
           quantity: l.ticketQuantity,
+          // The gate travels with the line — the checkout refuses a gated class
+          // whose answers didn't come with it.
+          answers: l.answers,
         },
   )
 }

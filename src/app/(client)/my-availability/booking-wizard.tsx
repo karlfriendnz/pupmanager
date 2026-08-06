@@ -21,6 +21,7 @@ import {
 } from '@/lib/session-calendar'
 import type { BasketClassLine } from '@/lib/basket'
 import { useBasketOptional } from '../basket/basket-context'
+import { FormRunner, type Answers, type LinkedField, type RunnableForm } from '@/components/shared/form-runner'
 
 export interface WizardPackage {
   id: string
@@ -279,7 +280,10 @@ export function BookingWizard(props: {
     memberships: navImageFor('/memberships', navImages),
   }
 
-  const [step, setStep] = useState<1 | 2 | 3>(1)
+  // The steps are DERIVED, not fixed at three. An offering whose trainer set a
+  // form to ask before booking gains a fourth; one without keeps exactly the
+  // three it has always had. `step` is a 1-based position in `stepLabels`.
+  const [step, setStep] = useState(1)
   // Step 1 is a menu of offering TYPES, plus the trainer's tags; picking either
   // drills into a list. A tag is `tag:<id>` rather than its own state, so there
   // is still exactly ONE thing that says what step 1 is showing — two would go
@@ -327,6 +331,63 @@ export function BookingWizard(props: {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState<DoneMode | null>(null)
+
+  // ── The booking gate ──────────────────────────────────────────────────────
+  //
+  // "For every groom in a 1:1 package i ask the client the same questions
+  // before they confirm the booking." The questions are a STEP OF THIS WIZARD,
+  // between picking a time and confirming — not a screen they are sent to
+  // afterwards, which is what made the old FORM step a nudge rather than a gate.
+  //
+  // Fetched when they pick an offering, so the step track knows whether it is
+  // showing three steps or four before they get as far as picking a time.
+  const [gate, setGate] = useState<{ form: RunnableForm; linkedFields: Record<string, LinkedField> } | null>(null)
+  const [gateAnswers, setGateAnswers] = useState<Answers>({})
+  // The claim on the chosen hour while they answer. 1:1 only — a class has no
+  // slot in the trainer's diary to hold, just a seat its own enrolment counts.
+  const [holdId, setHoldId] = useState<string | null>(null)
+  // Whether we know yet. It matters because the ANSWER changes how many steps
+  // there are: letting somebody leave "Details" before it lands could put them
+  // on Confirm and then slide a Questions step in underneath them.
+  const [gateLoading, setGateLoading] = useState(false)
+
+  const stepLabels = useMemo(
+    () => (gate ? ['Choose', 'Details', 'Questions', 'Confirm'] : ['Choose', 'Details', 'Confirm']),
+    [gate],
+  )
+  const questionsStep = gate ? 3 : null
+  const confirmStep = stepLabels.length
+
+  /** Ask whether this offering has a form in front of it. Quiet on failure:
+   *  losing the question set must not stop somebody booking, and the SERVER
+   *  refuses an unanswered gate anyway — this call grants nothing. */
+  const loadGate = useCallback(async (query: string) => {
+    setGate(null)
+    setGateAnswers({})
+    setGateLoading(true)
+    try {
+      const res = await fetch(`/api/my/booking-gate?${query}`)
+      if (!res.ok) return
+      const b = await res.json()
+      if (b?.form) setGate({ form: b.form as RunnableForm, linkedFields: (b.linkedFields ?? {}) as Record<string, LinkedField> })
+    } catch {
+      // No gate on screen; the confirm endpoint still refuses an unanswered one.
+    } finally {
+      setGateLoading(false)
+    }
+  }, [])
+
+  /** Give the slot back. Called on the way BACK to the time picker — otherwise
+   *  their own abandoned claim hides the very hour they are trying to change. */
+  const releaseHold = useCallback(async (id: string | null) => {
+    if (!id) return
+    setHoldId(null)
+    try {
+      await fetch(`/api/my/booking-hold/${id}`, { method: 'DELETE' })
+    } catch {
+      // It expires on its own within minutes either way.
+    }
+  }, [])
 
   const pkg = selection?.kind === 'session' ? selection.pkg : null
   const cls = selection?.kind === 'class' ? selection.cls : null
@@ -390,6 +451,7 @@ export function BookingWizard(props: {
   function chooseSession(p: WizardPackage) {
     setSelection({ kind: 'session', pkg: p })
     setError(null)
+    void loadGate(`packageId=${encodeURIComponent(p.id)}`)
     setStep(2)
   }
   function chooseClass(c: WizardClass) {
@@ -401,6 +463,7 @@ export function BookingWizard(props: {
     setDropInSessionIds([])
     setDogIds(defaultDogId ? [defaultDogId] : [])
     setError(null)
+    void loadGate(`classRunId=${encodeURIComponent(c.id)}`)
     setStep(2)
   }
   function chooseEvent(e: WizardEvent) {
@@ -411,12 +474,93 @@ export function BookingWizard(props: {
     setTicketQty(1)
     setDogIds(defaultDogId ? [defaultDogId] : [])
     setError(null)
+    void loadGate(`classRunId=${encodeURIComponent(e.id)}`)
     setStep(2)
   }
   function back() {
     setError(null)
-    if (step === 3) setStep(2)
-    else if (step === 2) { setStep(1); setSelection(null) }
+    // Always exactly one step. Leaving the time picker behind is what claimed
+    // the slot, so coming back to it is what gives it up — their own hold must
+    // not hide the hour they came back to change.
+    if (step > 2) {
+      if (step - 1 === 2) void releaseHold(holdId)
+      setStep(step - 1)
+      return
+    }
+    if (step === 2) {
+      void releaseHold(holdId)
+      setStep(1)
+      setSelection(null)
+      setGate(null)
+      setGateAnswers({})
+    }
+  }
+
+  /**
+   * Leaving "Pick a time" for a 1:1: claim the hour, then move on.
+   *
+   * The claim is what stops the slot vanishing under somebody who is doing
+   * exactly what they were asked to do. It is not a booking — no session, no
+   * invoice, and nothing that draws the trainer's calendar can see it — it just
+   * makes the hour busy for other people for a few minutes.
+   */
+  async function holdThenContinue() {
+    if (!pkg || gateLoading) return
+    setError(null)
+    if (!date || !time) { setError('Pick an available time.'); return }
+    // Nothing to answer and nothing to pay for yet — no reason to take the slot
+    // off anybody. An ungated offering behaves exactly as it always has.
+    if (!gate) { setStep(confirmStep); return }
+    setSaving(true)
+    try {
+      const res = await fetch('/api/my/booking-hold', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packageId: pkg.id, startDate: toUtcIso(date, time, tz) }),
+      })
+      const b = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(typeof b.error === 'string' ? b.error : 'Could not hold that time.')
+        return
+      }
+      setHoldId(b.holdId as string)
+      setStep(questionsStep ?? confirmStep)
+    } catch {
+      setError('Something went wrong. Please try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /**
+   * They answered. Store it, and for a 1:1 park it on the hold as well so a
+   * declined card sends them back to a filled-in form rather than an empty one.
+   *
+   * Resolves to an error string for FormRunner to show, or null on success.
+   */
+  async function submitGateAnswers(answers: Answers): Promise<string | null> {
+    setGateAnswers(answers)
+    if (!holdId) { setStep(confirmStep); return null }
+    try {
+      const res = await fetch(`/api/my/booking-hold/${holdId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers }),
+      })
+      const b = await res.json().catch(() => ({}))
+      if (res.ok) { setStep(confirmStep); return null }
+      if (b?.code === 'HOLD_EXPIRED') {
+        // Say it plainly and put them back on the picker, rather than letting
+        // them finish and fail at the end.
+        setHoldId(null)
+        setError('That time went while you were answering — please pick another.')
+        setStep(2)
+        return null
+      }
+      return typeof b.error === 'string' ? b.error : 'Could not save your answers.'
+    } catch {
+      return 'Something went wrong. Please try again.'
+    }
   }
 
   // ── The basket ─────────────────────────────────────────────────────────────
@@ -489,12 +633,16 @@ export function BookingWizard(props: {
   function addToBasket() {
     const line = currentBasketLine()
     if (!basket || !line) return
-    basket.add(line)
+    // The basket is still a booking. Its checkout refuses a gated line with no
+    // answers, so they travel with it rather than being lost at the review screen.
+    basket.add(gate ? { ...line, answers: gateAnswers } : line)
     // Straight back to the list — "continue shopping" is the whole point. The
     // pill in the corner is the confirmation; a done screen here would be a
     // dead end they'd have to back out of to add the next thing.
     setError(null)
     setSelection(null)
+    setGate(null)
+    setGateAnswers({})
     setStep(1)
   }
 
@@ -527,10 +675,26 @@ export function BookingWizard(props: {
         const res = await fetch('/api/my/self-book', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ packageId: selection.pkg.id, startDate: toUtcIso(date, time, tz) }),
+          body: JSON.stringify({
+            packageId: selection.pkg.id,
+            startDate: toUtcIso(date, time, tz),
+            // The server re-resolves the gate and re-checks these itself — the
+            // wizard not letting them past step 3 is a courtesy, not the gate.
+            ...(holdId ? { holdId } : {}),
+            ...(gate ? { answers: gateAnswers } : {}),
+          }),
         })
         const b = await res.json().catch(() => ({}))
-        if (!res.ok) { setError(typeof b.error === 'string' ? b.error : 'Could not book.'); return }
+        if (!res.ok) {
+          if (b?.code === 'HOLD_EXPIRED') {
+            setHoldId(null)
+            setError('That time went while you were booking — please pick another.')
+            setStep(2)
+            return
+          }
+          setError(typeof b.error === 'string' ? b.error : 'Could not book.')
+          return
+        }
         if (b.mode === 'payment' && b.url) { openExternal(b.url); return } // keep spinner while we leave for Stripe
         setDone(b.mode === 'booked' ? 'booked' : 'requested')
       } else if (selection?.kind === 'class') {
@@ -538,7 +702,7 @@ export function BookingWizard(props: {
         const res = await fetch(`/api/my/classes/${selection.cls.id}/enroll`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: classType, ...(dogIds.length ? { dogIds } : {}), sessionIds: classType === 'DROP_IN' ? dropInSessionIds : undefined }),
+          body: JSON.stringify({ type: classType, ...(dogIds.length ? { dogIds } : {}), ...(gate ? { answers: gateAnswers } : {}), sessionIds: classType === 'DROP_IN' ? dropInSessionIds : undefined }),
         })
         const b = await res.json().catch(() => ({}))
         if (!res.ok) { setError(typeof b.error === 'string' ? b.error : 'Could not join.'); return }
@@ -557,8 +721,8 @@ export function BookingWizard(props: {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(
             ticketed
-              ? { type: 'FULL', ticketTierId, quantity: ticketQty, ...(dogIds.length ? { dogIds: [dogIds[0]] } : {}) }
-              : { type: 'FULL', ...(dogIds.length ? { dogIds } : {}) },
+              ? { type: 'FULL', ticketTierId, quantity: ticketQty, ...(gate ? { answers: gateAnswers } : {}), ...(dogIds.length ? { dogIds: [dogIds[0]] } : {}) }
+              : { type: 'FULL', ...(gate ? { answers: gateAnswers } : {}), ...(dogIds.length ? { dogIds } : {}) },
           ),
         })
         const b = await res.json().catch(() => ({}))
@@ -590,7 +754,7 @@ export function BookingWizard(props: {
           <h2 className="mt-5 text-lg font-bold text-slate-900">{copy[done].title}</h2>
           <p className="mt-1.5 text-sm text-slate-500 max-w-xs leading-relaxed">{copy[done].sub}</p>
           <button
-            onClick={() => { setDone(null); setSelection(null); setStep(1) }}
+            onClick={() => { setDone(null); setSelection(null); setGate(null); setGateAnswers({}); setHoldId(null); setStep(1) }}
             className="mt-7 w-full max-w-xs rounded-2xl bg-slate-900 text-white text-sm font-semibold py-3.5 hover:bg-slate-800 transition-colors"
           >
             Done
@@ -601,7 +765,7 @@ export function BookingWizard(props: {
   }
 
   return (
-    <Shell step={nothingToBook ? null : step} onBack={step > 1 ? back : undefined}>
+    <Shell step={nothingToBook ? null : step} labels={stepLabels} onBack={step > 1 ? back : undefined}>
       {/* ---------- STEP 1 · choose ---------- */}
       {step === 1 && (
         nothingToBook ? (
@@ -857,9 +1021,9 @@ export function BookingWizard(props: {
           time={time}
           onDate={setDate}
           onTime={setTime}
-          onContinue={() => { setError(null); setStep(3) }}
+          onContinue={holdThenContinue}
           onWaitlist={joinWaitlist}
-          saving={saving}
+          saving={saving || gateLoading}
         />
       )}
 
@@ -876,7 +1040,7 @@ export function BookingWizard(props: {
           dropInSessionIds={dropInSessionIds}
           onSessionToggle={toggleSession}
           onSessionsSet={setDropInSessionIds}
-          onContinue={() => { setError(null); setStep(3) }}
+          onContinue={() => { if (gateLoading) return; setError(null); setStep(questionsStep ?? confirmStep) }}
         />
       )}
 
@@ -894,12 +1058,45 @@ export function BookingWizard(props: {
           qty={ticketQty}
           onQty={setTicketQty}
           maxTicketQuantity={maxTicketQuantity}
-          onContinue={() => { setError(null); setStep(3) }}
+          onContinue={() => { if (gateLoading) return; setError(null); setStep(questionsStep ?? confirmStep) }}
         />
       )}
 
-      {/* ---------- STEP 3 · confirm ---------- */}
-      {step === 3 && selection && (
+      {/* ---------- STEP 3 · the trainer's questions (only when there are any) ----------
+          Rendered by FormRunner, the same component the intake gate and the
+          public enquiry form use — so multi-page forms, conditional questions,
+          required validation and the upload type all behave here exactly as they
+          do everywhere else, rather than being re-derived inside a wizard. */}
+      {questionsStep !== null && step === questionsStep && gate && (
+        <div data-review-scope={`Step ${questionsStep} of ${stepLabels.length} · Questions`}>
+          <StepIntro
+            title={gate.form.name}
+            sub={`${businessName} asks this before every booking.`}
+          />
+          <div className="mt-5">
+            <FormRunner
+              // Remounted per form so switching offerings never carries the
+              // previous one's answers across.
+              key={gate.form.id}
+              form={gate.form}
+              linkedFields={gate.linkedFields}
+              businessName={businessName}
+              trainerLogoUrl={null}
+              heading=""
+              // The wizard already carries the business name and the step
+              // track; the form's own page frame would say both again.
+              chrome={false}
+              showBorder={false}
+              submitLabel="Continue"
+              onSubmit={submitGateAnswers}
+            />
+          </div>
+          {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        </div>
+      )}
+
+      {/* ---------- confirm ---------- */}
+      {step === confirmStep && selection && (
         <ConfirmStep
           tz={props.tz}
           selection={selection}
@@ -917,7 +1114,7 @@ export function BookingWizard(props: {
           onConfirm={confirm}
           // Only a 1:1 has a time the client picked, so only that one offers a
           // way back to change it.
-          onEditTime={selection?.kind === 'session' ? () => { setError(null); setStep(2) } : null}
+          onEditTime={selection?.kind === 'session' ? () => { setError(null); void releaseHold(holdId); setStep(2) } : null}
           // Offered only when there IS a basket and this booking is something
           // it can hold — a priced class/event with payments switched on.
           onAddToBasket={basket && currentBasketLine() ? addToBasket : null}
@@ -933,12 +1130,17 @@ export function BookingWizard(props: {
 // No business name or logo here — the app shell around this page already
 // carries both, and repeating them pushed the actual booking below the fold.
 // Only the back arrow survives, and only when there's somewhere to go back to.
-function Shell({ step, onBack, children }: {
-  step: 1 | 2 | 3 | null
+function Shell({ step, labels = ['Choose', 'Details', 'Confirm'], onBack, children }: {
+  // A 1-based position in `labels`, or null on a screen with no track (the
+  // empty state and the done card).
+  step: number | null
+  // Not fixed at three: an offering whose trainer set a form to ask before
+  // booking has a fourth node between Details and Confirm. The track is built
+  // from whatever it is given, so the shape below never has to know.
+  labels?: string[]
   onBack?: () => void
   children: React.ReactNode
 }) {
-  const labels = ['Choose', 'Details', 'Confirm']
   return (
     <div className="px-4 pt-5 pb-10 max-w-xl mx-auto w-full">
       {/* The track starts hard at the left edge and never moves. There is no
@@ -950,7 +1152,7 @@ function Shell({ step, onBack, children }: {
       {step !== null && (
         <div className="flex items-center gap-2">
           {labels.map((label, i) => {
-            const n = (i + 1) as 1 | 2 | 3
+            const n = i + 1
             const active = n === step
             const doneStep = n < step
             // The first node is Back once there is somewhere to go back to. It

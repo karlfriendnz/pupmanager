@@ -52,6 +52,7 @@ export function FormRunner({
   trainerLogoUrl,
   heading,
   showBorder = true,
+  chrome = true,
   submitLabel = 'Submit',
   contactBlock,
   validateFirstStep,
@@ -64,6 +65,17 @@ export function FormRunner({
   trainerLogoUrl: string | null
   heading: string
   showBorder?: boolean
+  /**
+   * Wrap the questions in PublicFormShell — the trainer's logo, their business
+   * name, a page heading and its own step dots, on a full-height slate page.
+   *
+   * Right when the form IS the screen (the intake gate, the public enquiry
+   * page). Wrong when it is a STEP of something else: the booking wizard already
+   * carries the business name and its own step track, so the shell would nest a
+   * page inside a page and put two step tracks on screen saying different
+   * things. Off, this renders just the questions and the buttons.
+   */
+  chrome?: boolean
   submitLabel?: string
   /** Rendered above the questions on the first page (the enquiry contact). */
   contactBlock?: React.ReactNode
@@ -159,15 +171,7 @@ export function FormRunner({
     ? 'bg-white rounded-2xl border border-slate-200 p-6 flex flex-col gap-5'
     : 'flex flex-col gap-5'
 
-  return (
-    <PublicFormShell
-      businessName={businessName}
-      trainerLogoUrl={trainerLogoUrl}
-      heading={heading}
-      // Progress — hidden on a single-page form, where "Step 1 of 1" is noise.
-      progress={{ index: stepIndex, total: steps.length }}
-      reviewScope={`Step ${stepIndex + 1} of ${steps.length} · ${steps[stepIndex].title}`}
-    >
+  const body = (
       <>
 
         <div className={cardClass}>
@@ -234,6 +238,30 @@ export function FormRunner({
           </Button>
         </div>
       </>
+  )
+
+  if (!chrome) {
+    // Embedded: the surrounding screen owns the heading, the branding and the
+    // progress. A multi-page form still needs to say where it is inside ITSELF,
+    // so the review scope stays — it is what lets Karl pin a note to this page
+    // of the form rather than to "the form".
+    return (
+      <div data-review-scope={`Form page ${stepIndex + 1} of ${steps.length} · ${steps[stepIndex].title}`}>
+        {body}
+      </div>
+    )
+  }
+
+  return (
+    <PublicFormShell
+      businessName={businessName}
+      trainerLogoUrl={trainerLogoUrl}
+      heading={heading}
+      // Progress — hidden on a single-page form, where "Step 1 of 1" is noise.
+      progress={{ index: stepIndex, total: steps.length }}
+      reviewScope={`Step ${stepIndex + 1} of ${steps.length} · ${steps[stepIndex].title}`}
+    >
+      {body}
     </PublicFormShell>
   )
 }
