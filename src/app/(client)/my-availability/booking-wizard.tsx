@@ -7,7 +7,7 @@ import {
   Minus, Plus, ShoppingBag, Tag as TagIcon, X, Pencil,
 } from 'lucide-react'
 import { openExternal } from '@/lib/external-link'
-import { labelFor } from '@/lib/nav-labels'
+import { labelFor, navImageFor } from '@/lib/nav-labels'
 import { useNavLabelOverrides } from '@/components/shared/page-title'
 import { currencySymbol } from '@/lib/money'
 import { MembershipCards } from '@/components/shared/membership-cards'
@@ -113,6 +113,9 @@ export interface WizardEvent {
 export interface WizardTag {
   id: string
   name: string
+  /** The picture the trainer set at Settings → Tags, or null to BORROW one off
+   *  the first thing inside the tag (see firstImage). */
+  imageUrl: string | null
   packageIds: string[]
   classIds: string[]
   eventIds: string[]
@@ -233,6 +236,12 @@ export function BookingWizard(props: {
   /** The trainer's tags, in their order, already emptied of anything this
    *  client can't act on. */
   tags: WizardTag[]
+  /**
+   * The pictures the trainer put on the offering CATEGORIES, keyed by nav key
+   * (Settings → What you call things). Sanitized server-side; a key that isn't
+   * here means the row borrows one, exactly as it did before this was settable.
+   */
+  navImages: Record<string, string>
   /** Every tagged, on-sale product — the only products this screen knows about. */
   products: WizardProduct[]
   /** Server's ticket-quantity ceiling, so the stepper can't offer more than the API takes. */
@@ -244,7 +253,7 @@ export function BookingWizard(props: {
   currency: string | null
   previewDays: PreviewDay[]
 }) {
-  const { businessName, initials, tz, availability, packages, classes, events, tags, products, maxTicketQuantity, memberships, dogs, defaultDogId, acceptPayments, currency, previewDays } = props
+  const { businessName, initials, tz, availability, packages, classes, events, tags, navImages, products, maxTicketQuantity, memberships, dogs, defaultDogId, acceptPayments, currency, previewDays } = props
 
   // The trainer's own words for what they sell. A trainer who renames "1:1
   // Sessions" to "Private lessons" was still showing their clients our words in
@@ -256,6 +265,18 @@ export function BookingWizard(props: {
     classes: labelFor('/classes', 'Group classes', navLabels),
     events: labelFor('/events', 'Events', navLabels),
     memberships: labelFor('/memberships', 'Packages', navLabels),
+  }
+
+  // Their picture for the row, if they set one at Settings → What you call
+  // things; null means BORROW, and the CategoryRows below fall through to
+  // firstImage(...) exactly as they always have. Setting one overrides the
+  // borrow, clearing it borrows again — the fallback is not deleted, it is what
+  // null has always meant here.
+  const pic = {
+    oneToOne: navImageFor('/packages', navImages),
+    classes: navImageFor('/classes', navImages),
+    events: navImageFor('/events', navImages),
+    memberships: navImageFor('/memberships', navImages),
   }
 
   const [step, setStep] = useState<1 | 2 | 3>(1)
@@ -596,7 +617,8 @@ export function BookingWizard(props: {
                       icon={<CalendarPlus className="h-5 w-5" />}
                       title={term.oneToOne}
                       sub={`${packages.length} available`}
-                      imageUrl={firstImage(packages)}
+                      // Theirs if they set one, else borrowed — see `pic` above.
+                      imageUrl={pic.oneToOne ?? firstImage(packages)}
                       onClick={() => setCategory('sessions')}
                     />
                   )}
@@ -605,7 +627,7 @@ export function BookingWizard(props: {
                       icon={<GraduationCap className="h-5 w-5" />}
                       title={term.classes}
                       sub={`${classes.length} available`}
-                      imageUrl={firstImage(classes)}
+                      imageUrl={pic.classes ?? firstImage(classes)}
                       onClick={() => setCategory('classes')}
                     />
                   )}
@@ -614,7 +636,7 @@ export function BookingWizard(props: {
                       icon={<PartyPopper className="h-5 w-5" />}
                       title={term.events}
                       sub={`${events.length} coming up`}
-                      imageUrl={firstImage(events)}
+                      imageUrl={pic.events ?? firstImage(events)}
                       onClick={() => setCategory('events')}
                     />
                   )}
@@ -623,7 +645,7 @@ export function BookingWizard(props: {
                       icon={<Ticket className="h-5 w-5" />}
                       title={term.memberships}
                       sub={`${memberships.length} available`}
-                      imageUrl={firstImage(memberships)}
+                      imageUrl={pic.memberships ?? firstImage(memberships)}
                       onClick={() => setCategory('memberships')}
                     />
                   )}
@@ -640,9 +662,12 @@ export function BookingWizard(props: {
                         label only named what was already on screen. */}
                     {tags.map(t => {
                       const count = t.packageIds.length + t.classIds.length + t.eventIds.length + t.productIds.length
-                      // The tag borrows the picture off the first thing in it,
-                      // in the order the sections below appear.
-                      const cover = firstImage(
+                      // The trainer's own picture for this tag if they set one
+                      // at Settings → Tags; otherwise the tag BORROWS one off
+                      // the first thing in it, in the order the sections below
+                      // appear — which is what it has always done and what an
+                      // untouched tag still does.
+                      const cover = t.imageUrl ?? firstImage(
                         packages.filter(p => t.packageIds.includes(p.id)),
                         classes.filter(c => t.classIds.includes(c.id)),
                         events.filter(e => t.eventIds.includes(e.id)),

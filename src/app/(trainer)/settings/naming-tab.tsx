@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { can } from '@/lib/permissions'
 import type { PermissionMap } from '@/lib/permissions'
 import type { CompanyRole } from '@/generated/prisma'
-import { sanitizeNavLabels } from '@/lib/nav-labels'
+import { sanitizeNavLabels, sanitizeNavImages } from '@/lib/nav-labels'
 import { NavLabelsPanel } from './nav-labels-panel'
 
 /**
@@ -27,12 +27,18 @@ export async function NamingTab({
 }) {
   const profile = await prisma.trainerProfile.findUnique({
     where: { id: companyId },
-    select: { navLabels: true },
+    select: { navLabels: true, navImages: true },
   })
 
   return (
     <NavLabelsPanel
       initial={sanitizeNavLabels(profile?.navLabels)}
+      // The picture goes on the same row as the word, because for a trainer
+      // "what do I call Group Classes, and what does it look like" is one job.
+      // Sanitized on read for the same reason the labels are: a picture stored
+      // against a key we have since stopped showing quietly disappears rather
+      // than rendering somewhere nobody meant.
+      initialImages={sanitizeNavImages(profile?.navImages)}
       // Costs nothing, so the gate is "can this person change settings".
       canEdit={can('settings.edit', role, permissions)}
     />

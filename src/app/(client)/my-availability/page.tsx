@@ -12,6 +12,7 @@ import { PACKAGES_HIDDEN_FROM_CLIENTS } from '@/lib/feature-flags'
 import { mergeClientDogs } from '@/lib/dogs'
 import { getEnabledAddons } from '@/lib/billing'
 import { selfBookablePackagesWhere, openClassRunsWhere } from '@/lib/bookable-offerings'
+import { sanitizeNavImages } from '@/lib/nav-labels'
 import { BookingWizard, type WizardPackage, type WizardClass, type WizardEvent, type WizardTag, type WizardProduct, type PreviewDay } from './booking-wizard'
 import type { Metadata } from 'next'
 
@@ -108,7 +109,11 @@ export default async function MyAvailabilityPage() {
       dogId: true,
       dog: { select: { id: true, name: true, deceasedAt: true } },
       dogs: { select: { id: true, name: true, deceasedAt: true } },
-      trainer: { select: { acceptPaymentsEnabled: true, connectChargesEnabled: true, payoutCurrency: true } },
+      // navImages: the pictures the trainer put on the offering CATEGORIES at
+      // Settings → What you call things. Read here rather than off the client
+      // layout's nav-label context because it is this screen's rows that use
+      // them, and this screen is already asking the trainer row a question.
+      trainer: { select: { acceptPaymentsEnabled: true, connectChargesEnabled: true, payoutCurrency: true, navImages: true } },
     },
   })
   if (!profile) redirect('/login')
@@ -268,7 +273,7 @@ export default async function MyAvailabilityPage() {
       where: { trainerId: profile.trainerId },
       // The trainer's own arrangement, same as everywhere else they order things.
       orderBy: [{ order: 'asc' }, { name: 'asc' }],
-      select: { id: true, name: true, items: { select: { packageId: true, productId: true } } },
+      select: { id: true, name: true, imageUrl: true, items: { select: { packageId: true, productId: true } } },
     }),
     shopOn
       ? prisma.product.findMany({
@@ -309,7 +314,9 @@ export default async function MyAvailabilityPage() {
           productIds.push(item.productId)
         }
       }
-      return { id: t.id, name: t.name, packageIds, classIds, eventIds, productIds }
+      // imageUrl null is not "no picture" — it is "borrow one", which the
+      // wizard's row does off the first thing in the tag.
+      return { id: t.id, name: t.name, imageUrl: t.imageUrl, packageIds, classIds, eventIds, productIds }
     })
     // An empty tag is the trainer's business, not the client's. Showing one
     // would be a row that opens onto nothing.
@@ -364,6 +371,11 @@ export default async function MyAvailabilityPage() {
       classes={classes}
       events={events}
       tags={tags}
+      // Sanitized on read as well as on write: a picture stored against a key
+      // we have since stopped showing quietly disappears rather than turning up
+      // somewhere nobody meant, and a value that isn't a real http(s) URL never
+      // reaches an <img src> on a client's screen.
+      navImages={sanitizeNavImages(profile.trainer.navImages)}
       products={products}
       maxTicketQuantity={MAX_TICKET_QUANTITY}
       memberships={memberships}

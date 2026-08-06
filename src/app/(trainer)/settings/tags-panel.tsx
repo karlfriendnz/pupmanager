@@ -14,6 +14,7 @@ import {
   useOfferingView,
 } from '@/components/shared/offering-card'
 import { ConfirmSheet } from '@/components/shared/confirm-sheet'
+import { RowImagePicker } from '@/components/shared/row-image-picker'
 import { readApiError } from '@/lib/api-error'
 
 export interface TagRow {
@@ -22,6 +23,15 @@ export interface TagRow {
   /** How many things carry it — offerings and products together, because that
    *  mixture is the point of a tag. */
   items: number
+  /**
+   * The picture on this tag's row, here and on the client's booking screen.
+   *
+   * null is not "no picture": the client's row falls back to BORROWING one off
+   * the first thing filed under the tag, which is what every tag did before this
+   * was settable. Here in Settings there is nothing to borrow from — the panel
+   * hasn't loaded the tag's contents — so null draws the tag icon instead.
+   */
+  imageUrl: string | null
 }
 
 /**
@@ -45,13 +55,27 @@ export function TagsPanel({ tags: initial }: { tags: TagRow[] }) {
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
+  const [newImage, setNewImage] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
+  const [editImage, setEditImage] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<TagRow | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [view, setView] = useOfferingView('tags')
 
   const ids = tags.map(t => t.id)
+
+  function startAdd() {
+    setAdding(true); setNewName(''); setNewImage(null)
+  }
+
+  function cancelAdd() {
+    setAdding(false); setNewName(''); setNewImage(null)
+  }
+
+  function startEdit(t: TagRow) {
+    setEditingId(t.id); setEditName(t.name); setEditImage(t.imageUrl)
+  }
 
   async function create() {
     const name = newName.trim()
@@ -60,28 +84,42 @@ export function TagsPanel({ tags: initial }: { tags: TagRow[] }) {
     const res = await fetch('/api/tags', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, imageUrl: newImage }),
     })
     const body = await res.json().catch(() => ({}))
     if (!res.ok) { setError(readApiError(body, 'Could not add that tag.')); return }
-    setTags(prev => [...prev, { id: body.id, name: body.name, items: 0 }])
-    setNewName('')
-    setAdding(false)
+    setTags(prev => [...prev, { id: body.id, name: body.name, imageUrl: body.imageUrl ?? null, items: 0 }])
+    cancelAdd()
   }
 
-  async function rename(id: string) {
+  /**
+   * The inline form saves the whole row — its word AND its picture.
+   *
+   * Both are sent every time BECAUSE they were both on screen: the trainer just
+   * looked at this form, so it is the truth. The route also treats an absent
+   * `imageUrl` as "leave it alone", which is what protects a caller that only
+   * sends a name — but a form must never rely on the server guessing, so it
+   * states both. `null` here is a deliberate clear, and it goes back to
+   * borrowing.
+   */
+  async function saveEdit(id: string) {
     const name = editName.trim()
     const before = tags
-    if (!name || name === tags.find(t => t.id === id)?.name) { setEditingId(null); return }
+    const current = tags.find(t => t.id === id)
+    if (!name) { setEditingId(null); return }
+    if (name === current?.name && (editImage ?? null) === (current?.imageUrl ?? null)) {
+      setEditingId(null)
+      return
+    }
     setError(null)
     // Renaming moves nothing: the assignments point at the id, never the word,
     // so everything in the tag is still in it a moment later.
-    setTags(prev => prev.map(t => (t.id === id ? { ...t, name } : t)))
+    setTags(prev => prev.map(t => (t.id === id ? { ...t, name, imageUrl: editImage } : t)))
     setEditingId(null)
     const res = await fetch(`/api/tags/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, imageUrl: editImage }),
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
@@ -131,13 +169,21 @@ export function TagsPanel({ tags: initial }: { tags: TagRow[] }) {
               value={editName}
               onChange={e => setEditName(e.target.value)}
               onKeyDown={e => {
-                if (e.key === 'Enter') void rename(t.id)
+                if (e.key === 'Enter') void saveEdit(t.id)
                 if (e.key === 'Escape') setEditingId(null)
               }}
               aria-label={`Rename ${t.name}`}
               className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pm-brand-600)]"
             />
-            <button type="button" onClick={() => void rename(t.id)} aria-label="Save name" className="rounded-lg p-2 text-[var(--pm-brand-600)] hover:bg-slate-100">
+            {/* The picture sits in the same form as the word, so one tap on the
+                tick saves both. Empty means the client's row borrows one off the
+                first thing in the tag, as it always has. */}
+            <RowImagePicker
+              value={editImage}
+              onChange={setEditImage}
+              label={`the ${t.name} tag`}
+            />
+            <button type="button" onClick={() => void saveEdit(t.id)} aria-label="Save name" className="rounded-lg p-2 text-[var(--pm-brand-600)] hover:bg-slate-100">
               <Check className="h-4 w-4" strokeWidth={1.75} />
             </button>
             <button type="button" onClick={() => setEditingId(null)} aria-label="Cancel rename" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
@@ -154,7 +200,15 @@ export function TagsPanel({ tags: initial }: { tags: TagRow[] }) {
               href={`/offerings/tags/${t.id}`}
               className="flex min-w-0 flex-1 items-center gap-2.5 py-3 pr-1 text-left"
             >
-              <TagIcon className="h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
+              {/* Thumbnail or icon, never both — the picture IS the tag's
+                  identity once it has one, and the icon beside it would only
+                  say "this is a tag" twice. */}
+              {t.imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={t.imageUrl} alt="" className="h-7 w-7 flex-shrink-0 rounded-lg border border-slate-200 object-cover" />
+              ) : (
+                <TagIcon className="h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} />
+              )}
               <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{t.name}</span>
               <span className="flex-shrink-0 text-xs text-slate-400">
                 {t.items === 0 ? 'Empty' : `${t.items} ${t.items === 1 ? 'thing' : 'things'}`}
@@ -163,7 +217,7 @@ export function TagsPanel({ tags: initial }: { tags: TagRow[] }) {
             </Link>
             <button
               type="button"
-              onClick={() => { setEditingId(t.id); setEditName(t.name) }}
+              onClick={() => startEdit(t)}
               aria-label={`Rename ${t.name}`}
               className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
             >
@@ -196,7 +250,7 @@ export function TagsPanel({ tags: initial }: { tags: TagRow[] }) {
       <OfferingListBar
         view={view}
         onView={setView}
-        action={<AddOfferingButton label="New tag" onClick={() => { setAdding(true); setNewName('') }} />}
+        action={<AddOfferingButton label="New tag" onClick={startAdd} />}
       />
 
       {/* The field opens directly under the button that asked for it, so the
@@ -206,18 +260,24 @@ export function TagsPanel({ tags: initial }: { tags: TagRow[] }) {
           "puppy class" from all existing at once. */}
       {adding && (
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-          <input
-            autoFocus
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') void create()
-              if (e.key === 'Escape') { setAdding(false); setNewName('') }
-            }}
-            placeholder="Tag name (e.g. Puppy)"
-            aria-label="New tag name"
-            className="h-11 w-full min-w-0 rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pm-brand-600)] sm:max-w-sm"
-          />
+          <span className="flex min-w-0 items-center gap-2 sm:max-w-sm sm:flex-1">
+            <input
+              autoFocus
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') void create()
+                if (e.key === 'Escape') cancelAdd()
+              }}
+              placeholder="Tag name (e.g. Puppy)"
+              aria-label="New tag name"
+              className="h-11 w-full min-w-0 flex-1 rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--pm-brand-600)]"
+            />
+            {/* Naming it and giving it a face is one thought — asking the
+                trainer to add the tag and then immediately edit it to add a
+                picture would be two trips for one. */}
+            <RowImagePicker value={newImage} onChange={setNewImage} label="the new tag" />
+          </span>
           <div className="flex gap-2">
             <button
               type="button"
@@ -228,7 +288,7 @@ export function TagsPanel({ tags: initial }: { tags: TagRow[] }) {
             </button>
             <button
               type="button"
-              onClick={() => { setAdding(false); setNewName('') }}
+              onClick={cancelAdd}
               className="inline-flex h-10 items-center justify-center rounded-xl px-3 text-sm text-slate-600 hover:bg-slate-100"
             >
               Cancel

@@ -39,8 +39,12 @@ export async function TagsTab({ companyId }: { companyId: string }) {
     orderBy: [{ order: 'asc' }, { name: 'asc' }],
     // The count is offerings AND products together, because that mixture is the
     // whole point of a tag.
-    select: { id: true, name: true, _count: { select: { items: true } } },
+    select: { id: true, name: true, imageUrl: true, _count: { select: { items: true } } },
   })
 
-  return <TagsPanel tags={tags.map(t => ({ id: t.id, name: t.name, items: t._count.items }))} />
+  return (
+    <TagsPanel
+      tags={tags.map(t => ({ id: t.id, name: t.name, imageUrl: t.imageUrl, items: t._count.items }))}
+    />
+  )
 }
