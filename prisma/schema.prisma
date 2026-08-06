@@ -847,6 +847,8 @@ model TrainerProfile {
   memberships        Membership[]
   waitlistEntries    WaitlistEntry[]
   bookingRequests    BookingRequest[]
+  bookingHolds       BookingHold[]
+  bookingFormAnswers BookingFormAnswer[]
   activityWeeks      TrainerActivityWeek[]
   badgeAwards        TrainerBadgeAward[]
   onboardingProgress TrainerOnboardingProgress?
@@ -1325,6 +1327,8 @@ model ClientProfile {
   classEnrollments    ClassEnrollment[]
   waitlistEntries     WaitlistEntry[]
   bookingRequests     BookingRequest[]
+  bookingHolds        BookingHold[]
+  bookingFormAnswers  BookingFormAnswer[]
   shares              ClientShare[]
   messages            Message[]                 @relation("ClientMessages")
   groupParticipations MessageGroupParticipant[]
@@ -1673,6 +1677,9 @@ model TrainingSession {
   flowStepCompletions      FlowStepCompletion[]
   paymentItem              PaymentItem?
   timeEntries              SessionTimeEntry[]
+  // The answers that were given to get this session booked. Keyed to the
+  // SESSION on purpose: the next booking asks again (see BookingFormAnswer).
+  bookingFormAnswers       BookingFormAnswer[]
 
   @@index([trainerId])
   @@index([assignedMembershipId])
@@ -1764,7 +1771,7 @@ model SessionBuddy {
 // is supposed to mean something. (Package.color is a different job: it tints
 // the trainer's own calendar, which nobody else sees.)
 model Tag {
-  id        String @id @default(cuid())
+  id        String  @id @default(cuid())
   trainerId String
   name      String
   // Case-folded copy of `name`, and the column the uniqueness is actually on.
@@ -1775,7 +1782,7 @@ model Tag {
   nameKey   String
   // The trainer's own arrangement, lowest first — same idea as
   // ProductCategory.order, and the order clients browse them in.
-  order     Int    @default(0)
+  order     Int     @default(0)
   // The picture on the tag's row in the client's booking screen, set
   // deliberately at Settings → Tags. NULL is not "no picture": the row falls
   // back to BORROWING one off the first thing in the tag (booking-wizard's
@@ -2289,6 +2296,7 @@ model Package {
   commsFlowSteps     CommsFlowStep[]
   flowRuns           FlowRun[]
   bookingRequests    BookingRequest[]
+  bookingHolds       BookingHold[]
   bookingPages       BookingPage[]
   tags               TagAssignment[]
   defaultSessionForm SessionForm?         @relation("PackageDefaultSessionForm", fields: [defaultSessionFormId], references: [id], onDelete: SetNull)
@@ -2555,14 +2563,16 @@ model ClassEnrollment {
   // later must get their place back, not find it sold to somebody else.
   suspendedAt          DateTime?
 
-  classRun      ClassRun            @relation(fields: [classRunId], references: [id], onDelete: Cascade)
-  client        ClientProfile       @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  dog           Dog?                @relation(fields: [dogId], references: [id], onDelete: SetNull)
-  dropInSession TrainingSession?    @relation("DropInSession", fields: [dropInSessionId], references: [id], onDelete: Cascade)
-  ticketTier    PackageTicketTier?  @relation(fields: [ticketTierId], references: [id], onDelete: SetNull)
-  attendance    SessionAttendance[]
-  paymentItem   PaymentItem?
-  sessionForm   SessionForm?        @relation("EnrollmentSessionForm", fields: [sessionFormId], references: [id], onDelete: SetNull)
+  classRun           ClassRun            @relation(fields: [classRunId], references: [id], onDelete: Cascade)
+  client             ClientProfile       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  dog                Dog?                @relation(fields: [dogId], references: [id], onDelete: SetNull)
+  dropInSession      TrainingSession?    @relation("DropInSession", fields: [dropInSessionId], references: [id], onDelete: Cascade)
+  ticketTier         PackageTicketTier?  @relation(fields: [ticketTierId], references: [id], onDelete: SetNull)
+  attendance         SessionAttendance[]
+  paymentItem        PaymentItem?
+  sessionForm        SessionForm?        @relation("EnrollmentSessionForm", fields: [sessionFormId], references: [id], onDelete: SetNull)
+  // What they answered to get this place — the class half of the booking gate.
+  bookingFormAnswers BookingFormAnswer[]
 
   // dropInSessionId is part of the key so a client can drop into SEVERAL
   // sessions of the same run — one row each. Postgres treats NULLs as distinct,
@@ -2697,14 +2707,134 @@ model BookingRequest {
   createdAt                DateTime             @default(now())
   decidedAt                DateTime?
 
-  trainer   TrainerProfile    @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  client    ClientProfile     @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  package   Package           @relation(fields: [packageId], references: [id], onDelete: Cascade)
-  proposals BookingProposal[]
+  trainer     TrainerProfile      @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  client      ClientProfile       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  package     Package             @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  proposals   BookingProposal[]
+  // Answers given to get PAST the booking gate, before the trainer had said
+  // yes. Re-keyed onto the created session when the request is confirmed —
+  // otherwise an approval-required offering would lose everything the client
+  // typed the moment the trainer touched it.
+  formAnswers BookingFormAnswer[]
 
   @@index([trainerId, status])
   @@index([clientId])
   @@map("booking_requests")
+}
+
+// ─── Holding the slot while they answer ──────────────────────────────────────
+//
+// Karl's groomer asks five questions before every groom, and the booking is not
+// confirmed until they are answered. That leaves the chosen hour in limbo for
+// as long as it takes to type: hold it and an abandoned form takes 2pm out of
+// the diary for ever; don't hold it and the slot can vanish under somebody
+// doing exactly what they were asked to do.
+//
+// A BookingHold is the answer — a claim on one slot with an expiry on it. Two
+// things make it safe:
+//
+//  1. It is NOT a TrainingSession. Nothing that draws the calendar, counts
+//     bookings or reports on them knows this table exists, so a held slot can
+//     never be mistaken for a confirmed one.
+//  2. Expiry is enforced ON READ, never by the sweep. Every query that treats a
+//     hold as busy filters `expiresAt > now()`, so a hold that lapsed thirty
+//     seconds ago is already bookable by somebody else whether or not the cron
+//     has run. The cron (api/cron/booking-holds) only tidies the rows away.
+//
+// It also carries the ANSWERS. They are written when the form step is finished,
+// not when the payment succeeds — a declined card must not send somebody back
+// to an empty form. And because the row dies with its expiry, an abandoned
+// booking leaves no answer set behind that could satisfy a later gate.
+model BookingHold {
+  id            String  @id @default(cuid())
+  trainerId     String
+  // Null while a hold belongs to somebody who isn't a client yet. Every path
+  // that books today requires one, so this is null only in the enquiry case.
+  clientId      String?
+  packageId     String?
+  bookingPageId String?
+
+  // The slot being held, and what it occupies. durationMins/bufferMins are
+  // snapshotted so the busy-interval maths matches the session that will be
+  // created from it exactly.
+  slotAt       DateTime
+  durationMins Int
+  bufferMins   Int      @default(0)
+
+  // The gating form this hold is answering, and the answers so far. `answeredAt`
+  // is the moment the server accepted them — i.e. the moment the gate opened.
+  formId     String?
+  stepId     String?
+  answers    Json      @default("{}")
+  answeredAt DateTime?
+
+  // When the claim lapses. Extended once, and only once, when a Stripe checkout
+  // is opened against it — a card takes longer than a form.
+  expiresAt  DateTime
+  // Set when the booking it was holding for actually happened. A consumed hold
+  // stops counting as busy (the real session does that job now) and is swept.
+  consumedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  client  ClientProfile? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  package Package?       @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  form    Form?          @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  // The busy-interval read: trainer + window, then expiresAt/consumedAt in code.
+  @@index([trainerId, slotAt])
+  @@index([expiresAt])
+  @@index([clientId])
+  @@index([packageId])
+  @@index([formId])
+  @@map("booking_holds")
+}
+
+// The answers that got one booking through the gate.
+//
+// KEYED TO THE THING BOOKED, never to the client. A repeating groom asks the
+// same five questions every time — "the next session it does the same thing" —
+// so "this client has answered before" must never be able to satisfy a later
+// gate. There is no query anywhere that looks this up by client alone; the gate
+// is satisfied by answers supplied WITH the booking request and by nothing else.
+// This table is the record of what was said, for the trainer to read.
+//
+// Exactly one anchor is set: the session a 1:1 booking created, the enrolment a
+// class booking created, or the request a not-yet-approved booking created.
+model BookingFormAnswer {
+  id        String  @id @default(cuid())
+  trainerId String
+  clientId  String
+  formId    String
+  // The CommsFlowStep that demanded it, when there was one. Optional so an
+  // answer set outlives the step being deleted.
+  stepId    String?
+
+  sessionId        String?
+  enrollmentId     String?
+  bookingRequestId String?
+
+  answers     Json     @default("{}")
+  submittedAt DateTime @default(now())
+
+  trainer        TrainerProfile   @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  client         ClientProfile    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  form           Form             @relation(fields: [formId], references: [id], onDelete: Cascade)
+  session        TrainingSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  enrollment     ClassEnrollment? @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  bookingRequest BookingRequest?  @relation(fields: [bookingRequestId], references: [id], onDelete: Cascade)
+
+  // One answer set per (thing booked, form). Postgres treats NULLs as distinct,
+  // so each of these only fires on the anchor that is actually set.
+  @@unique([sessionId, formId])
+  @@unique([enrollmentId, formId])
+  @@unique([bookingRequestId, formId])
+  @@index([trainerId])
+  @@index([clientId])
+  @@index([formId])
+  @@map("booking_form_answers")
 }
 
 // ─── Negotiating the time ─────────────────────────────────────────────────────
@@ -4081,6 +4211,19 @@ model CommsFlowStep {
   // a person-anchored run, where steps are sequential. Off = the old behaviour,
   // where every step is independent.
   blocking        Boolean               @default(false)
+  // "Ask this BEFORE they can confirm the booking."
+  //
+  // Karl describes automations in three stages — before they confirm, during
+  // the session, after the session. `direction`/`offsetMinutes` express the
+  // second and third; this is the first, and it is not a time at all, which is
+  // why it could not be another CommsFlowDirection. A FORM step with this on,
+  // sitting on a Package or a ClassRun, is what turns the booking gate on for
+  // that offering: every client path that books it must carry answers that
+  // satisfy the form, or the server refuses.
+  //
+  // Distinct from `blocking`, which sequences the steps of a person-anchored
+  // journey. This one holds up a BOOKING, and only a FORM step can carry it.
+  gatesBooking    Boolean               @default(false)
   direction       CommsFlowDirection    @default(BEFORE_SESSION)
   offsetMinutes   Int                   @default(1440)
   channels        NotificationChannel[]
@@ -4996,18 +5139,22 @@ model Form {
   // Draft flag — a draft is hidden from the invite picker and 404s publicly.
   isActive Boolean @default(true)
 
-  trainer            TrainerProfile  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  assignedClients    ClientProfile[] @relation("ClientIntakeForm")
-  enquiries          Enquiry[]       @relation("EnquiryUnifiedForm")
+  trainer            TrainerProfile      @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  assignedClients    ClientProfile[]     @relation("ClientIntakeForm")
+  enquiries          Enquiry[]           @relation("EnquiryUnifiedForm")
   // Self-relation: the intake form this enquiry form hands over to. SetNull so
   // deleting the intake form turns the handover off rather than deleting the
   // enquiry form with it.
-  continueIntakeForm Form?           @relation("FormContinuationIntake", fields: [continueIntakeFormId], references: [id], onDelete: SetNull)
-  continuationOf     Form[]          @relation("FormContinuationIntake")
+  continueIntakeForm Form?               @relation("FormContinuationIntake", fields: [continueIntakeFormId], references: [id], onDelete: SetNull)
+  continuationOf     Form[]              @relation("FormContinuationIntake")
   // The person-anchored journey published on this form, and the people
   // currently walking through it.
-  flowSteps          CommsFlowStep[] @relation("FormFlowSteps")
-  flowRuns           FlowRun[]       @relation("FormFlowRuns")
+  flowSteps          CommsFlowStep[]     @relation("FormFlowSteps")
+  flowRuns           FlowRun[]           @relation("FormFlowRuns")
+  // Bookings currently mid-answer on this form, and the answers that got
+  // through the gate — see BookingHold / BookingFormAnswer.
+  bookingHolds       BookingHold[]
+  bookingAnswers     BookingFormAnswer[]
 
   @@unique([trainerId, slug])
   @@index([trainerId])
