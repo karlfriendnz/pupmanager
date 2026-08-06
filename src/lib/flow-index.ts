@@ -19,6 +19,7 @@ import { sortStepsByTime } from './comms-flow-steps'
 import { flowAnchorFor } from './flow-anchors'
 // Type-only, so this module stays free of anything that reads a session.
 import type { PermissionKey } from './permissions'
+import type { RunKind } from './run-kind'
 
 /** What a flow hangs off. The four parents a CommsFlowStep can have, with the
  *  ClassRun ones split by section because that is how a trainer finds them. */
@@ -111,6 +112,53 @@ export function flowEditorTarget(owner: Pick<FlowOwner, 'kind' | 'id'>): {
       return {}
     }
   }
+}
+
+/**
+ * Which section a ClassRun is listed under.
+ *
+ * A ClassRun is the single model behind four sections of the app, and nothing
+ * on the run says which — only the backing package does (lib/run-kind.ts). Both
+ * the Settings tab and the timeline page need the answer, so it is stated once.
+ */
+export const FLOW_OWNER_KIND_BY_RUN_KIND: Record<RunKind, FlowOwnerKind> = {
+  class: 'CLASS',
+  casual: 'CASUAL',
+  event: 'EVENT',
+  daycare: 'DAYCARE',
+}
+
+/**
+ * The URL segment a kind's own timeline page lives under.
+ *
+ * FOUR segments for seven kinds, deliberately: all four run shapes are one
+ * ClassRun with one CRUD tree, so they are one page. It mirrors
+ * `flowEditorTarget` exactly — the segment names ARE its four keys minus the
+ * "Id" — because the page has to hand the editor the same one back.
+ */
+export type FlowTimelineSegment = 'run' | 'package' | 'membership' | 'form'
+
+export const FLOW_TIMELINE_SEGMENT: Record<FlowOwnerKind, FlowTimelineSegment> = {
+  CLASS: 'run',
+  CASUAL: 'run',
+  EVENT: 'run',
+  DAYCARE: 'run',
+  PACKAGE: 'package',
+  MEMBERSHIP: 'membership',
+  FORM: 'form',
+}
+
+/**
+ * This flow, on a page of its own. Karl: "can it also be opened up on a new
+ * page to remove distraction from the user".
+ *
+ * `from` is where Back goes — the screen they left, tab and all. Passed through
+ * as a query rather than guessed at the other end: a flow can be opened from
+ * six places and "somewhere generic" is the one wrong answer.
+ */
+export function flowTimelineHref(owner: Pick<FlowOwner, 'kind' | 'id'>, from?: string): string {
+  const path = `/automations/${FLOW_TIMELINE_SEGMENT[owner.kind]}/${owner.id}`
+  return from ? `${path}?from=${encodeURIComponent(from)}` : path
 }
 
 /**

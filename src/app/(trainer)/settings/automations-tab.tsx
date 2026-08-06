@@ -6,6 +6,7 @@ import { safeFlowStepPayload, type FlowStepKind } from '@/lib/comms-flow-steps'
 import {
   buildFlowIndex,
   buildOwnerChoices,
+  FLOW_OWNER_KIND_BY_RUN_KIND,
   FLOW_OWNER_PERMISSION,
   type FlowOwner,
   type FlowOwnerKind,
@@ -39,13 +40,9 @@ import { AutomationsPanel } from './automations-panel'
  * opens the same editor on it. Nothing is written until the first step saves.
  */
 
-/** The four shapes a run can take, mapped to the section it is listed under. */
-const RUN_KIND_SECTION: Record<ReturnType<typeof runKind>, FlowOwnerKind> = {
-  class: 'CLASS',
-  casual: 'CASUAL',
-  event: 'EVENT',
-  daycare: 'DAYCARE',
-}
+/** The four shapes a run can take, mapped to the section it is listed under.
+ *  Shared with the timeline page, which has to reach the same answer. */
+const RUN_KIND_SECTION = FLOW_OWNER_KIND_BY_RUN_KIND
 
 /**
  * Can this person edit flows of ANY kind? Asked by the settings page before it

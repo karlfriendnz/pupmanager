@@ -9,19 +9,28 @@
 // found two would rightly ask which one was real.
 //
 // ── The shape Karl chose ────────────────────────────────────────────────────
-// A VERTICAL STEP LIST, mobile-first. He picked it over a drag-canvas because
-// the app is used on a phone, and a canvas on a 390px screen is a map you pan
-// rather than a list you read:
+// A VERTICAL TIMELINE, mobile-first. He picked a list over a drag-canvas
+// because the app is used on a phone, and a canvas on a 390px screen is a map
+// you pan rather than a list you read — then, looking at the list: "can the
+// automation flow look like a timeline". So the list grew a spine:
 //
-//     TRIGGER  Client books a 1:1 groom
-//     ────────────────────────────────────
-//      1 ▸ Send form: Pre-groom questions
-//            wait for their answers
-//     ────────────────────────────────────
-//      2 ▸ Send email: What to expect
-//            straight away
-//     ────────────────────────────────────
-//        + Add step
+//     BEFORE THEY CONFIRM
+//     Part of booking — it holds the booking up until it is done.
+//      (1)  Send form: Pre-groom questions
+//       │     While they are booking
+//     DURING THE SESSION
+//     From them being booked in, through to the end of the session.
+//      (2)  Send email: What to expect
+//       │     1 day before
+//      (3)  You take a photo of the finished groom
+//             While the session is on
+//     AFTER THE SESSION
+//      ·   Nothing follows it up.
+//
+// One rail, one node per step, top to bottom in the order the client lives it.
+// The three headings are Karl's stages; which one a step sits under is DERIVED
+// (lib/flow-timeline.ts), never stored — a stage column would be a second
+// answer to "when does this happen" and the two would drift.
 //
 // ONE bordered block split by hairlines — never a stack of shadowed cards
 // (AGENTS.md). Each row says what the step does and when, in plain words; the
@@ -36,6 +45,7 @@
 // "Add step" opens a FULL SCREEN picker, because seven choices with an
 // explanation each is not a 56px menu hanging off a corner.
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import Link from 'next/link'
 import {
   closestCenter,
   KeyboardSensor,
@@ -54,7 +64,7 @@ import { CSS } from '@dnd-kit/utilities'
 import {
   Bell, Mail, Smartphone, Plus, Trash2, Loader2, Star, Check, Sparkles, Save, X, Users, Eye,
   ChevronLeft, GripVertical, AlertTriangle, FileText, Camera, ClipboardList, KeyRound,
-  ShoppingBag, UserCheck, MessageSquare,
+  ShoppingBag, UserCheck, MessageSquare, Maximize2,
 } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
@@ -66,6 +76,7 @@ import { isRichTextEmpty } from '@/lib/rich-text'
 import { sortStepsByTime, channelsForAudience, type FlowStepKind, type FlowStepActor } from '@/lib/comms-flow-steps'
 import { canWaitForCompletion } from '@/lib/flow-anchors'
 import { canGateBooking } from '@/lib/comms-flow-steps'
+import { groupStepsByStage, reorderFlowSteps } from '@/lib/flow-timeline'
 import {
   flowStepSummary,
   flowStepKindsFor,
@@ -76,7 +87,7 @@ import {
 import { commsPlaceholderOptionsFor, type PlaceholderOption } from '@/lib/placeholder-labels'
 
 type Channel = 'PUSH' | 'EMAIL' | 'IN_APP'
-type Direction = 'BEFORE_SESSION' | 'AFTER_SESSION' | 'AFTER_PURCHASE' | 'BEFORE_PERIOD_END'
+type Direction = 'BEFORE_SESSION' | 'DURING_SESSION' | 'AFTER_SESSION' | 'AFTER_PURCHASE' | 'BEFORE_PERIOD_END'
 type Audience = 'ENROLLED' | 'ENROLLED_AND_WAITLIST' | 'CUSTOM' | 'STAFF'
 type PersonTrigger = 'ON_ENQUIRY_SUBMITTED' | 'ON_SIGNUP' | 'ON_BOOKING'
 
@@ -196,6 +207,9 @@ function audienceLabel(a: Audience): string {
 // it rather than reading it back. The ROW uses flowStepWhenText, which is the
 // shared, tested version and covers the journey anchors too.
 function humanWhen(direction: Direction, min: number): string {
+  // A window, not a lead time — its offsetMinutes is inert (see the enum in
+  // schema.prisma), so it is answered before the label is even built.
+  if (direction === 'DURING_SESSION') return 'while the session is on'
   const preset = OFFSETS.find(o => o.min === min)
   const label = preset ? preset.label : min < 60 ? `${min} min` : min < 1440 ? `${Math.round(min / 60)} hr` : `${Math.round(min / 1440)} days`
   if (direction === 'AFTER_PURCHASE') return min === 0 ? 'When they join' : `${label} after they join`
@@ -252,7 +266,7 @@ function normalizeStep(raw: Partial<Step> & { id: string }): Step {
   } as Step
 }
 
-export function CommsFlowEditor({ runId, packageId, membershipId, formId, clients = [], offeringName, location, onChanged }: {
+export function CommsFlowEditor({ runId, packageId, membershipId, formId, clients = [], offeringName, location, onChanged, fullPage = false }: {
   runId?: string
   packageId?: string
   membershipId?: string
@@ -276,6 +290,17 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
    * is still the one place any change is sent from.
    */
   onChanged?: () => void
+  /**
+   * This IS the whole screen (/automations/…), rather than a panel on somebody
+   * else's page. Karl: "can it also be opened up on a new page to remove
+   * distraction from the user".
+   *
+   * Deliberately one flag with two small effects — no border of its own (the
+   * page is the container), and no link to the page it is already on. It is
+   * NOT a second editor and must never grow into one: everything a step can be
+   * is edited by the code below, whichever of the six places it is mounted in.
+   */
+  fullPage?: boolean
 }) {
   // Scoped to a class run (group / drop-in / event / puppy school), a 1:1
   // package, a membership, or a form. The API trees mirror each other.
@@ -293,6 +318,22 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
   // where dragging a step changes what actually happens.
   const sequenced = !!formId
   const anchor = sequenced ? 'PERSON' : isMembership ? 'PURCHASE' : 'SESSION'
+  // The same flow, on its own page. Derived from the id this editor already
+  // holds rather than passed in, so the five in-place mounts cannot each forget
+  // it — and so there is exactly one place the route is spelled.
+  const timelinePath = runId
+    ? `/automations/run/${runId}`
+    : membershipId
+      ? `/automations/membership/${membershipId}`
+      : formId
+        ? `/automations/form/${formId}`
+        : `/automations/package/${packageId}`
+  // Where "Back" goes afterwards: the screen they left, tab and all. Read from
+  // the browser in an effect rather than from useSearchParams — this component
+  // mounts on six pages and a hook that forces a Suspense boundary would be six
+  // places to get that right. Nothing renders differently before it arrives.
+  const [returnTo, setReturnTo] = useState<string | null>(null)
+  useEffect(() => { setReturnTo(window.location.pathname + window.location.search) }, [])
   const placeholderOptions = commsPlaceholderOptionsFor(isMembership ? 'membership' : 'session')
   const [steps, setSteps] = useState<Step[] | null>(null)
   const [templates, setTemplates] = useState<TemplateSummary[]>([])
@@ -457,6 +498,16 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
     [steps, sequenced],
   )
 
+  // The spine, cut into Karl's stages. Every stage this kind of flow HAS comes
+  // back, empty ones included — see lib/flow-timeline.ts. A membership has none
+  // (no session to be before, during or after), and gets one plain spine.
+  const stages = useMemo(() => groupStepsByStage(ordered, anchor), [ordered, anchor])
+  // A step's number is its place in the WHOLE flow, not in its stage: it is
+  // also the index flowStepSummary reads to phrase a journey's timing ("Once
+  // the step before is done"), and restarting it per heading would say that of
+  // the first step of a stage, which is a different claim entirely.
+  const positions = useMemo(() => new Map(ordered.map((s, i) => [s.id, i])), [ordered])
+
   const sensors = useSensors(
     // A few pixels of slop so a tap on a row opens it instead of starting a drag.
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -466,14 +517,15 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
   async function onDragEnd(e: DragEndEvent) {
     const { active, over } = e
     if (!over || active.id === over.id) return
-    const from = ordered.findIndex(s => s.id === active.id)
-    const to = ordered.findIndex(s => s.id === over.id)
-    if (from < 0 || to < 0) return
-    const next = [...ordered]
-    next.splice(to, 0, ...next.splice(from, 1))
+    // One list, whatever stage each step is drawn under — a step dragged across
+    // a heading is the same move as one dragged within it. The renumbering is
+    // pure and tested (reorderFlowSteps), because what a reorder has to get
+    // right is that a RELOAD shows the same thing.
+    const next = reorderFlowSteps(ordered, String(active.id), String(over.id))
+    if (next === ordered) return
     // Optimistic: the list is already where they dropped it, and the `order`
     // values are rewritten to match so a re-sort doesn't snap it back.
-    setSteps(next.map((s, i) => ({ ...s, order: i })))
+    setSteps(next)
     const res = await api(`${base}/reorder`, { method: 'POST', body: JSON.stringify({ ids: next.map(s => s.id) }) })
     // The server hands back the saved list — the proof that a reload will show
     // this, not the order it was in before (AGENTS.md bug #1).
@@ -490,36 +542,72 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
     ? 'The journey somebody walks after they send this form — one step at a time, in this order. Drag a step by its handle to move it.'
     : 'Messages that send themselves around each session — by push or email to your clients, and in‑app to your team.'
 
+  // The timeline. One rail top to bottom, cut into the stages this flow has —
+  // headings and all, including the ones with nothing in them, which say so
+  // quietly rather than asking to be filled.
   const rows = (
-    <ol className="border-t border-slate-200" data-review-scope={`Flow builder: ${heading}`}>
-      {ordered.map((step, i) => (
-        <FlowStepRow
-          key={step.id}
-          step={step}
-          index={i}
-          names={names}
-          draggable={sequenced}
-          busy={busy}
-          onEdit={() => setDraft({ ...step })}
-          onPreview={() => setPreviewing(step)}
-          onToggle={() => toggleEnabled(step)}
-        />
+    <div data-review-scope={`Flow builder: ${heading}`}>
+      {stages.map(({ stage, steps: inStage }) => (
+        <section key={stage?.key ?? 'all'} className="border-t border-slate-200">
+          {stage && (
+            <div className="px-4 pt-3.5 sm:px-5">
+              <h4 className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{stage.label}</h4>
+              <p className="mt-0.5 text-xs text-slate-500">{stage.hint}</p>
+            </div>
+          )}
+          {inStage.length === 0 ? (
+            // Quiet. Most flows use one stage, and a heading that nagged about
+            // the other two would be two jobs a trainer never asked for.
+            <p className="px-4 py-3 text-xs text-slate-400 sm:px-5">{stage?.empty}</p>
+          ) : (
+            <ol className={stage ? 'pt-2' : ''}>
+              {inStage.map((step, i) => (
+                <FlowStepRow
+                  key={step.id}
+                  step={step}
+                  index={positions.get(step.id) ?? i}
+                  first={i === 0}
+                  last={i === inStage.length - 1}
+                  names={names}
+                  draggable={sequenced}
+                  busy={busy}
+                  onEdit={() => setDraft({ ...step })}
+                  onPreview={() => setPreviewing(step)}
+                  onToggle={() => toggleEnabled(step)}
+                />
+              ))}
+            </ol>
+          )}
+        </section>
       ))}
-    </ol>
+    </div>
   )
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+    <div className={fullPage ? 'bg-white' : 'rounded-xl border border-slate-200 bg-white overflow-hidden'}>
       <div className="flex flex-wrap items-start justify-between gap-3 p-4 sm:p-5">
         <div>
           <h3 className="text-base font-semibold text-slate-900">{heading}</h3>
           <p className="text-sm text-slate-500 mt-0.5 max-w-prose">{blurb}</p>
         </div>
-        {steps.length > 0 && !sequenced && (
-          <button onClick={saveAsTemplate} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
-            <Save className="h-4 w-4 text-slate-500" strokeWidth={1.75} /> Save as template
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* The same flow with nothing else on the screen. A link, not a
+              modal: it is a place, so it can be bookmarked, shared and
+              backed out of. */}
+          {!fullPage && (
+            <Link
+              href={returnTo ? `${timelinePath}?from=${encodeURIComponent(returnTo)}` : timelinePath}
+              className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+            >
+              <Maximize2 className="h-4 w-4 text-slate-500" strokeWidth={1.75} /> Full screen
+            </Link>
+          )}
+          {steps.length > 0 && !sequenced && (
+            <button onClick={saveAsTemplate} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+              <Save className="h-4 w-4 text-slate-500" strokeWidth={1.75} /> Save as template
+            </button>
+          )}
+        </div>
       </div>
 
       {/* The trigger, stated once at the top — every step below hangs off it,
@@ -629,21 +717,28 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
 }
 
 /**
- * One step of the flow.
+ * One step of the flow — one node on the timeline.
  *
  * Two lines and nothing else: what the step does, and when. Both come from
  * `flowStepSummary`, so the row cannot phrase a fact differently from the tests
  * or from any other screen that shows a step.
  *
- * A step the TRAINER does is marked, on its own line, in words — "You do this".
- * The actor is the fact a trainer will misread, and a step that quietly waits
- * for them while they believe it is waiting for the client is a journey that
- * stalls with nobody knowing why. The left edge of such a row is drawn too, so
- * a flow can be scanned without reading it.
+ * A step the TRAINER does is marked twice: in words on its own line ("You do
+ * this"), and by a FILLED node on the rail. The actor is the fact a trainer
+ * will misread, and a step that quietly waits for them while they believe it is
+ * waiting for the client is a journey that stalls with nobody knowing why. The
+ * filled node is what lets a flow be scanned without reading it — monochrome,
+ * because a coloured dot per actor is the decorative colour AGENTS.md bans.
+ *
+ * `first`/`last` are the step's place IN ITS STAGE and only trim the rail, so
+ * the spine starts at the first node under a heading and stops at the last
+ * rather than running into the gap.
  */
-function FlowStepRow({ step, index, names, draggable, busy, onEdit, onPreview, onToggle }: {
+function FlowStepRow({ step, index, first, last, names, draggable, busy, onEdit, onPreview, onToggle }: {
   step: Step
   index: number
+  first: boolean
+  last: boolean
   names: FlowStepNames
   draggable: boolean
   busy: boolean
@@ -667,12 +762,8 @@ function FlowStepRow({ step, index, names, draggable, busy, onEdit, onPreview, o
       // there. Pinning x to 0 does what @dnd-kit/modifiers' restrictToVerticalAxis
       // does, without adding a dependency this repo has never needed.
       style={{ transform: CSS.Transform.toString(transform && { ...transform, x: 0 }), transition }}
-      className={`relative flex items-stretch border-b border-slate-100 last:border-b-0 bg-white ${step.enabled ? '' : 'opacity-55'} ${isDragging ? 'z-10 shadow-sm' : ''}`}
+      className={`relative flex items-stretch bg-white ${step.enabled ? '' : 'opacity-55'} ${isDragging ? 'z-10 shadow-sm' : ''}`}
     >
-      {/* The trainer's own steps are edged, so "whose move is it" survives a
-          scan. A 2px rule, not a tinted card — see AGENTS.md. */}
-      {mine && <span className="absolute inset-y-0 left-0 w-[2px] bg-slate-400" aria-hidden />}
-
       {draggable && (
         <button
           type="button"
@@ -685,15 +776,27 @@ function FlowStepRow({ step, index, names, draggable, busy, onEdit, onPreview, o
         </button>
       )}
 
+      {/* THE RAIL. One hairline down the flow, a node per step — the whole of
+          "make it look like a timeline". Decorative to a screen reader: the
+          order is already in the list markup and the number is on the node. */}
+      <div className={`flex shrink-0 flex-col items-center ${draggable ? 'w-7' : 'w-10'}`} aria-hidden>
+        <span className={`h-3.5 w-px ${first ? 'bg-transparent' : 'bg-slate-200'}`} />
+        <span
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold tabular-nums ${
+            mine ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-500'
+          }`}
+        >
+          {index + 1}
+        </span>
+        <span className={`w-px flex-1 ${last ? 'bg-transparent' : 'bg-slate-200'}`} />
+      </div>
+
       <button
         type="button"
         onClick={onEdit}
         disabled={busy}
-        className={`flex min-w-0 flex-1 items-start gap-3 py-3.5 text-left hover:bg-slate-50 disabled:opacity-60 ${draggable ? 'pl-1' : 'pl-4'}`}
+        className="flex min-w-0 flex-1 items-start gap-2.5 rounded-lg py-3 pl-1 pr-1 text-left hover:bg-slate-50 disabled:opacity-60"
       >
-        <span className="mt-0.5 flex w-6 shrink-0 items-center justify-center text-xs font-semibold tabular-nums text-slate-400">
-          {index + 1}
-        </span>
         <Icon className="mt-0.5 h-4 w-4 shrink-0 text-slate-700" strokeWidth={1.75} />
 
         <span className="min-w-0 flex-1">
@@ -919,19 +1022,31 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
               <div className="inline-flex rounded-lg border border-slate-200 p-0.5">
                 {(isMembership
                   ? (['AFTER_PURCHASE', 'BEFORE_PERIOD_END'] as Direction[])
-                  : (['BEFORE_SESSION', 'AFTER_SESSION'] as Direction[])
+                  : (['BEFORE_SESSION', 'DURING_SESSION', 'AFTER_SESSION'] as Direction[])
                 ).map(d => (
                   <button key={d} onClick={() => onPatch({ direction: d })} className={`px-3 h-8 text-sm font-medium rounded-md ${draft.direction === d ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>
-                    {d === 'BEFORE_SESSION' ? 'Before' : d === 'AFTER_SESSION' ? 'After' : d === 'AFTER_PURCHASE' ? 'After they join' : 'Before it renews'}
+                    {d === 'BEFORE_SESSION' ? 'Before' : d === 'DURING_SESSION' ? 'During' : d === 'AFTER_SESSION' ? 'After' : d === 'AFTER_PURCHASE' ? 'After they join' : 'Before it renews'}
                   </button>
                 ))}
               </div>
-              <select value={draft.offsetMinutes} onChange={e => onPatch({ offsetMinutes: Number(e.target.value) })} aria-label="How long" className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700">
-                {OFFSETS.map(o => <option key={o.min} value={o.min}>{o.label}</option>)}
-              </select>
-              {!isMembership && <span className="text-sm text-slate-500">the session</span>}
+              {/* "During" is a window, not a lead time: there is no number to
+                  choose, so there is no box to choose it in. The stored
+                  offsetMinutes is left where it is — switch back to Before and
+                  the trainer's "1 day" is still there. */}
+              {draft.direction !== 'DURING_SESSION' && (
+                <>
+                  <select value={draft.offsetMinutes} onChange={e => onPatch({ offsetMinutes: Number(e.target.value) })} aria-label="How long" className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700">
+                    {OFFSETS.map(o => <option key={o.min} value={o.min}>{o.label}</option>)}
+                  </select>
+                  {!isMembership && <span className="text-sm text-slate-500">the session</span>}
+                </>
+              )}
             </div>
-            <p className="mt-1.5 text-xs text-slate-500">Sends {humanWhen(draft.direction, draft.offsetMinutes).toLowerCase()}.</p>
+            <p className="mt-1.5 text-xs text-slate-500">
+              {draft.direction === 'DURING_SESSION'
+                ? 'Goes out while the session is actually running — any time between it starting and finishing.'
+                : `Sends ${humanWhen(draft.direction, draft.offsetMinutes).toLowerCase()}.`}
+            </p>
           </Field>
         )}
 

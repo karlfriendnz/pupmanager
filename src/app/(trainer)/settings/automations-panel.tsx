@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Plus, Workflow } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Maximize2, Plus, Workflow } from 'lucide-react'
 
 import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
 import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import {
   flowEditorTarget,
   flowSectionLabel,
+  flowTimelineHref,
   groupFlowsBySection,
   groupOwnerChoicesBySection,
   flowIndexHeadline,
@@ -333,6 +334,18 @@ function FlowRow({
             {open ? 'Tap to close' : 'Tap to edit'}
           </span>
         </button>
+
+        {/* The flow on its own page — the same editor, with nothing else on the
+            screen (Karl: "to remove distraction"). One tap from the list, not
+            two: expanding first to reach the link inside would make the
+            distraction-free view the more buried of the two. */}
+        <Link
+          href={flowTimelineHref(flow.owner, '/settings?tab=automations')}
+          aria-label={`Open ${flow.owner.name} full screen`}
+          className="-m-1 flex-shrink-0 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        >
+          <Maximize2 className="h-4 w-4" strokeWidth={1.75} />
+        </Link>
 
         {/* Its own page, for everything about this class or form that isn't its
             flow. The editors there are untouched and still the same one. */}
