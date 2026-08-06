@@ -118,6 +118,27 @@ describe('the public booking page', () => {
     expect(bookingPage).toContain('if (gate && pkg) {')
     expect(bookingPage).toContain('createBookingHold({')
   })
+
+  // A gate with nowhere to answer is a dead end, not a gate: the client would be
+  // refused at Confirm with no way forward. The questions are rendered by the
+  // same FormRunner, in the same place in the order — time, then questions, then
+  // confirm, then pay.
+  it('gives a gated client somewhere to answer, before Confirm', () => {
+    const ui = read('src/app/c/[slug]/book/booking-flow.tsx')
+    expect(ui).toContain('<FormRunner')
+    expect(ui).toContain('chrome={false}')
+    // The questions screen is returned BEFORE the confirm screen.
+    expect(ui.indexOf('Step 2a: the trainer')).toBeLessThan(ui.indexOf('Step 2: confirm a chosen slot'))
+    expect(ui).toContain('answers: gateAnswers ?? {}')
+  })
+
+  // Resolved on the server, and only for somebody who is already a client here —
+  // a stranger's submission becomes an Enquiry, not a booking.
+  it('resolves the questions server-side, and only for a known client', () => {
+    const page = read('src/app/c/[slug]/book/[pageSlug]/page.tsx')
+    expect(page).toContain('page.enabled && client && page.packageId')
+    expect(page).toContain('bookingGateFor({ packageId: page.packageId })')
+  })
 })
 
 // ─── The basket ─────────────────────────────────────────────────────────────

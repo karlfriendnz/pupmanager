@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { Calendar, Clock, Loader2, CheckCircle2, ChevronLeft } from 'lucide-react'
 import { openExternal } from '@/lib/external-link'
+import { FormRunner, type Answers, type LinkedField, type RunnableForm } from '@/components/shared/form-runner'
 
 interface Slot {
   iso: string
@@ -41,6 +42,8 @@ export function BookingFlow({
   isKnownClient,
   pkg,
   slotLengthMins,
+  gateForm = null,
+  gateLinkedFields = {},
 }: {
   slug: string
   pageSlug: string
@@ -52,6 +55,18 @@ export function BookingFlow({
   isKnownClient: boolean
   pkg: Pkg | null
   slotLengthMins: number
+  /**
+   * The questions this trainer asks before every booking of this offering, or
+   * null when there are none — and always null for a visitor who isn't already
+   * a client here, because their submission becomes an Enquiry rather than a
+   * booking.
+   *
+   * Rendered so somebody who IS gated has somewhere to answer. It is not what
+   * enforces the gate: the POST resolves it again server-side and refuses a
+   * booking whose answers don't satisfy it, whatever arrived on this screen.
+   */
+  gateForm?: RunnableForm | null
+  gateLinkedFields?: Record<string, LinkedField>
 }) {
   const [dateStr, setDateStr] = useState(days[0]?.dateStr ?? '')
   const [slot, setSlot] = useState<Slot | null>(null)
@@ -59,6 +74,10 @@ export function BookingFlow({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<Result | null>(null)
+  // Answered before Confirm, exactly as in the app's own booking wizard —
+  // questions, then confirm, then pay. Until they are in, the Confirm button is
+  // not what is on screen.
+  const [gateAnswers, setGateAnswers] = useState<Answers | null>(null)
 
   const accent = accentColor ?? undefined
   const selectedDay = useMemo(() => days.find(d => d.dateStr === dateStr) ?? null, [days, dateStr])
@@ -82,7 +101,7 @@ export function BookingFlow({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
           isKnownClient
-            ? { slotIso: slot.iso }
+            ? { slotIso: slot.iso, ...(gateForm ? { answers: gateAnswers ?? {} } : {}) }
             : {
                 slotIso: slot.iso,
                 name: form.name.trim(),
@@ -98,6 +117,10 @@ export function BookingFlow({
         setError(typeof body.error === 'string' ? body.error : 'Could not book that time.')
         // A taken slot is gone — drop back to the picker so they re-choose.
         if (body.code === 'SLOT_TAKEN') setSlot(null)
+        // The trainer changed the questions under them, or something was
+        // skipped. Send them back to the form rather than leaving them on a
+        // Confirm button that will keep failing.
+        if (body.code === 'FORM_REQUIRED') setGateAnswers(null)
         return
       }
       // Pay-to-confirm page → hand off to Stripe; the webhook books on success.
@@ -137,6 +160,37 @@ export function BookingFlow({
         </div>
         <p className="text-sm font-medium text-slate-600">No open times right now</p>
         <p className="mt-1 text-xs text-slate-400">{businessName} hasn’t published availability for the next few weeks.</p>
+      </div>
+    )
+  }
+
+  // ── Step 2a: the trainer's questions ──
+  // Between the time and the Confirm button, and before any money — the same
+  // order as the app's own booking wizard, because it is the same gate.
+  if (slot && gateForm && !gateAnswers) {
+    return (
+      <div className="w-full rounded-2xl border border-slate-100 bg-white p-6 shadow-md shadow-slate-900/5">
+        <button onClick={() => setSlot(null)} className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700">
+          <ChevronLeft className="h-4 w-4" /> Back to times
+        </button>
+        <h2 className="text-base font-semibold text-slate-900">{gateForm.name}</h2>
+        <p className="mt-1 text-sm text-slate-500">{businessName} asks this before every booking.</p>
+        <div className="mt-5">
+          <FormRunner
+            key={gateForm.id}
+            form={gateForm}
+            linkedFields={gateLinkedFields}
+            businessName={businessName}
+            trainerLogoUrl={null}
+            heading=""
+            // This page already carries the trainer's logo, name and heading.
+            chrome={false}
+            showBorder={false}
+            submitLabel="Continue"
+            onSubmit={async answers => { setGateAnswers(answers); return null }}
+          />
+        </div>
+        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       </div>
     )
   }

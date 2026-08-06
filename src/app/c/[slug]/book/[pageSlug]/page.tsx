@@ -5,6 +5,8 @@ import { auth } from '@/lib/auth'
 import { fetchBookingSlots } from '@/lib/booking-slots'
 import { bookingConfig } from '@/lib/booking-page'
 import { BookingFlow } from '../booking-flow'
+import { bookingGateFor } from '@/lib/booking-gate'
+import { renderUnifiedForm } from '@/lib/unified-form-render'
 import { RichText } from '@/components/shared/rich-text'
 import { offeringVisibleWhere } from '@/lib/offering-visibility'
 
@@ -70,8 +72,31 @@ export default async function PublicBookingPage({
     : null
 
   const days = page.enabled
-    ? await fetchBookingSlots(trainer.id, bookingConfig(page, trainer.user.timezone, pkg?.bufferMins ?? 0))
+    // A signed-in client's OWN hold must not hide the slot they are holding.
+    ? await fetchBookingSlots(
+        trainer.id,
+        bookingConfig(page, trainer.user.timezone, pkg?.bufferMins ?? 0),
+        new Date(),
+        { excludeClientId: client?.id ?? null },
+      )
     : []
+
+  // The offering's booking gate — the questions this trainer asks before every
+  // booking of it. Resolved on the SERVER and only for somebody who is already a
+  // client here, because they are the only visitor to this page who books
+  // anything: a stranger's submission becomes an Enquiry, which the trainer
+  // accepts, and that is a trainer-side action the gate deliberately doesn't
+  // block (see lib/booking-gate).
+  //
+  // Sending the questions is not what enforces them — the POST resolves the gate
+  // again for itself. This is so a client who IS gated has somewhere to answer,
+  // rather than being refused at the end with no way forward.
+  const gate = page.enabled && client && page.packageId
+    ? await bookingGateFor({ packageId: page.packageId })
+    : null
+  const gateForm = gate && gate.form.trainerId === trainer.id
+    ? await renderUnifiedForm(gate.form)
+    : null
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-b from-slate-50 via-white to-blue-50/40 px-4 py-10 sm:py-16">
@@ -113,6 +138,8 @@ export default async function PublicBookingPage({
             isKnownClient={!!client}
             pkg={pkg ? { name: pkg.name, sessionCount: pkg.sessionCount, weeksBetween: pkg.weeksBetween, durationMins: pkg.durationMins } : null}
             slotLengthMins={page.slotLengthMins}
+            gateForm={gateForm?.runnable ?? null}
+            gateLinkedFields={gateForm?.linkedFields ?? {}}
           />
         )}
 
