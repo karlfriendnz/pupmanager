@@ -21,7 +21,7 @@ import { VersionGuard } from './version-guard'
 import { NotificationToaster } from './notification-toaster'
 import { TopBarControls } from './top-bar-controls'
 import { FloatingCreateButton } from './floating-create-button'
-import { PageTitleProvider, NavLabelProvider, usePageTitle, usePageHasBack, usePageImmersive } from './page-title'
+import { PageTitleProvider, NavLabelProvider, usePageTitle, usePageHasBack, usePageImmersive, usePageImmersiveKeepsTopBar } from './page-title'
 import { FlatRow, FlatRowGrid } from './flat-list'
 import { shouldShowSectionHeader, labelFor, sectionKey, clientLabelFor } from '@/lib/nav-labels'
 
@@ -975,6 +975,15 @@ function TrainerMobileHeader({
   const pathname = usePathname()
   const isHome = pathname === '/dashboard'
   const showTitle = !!title && !isHome
+  // These hooks live HERE rather than in TrainerShell's body on purpose: the
+  // shell renders PageTitleProvider, so a usePageImmersive() call up there sits
+  // ABOVE the provider and always reads the default `false`.
+  const immersive = usePageImmersive()
+  const keepsTopBar = usePageImmersiveKeepsTopBar()
+  // An immersive page that brings its own header (an open message thread —
+  // back arrow, avatar, the client's name) gets the bar out of the way; two
+  // headers, the upper one saying less, is the shape that rule was written for.
+  if (immersive && !keepsTopBar) return null
   return (
     <header
       className="md:hidden sticky top-0 z-40 border-b border-slate-100 bg-white/95 backdrop-blur"
@@ -986,6 +995,12 @@ function TrainerMobileHeader({
         {/* A detail page shows a back arrow in the slot below — from inside a
             class or a client, back is what you reach for, and two navigation
             controls side by side is one too many. */}
+        {/* It survives an immersive page BY DESIGN. Immersive takes the bottom
+            tabs away, so if a page turned immersive without portalling a back
+            arrow and this went too, the trainer would be looking at a screen
+            with nothing on it to press. Every immersive-with-top-bar page today
+            (the product form) has a back arrow, so this is the safety net
+            rather than the normal look — Karl's "back button and the name". */}
         {!hasBack && (
           <button
             type="button"
@@ -1013,11 +1028,20 @@ function TrainerMobileHeader({
         </h1>
         {/* Page-actions slot — always present (empty:hidden). */}
         <span id="pm-topbar-actions-mobile" className="flex items-center gap-1.5 empty:hidden" />
-        {/* Create "+" — the phone counterpart to the desktop control bar's. */}
-        <FloatingCreateButton canSell={canSell} currency={currency} />
-        {/* The same slide-out search as desktop — one implementation, so the
-            scope selector, type-ahead and keyboard handling can't diverge. */}
-        <TopBarControls variant="search" />
+        {/* Create "+" and search both offer to start something ELSE, which is
+            the one thing a half-filled form must not do (Karl, 2026-08-06:
+            "when creating a product these should not be there its confusing").
+            An immersive bar is the page's name and the way back, nothing more.
+            The "+" also reads usePageImmersive itself — belt and braces, since
+            it portals to <body> and could otherwise outlive this row. */}
+        {!immersive && (
+          <>
+            <FloatingCreateButton canSell={canSell} currency={currency} />
+            {/* The same slide-out search as desktop — one implementation, so the
+                scope selector, type-ahead and keyboard handling can't diverge. */}
+            <TopBarControls variant="search" />
+          </>
+        )}
         {/* No bell up here — notifications are a bottom tab on phones. */}
       </div>
     </header>
@@ -1253,13 +1277,13 @@ function TrainerShell({
           logo and business name, never "PupManager". Sticky (not fixed) so it
           occupies flow and no page needs new top padding; pads the safe-area
           inset so it clears the notch. */}
-      {/* Hidden in an immersive page (an open message thread): the thread
-          renders its own sticky header with a back arrow, the client's avatar
-          and their name, so the shell's bar would be a second header saying
-          less. Safe to hide — the way out lives in the thread's own header. */}
-      <HideWhenImmersive>
-        <TrainerMobileHeader businessName={businessName} fallbackTitle={navFallbackTitle} canSell={canSell} currency={currency} />
-      </HideWhenImmersive>
+      {/* An immersive page decides for itself whether this bar stays — a
+          message thread brings its own header and drops it, a form keeps it
+          stripped to back + name. TrainerMobileHeader reads that itself (it is
+          below PageTitleProvider, where the hook works); wrapping it in
+          HideWhenImmersive here is what left the product form with no header
+          at all. */}
+      <TrainerMobileHeader businessName={businessName} fallbackTitle={navFallbackTitle} canSell={canSell} currency={currency} />
 
       {/* Sidebar — sits below the full-width top bar (which owns the logo).
           Hidden inside Settings, which brings its own rail. */}

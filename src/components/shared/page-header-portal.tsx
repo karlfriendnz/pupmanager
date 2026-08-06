@@ -44,7 +44,11 @@ export function PageHeaderTopBarPortal({ back, actions }: { back?: BackLink; act
     )
 
   const deskCls = '-ml-1 grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors'
-  const mobCls = '-ml-1.5 grid h-9 w-9 place-items-center rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors'
+  // 44px on the phone, matching the Menu button it stands in for. On an
+  // immersive page (a form) it is the ONLY way out — the menu and the bottom
+  // tabs have both stood down — so it gets a real thumb-sized target rather
+  // than the 36px it was.
+  const mobCls = '-ml-1.5 grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors'
 
   return (
     <>

@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 
 // Lets any page push its title into the desktop top bar. The shared PageHeader
 // component sets this automatically, so existing pages need no changes; pages
@@ -13,7 +13,9 @@ type PageTitleCtx = {
   setHasBack: (b: boolean) => void
   /** Whether the page has taken over the phone screen (see SetPageImmersive). */
   immersive: boolean
-  setImmersive: (b: boolean) => void
+  /** Whether that immersive page still wants the shell's phone top bar. */
+  immersiveKeepsTopBar: boolean
+  setImmersive: (b: boolean, keepTopBar: boolean) => void
 }
 
 const Ctx = createContext<PageTitleCtx | null>(null)
@@ -21,9 +23,14 @@ const Ctx = createContext<PageTitleCtx | null>(null)
 export function PageTitleProvider({ children }: { children: ReactNode }) {
   const [title, setTitle] = useState<string | null>(null)
   const [hasBack, setHasBack] = useState(false)
-  const [immersive, setImmersive] = useState(false)
+  const [immersive, setImmersiveOn] = useState(false)
+  const [immersiveKeepsTopBar, setKeepsTopBar] = useState(false)
+  const setImmersive = useCallback((b: boolean, keepTopBar: boolean) => {
+    setImmersiveOn(b)
+    setKeepsTopBar(b && keepTopBar)
+  }, [])
   return (
-    <Ctx.Provider value={{ title, setTitle, hasBack, setHasBack, immersive, setImmersive }}>
+    <Ctx.Provider value={{ title, setTitle, hasBack, setHasBack, immersive, immersiveKeepsTopBar, setImmersive }}>
       {children}
     </Ctx.Provider>
   )
@@ -58,13 +65,35 @@ export function usePageImmersive(): boolean {
   return useContext(Ctx)?.immersive ?? false
 }
 
-/** Hides the phone's bottom tab bar while mounted. */
-export function SetPageImmersive({ value }: { value: boolean }) {
+/**
+ * True while an immersive page has asked to KEEP the phone's top bar.
+ *
+ * Immersive answers "should the bottom tabs and the global + stand down?".
+ * It does NOT answer "does this page bring its own header?", and conflating
+ * the two cost a real bug: the product form turned immersive, the shell hid
+ * its whole phone bar (written for a message thread, which does bring its own
+ * header) and the form was left with no title, no back arrow and no way out
+ * (Karl, 2026-08-06: "the header should always be there").
+ *
+ * So a page says which it is. Focused work that has no header of its own —
+ * a form — passes keepTopBar and gets a bar stripped back to back + name.
+ */
+export function usePageImmersiveKeepsTopBar(): boolean {
+  return useContext(Ctx)?.immersiveKeepsTopBar ?? false
+}
+
+/**
+ * Hides the phone's bottom tab bar (and the global "+") while mounted.
+ *
+ * `keepTopBar` keeps the shell's phone header, minus its navigation — pass it
+ * unless this page renders a header of its own, or there will be two.
+ */
+export function SetPageImmersive({ value, keepTopBar = false }: { value: boolean; keepTopBar?: boolean }) {
   const setImmersive = useContext(Ctx)?.setImmersive
   useEffect(() => {
-    setImmersive?.(value)
-    return () => setImmersive?.(false)
-  }, [value, setImmersive])
+    setImmersive?.(value, keepTopBar)
+    return () => setImmersive?.(false, false)
+  }, [value, keepTopBar, setImmersive])
   return null
 }
 

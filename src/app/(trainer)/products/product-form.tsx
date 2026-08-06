@@ -281,8 +281,14 @@ export function ProductForm({
           offer to start something ELSE mid-sentence, and the + floats over the
           last field (Karl, 2026-08-06: "these should not be there its
           confusing"). The shell already knows how to stand down — this is the
-          same switch an open message thread uses. */}
-      <SetPageImmersive value />
+          same switch an open message thread uses.
+
+          keepTopBar, because a form is not a message thread: the thread has a
+          header of its own to fall back on and this has none, so hiding the
+          shell's bar left the product with no name, no back arrow and no way
+          out (Karl, 2026-08-06: "the header should always be there"). With it,
+          the bar is the product's name and the way back — no search, no menu. */}
+      <SetPageImmersive value keepTopBar />
       {/* Save leads the form rather than sitting at the foot of it, and shares
           the tab strip's row and hairline — one band of chrome above the first
           field, not two stacked ones. It STICKS, which is what the pinned
