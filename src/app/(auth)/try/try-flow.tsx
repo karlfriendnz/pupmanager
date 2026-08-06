@@ -174,8 +174,10 @@ export function TryFlow({
       {error && <ErrorNote>{error}</ErrorNote>}
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white [&>*+*]:border-t [&>*+*]:border-slate-200">
-        <Field id="try-name" label="Your name" value={name} onChange={setName} autoComplete="name" />
+        {/* Business first: at a stand the question being answered is "who are
+            you lot", and a trainer says their business before their own name. */}
         <Field id="try-company" label="Business name" value={companyName} onChange={setCompanyName} autoComplete="organization" />
+        <Field id="try-name" label="Your name" value={name} onChange={setName} autoComplete="name" />
         <Field
           id="try-email"
           label="Email"
