@@ -1,17 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink, Maximize2, Plus, Workflow } from 'lucide-react'
+import { AlertTriangle, ChevronRight, ExternalLink, Plus, Workflow } from 'lucide-react'
 
 import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
 import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
-import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
-import { cn } from '@/lib/utils'
 import {
-  flowEditorTarget,
-  flowSectionLabel,
   flowTimelineHref,
   groupFlowsBySection,
   groupOwnerChoicesBySection,
@@ -76,46 +72,19 @@ export function AutomationsPanel({
   choices: FlowOwnerChoice[]
 }) {
   const router = useRouter()
-  const [openKey, setOpenKey] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
-  // The owner chosen for a flow that does not exist yet. It has no row in
-  // `flows` (the server has no steps to build one from), so the screen carries
-  // it until the first step is saved.
-  const [pending, setPending] = useState<FlowOwner | null>(null)
-  // `useTransition` so the refresh doesn't blank anything: the list keeps the
-  // values it has until the new ones arrive, and the editor underneath is never
-  // unmounted mid-edit.
-  const [refreshing, startRefresh] = useTransition()
 
   const sections = groupFlowsBySection(flows)
-  const existing = useMemo(() => new Set(flows.map(f => ownerKey(f.owner))), [flows])
 
-  // The moment the new flow's first step lands, the refreshed server tree has a
-  // REAL row for it — carrying its Off and needs-setting-up flags, which the
-  // placeholder cannot know. Hand over to it, and leave it open where the
-  // trainer was working.
-  useEffect(() => {
-    if (pending && existing.has(ownerKey(pending))) {
-      setOpenKey(ownerKey(pending))
-      setPending(null)
-    }
-  }, [existing, pending])
-
+  // Picking an owner goes to that flow's own page, whether or not it has steps
+  // yet — the page IS the editor, so a brand-new flow and an existing one are
+  // the same screen. An owner that already has a flow does NOT get a second
+  // one: a flow has no identity beyond what it hangs off, so it simply opens.
   function choose(owner: FlowOwner) {
     setPicking(false)
-    const key = ownerKey(owner)
-    // An owner that already has a flow does NOT get a second one — a flow has no
-    // identity beyond what it hangs off. Its existing row simply opens.
-    if (existing.has(key)) {
-      setPending(null)
-      setOpenKey(key)
-      return
-    }
-    setPending(owner)
-    setOpenKey(key)
+    router.push(flowTimelineHref(owner, '/settings?tab=automations'))
   }
 
-  const onChanged = () => startRefresh(() => router.refresh())
   const newButton = (
     <button
       type="button"
@@ -130,13 +99,13 @@ export function AutomationsPanel({
   return (
     <div className="max-w-3xl" data-review-scope="Tab: Automations">
       <div className="mb-5 flex items-center justify-between gap-3">
-        <p className={cn('text-sm text-slate-500 transition-opacity', refreshing && 'opacity-50')}>
+        <p className="text-sm text-slate-500">
           {flowIndexHeadline(flows)}
         </p>
         {newButton}
       </div>
 
-      {sections.length === 0 && !pending ? (
+      {sections.length === 0 ? (
         <FlatBlock>
           <div className="px-4 py-10 text-center">
             <Workflow className="mx-auto h-6 w-6 text-slate-400" strokeWidth={1.75} />
@@ -149,31 +118,6 @@ export function AutomationsPanel({
         </FlatBlock>
       ) : (
         <div className="space-y-6">
-          {/* The one being started, above the list: it is what the trainer just
-              asked for, and it has nothing to say about itself yet. */}
-          {pending && (
-            <section>
-              <SectionLabel>{flowSectionLabel(pending.kind)}</SectionLabel>
-              <FlatBlock>
-                <div className="px-4 py-3.5">
-                  <p className="truncate text-sm font-medium text-slate-900">{pending.name}</p>
-                  <p className="mt-0.5 text-[13px] text-slate-500">
-                    Nothing in it yet — add the first step and it saves straight away.
-                  </p>
-                </div>
-                <div className="border-t border-slate-200 bg-slate-50 px-4 py-4">
-                  {/* THE editor again, pointed at this owner by the same map the
-                      rows use. No second "add step" anything. */}
-                  <CommsFlowEditor
-                    {...flowEditorTarget(pending)}
-                    offeringName={pending.name}
-                    onChanged={onChanged}
-                  />
-                </div>
-              </FlatBlock>
-            </section>
-          )}
-
           {sections.map(section => (
             <section key={section.kind}>
               <SectionLabel>{section.label}</SectionLabel>
@@ -181,13 +125,7 @@ export function AutomationsPanel({
                 {section.flows.map(flow => {
                   const key = ownerKey(flow.owner)
                   return (
-                    <FlowRow
-                      key={key}
-                      flow={flow}
-                      open={openKey === key}
-                      onToggle={() => setOpenKey(prev => (prev === key ? null : key))}
-                      onChanged={onChanged}
-                    />
+                    <FlowRow key={key} flow={flow} />
                   )
                 })}
               </FlatBlock>
@@ -295,25 +233,19 @@ function OwnerPicker({
 
 function FlowRow({
   flow,
-  open,
-  onToggle,
-  onChanged,
 }: {
   flow: IndexedFlow
-  open: boolean
-  onToggle: () => void
-  onChanged: () => void
 }) {
   return (
     <div>
-      {/* The whole summary is the button that opens the editor. The link out to
-          the offering itself is a SIBLING, not a nested anchor — a link inside a
-          button is invalid markup and the browser picks whichever it likes. */}
+      {/* No accordion (Karl, 2026-08-06). Expanding in place was the answer
+          before the flow had a page of its own; now that it has one, opening it
+          here meant editing in the narrower of the two places, with the rest of
+          Settings still on screen — the distraction the full page exists to
+          remove. The row goes straight there. */}
       <div className="flex items-start gap-2 px-4 py-3.5">
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
+        <Link
+          href={flowTimelineHref(flow.owner, '/settings?tab=automations')}
           className="min-w-0 flex-1 text-left"
         >
           <span className="flex flex-wrap items-center gap-2">
@@ -331,20 +263,8 @@ function FlowRow({
             {flow.steps} step{flow.steps === 1 ? '' : 's'}
             {flow.liveSteps < flow.steps && !flow.off && <> · {flow.steps - flow.liveSteps} switched off</>}
             {' · '}
-            {open ? 'Tap to close' : 'Tap to edit'}
+            Tap to open
           </span>
-        </button>
-
-        {/* The flow on its own page — the same editor, with nothing else on the
-            screen (Karl: "to remove distraction"). One tap from the list, not
-            two: expanding first to reach the link inside would make the
-            distraction-free view the more buried of the two. */}
-        <Link
-          href={flowTimelineHref(flow.owner, '/settings?tab=automations')}
-          aria-label={`Open ${flow.owner.name} full screen`}
-          className="-m-1 flex-shrink-0 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-        >
-          <Maximize2 className="h-4 w-4" strokeWidth={1.75} />
         </Link>
 
         {/* Its own page, for everything about this class or form that isn't its
@@ -356,55 +276,31 @@ function FlowRow({
         >
           <ExternalLink className="h-4 w-4" strokeWidth={1.75} />
         </Link>
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-hidden
-          tabIndex={-1}
-          className="-m-1 flex-shrink-0 rounded-lg p-2 text-slate-400"
-        >
-          <ChevronDown className={cn('h-4 w-4 transition-transform', open && 'rotate-180')} strokeWidth={1.75} />
-        </button>
+        <ChevronRight className="mt-2 h-4 w-4 flex-shrink-0 text-slate-400" strokeWidth={1.75} aria-hidden />
       </div>
 
       {/* What it actually does, in the builder's own words — flowStepSummary,
-          so this screen and the editor cannot phrase the same step two ways.
-          Hidden once the editor is open: the editor lists the same steps, and
-          saying it twice is the "nothing says the same thing twice" rule. */}
-      {!open && (
-        <ul className="space-y-1 px-4 pb-3.5">
-          {flow.rows.map(row => (
-            <li key={row.stepId} className="flex items-start gap-2 text-[13px] leading-5">
-              <span className={row.enabled ? 'text-slate-400' : 'text-slate-300'} aria-hidden>·</span>
-              <span className="min-w-0 flex-1">
-                <span className={row.enabled ? 'text-slate-700' : 'text-slate-400 line-through'}>{row.what}</span>
-                <span className="text-slate-400"> — {row.line}</span>
-                {/* The SAME call the engine makes before it does anything, so a
-                    step it will silently skip is a step this page visibly flags.
-                    Finding out from the absence of an email is the failure. */}
-                {row.enabled && row.problem && (
-                  <span className="ml-1 inline-flex items-center gap-1 text-amber-700">
-                    <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.75} />
-                    {row.problem}
-                  </span>
-                )}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {open && (
-        <div className="border-t border-slate-200 bg-slate-50 px-4 py-4">
-          {/* THE editor — the same component the offering pages mount, pointed
-              at the same CRUD tree by the same id it uses there. */}
-          <CommsFlowEditor
-            {...flowEditorTarget(flow.owner)}
-            offeringName={flow.owner.name}
-            onChanged={onChanged}
-          />
-        </div>
-      )}
+          so this screen and the editor cannot phrase the same step two ways. */}
+      <ul className="space-y-1 px-4 pb-3.5">
+        {flow.rows.map(row => (
+          <li key={row.stepId} className="flex items-start gap-2 text-[13px] leading-5">
+            <span className={row.enabled ? 'text-slate-400' : 'text-slate-300'} aria-hidden>·</span>
+            <span className="min-w-0 flex-1">
+              <span className={row.enabled ? 'text-slate-700' : 'text-slate-400 line-through'}>{row.what}</span>
+              <span className="text-slate-400"> — {row.line}</span>
+              {/* The SAME call the engine makes before it does anything, so a
+                  step it will silently skip is a step this page visibly flags.
+                  Finding out from the absence of an email is the failure. */}
+              {row.enabled && row.problem && (
+                <span className="ml-1 inline-flex items-center gap-1 text-amber-700">
+                  <AlertTriangle className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  {row.problem}
+                </span>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

@@ -238,9 +238,13 @@ const file = (rel: string) => readFileSync(resolve(__dirname, '../../', rel), 'u
 describe('one editor, mounted from two places', () => {
   const panel = file('src/app/(trainer)/settings/automations-panel.tsx')
 
-  it('the Settings panel mounts the existing editor rather than building one', () => {
-    expect(panel).toContain("import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'")
-    expect(panel).toContain('<CommsFlowEditor')
+  // No accordion any more (Karl, 2026-08-06): the panel is a list that leads to
+  // each flow's own page, which is where the editor lives. So the panel must
+  // NOT mount an editor — expanding here would mean editing in the narrower of
+  // the two places with the rest of Settings still on screen.
+  it('the Settings panel leads to the flow page rather than editing in place', () => {
+    expect(panel).not.toContain('<CommsFlowEditor')
+    expect(panel).toContain('flowTimelineHref(')
   })
 
   it('the panel writes nothing itself — every change goes through the editor', () => {
@@ -334,10 +338,11 @@ describe('the list stays fresh after an edit', () => {
     expect(raw).toHaveLength(4)
   })
 
-  it('the panel refreshes the server tree when told', () => {
+  // Nothing is edited here now, so there is nothing to refresh: the flow page
+  // is a route of its own and arrives with fresh server data every time.
+  it('the panel navigates rather than refreshing itself', () => {
     expect(panel).toContain('useRouter')
-    expect(panel).toContain('router.refresh()')
-    expect(panel).toContain('onChanged=')
+    expect(panel).toContain('router.push(')
   })
 })
 
@@ -474,28 +479,13 @@ describe('the picker, on screen', () => {
     expect(panel).toContain('New automation')
   })
 
-  it('opens the SAME editor, pointed by the same map the rows use', () => {
-    // Two mounts, one editor. A second "add step" flow is the thing this screen
-    // exists not to have.
-    expect(panel.match(/<CommsFlowEditor/g) ?? []).toHaveLength(2)
-    expect(panel.match(/flowEditorTarget\(/g) ?? []).toHaveLength(2)
-  })
-
-  it('opens an existing flow instead of starting a second one', () => {
-    // The one behavioural rule that cannot be expressed in the pure model: a
-    // chosen owner already in the list expands its row and sets no placeholder.
-    const choose = panel.slice(panel.indexOf('function choose('), panel.indexOf('const onChanged ='))
-    expect(choose).toContain('existing.has(key)')
-    expect(choose).toContain('setPending(null)')
-  })
-
-  it('hands the placeholder over to the real row once a step lands', () => {
-    // Otherwise the new flow shows twice — once as the placeholder, once as the
-    // refreshed server row — and only one of them carries the Off flag.
-    expect(panel).toContain('existing.has(ownerKey(pending))')
-    expect(panel).toContain('setPending(null)')
-    // Through the refresh that already existed, not a second freshness path.
-    expect(panel).toContain('router.refresh()')
+  it('sends the chosen owner to that flow\'s own page', () => {
+    // One destination for every owner, new or existing. A flow has no identity
+    // beyond what it hangs off, so an owner already in the list cannot get a
+    // second one — the same href simply opens what is there.
+    const choose = panel.slice(panel.indexOf('function choose('))
+    expect(choose.slice(0, 400)).toContain('flowTimelineHref(owner')
+    expect(panel).not.toContain('setPending')
   })
 
   it('the tab filters the picker by the same permission as the list', () => {
