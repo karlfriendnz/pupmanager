@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
-import Link from 'next/link'
-import { ChevronLeft } from 'lucide-react'
 import type { Metadata } from 'next'
+import { PageHeader } from '@/components/shared/page-header'
+import { SetPageImmersive } from '@/components/shared/page-title'
 
 import { prisma } from '@/lib/prisma'
 import { getTrainerContext } from '@/lib/membership'
@@ -84,39 +84,54 @@ export default async function AutomationTimelinePage({
   const back = safeReturnTo((await searchParams).from) ?? owner.href
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-0 pb-16 sm:px-4 sm:py-6" data-review-scope="Automation timeline">
-      {/* Back REPLACES the chrome, rather than sitting beside it — the point of
-          the page is that there is nothing else on it (AGENTS.md). */}
-      <div className="flex items-center gap-2 px-4 py-3 sm:px-0 sm:pt-0">
-        <Link
-          href={back}
-          className="-ml-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-          aria-label="Back"
-        >
-          <ChevronLeft className="h-5 w-5" strokeWidth={1.75} />
-        </Link>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-base font-semibold text-slate-900">{owner.name}</h1>
-          <p className="text-xs text-slate-500">{flowSectionLabel(owner.kind)}</p>
-        </div>
-        {/* The editor's own actions ("Save as template") land HERE, portaled in
-            — Karl wanted them at the top right of the header rather than buried
-            under a description. The button stays inside the editor, which is
-            the only thing holding the api/load/runId it needs; a copy in this
-            page would be a second implementation to keep in step. */}
-        <div id="flow-header-actions" className="flex shrink-0 items-center gap-2" />
-      </div>
+    <>
+      {/* The five bottom tabs stand down (Karl: "lets hide the nav"). Building
+          an automation is a job you finish; the tabs offer to leave it, and the
+          Save bar wants the floor. keepTopBar leaves the back arrow. */}
+      <SetPageImmersive value keepTopBar />
+      {/* The shell reserves 5rem at the foot of every phone screen for those
+          tabs. They aren't here, so that reservation is a band of nothing. */}
+      <style>{`@media (max-width: 767px) { .pm-main { padding-bottom: 0 !important; } }`}</style>
 
-      <div className="border-t border-slate-200 sm:rounded-xl sm:border">
-        <CommsFlowEditor
-          {...flowEditorTarget(owner)}
-          offeringName={owner.name}
-          location={location}
-          clients={clients}
-          fullPage
+      {/* The page used to draw its OWN header row — a back arrow, the offering
+          name and the section under it — while every other trainer screen gets
+          that from PageHeader, which feeds the phone bar and the desktop top
+          bar. That was the "move the header" half of Karl's note: one header,
+          in the same place as everywhere else. */}
+      <PageHeader
+        title={owner.name}
+        subtitle={flowSectionLabel(owner.kind)}
+        back={{ href: back, label: 'Back' }}
+      />
+
+      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-0 sm:px-4 sm:py-6" data-review-scope="Automation timeline">
+        <div className="flex-1 border-t border-slate-200 sm:rounded-xl sm:border">
+          <CommsFlowEditor
+            {...flowEditorTarget(owner)}
+            offeringName={owner.name}
+            location={location}
+            clients={clients}
+            fullPage
+          />
+        </div>
+
+        {/* The editor's own actions ("Save as template") land HERE, portaled in
+            — at the FOOT of the page now rather than the top right of the
+            header (Karl: "put the save template at the bottom"), which is also
+            where every other screen's Save lives.
+            The bar IS the portal target, so `empty:hidden` means it simply
+            isn't there until the editor mounts and gives it something — an
+            empty bordered strip across the bottom would be chrome for nothing.
+            The button stays inside the editor, which is the only thing holding
+            the api/load/runId it needs; a copy in this page would be a second
+            implementation to keep in step. */}
+        <div
+          id="flow-header-actions"
+          className="sticky bottom-0 z-30 flex items-center justify-end gap-2 border-t border-slate-200 bg-white/95 px-4 pt-3 backdrop-blur empty:hidden sm:px-0"
+          style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
         />
       </div>
-    </div>
+    </>
   )
 }
 
