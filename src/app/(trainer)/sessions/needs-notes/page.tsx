@@ -233,8 +233,11 @@ export default async function SessionsTodoPage({
       {/* Full width, like every other list. The Notes tab is a table of
           sessions with a client, a dog, a value and two states against each,
           and it was running down a centred column with the last few hundred
-          pixels of a desktop screen spent on margin. */}
-      <div className="w-full p-4 md:p-8">
+          pixels of a desktop screen spent on margin.
+          No padding HERE any more: the tab strip goes edge to edge and hard
+          against the control bar (Karl picked the Messages layout), so the
+          padding belongs to the panels beneath it — see TodoTabs. */}
+      <div className="w-full">
         <TodoTabs tabs={tabs} initial={initialTab} />
       </div>
     </>

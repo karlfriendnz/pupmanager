@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from 'react'
 import { FileText, ListChecks, NotebookPen } from 'lucide-react'
 import { PageTabs } from '@/components/shared/page-tabs'
+import { cn } from '@/lib/utils'
 
 // The To do screen used to stack three unrelated lists one under another —
 // the trainer's own to-dos, the brain-dump scratchpad, and the sessions still
@@ -42,17 +43,29 @@ export function TodoTabs({ tabs, initial = 'notes' }: { tabs: TodoTabSpec[]; ini
 
   return (
     <div>
-      {/* This strip's look now lives in PageTabs, shared with Alerts and
-          Messages — all three drew their own, and all three differently. */}
-      <PageTabs
-        label="To do sections"
-        className="mb-6"
-        active={tab}
-        onSelect={id => select(id as TodoTabId)}
-        tabs={tabs.map(t => ({ id: t.id, label: t.label, count: t.count, icon: ICONS[t.id] }))}
-      />
+      {/* Laid out like Messages, which Karl picked: the strip goes hard
+          against the control bar rather than floating in the page's padding,
+          and stays there while the list scrolls under it.
+
+          The negative margin gives back <main>'s top reserve — min(inset, 1rem)
+          it holds for pages with no bar of their own. This page has one, so on
+          a notched phone that reserve is a band of white between the header
+          and the tabs (and nothing at all in a browser, which is how it hides).
+          Same fix as the schedule bar and the messages pane.
+
+          The strip's look lives in PageTabs, shared with Alerts and Messages —
+          all three drew their own, and all three differently. */}
+      <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 -mt-[calc(min(env(safe-area-inset-top,0px),1rem))] md:mt-0 bg-white px-4 md:px-8">
+        <PageTabs
+          label="To do sections"
+          className="mb-0"
+          active={tab}
+          onSelect={id => select(id as TodoTabId)}
+          tabs={tabs.map(t => ({ id: t.id, label: t.label, count: t.count, icon: ICONS[t.id] }))}
+        />
+      </div>
       {tabs.map(t => (
-        <div key={t.id} className={tab === t.id ? '' : 'hidden'}>{t.panel}</div>
+        <div key={t.id} className={cn('p-4 md:p-8', tab === t.id ? '' : 'hidden')}>{t.panel}</div>
       ))}
     </div>
   )
