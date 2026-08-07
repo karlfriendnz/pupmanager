@@ -55,7 +55,7 @@ export function TodoTabs({ tabs, initial = 'notes' }: { tabs: TodoTabSpec[]; ini
 
           The strip's look lives in PageTabs, shared with Alerts and Messages —
           all three drew their own, and all three differently. */}
-      <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 -mt-[calc(min(env(safe-area-inset-top,0px),1rem))] md:mt-0 bg-white px-4 md:px-8">
+      <div className="max-md:sticky max-md:top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] z-20 max-md:-mt-[calc(min(env(safe-area-inset-top,0px),1rem))] bg-white px-4 md:px-8 md:pt-8">
         <PageTabs
           label="To do sections"
           className="mb-0"

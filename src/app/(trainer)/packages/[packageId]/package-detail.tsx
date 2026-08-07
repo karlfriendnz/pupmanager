@@ -252,7 +252,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             which is what made this strip look unlike the others.
             -mt-6 eats EditScreen's gap above, so it meets the bar rather than
             floating below it; -mb-2 does the same underneath. */}
-        <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 -mx-4 -mt-6 -mb-2 flex flex-col gap-3 bg-white px-4 pt-2 sm:flex-row sm:items-end sm:justify-between md:-mx-8 md:px-8">
+        <div className="max-md:sticky max-md:top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] z-20 max-md:-mx-4 max-md:-mt-6 max-md:-mb-2 flex flex-col gap-3 bg-white max-md:px-4 pt-2 sm:flex-row sm:items-end sm:justify-between">
           {/* flex-1: the strip takes the whole row like every other tab strip
               in the app (Karl: "tabs are not going full width"). It was
               content-width, so on a wide screen it stopped short of the page

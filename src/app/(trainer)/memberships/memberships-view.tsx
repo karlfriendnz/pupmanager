@@ -448,7 +448,7 @@ export function MembershipsView({
 
                 Past four tabs the strip scrolls and keeps the active one in
                 view — see PageTabs. */}
-            <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 -mx-4 -mt-4 mb-4 bg-white px-4 pt-2 md:-mx-8 md:-mt-8 md:px-8 lg:mx-0 lg:mt-0 lg:px-0">
+            <div className="max-md:sticky max-md:top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] z-20 max-md:-mx-4 max-md:-mt-4 mb-4 bg-white max-md:px-4 pt-2">
               <SectionTabs
                 tabs={BUILDER_TABS.map(t => (t.id === 'included' && draft.items.length ? { ...t, badge: draft.items.length } : t))}
                 value={tab}

@@ -105,7 +105,7 @@ export default async function TrainerNotificationsPage({
         <main>'s top reserve — min(inset, 1rem) it holds for pages with no bar
         of their own — which is a band of white on a notched phone and nothing
         at all in a browser. */}
-    <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 -mt-[calc(min(env(safe-area-inset-top,0px),1rem))] md:mt-0 bg-white px-5 lg:px-8">
+    <div className="max-md:sticky max-md:top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] z-20 max-md:-mt-[calc(min(env(safe-area-inset-top,0px),1rem))] bg-white px-5 lg:px-8 md:pt-6">
       <PageTabs
         label="Notification sections"
         className="mb-0"

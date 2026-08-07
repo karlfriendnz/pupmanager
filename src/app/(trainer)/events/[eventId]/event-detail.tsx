@@ -137,7 +137,7 @@ export function EventDetail({
           the strip out of it and the matching padding puts the tab text back
           in line with the content — otherwise its background and hairline stop
           short of the page. */}
-      <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 -mx-4 mb-4 bg-white px-4 pt-2 md:-mx-8 md:px-8">
+      <div className="max-md:sticky max-md:top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] z-20 max-md:-mx-4 mb-4 bg-white max-md:px-4 pt-2">
         <OfferingTabs tabs={tabs} value={tab} onChange={setTab} className="mb-0" />
       </div>
 
