@@ -116,7 +116,9 @@ describe('a read screen fits the same shell', () => {
     expect(editScreen).toMatch(/href\?: string/)
     // A real <a>: it middle-clicks, opens in a new tab and shows its target,
     // which a button that calls router.push does not.
-    expect(editScreen).toMatch(/\{primary\.href \? \(/)
+    // `!primary ? null :` guards it — a tab can have no action at all (the
+    // automation timeline), and the bar still draws for the ⋯ .
+    expect(editScreen).toMatch(/\{!primary \? null : primary\.href \? \(/)
     expect(editScreen).toMatch(/<Link\s+href=\{primary\.href\}/)
   })
 

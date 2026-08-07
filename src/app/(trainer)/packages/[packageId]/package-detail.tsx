@@ -196,7 +196,13 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             ? { label: 'Add', icon: <Plus className="h-4 w-4" strokeWidth={2} />, onClick: () => setPickingClient(true) }
             : tab === 'homework' && onSessionList
               ? { label: 'Add', icon: <Plus className="h-4 w-4" strokeWidth={2} />, onClick: () => setAddingSession(true) }
-              : { label: 'Edit', href: editHref, icon: <Pencil className="h-4 w-4" strokeWidth={1.75} /> }
+              // Automation has none. Every step carries its own controls and
+              // each stage its own "Add step", so the only screen-level action
+              // left was Edit — which offered to edit the PACKAGE while you
+              // were building its flow (Karl). It's still in the ⋯ .
+              : tab === 'messages'
+                ? undefined
+                : { label: 'Edit', href: editHref, icon: <Pencil className="h-4 w-4" strokeWidth={1.75} /> }
         }
       >
         {actionError && (

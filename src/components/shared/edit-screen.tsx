@@ -88,7 +88,14 @@ export function EditScreen({
   /** What the sheet calls itself — the name of the thing being edited. */
   menuTitle?: string
   /** Save. Stays the filled brand button at every width. */
-  primary: EditScreenAction
+  /**
+   * Optional: a tab can legitimately have nothing to do. The automation
+   * timeline is the case — its steps each carry their own controls, and the
+   * only screen-level action left was "Edit", which offered to edit the
+   * PACKAGE while you were building its flow (Karl: "automation tab should
+   * not have an edit button"). The bar still draws for the ⋯ if there is one.
+   */
+  primary?: EditScreenAction
   /** Cancel. A bordered white button — a bare glyph next to a filled Save
    *  reads as disabled, which is the one thing a way out must not do. */
   secondary?: EditScreenAction
@@ -169,7 +176,7 @@ export function EditScreen({
             </Button>
           )
         )}
-        {primary.href ? (
+        {!primary ? null : primary.href ? (
           // A real <a>, not a button that pushes: it is a navigation, so it
           // middle-clicks, opens in a new tab and shows its target in the
           // status bar like every other link on the page.
