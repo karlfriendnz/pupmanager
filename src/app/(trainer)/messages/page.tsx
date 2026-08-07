@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { PageHeader } from '@/components/shared/page-header'
+import { FillViewport } from '@/components/shared/fill-viewport'
 import { hasAddon } from '@/lib/billing'
 import { MessagesView, type ClientRow, type GroupRow } from './messages-view'
 import type { AudienceOption } from './group-composer'
@@ -190,16 +191,19 @@ export default async function MessagesPage({
           the viewport. env(safe-area-inset-bottom) is deliberately
           absent: `html[data-native] body` already pads it once, globally.
           DESKTOP: no tab bar, so it keeps viewport-minus-header. */}
-      <div className={`flex flex-col overflow-hidden px-4 md:mb-0 md:px-8 md:h-[calc(100dvh-69px)] ${
+      {/* The height is MEASURED, not calculated — see FillViewport. Every
+          constant that used to live here was a guess about the chrome above,
+          and each one was wrong on some window: 69px for a PageHeader that
+          renders nothing on a phone, 5rem for a 58px tab bar, and finally a
+          desktop size where the thread simply scrolled the page and took the
+          header and composer with it. The negative margins stay: they cancel
+          <main>'s bottom padding, which exists for ordinary scrolling pages
+          and would otherwise be counted twice under a pane that already ends
+          at the viewport. */}
+      <FillViewport className={`flex flex-col overflow-hidden px-4 md:mb-0 md:px-8 ${
         selectedClient || selectedGroupId
-          // Thread open: the shell hides BOTH its top bar and the bottom tab
-          // bar (SetPageImmersive), so there is no chrome left to subtract —
-          // the pane is the whole viewport. Subtracting the old 57+58 here is
-          // what left ~115px of dead space under the composer. The negative
-          // margin cancels <main>'s bottom padding in full, inset included.
-          ? 'h-[100dvh] -mb-[calc(5rem+env(safe-area-inset-bottom,0px))]'
-          // List: both bars are present, so measure them off.
-          : 'h-[calc(100dvh-57px-58px-env(safe-area-inset-top,0px)-min(env(safe-area-inset-top,0px),1rem))] -mb-20'
+          ? '-mb-[calc(5rem+env(safe-area-inset-bottom,0px))]'
+          : '-mb-20'
       }`}>
         <MessagesView
           activeClients={activeClients}
@@ -220,7 +224,7 @@ export default async function MessagesPage({
           }))}
           activeClientCount={activeClients.length}
         />
-      </div>
+      </FillViewport>
     </>
   )
 }
