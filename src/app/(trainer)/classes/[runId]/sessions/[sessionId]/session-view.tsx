@@ -12,7 +12,7 @@ import { SessionSeriesStep } from '@/components/trainer/session-series-step'
 import { formatDate, formatTime } from '@/lib/utils'
 import { sessionFormSourceLabel, type SessionFormSource } from '@/lib/session-form'
 import {
-  ClipboardCheck, ChevronLeft, ChevronRight, Check, X, StickyNote,
+  ClipboardCheck, ChevronLeft, ChevronRight, Check, X,
   GraduationCap, Calendar, FileText, ListChecks, CheckSquare,
 } from 'lucide-react'
 
@@ -72,7 +72,13 @@ type AttendanceData = {
   availableForms: FormLite[]
   roster: RosterRow[]
 }
-type ClientDraft = { status: AttStatus; note: string; answers: Record<string, string>; recap: string }
+// No `note` here any more — the per-row "quick note" is gone (Karl: "not sure
+// what that is for"). Nobody had ever written one: 46 attendance rows in
+// production, 0 notes. The column and the API field stay (the route treats
+// note as optional and only writes it when sent), so nothing is destroyed and
+// it can come back if it's ever actually wanted. The real write-up lives in
+// the report screen next to it, which is what trainers use.
+type ClientDraft = { status: AttStatus; answers: Record<string, string>; recap: string }
 
 function initialsOf(name: string): string {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('') || '?'
@@ -178,7 +184,6 @@ export function SessionView({
   const [formId, setFormId] = useState('')
   const [draft, setDraft] = useState<Record<string, ClientDraft>>({})
   const [notesFor, setNotesFor] = useState<string | null>(null)
-  const [noteOpen, setNoteOpen] = useState<Set<string>>(new Set())
   const [menuFor, setMenuFor] = useState<string | null>(null)
   const [formPicker, setFormPicker] = useState(false)
   // Which client's own form is being picked (an enrollmentId), if any.
@@ -198,7 +203,6 @@ export function SessionView({
     setFormId(d.effectiveForm?.id ?? '')
     setDraft(Object.fromEntries(d.roster.map(r => [r.enrollmentId, {
       status: r.status,
-      note: r.note ?? '',
       answers: r.report?.answers ?? {},
       recap: r.report?.closing ?? '',
     }])))
@@ -219,7 +223,10 @@ export function SessionView({
     if (!data) return
     setSaving(true); setError(null)
     try {
-      const records = data.roster.map(r => ({ enrollmentId: r.enrollmentId, status: draft[r.enrollmentId].status, note: draft[r.enrollmentId].note.trim() || null }))
+      // `note` is deliberately absent: the route only writes it when it's
+      // sent, so leaving it out marks attendance without touching any note
+      // that already exists.
+      const records = data.roster.map(r => ({ enrollmentId: r.enrollmentId, status: draft[r.enrollmentId].status }))
       const ok = await put({ sessionFormId: formId || null, records })
       if (!ok) { setError('Could not save attendance.'); return }
       setSaved('Attendance saved'); setTimeout(() => setSaved(null), 2000)
@@ -269,10 +276,6 @@ export function SessionView({
   function setStatus(id: string, s: AttStatus) {
     setDraft(p => ({ ...p, [id]: { ...p[id], status: s } }))
   }
-  function toggleNote(id: string) {
-    setNoteOpen(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
-  }
-
   // Quick tap = present/absent; press-and-hold = the status screen.
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const longPressed = useRef(false)
@@ -513,7 +516,6 @@ export function SessionView({
                       const d = draft[r.enrollmentId]
                       if (!d) return null
                       const present = d.status === 'PRESENT'
-                      const showNote = noteOpen.has(r.enrollmentId) || !!d.note
                       const isSelected = selected.has(r.enrollmentId)
                       return (
                         <div key={r.enrollmentId} className={isSelected ? 'bg-slate-50' : ''}>
@@ -550,27 +552,12 @@ export function SessionView({
 
                             {/* Trailing actions — hidden in select mode */}
                             {!selectMode && <>
-                              <button type="button" onClick={() => toggleNote(r.enrollmentId)} aria-label="Quick note" className={`flex-shrink-0 rounded-lg p-2 active:bg-slate-100 ${d.note ? 'text-slate-700' : 'text-slate-300'}`}>
-                                <StickyNote className="h-[18px] w-[18px]" strokeWidth={1.75} />
-                              </button>
                               <button type="button" onClick={() => setNotesFor(r.enrollmentId)} aria-label="Write up notes" className={`mr-2 flex-shrink-0 rounded-lg p-2 active:bg-slate-100 ${r.hasReport ? 'text-emerald-600' : 'text-slate-300'}`}>
                                 <ClipboardCheck className="h-[18px] w-[18px]" strokeWidth={1.75} />
                               </button>
                             </>}
                           </div>
 
-                          {showNote && (
-                            <div className="px-4 pb-3 pl-[3.75rem]">
-                              <input
-                                type="text"
-                                placeholder="Quick note (optional)"
-                                value={d.note}
-                                autoFocus={noteOpen.has(r.enrollmentId) && !d.note}
-                                onChange={e => setDraft(p => ({ ...p, [r.enrollmentId]: { ...d, note: e.target.value } }))}
-                                className="h-9 w-full rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-                              />
-                            </div>
-                          )}
                         </div>
                       )
                     })}
