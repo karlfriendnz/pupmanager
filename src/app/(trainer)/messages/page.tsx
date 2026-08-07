@@ -205,7 +205,13 @@ export default async function MessagesPage({
           at the viewport. */}
       <FillViewport
         pin={!!(selectedClient || selectedGroupId)}
-        className={`flex flex-col overflow-hidden bg-white px-4 md:mb-0 md:px-8 ${
+        // Give back <main>'s top reserve on a phone, the same as the schedule
+        // bar. <main> holds min(inset, 1rem) for pages with no bar of their
+        // own; this pane brings its own tab strip, so that reserve is 16px of
+        // white between the header and the tabs on a notched phone — and 0 in
+        // a browser, which is why it only shows in the app. On md+ the reserve
+        // is the fixed top bar's height and must stay.
+        className={`flex flex-col overflow-hidden bg-white px-4 mt-[calc(min(env(safe-area-inset-top,0px),1rem)*-1)] md:mt-0 md:mb-0 md:px-8 ${
           selectedClient || selectedGroupId
             ? '-mb-[calc(5rem+env(safe-area-inset-bottom,0px))]'
             : '-mb-20'
