@@ -10,6 +10,7 @@ import { ClientAvatar } from '@/components/shared/client-avatar'
 import { PhoneRowList } from '@/components/shared/flat-list'
 import { MessageThread } from './[clientId]/message-thread'
 import { SetPageImmersive } from '@/components/shared/page-title'
+import { PageTabs } from '@/components/shared/page-tabs'
 import { GroupComposer, type AudienceOption, type PickableClient } from './group-composer'
 import type { ThreadProposalDto } from '@/lib/thread-proposal'
 import { GroupThread } from './group-thread'
@@ -258,47 +259,21 @@ export function MessagesView({
       >
         {/* Tab strip — sticky at the top of the list pane so the Active /
             Inactive controls stay visible while the list scrolls. */}
-        <div className="sticky top-0 z-10 flex gap-1 border-b border-slate-100 bg-white p-2">
-          {([
+        {/* Was blue pills with filled count chips — the one strip in the app
+            painting itself a colour that wasn't the trainer's. Now the same
+            PageTabs as To do and Alerts. */}
+        <PageTabs
+          label="Message lists"
+          className="sticky top-0 z-10 bg-white px-2"
+          active={tab}
+          tabs={[
             // Groups live in Active, so they count there too — otherwise the
             // tab says 12 and the list shows 15.
-            { key: 'active',   label: 'Active',   count: activeClients.length + groups.length, unread: activeUnread + groupUnread },
-            { key: 'groups',   label: 'Groups',   count: groups.length,                        unread: groupUnread },
-            { key: 'inactive', label: 'Inactive', count: inactiveClients.length,               unread: inactiveUnread },
-          ] as const).map(t => {
-            const active = tab === t.key
-            return (
-              <Link
-                key={t.key}
-                href={hrefFor({ nextTab: t.key })}
-                className={cn(
-                  'flex-1 px-3 py-2 rounded-lg text-sm font-medium text-center transition-colors',
-                  active
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50',
-                )}
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  {t.label}
-                  <span className={cn(
-                    'inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[11px] tabular-nums',
-                    active ? 'bg-white text-blue-700' : 'bg-slate-100 text-slate-500',
-                  )}>
-                    {t.count}
-                  </span>
-                  {t.unread > 0 && (
-                    <span
-                      aria-label={`${t.unread} unread`}
-                      className="inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-semibold tabular-nums"
-                    >
-                      {t.unread > 9 ? '9+' : t.unread}
-                    </span>
-                  )}
-                </span>
-              </Link>
-            )
-          })}
-        </div>
+            { id: 'active',   label: 'Active',   count: activeClients.length + groups.length, unread: activeUnread + groupUnread, href: hrefFor({ nextTab: 'active' }) },
+            { id: 'groups',   label: 'Groups',   count: groups.length,                        unread: groupUnread,                href: hrefFor({ nextTab: 'groups' }) },
+            { id: 'inactive', label: 'Inactive', count: inactiveClients.length,               unread: inactiveUnread,             href: hrefFor({ nextTab: 'inactive' }) },
+          ]}
+        />
 
         {/* List body */}
         <div className="flex-1 overflow-y-auto p-2">

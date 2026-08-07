@@ -7,6 +7,8 @@ import { Bell, Sparkles } from 'lucide-react'
 import { PhoneRowList } from '@/components/shared/flat-list'
 import { iconForNotification } from '@/components/shared/notification-icon'
 import { RichText } from '@/components/shared/rich-text'
+import { PageHeader } from '@/components/shared/page-header'
+import { PageTabs } from '@/components/shared/page-tabs'
 import { formatDate } from '@/lib/utils'
 import type { Metadata } from 'next'
 
@@ -90,24 +92,24 @@ export default async function TrainerNotificationsPage({
     // Full width, like every other list. A notification row is a title, a
     // sentence of body and a date, and it was running down a 768px column with
     // the body wrapping to three lines while half the screen sat empty.
+    <>
+    {/* The page's own <h1> is gone: every other trainer screen gets its title
+        from PageHeader, which feeds the desktop top bar and the phone bar
+        rather than printing a second one in the page. This was the "headers
+        look different" half of Karl's note. PageHeader is a SIBLING of the
+        content wrapper, per its own layout contract. */}
+    <PageHeader title="Notifications" />
     <div className="w-full px-5 py-6 lg:px-8" data-review-scope={`Tab: ${TABS.find(t => t.id === tab)?.label}`}>
-      <h1 className="mb-4 text-2xl font-bold text-slate-900">Notifications</h1>
-
-      <div className="mb-6 flex gap-1 border-b border-slate-100">
-        {TABS.map(t => (
-          <Link
-            key={t.id}
-            href={t.id === 'feed' ? '/notifications' : `/notifications?tab=${t.id}`}
-            className={`-mb-px border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
-              tab === t.id
-                ? 'border-accent text-slate-900'
-                : 'border-transparent text-slate-400 hover:text-slate-600'
-            }`}
-          >
-            {t.label}
-          </Link>
-        ))}
-      </div>
+      <PageTabs
+        label="Notification sections"
+        className="mb-6"
+        active={tab}
+        tabs={TABS.map(t => ({
+          id: t.id,
+          label: t.label,
+          href: t.id === 'feed' ? '/notifications' : `/notifications?tab=${t.id}`,
+        }))}
+      />
 
       {tab === 'whats-new' ? (
         releases.length === 0 ? (
@@ -185,5 +187,6 @@ export default async function TrainerNotificationsPage({
         </PhoneRowList>
       )}
     </div>
+    </>
   )
 }
