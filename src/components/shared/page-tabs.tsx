@@ -98,8 +98,15 @@ export function PageTabs({
       </>
     )
 
+    // Tabs SHARE the row rather than hugging the left edge (Karl). flex-1 with
+    // a floor, not an even split by count: below the floor they stop shrinking
+    // and the row scrolls instead, so five long labels ("Who it's for") can't
+    // be crushed into 70px columns that break across three lines. The old
+    // strip switched behaviour at five tabs, which meant a four-tab strip in a
+    // narrow container still got crushed — a floor is true whatever the
+    // container turns out to be.
     const cls = cn(
-      'relative flex items-center gap-2 whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors sm:px-4',
+      'relative flex flex-1 min-w-[4.5rem] items-center justify-center gap-2 whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors sm:px-4',
       isActive ? 'text-accent' : 'text-slate-500 hover:text-slate-700',
     )
 

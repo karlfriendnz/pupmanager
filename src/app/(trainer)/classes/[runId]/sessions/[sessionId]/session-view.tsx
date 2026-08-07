@@ -11,6 +11,7 @@ import { SuggestedHomework } from '@/components/trainer/suggested-homework'
 import { SessionSeriesStep } from '@/components/trainer/session-series-step'
 import { formatDate, formatTime } from '@/lib/utils'
 import { sessionFormSourceLabel, type SessionFormSource } from '@/lib/session-form'
+import { SetPageImmersive } from '@/components/shared/page-title'
 import {
   ClipboardCheck, ChevronLeft, ChevronRight, Check, X,
   GraduationCap, Calendar, FileText, ListChecks, CheckSquare,
@@ -311,23 +312,52 @@ export function SessionView({
 
   return (
     <>
+      {/* The five bottom tabs stand down while you're taking a register (Karl:
+          "no bottom nav please"). They offer to go somewhere ELSE, which is the
+          one thing a half-marked register shouldn't invite — and the action bar
+          wants the floor. keepTopBar, so the back arrow and the class name
+          survive: with the tabs gone that's the only way off the screen. */}
+      <SetPageImmersive value keepTopBar />
+      {/* The shell reserves 5rem at the foot of every phone screen for those
+          tabs. They aren't here, so that reservation is a band of nothing under
+          the action bar. Same trick EditScreen uses. */}
+      <style>{`@media (max-width: 767px) { .pm-main { padding-bottom: 0 !important; } }`}</style>
+
       {/* One back affordance, not two. "Back to class" used to sit in the header
           beside the back arrow saying almost the same thing; it's a row on the
-          page now (AGENTS.md: nothing says the same thing twice). */}
+          page now (AGENTS.md: nothing says the same thing twice).
+          Writing up a client is a screen WITHIN this one, and it used to carry
+          its own "Back to attendance" row directly under the header's arrow —
+          two back controls stacked, which is what Karl pointed at. So the
+          arrow takes that job while the write-up is open: one control, doing
+          the thing you actually want at that moment. */}
       <PageHeader
         title={runName}
         back={{
-          label: 'Back',
-          // Return to wherever they came from (schedule, dashboard, the class…);
-          // fall back to the class page on a fresh/deep-linked load.
+          label: notesRow ? 'Back to attendance' : 'Back',
           onClick: () => {
+            // Close the write-up first — leaving the page from inside it would
+            // skip the register you were halfway through.
+            if (notesRow) { setNotesFor(null); return }
+            // Otherwise return to wherever they came from (schedule, dashboard,
+            // the class…); fall back to the class page on a deep-linked load.
             if (typeof window !== 'undefined' && window.history.length > 1) router.back()
             else router.push(`${basePath}/${runId}`)
           },
         }}
       />
 
-      <div className="w-full px-4 pt-4 pb-40 md:px-6 md:pb-28">
+      {/* flex-1 gives the pinned bar a floor on a SHORT register. Sticky pins
+          to the viewport while there's content below it and settles at the END
+          of the content when there isn't — so a class with three dogs left the
+          Save bar floating 150px up the screen with nothing under it.
+          Taking the slack rather than a min-height calc: <main> is already a
+          flex column inside a min-h-screen shell, so the space is there to
+          claim and there's no constant to be wrong. EditScreen's 5.5rem guess
+          overshot here by 104px and bought a scrollbar for empty space.
+          pb-40 is gone too — that was clearance for the five bottom tabs,
+          which this screen no longer shows. */}
+      <div className="w-full flex-1 px-4 pt-4 pb-4 md:px-6">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
           {error && <Alert variant="error">{error}</Alert>}
 
@@ -337,9 +367,10 @@ export function SessionView({
           ) : notesRow ? (
             /* ─── Notes phase: write up one client ─── */
             <>
-              <button onClick={() => setNotesFor(null)} className="inline-flex items-center gap-1 self-start text-[13px] font-medium text-slate-500 active:text-slate-700">
-                <ChevronLeft className="h-4 w-4" strokeWidth={1.75} /> Back to attendance
-              </button>
+              {/* No "Back to attendance" row here any more — it sat directly
+                  under the header's own back arrow, two back controls stacked
+                  (Karl: "redundant on mobile"). The arrow does this job while
+                  the write-up is open. */}
               <FlatBlock>
                 <div className="flex items-center gap-3 px-4 py-3">
                   <StatusAvatar name={notesRow.clientName} photoUrl={notesRow.dogPhotoUrl} status={draft[notesRow.enrollmentId].status} />
@@ -425,10 +456,10 @@ export function SessionView({
                     <span className="text-sm font-medium text-slate-700">Recap message for the client (optional)</span>
                     <textarea rows={3} value={draft[notesRow.enrollmentId].recap} onChange={e => setDraft(p => ({ ...p, [notesRow.enrollmentId]: { ...p[notesRow.enrollmentId], recap: e.target.value } }))} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent" />
                   </label>
-                  <div className="flex gap-2 pt-1">
-                    <Button onClick={() => saveNotes(notesRow.enrollmentId)} loading={saving}>Save notes</Button>
-                    <Button variant="ghost" onClick={() => setNotesFor(null)}>Back</Button>
-                  </div>
+                  {/* Save and Back have moved to the pinned bar at the foot of
+                      the screen (Karl: "sticky to the bottom"). A write-up is
+                      longer than a phone, and buttons that live at the end of
+                      it can only be reached by scrolling past everything. */}
                 </div>
               </FlatBlock>
             </>
@@ -589,11 +620,26 @@ export function SessionView({
         </div>
       </div>
 
-      {/* Pinned bottom action bar (attendance phase) */}
-      {data && !notesRow && data.roster.length > 0 && (
-        <div className="sticky inset-x-0 bottom-[calc(4rem_+_env(safe-area-inset-bottom))] z-30 border-t border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80 md:bottom-0">
-          <div className="mx-auto w-full max-w-2xl px-4 py-3 md:px-6">
-            {selectMode ? (
+      {/* Pinned bottom action bar — BOTH phases now. The write-up's Save and
+          Back used to sit at the end of a form longer than the phone, so you
+          scrolled past every question to reach them; they're here instead.
+          bottom-0, not bottom-[4rem+inset]: it used to hold itself clear of the
+          five tabs, and the screen is immersive now so there are none. It owns
+          the floor, and pads the home indicator itself. */}
+      {data && (notesRow || data.roster.length > 0) && (
+        <div className="sticky inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+          <div
+            className="mx-auto w-full max-w-2xl px-4 pt-3 md:px-6"
+            style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
+          >
+            {notesRow ? (
+              /* Writing up one client. Back sits on the left as the way out,
+                 Save on the right where the primary action always is. */
+              <div className="flex items-center justify-end gap-2">
+                <Button variant="ghost" onClick={() => setNotesFor(null)}>Back</Button>
+                <Button onClick={() => saveNotes(notesRow.enrollmentId)} loading={saving}>Save notes</Button>
+              </div>
+            ) : selectMode ? (
               <div className="flex items-center justify-between gap-3">
                 <span className="whitespace-nowrap text-sm text-slate-500"><span className="font-semibold text-slate-700">{selected.size}</span> selected</span>
                 <Button onClick={() => setBulkPicker(true)} disabled={selected.size === 0}>Mark as…</Button>
