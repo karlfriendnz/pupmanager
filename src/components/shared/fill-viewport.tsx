@@ -41,7 +41,16 @@ export function FillViewport({
       // Viewport-relative top. Read with the page at rest: if anything HAS
       // scrolled we add it back, so a mid-scroll resize can't shrink the pane.
       const top = el.getBoundingClientRect().top + window.scrollY
-      const h = `${Math.round(Math.max(0, window.innerHeight - top))}px`
+      // "The viewport" ends at the body's CONTENT edge, not at innerHeight.
+      // On a notched phone `html[data-native] body` carries
+      // padding-bottom: env(safe-area-inset-bottom) (globals.css) to keep the
+      // app clear of the home indicator, while innerHeight still reports the
+      // whole webview including that strip. Sizing to innerHeight runs the
+      // pane past the body's content box, and what lands under the composer is
+      // the reserved strip — read on the phone as a gap. 0 on the web, so
+      // every desktop measurement is unchanged.
+      const inset = parseFloat(getComputedStyle(document.body).paddingBottom) || 0
+      const h = `${Math.round(Math.max(0, window.innerHeight - top - inset))}px`
       // Only write when it actually changes. The MutationObserver below is
       // watching this very element's style attribute, and a same-value write
       // still records a mutation — which would schedule another frame, which

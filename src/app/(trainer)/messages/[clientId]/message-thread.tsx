@@ -217,19 +217,13 @@ export function MessageThread({
       {/* Composer — sticky to the bottom of the thread pane. flex-shrink-0
           stops it from collapsing if the messages list ever needs more
           room.
-          It pads env(safe-area-inset-bottom) itself, like the shell's tab
-          bar and the group composer next door. An open thread is
-          immersive: the tab bar is gone and the pane runs to the physical
-          bottom of the screen, so this IS the bottom bar now and nothing
-          below it reserves the home-indicator strip. (It used to skip the
-          inset, on the reasoning that body pads it once — but the page
-          cancels exactly that pad with its -mb, so skipping it here put
-          the input under the indicator.) 0 on the web, so desktop spacing
-          is unchanged. */}
-      <div
-        className="flex-shrink-0 sticky bottom-0 border-t border-slate-100 px-4 pt-3 bg-white"
-        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
-      >
+          It does NOT pad env(safe-area-inset-bottom). `html[data-native]
+          body` reserves the home-indicator strip once for the whole app,
+          and the pane above stops at the body's content edge — so this
+          bar is already clear of it. Adding a second copy here is a
+          second gap, which is exactly what Karl saw on the phone when it
+          was tried. ONE owner of the inset: body. */}
+      <div className="flex-shrink-0 sticky bottom-0 border-t border-slate-100 px-4 py-3 bg-white">
         {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
         <PhotoDraftStrip photos={photos} />
         <form onSubmit={sendMessage} className="flex gap-2">
