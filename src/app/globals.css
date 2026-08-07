@@ -81,6 +81,13 @@ html[data-native='true'] body {
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.75rem);
 }
 
+/* …unless the keyboard is up, because the keyboard is sitting ON the home
+   indicator. iOS reports env(safe-area-inset-bottom) unchanged either way, so
+   the reserve becomes a band of nothing between the input and the keys. */
+[data-pinned='true'][data-keyboard='true'] .pm-thread-composer {
+  padding-bottom: 0.75rem;
+}
+
 /* Capped top safe-area inset, shared by the desktop top bar and its fixed
    sidebars. iPad renders the desktop layout inside the native shell, so those
    fixed surfaces must clear the status bar (previously they pinned to top-0 /

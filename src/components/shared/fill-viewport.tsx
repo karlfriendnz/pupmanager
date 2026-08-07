@@ -77,10 +77,19 @@ export function FillViewport({
         // user can actually see if iOS shifts things anyway.
         const top = Math.round(vv?.offsetTop ?? 0)
         const height = Math.round(vv?.height ?? window.innerHeight)
-        const sig = `pin:${top}:${height}`
+        // Whatever the layout viewport has that the visual one doesn't is the
+        // keyboard. It matters because the keyboard COVERS the home indicator,
+        // while iOS goes on reporting env(safe-area-inset-bottom) as if it
+        // didn't — so the composer's reserve for the indicator becomes a strip
+        // of nothing between the input and the keyboard. Karl's screenshot,
+        // 34px of it.
+        const keyboard = Math.max(0, Math.round(window.innerHeight - height - top))
+        const sig = `pin:${top}:${height}:${keyboard}`
         if (sig === last) return
         last = sig
         el.dataset.pinned = 'true'
+        if (keyboard > 0) el.dataset.keyboard = 'true'
+        else delete el.dataset.keyboard
         el.style.position = 'fixed'
         el.style.left = '0'
         el.style.right = '0'
@@ -104,6 +113,7 @@ export function FillViewport({
       last = sig
       unlockScroll()
       delete el.dataset.pinned
+      delete el.dataset.keyboard
       el.style.position = ''
       el.style.left = ''
       el.style.right = ''
@@ -167,6 +177,7 @@ export function FillViewport({
       phone.removeEventListener('change', onResize)
       unlockScroll()
       delete el.dataset.pinned
+      delete el.dataset.keyboard
       el.style.height = ''
       el.style.position = ''
       el.style.left = ''

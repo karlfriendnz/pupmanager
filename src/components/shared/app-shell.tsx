@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, Fragment, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import { signOutWithPush } from '@/lib/sign-out'
 import { ProfileSwitchButton } from './profile-switch-button'
+import { ViewportDebug } from './viewport-debug'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, Users, Calendar, Layers, Package,
@@ -1765,6 +1766,10 @@ function TrainerShell({
       >
         {children}
       </main>
+
+      {/* Renders nothing unless the URL says ?debug=viewport — see
+          ViewportDebug for why it's reachable in production. */}
+      <ViewportDebug />
     </div>
     </NavLabelProvider>
     </PageTitleProvider>
