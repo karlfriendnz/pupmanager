@@ -104,15 +104,20 @@ export function PageTabs({
       </>
     )
 
-    // Tabs SHARE the row rather than hugging the left edge (Karl). flex-1 with
-    // a floor, not an even split by count: below the floor they stop shrinking
-    // and the row scrolls instead, so five long labels ("Who it's for") can't
-    // be crushed into 70px columns that break across three lines. The old
-    // strip switched behaviour at five tabs, which meant a four-tab strip in a
-    // narrow container still got crushed — a floor is true whatever the
-    // container turns out to be.
+    // Tabs SHARE the row rather than hugging the left edge (Karl) — but a tab
+    // never gets narrower than its own label.
+    //
+    // `grow shrink-0` on an auto basis, NOT flex-1. flex-1 is `1 1 0%`: every
+    // tab takes an equal share whatever it says, so on a five-tab strip at
+    // 390px each got 68px and "Automation" was cut off inside its own box
+    // (measured — that's the "tabs are not quite right" on the class run). A
+    // min-width floor didn't save it either, because equal shares are computed
+    // from a zero basis.
+    //
+    // Growing from the content width means: spare room is shared out, and when
+    // there isn't any the labels stay whole and the row scrolls instead.
     const cls = cn(
-      'relative flex flex-1 min-w-[4.5rem] items-center justify-center gap-2 whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors sm:px-4',
+      'relative flex grow shrink-0 items-center justify-center gap-2 whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors sm:px-4',
       isActive ? 'text-accent' : 'text-slate-500 hover:text-slate-700',
     )
 

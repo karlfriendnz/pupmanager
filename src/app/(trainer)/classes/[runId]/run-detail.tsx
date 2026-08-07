@@ -287,7 +287,7 @@ export function RunDetail({
           content — otherwise the white background and the hairline stop short
           of the page. The roster is longer than a phone, so without sticky,
           switching tab means scrolling back up to find the switch. */}
-      <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 -mx-4 mb-4 flex items-end justify-between gap-3 bg-white px-4 pt-2 md:-mx-8 md:px-8">
+      <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 -mx-4 -mt-6 -mb-2 flex items-end justify-between gap-3 bg-white px-4 pt-2 md:-mx-8 md:px-8">
         <OfferingTabs tabs={tabs} value={tab} onChange={setTab} className="mb-0 min-w-0 flex-1" />
         {tab === 'clients' && seatsLabel && (
           <span className="hidden flex-shrink-0 pb-1.5 text-xs text-slate-500 sm:inline">{seatsLabel}</span>
