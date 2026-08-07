@@ -38,6 +38,9 @@ export function ViewportDebug() {
     document.body.appendChild(probe)
 
     const px = (v: string) => `${Math.round(parseFloat(v) || 0)}`
+    // Tallest seen — the no-keyboard height, for spotting a webview that
+    // resizes itself instead of shrinking the visual viewport.
+    let peakHeight = 0
 
     const read = () => {
       const p = getComputedStyle(probe)
@@ -47,11 +50,15 @@ export function ViewportDebug() {
       // The pinned message pane, when there is one.
       const pinned = document.querySelector<HTMLElement>('[data-pinned="true"]')
       const pane = pinned?.getBoundingClientRect()
+      peakHeight = Math.max(peakHeight, window.innerHeight)
 
       setRows([
         ['screen', `${window.innerWidth} × ${window.innerHeight}`],
         ['visual vp', vv ? `${Math.round(vv.width)} × ${Math.round(vv.height)}  @top ${Math.round(vv.offsetTop)}` : 'n/a'],
-        ['keyboard', vv ? `${Math.max(0, Math.round(window.innerHeight - vv.height))}px` : 'n/a'],
+        // Both keyboard signals, because Safari and the Capacitor webview use
+        // different ones: Safari shrinks the visual viewport, the app resizes
+        // the whole webview. A reading of "0 / 300" is the app.
+        ['kbd shrink/resize', vv ? `${Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop))} / ${Math.max(0, Math.round(peakHeight - window.innerHeight))}` : 'n/a'],
         ['safe top/bottom', `${px(p.paddingTop)} / ${px(p.paddingBottom)}`],
         ['safe left/right', `${px(p.paddingLeft)} / ${px(p.paddingRight)}`],
         ['native shell', document.documentElement.dataset.native === 'true' ? 'yes' : 'no'],
@@ -60,6 +67,7 @@ export function ViewportDebug() {
         ['body overflow', document.body.style.overflow || '(unset)'],
         ['body pad-bottom', px(getComputedStyle(document.body).paddingBottom)],
         ['pinned pane', pane ? `top ${Math.round(pane.top)} → ${Math.round(pane.bottom)} (h ${Math.round(pane.height)})` : 'none'],
+        ['pane sees kbd', pinned ? (pinned.dataset.keyboard === 'true' ? 'yes' : 'NO') : '—'],
       ])
     }
 

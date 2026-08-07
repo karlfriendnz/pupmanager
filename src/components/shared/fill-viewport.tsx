@@ -69,6 +69,9 @@ export function FillViewport({
     // still records a mutation — which would schedule another frame, which
     // would write again, forever.
     let last = ''
+    // Baseline for keyboard-by-resize detection, per orientation.
+    let baseWidth = window.innerWidth
+    let baseHeight = 0
     const apply = () => {
       if (pin && phone.matches) {
         const vv = window.visualViewport
@@ -77,13 +80,33 @@ export function FillViewport({
         // user can actually see if iOS shifts things anyway.
         const top = Math.round(vv?.offsetTop ?? 0)
         const height = Math.round(vv?.height ?? window.innerHeight)
-        // Whatever the layout viewport has that the visual one doesn't is the
-        // keyboard. It matters because the keyboard COVERS the home indicator,
-        // while iOS goes on reporting env(safe-area-inset-bottom) as if it
-        // didn't — so the composer's reserve for the indicator becomes a strip
-        // of nothing between the input and the keyboard. Karl's screenshot,
-        // 34px of it.
-        const keyboard = Math.max(0, Math.round(window.innerHeight - height - top))
+        // Is the keyboard up? It matters because the keyboard COVERS the home
+        // indicator while iOS goes on reporting env(safe-area-inset-bottom) as
+        // if it didn't — so the composer's reserve for the indicator becomes a
+        // strip of nothing between the input and the keys.
+        //
+        // Detected TWO ways, because the platforms disagree about what the
+        // keyboard even does, and this app runs on both:
+        //   • Mobile Safari leaves the layout viewport alone and shrinks the
+        //     VISUAL one. Karl: "in the browser it works fine."
+        //   • The Capacitor webview resizes ITSELF, so innerHeight shrinks and
+        //     visualViewport matches it — the first check reads zero and the
+        //     reserve never drops. Karl: "in the app its crap."
+        // Taking the larger of the two covers both without having to know
+        // which shell we're in.
+        const shrink = Math.max(0, Math.round(window.innerHeight - height - top))
+        // The tallest this viewport has been THIS orientation is its
+        // no-keyboard height; anything materially shorter is the keyboard.
+        // Re-baselined on rotation, where a real height change is expected.
+        if (window.innerWidth !== baseWidth) {
+          baseWidth = window.innerWidth
+          baseHeight = 0
+        }
+        baseHeight = Math.max(baseHeight, window.innerHeight)
+        // 120px, so a URL bar hiding or a toolbar reflowing can't read as a
+        // keyboard — no keyboard is anywhere near that short.
+        const resized = baseHeight - window.innerHeight > 120 ? baseHeight - window.innerHeight : 0
+        const keyboard = Math.max(shrink, resized)
         const sig = `pin:${top}:${height}:${keyboard}`
         if (sig === last) return
         last = sig
