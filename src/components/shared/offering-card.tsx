@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { Plus, GripVertical, LayoutGrid, List as ListIcon, Tag as TagIcon } from 'lucide-react'
 import { closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { DndArea } from './dnd-area'
+import { ModalPortal } from './modal-portal'
 import { SortableContext, sortableKeyboardCoordinates, useSortable, rectSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { groupOfferingsByTag, type TagRef } from '@/lib/offering-grouping'
@@ -466,12 +467,11 @@ export function OfferingListBar({ children, view, onView, action, grouped, onGro
   onGrouped?: (v: boolean) => void
 }) {
   const canGroup = grouped !== undefined && onGrouped !== undefined
-  // This button now shows at EVERY width. It used to hide on a phone on the
-  // four lists where the floating create circle could make the same thing —
-  // but the circle is home-only now, so hiding it here would leave those four
-  // lists (classes, drop-ins, events, packages) with no way to add on a phone
-  // at all. That is the exact trap the old comment warned about, arriving from
-  // the other direction.
+  // `action` takes no room in this row any more: AddOfferingButton portals
+  // itself to <body> as a floating circle. It is still passed HERE rather than
+  // rendered by each page, so a list can't quietly end up with no way to add —
+  // which is what happened once before, when the button hid itself on phones
+  // and the create circle it deferred to had become home-only.
   return (
     <div className={`mb-3 flex items-end justify-between gap-3 ${children ? 'border-b border-slate-200' : ''}`}>
       <div className="min-w-0">{children}</div>
@@ -485,20 +485,46 @@ export function OfferingListBar({ children, view, onView, action, grouped, onGro
 }
 
 /**
- * "New <thing>" as a real button, at the top of the list beside the view
- * toggle — rather than a dashed row under the last card.
+ * "Add one of these" — a circle + floating at the bottom right of the page.
  *
- * The dashed row reads as an empty slot in the list: at a glance it is another
- * card that has not loaded yet. Up here it is unambiguously an action, and it
- * is in the same place whether the list has one item or forty, so it does not
- * move further away the more you have.
+ * It has been three things: a dashed row under the last card (which read as an
+ * empty slot in the list — another card that hadn't loaded), then a filled
+ * "New <thing>" button in the toolbar, and now this. What survives from that
+ * history: it is in the SAME place whether the list holds one item or forty,
+ * so it never moves further away the more you have.
+ *
+ * Karl, 2026-08-07: "can we please make it so any add is done with a circle +
+ * on that page". It was a filled pill reading "New 1:1 session" sitting in the
+ * row beside the tabs, where the longest label decided how little room the tabs
+ * got — on a 390px phone it squeezed them to about half the width.
+ *
+ * The label isn't lost, it just isn't printed: it names the button for a
+ * screen reader and shows as the tooltip. The page you're on already says what
+ * you'd be adding.
+ *
+ * PORTALLED to <body>. `position: fixed` anchors to the nearest ancestor with
+ * a filter/transform rather than the viewport, and this app has a
+ * backdrop-blurred header — the same trap AGENTS.md documents for modals. It
+ * also means the button can be declared anywhere in a page's tree (it's passed
+ * into a toolbar's action slot today) and still land in the corner.
+ *
+ * It sits ABOVE the five bottom tabs and the home indicator, so it never
+ * covers a tab, and drops to a normal corner inset on desktop where there is
+ * no tab bar.
  */
 export function AddOfferingButton({ href, label, onClick }: { href?: string; label: string; onClick?: () => void }) {
-  const className = 'inline-flex h-9 items-center gap-1.5 rounded-xl bg-[var(--pm-brand-600)] px-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--pm-brand-700)]'
-  const inner = <><Plus className="h-4 w-4 flex-shrink-0" strokeWidth={2.25} /> {label}</>
-  return onClick
-    ? <button type="button" onClick={onClick} className={className}>{inner}</button>
-    : <Link href={href ?? '#'} className={className}>{inner}</Link>
+  const className =
+    'fixed right-4 z-40 bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] md:bottom-6 md:right-6 ' +
+    'grid h-14 w-14 place-items-center rounded-full bg-[var(--pm-brand-600)] text-white shadow-lg ' +
+    'transition-colors hover:bg-[var(--pm-brand-700)] active:bg-[var(--pm-brand-700)]'
+  const inner = <Plus className="h-6 w-6" strokeWidth={2.25} />
+  return (
+    <ModalPortal>
+      {onClick
+        ? <button type="button" onClick={onClick} aria-label={label} title={label} className={className}>{inner}</button>
+        : <Link href={href ?? '#'} aria-label={label} title={label} className={className}>{inner}</Link>}
+    </ModalPortal>
+  )
 }
 
 function SortableOffering({ id, children }: { id: string; children: (handle: HTMLAttributes<HTMLElement>) => ReactNode }) {
