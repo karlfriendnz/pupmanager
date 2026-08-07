@@ -110,7 +110,13 @@ export function SeriesCurriculumEditor({
    * A cohort works through the curriculum together, so step N is week N and
    * nothing is skipped for one dog. A consult is booked per client and can be.
    * That is the only difference between the two, and it is a sentence.
+   *
+   * Nothing reads it at the moment: the only thing that varied on it was the
+   * explanatory paragraph above the list, which Karl had removed. Kept on the
+   * props because six callers pass it and the distinction is still real —
+   * whatever next needs to differ between a cohort and a consult wants this.
    */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   isGroup = false,
   /**
    * The run's sessions as they stand in the diary. Omitted by a 1:1 package,
@@ -279,16 +285,10 @@ export function SeriesCurriculumEditor({
     [packageId, loadAll],
   )
 
-  const intro = (
-    <p className="text-sm leading-relaxed text-slate-500">
-      What each session covers, and the homework that follows it — your clients
-      read both. Naming a step is what gives this offering a curriculum; leave
-      them blank and it behaves exactly as it did before.{' '}
-      {isGroup
-        ? 'The class works through it together — step 1 is week 1 — so there is nothing to change per client.'
-        : 'Clients sign up to the whole series; you book the sessions themselves whenever suits. You can skip a step for a dog that already has it — do that on the session itself, not here.'}
-    </p>
-  )
+  // No standing explanation above the list (Karl: "remove this crap"). It was
+  // four sentences of onboarding printed every time a trainer opened the tab,
+  // long after they knew what a curriculum was. The list says what it is.
+  const intro = null
 
   const stepHeader = useCallback(
     (sessionIndex: number) => (

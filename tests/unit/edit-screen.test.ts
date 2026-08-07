@@ -132,7 +132,10 @@ describe('a read screen fits the same shell', () => {
     expect(packageDetail).toMatch(/label: 'Edit', href: editHref/)
     expect(packageDetail).toMatch(/tab === 'clients'/)
     expect(packageDetail).toMatch(/setPickingClient\(true\)/)
-    expect(packageDetail).toMatch(/setAddingSession\(true\)/)
+    // Sessions is NOT in this list any more: its Add sits directly above the
+    // list it adds to (Karl, 2026-08-07: "put the add button above the
+    // sessions list"), rather than in the pinned bar.
+    expect(packageDetail).toMatch(/<AddSessionButton/)
     // Still no Cancel: nothing is being edited, and the way out is the back
     // arrow the header already carries.
     expect(packageDetail).not.toMatch(/secondary=\{/)
@@ -146,18 +149,24 @@ describe('a read screen fits the same shell', () => {
     expect(offeringActions).toContain('export function useOfferingActions')
     expect(offeringActions).toContain('export function OfferingActions')
     expect(packageDetail).toContain('useOfferingActions({')
-    expect(packageDetail).not.toMatch(/<OfferingActions\b/)
+    // <OfferingActions> IS drawn again — on the Details card, desktop only
+    // (Karl: "put the edit and the ... button like it was"). What matters is
+    // that both the card and the pinned bar are fed by the same hook, so the
+    // routes and confirmations can't drift apart.
+    expect(packageDetail).toMatch(/<OfferingActions\b/)
   })
 
-  it('stops drawing Edit inside the card it used to float in', () => {
+  it('draws Edit and the heading on the card at desktop width only', () => {
     // Edit and More used to float in the details card's own heading row. They
     // are the SCREEN's actions, so they live in the pinned bar — asserted by
     // the primary test above. The heading that replaced them has since gone
     // too (Karl, 2026-08-07: "we should not see the 'details' title on the
     // page" — the selected tab already says Details), so what's left to hold
     // is simply that neither came back into the card.
-    expect(packageDetail).not.toMatch(/<CardHeading icon=\{<Info /)
-    expect(packageDetail).not.toMatch(/<OfferingActions\b/)
+    // Both are back on desktop, and both are hidden on a phone — where the
+    // tab above already says "Details" and the actions are pinned to the foot.
+    expect(packageDetail).toMatch(/<div className="hidden md:block">/)
+    expect(packageDetail).toMatch(/<CardHeading[\s\S]{0,80}icon=\{<Info /)
   })
 })
 

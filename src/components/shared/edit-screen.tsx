@@ -1,7 +1,6 @@
 'use client'
 
-import { createPortal } from 'react-dom'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { MoreHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -107,33 +106,16 @@ export function EditScreen({
 
   // WHERE THE ACTIONS GO, by width.
   //
-  // A READ screen (no Cancel — an offering you're looking at, not a form
-  // you're filling) puts its actions in the desktop TOP BAR, and only pins
-  // them to the foot on a phone. Karl, on the 1:1 session screen at desktop
-  // width: "I don't like the edit button on the bottom for the desktop view
-  // and the footer bar" — and he's right, a full-width bar with one button in
-  // it reads as page furniture when there's a top bar sitting empty.
+  // A READ screen (no Cancel — an offering you're looking at, not a form you're
+  // filling) pins its actions to the foot ON A PHONE ONLY. On desktop the page
+  // puts Edit and the ⋯ back on the card that describes the thing, where they
+  // were before today (Karl: "put the edit and the ... button like it was") —
+  // a full-width bar holding one button reads as page furniture on a wide
+  // screen.
   //
-  // A FORM keeps its pinned bar at every width: Save and Cancel belong next to
-  // the fields, and moving Save to the top bar is how you lose work.
+  // A FORM keeps its pinned bar at every width: Save and Cancel belong beside
+  // the fields, and moving Save anywhere else is how you lose work.
   const isReadScreen = !secondary
-  const [wide, setWide] = useState(false)
-  const [topBarSlot, setTopBarSlot] = useState<HTMLElement | null>(null)
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 768px)')
-    const syncWidth = () => setWide(mq.matches)
-    syncWidth()
-    mq.addEventListener('change', syncWidth)
-    // Resolved in an effect and re-resolved on DOM changes, for the same
-    // reason PageHeaderTopBarPortal does: the bar isn't always mounted when
-    // this first renders, and a one-shot getElementById never looks again.
-    const readSlot = () => setTopBarSlot(document.getElementById('pm-topbar-actions'))
-    readSlot()
-    const mo = new MutationObserver(readSlot)
-    mo.observe(document.body, { childList: true, subtree: true })
-    return () => { mq.removeEventListener('change', syncWidth); mo.disconnect() }
-  }, [])
-  const actionsInTopBar = isReadScreen && wide && !!topBarSlot
 
   return (
     // The min-height is what makes "pinned" true on a SHORT screen. Sticky
@@ -167,9 +149,14 @@ export function EditScreen({
           optional so a tab could have no action (the automation timeline), and
           an empty bordered bar across the foot of the screen reads as the
           bottom nav coming back — which is exactly what Karl reported. */}
-      {!actionsInTopBar && (primary || secondary || (menu && menu.length > 0)) && (
+      {(primary || secondary || (menu && menu.length > 0)) && (
       <div
-        className="sticky bottom-0 z-30 -mx-4 flex items-center gap-2 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:mx-0 md:justify-end"
+        className={cn(
+          "sticky bottom-0 z-30 -mx-4 flex items-center gap-2 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:mx-0 md:justify-end",
+          // Read screen: phone only. The page draws these on its own card on
+          // desktop, so a bar here would be the same two buttons twice.
+          isReadScreen && "md:hidden",
+        )}
         // The home indicator on an iPhone sits over the bottom 34px of the
         // screen. Without this the Save button is under it.
         style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))' }}
@@ -240,38 +227,6 @@ export function EditScreen({
           </Button>
         )}
       </div>
-      )}
-
-      {actionsInTopBar && topBarSlot && createPortal(
-        <span className="flex items-center gap-2">
-          {menu && menu.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setMenuOpen(true)}
-              aria-label={menuTitle ? `More actions for ${menuTitle}` : 'More actions'}
-              aria-haspopup="dialog"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-            >
-              <MoreHorizontal className="h-4 w-4" strokeWidth={2} />
-            </button>
-          )}
-          {primary && (primary.href ? (
-            <Link
-              href={primary.href}
-              aria-label={primary.label}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--pm-brand-600)] px-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--pm-brand-700)]"
-            >
-              {primary.icon}
-              {primary.label}
-            </Link>
-          ) : (
-            <Button onClick={primary.onClick} loading={primary.loading} disabled={primary.disabled} className="h-9 px-3">
-              {!primary.loading && primary.icon}
-              {primary.label}
-            </Button>
-          ))}
-        </span>,
-        topBarSlot,
       )}
 
       {/* Picking anything closes the sheet — including Delete, which opens a

@@ -9,7 +9,7 @@ import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
 import { CardHeading } from '@/components/shared/card-heading'
-import { useOfferingActions } from '@/components/trainer/offering-actions'
+import { useOfferingActions, OfferingActions } from '@/components/trainer/offering-actions'
 import { EditScreen } from '@/components/shared/edit-screen'
 import { Plus, Pencil } from 'lucide-react'
 import { Users, UserPlus, Info, Bell, Tag, ListChecks } from 'lucide-react'
@@ -18,7 +18,6 @@ import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
 import { ClassGroupPanel } from '@/components/trainer/class-group-panel'
 import { SeriesCurriculumEditor, type ScheduledSession } from '@/components/trainer/series-curriculum-editor'
-import { OfferingViewToggle, useOfferingView } from '@/components/shared/offering-card'
 import { ClientSnapshotRow } from '@/components/shared/client-snapshot-row'
 import { DiscountManager } from '@/components/trainer/discount-manager'
 import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tabs'
@@ -112,8 +111,10 @@ export function RunDetail({
   const [tab, setTab] = useState<Tab>('details')
   // The Sessions tab's controls belong to the LIST. Inside one session they
   // are actions with nothing to act on, so the editor tells us which it is on.
-  const [onSessionList, setOnSessionList] = useState(true)
-  const [sessionView, setSessionView] = useOfferingView('class-sessions')
+  // Only the SETTER is used now: the Sessions tab's controls (the view
+  // toggle) are gone, so nothing reads which view you're on — but the editor
+  // still reports it, and dropping the prop would be a wider change.
+  const [, setOnSessionList] = useState(true)
   const [clientTab, setClientTab] = useState<'current' | 'past'>('current')
   const [error, setError] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
@@ -292,11 +293,6 @@ export function RunDetail({
         {tab === 'clients' && seatsLabel && (
           <span className="hidden flex-shrink-0 pb-1.5 text-xs text-slate-500 sm:inline">{seatsLabel}</span>
         )}
-        {tab === 'homework' && onSessionList && (
-          <span className="flex flex-shrink-0 items-center gap-2 pb-1.5">
-            <OfferingViewToggle value={sessionView} onChange={setSessionView} />
-          </span>
-        )}
       </div>
 
       {/* Details tab: what you're selling (left, 7 of 12) + a compact clients
@@ -318,10 +314,27 @@ export function RunDetail({
           {/* Class details */}
           <Card>
             <CardBody className="py-5">
-              {/* No heading, and no actions in it. "Details" repeated the
-                  selected tab directly above, and Edit/More are the SCREEN's
-                  actions — they're in the pinned bar now, like every other
-                  offering screen (Karl). */}
+              {/* DESKTOP ONLY: the heading, with Edit and the ⋯ on it, where
+                  they were before today (Karl). On a phone the tab above
+                  already says Details and the actions are pinned to the foot. */}
+              <div className="hidden md:block">
+                <CardHeading
+                  icon={<Info className="h-4 w-4 text-slate-400" />}
+                  action={
+                    <OfferingActions
+                      name={run.name}
+                      noun={offeringNoun}
+                      editHref={`/packages/${run.packageId}/edit`}
+                      packageId={run.packageId}
+                      runId={run.id}
+                      runKind={basePath === '/casual-classes' ? 'casual' : basePath === '/classes' ? 'class' : undefined}
+                      backHref={basePath}
+                    />
+                  }
+                >
+                  Details
+                </CardHeading>
+              </div>
               <div className="divide-y divide-slate-100">
                 {/* Read-only here, like every other fact on this card. It's
                     changed on the edit page, with the rest of the class. */}
@@ -507,7 +520,6 @@ export function RunDetail({
           sessionCount={run.sessionCount}
           isGroup
           scheduledSessions={scheduledSessions}
-          view={sessionView}
           onViewingListChange={setOnSessionList}
         />
       </div>

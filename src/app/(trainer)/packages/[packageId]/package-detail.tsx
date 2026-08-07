@@ -10,13 +10,12 @@ import { PageHeader } from '@/components/shared/page-header'
 import { ClientAvatar } from '@/components/shared/client-avatar'
 import { ClientSnapshotRow } from '@/components/shared/client-snapshot-row'
 import { CardHeading } from '@/components/shared/card-heading'
-import { useOfferingActions } from '@/components/trainer/offering-actions'
+import { useOfferingActions, OfferingActions } from '@/components/trainer/offering-actions'
 import { EditScreen } from '@/components/shared/edit-screen'
 import { Info, Users, Package as PackageIcon, Bell, MessageSquare, ListChecks, Pencil, Plus, ChevronRight } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
 import { AddSessionButton, SeriesCurriculumEditor } from '@/components/trainer/series-curriculum-editor'
-import { OfferingViewToggle, useOfferingView } from '@/components/shared/offering-card'
 import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tabs'
 import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
 import { FlatBlock } from '@/components/shared/flat-list'
@@ -96,7 +95,6 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
   // The Sessions tab's controls belong to the LIST. Inside one session they
   // are actions with nothing to act on, so the editor tells us which it is on.
   const [onSessionList, setOnSessionList] = useState(true)
-  const [sessionView, setSessionView] = useOfferingView('package-sessions')
   const [clientTab, setClientTab] = useState<'current' | 'past'>('current')
 
   const formatPrice = (cents: number | null): string =>
@@ -118,7 +116,6 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
 
   // Driven by the pinned action bar rather than a button inside the tab — see
   // the `primary` prop below.
-  const [addingSession, setAddingSession] = useState(false)
   const [pickingClient, setPickingClient] = useState(false)
 
   const effectivePrice = pkg.specialPriceCents ?? pkg.priceCents
@@ -194,8 +191,6 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
         primary={
           tab === 'clients'
             ? { label: 'Add', icon: <Plus className="h-4 w-4" strokeWidth={2} />, onClick: () => setPickingClient(true) }
-            : tab === 'homework' && onSessionList
-              ? { label: 'Add', icon: <Plus className="h-4 w-4" strokeWidth={2} />, onClick: () => setAddingSession(true) }
               // Automation has none. Every step carries its own controls and
               // each stage its own "Add step", so the only screen-level action
               // left was Edit — which offered to edit the PACKAGE while you
@@ -209,18 +204,6 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
           <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800">{actionError}</p>
         )}
         {overlays}
-
-        {/* Controlled: the trigger is the pinned "Add" above, this holds the
-            confirm and the PATCH. Mounted whatever tab is showing so closing
-            the confirm can't unmount it mid-request. */}
-        {onSessionList && (
-          <AddSessionButton
-            packageId={pkg.id}
-            sessionCount={pkg.sessionCount}
-            open={addingSession}
-            onOpenChange={setAddingSession}
-          />
-        )}
 
         {pickingClient && (
           <ClientPicker
@@ -258,11 +241,6 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
               content-width, so on a wide screen it stopped short of the page
               and its hairline stopped with it. */}
           <OfferingTabs tabs={tabs} value={tab} onChange={setTab} className="mb-0 min-w-0 flex-1" />
-          {tab === 'homework' && onSessionList && (
-            <span className="flex flex-shrink-0 items-center justify-end gap-2 sm:pb-1.5">
-              <OfferingViewToggle value={sessionView} onChange={setSessionView} />
-            </span>
-          )}
         </div>
 
         {/* Details tab: package info (left, 7 of 12) + a compact clients
@@ -285,11 +263,29 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
                     the screen's actions, not the card's — pinned to the foot of
                     it now, where they are on every other screen (Karl: "this
                     should have the same view as product"). */}
-                {/* No "Details" heading: the tab directly above already says
-                    Details, and it's the selected one (Karl). Nothing says the
-                    same thing twice. The Clients and Class settings cards keep
-                    theirs — those name a card WITHIN a tab, which is a
-                    different claim. */}
+                {/* DESKTOP ONLY: the heading, with Edit and the ⋯ on it —
+                    where they were before today (Karl: "show the h1 and put
+                    the edit and the ... button like it was").
+                    On a phone it stays hidden: the tab directly above already
+                    says Details, and the actions are pinned to the foot, so
+                    drawing this too would say the same thing twice in a place
+                    that has no room for it. */}
+                <div className="hidden md:block">
+                  <CardHeading
+                    icon={<Info className="h-4 w-4 text-slate-400" />}
+                    action={
+                      <OfferingActions
+                        name={pkg.name}
+                        noun={pkg.isGroup ? 'class' : 'package'}
+                        editHref={`/packages/${pkg.id}/edit`}
+                        packageId={pkg.id}
+                        backHref="/packages"
+                      />
+                    }
+                  >
+                    Details
+                  </CardHeading>
+                </div>
                 <div className="divide-y divide-slate-100">
                   <Detail label="Type" value={pkg.isGroup ? 'Group class' : '1:1'} />
                   <Detail label="Sessions" value={pkg.sessionCount === 0 ? 'Ongoing' : String(pkg.sessionCount)} />
@@ -458,11 +454,30 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             left two thirds of a desktop screen empty beside a form the trainer
             was scrolling. */}
         <div className={tab === 'homework' ? '' : 'hidden'}>
+        {/* A heading per tab on desktop (Karl). The Details card carries its
+            own; these name the other panels so a wide screen isn't a slab of
+            content with only a tab to say what it is. An <h2>, not an <h1>:
+            the shell's top bar already renders the page's one h1 (the
+            offering's name), and a second would be two on the page.
+            Phone hides them — the tab strip is right there and the room is
+            better spent on content. */}
+          <h2 className="mb-3 hidden text-base font-semibold text-slate-900 md:block">
+            {pkg.sessionCount > 1 ? 'Sessions' : 'Homework'}
+          </h2>
+          {/* Add, directly above the list it adds to (Karl). It was the pinned
+              primary; a button at the top of the thing it affects is easier to
+              find than one at the foot of a screen you've scrolled.
+              Hidden while you're inside a single session — there is nothing to
+              add to there. */}
+          {onSessionList && (
+            <div className="mb-3 flex justify-end">
+              <AddSessionButton packageId={pkg.id} sessionCount={pkg.sessionCount} />
+            </div>
+          )}
           <SeriesCurriculumEditor
             packageId={pkg.id}
             sessionCount={pkg.sessionCount}
             isGroup={pkg.isGroup}
-            view={sessionView}
             onViewingListChange={setOnSessionList}
           />
         </div>
@@ -470,6 +485,7 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
         {/* Automation tab — what this offering does on its own (1:1 only). */}
         {!pkg.isGroup && (
           <div className={tab === 'messages' ? '' : 'hidden'}>
+            <h2 className="mb-3 hidden text-base font-semibold text-slate-900 md:block">Automation</h2>
             <CommsFlowEditor
               packageId={pkg.id}
               offeringName={pkg.name}
