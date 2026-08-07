@@ -461,19 +461,20 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             offering's name), and a second would be two on the page.
             Phone hides them — the tab strip is right there and the room is
             better spent on content. */}
-          <h2 className="mb-3 hidden text-base font-semibold text-slate-900 md:block">
-            {pkg.sessionCount > 1 ? 'Sessions' : 'Homework'}
-          </h2>
-          {/* Add, directly above the list it adds to (Karl). It was the pinned
-              primary; a button at the top of the thing it affects is easier to
-              find than one at the foot of a screen you've scrolled.
-              Hidden while you're inside a single session — there is nothing to
-              add to there. */}
-          {onSessionList && (
-            <div className="mb-3 flex justify-end">
-              <AddSessionButton packageId={pkg.id} sessionCount={pkg.sessionCount} />
-            </div>
-          )}
+          {/* Heading and Add share ONE row (Karl: "make these line up") — the
+              heading was on its own line with the button dropped below it.
+              Add sits directly above the list it adds to; it was the pinned
+              primary, and a button at the top of the thing it affects is
+              easier to find than one at the foot of a screen you've scrolled.
+              It's hidden while you're inside a single session — nothing to add
+              to there — and the row still holds its shape because the heading
+              is the other half of it. */}
+          <div className="mb-3 flex min-h-9 items-center justify-between gap-3">
+            <h2 className="hidden text-base font-semibold text-slate-900 md:block">
+              {pkg.sessionCount > 1 ? 'Sessions' : 'Homework'}
+            </h2>
+            {onSessionList && <AddSessionButton packageId={pkg.id} sessionCount={pkg.sessionCount} />}
+          </div>
           <SeriesCurriculumEditor
             packageId={pkg.id}
             sessionCount={pkg.sessionCount}

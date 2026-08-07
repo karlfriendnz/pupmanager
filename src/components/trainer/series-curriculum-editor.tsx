@@ -655,7 +655,7 @@ export function AddSessionButton({
         <button
           type="button"
           onClick={() => setConfirming(true)}
-          className="mt-3 inline-flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+          className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
         >
           <Plus className="h-4 w-4 text-slate-500" strokeWidth={2.25} />
           Add a session
