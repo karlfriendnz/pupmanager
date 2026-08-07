@@ -3996,19 +3996,22 @@ export function ScheduleView({
       {/* ── Header (title + date nav on the left, controls on the right) ────── */}
       <div
         ref={controlBarRef}
-        // `relative` on phones: now that the PAGE scrolls, a second sticky bar
-        // at top:0 would sit underneath the shell's own sticky mobile header
-        // (z-40) and simply disappear. It was never actually sticky on a phone
-        // before — nothing scrolled past it — so this keeps the look identical.
-        className="sticky top-0 z-30 flex items-center px-4 md:px-6 gap-3 flex-wrap border-b border-slate-100 bg-white"
-        style={{
-          // Stick below the desktop top bar (which now shows the "Schedule"
-          // title); 0 on mobile where there's no top bar.
-          top: 'var(--app-top-offset, 0px)',
-          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.625rem)',
-          paddingBottom: '0.625rem',
-          marginTop: 'calc(min(env(safe-area-inset-top, 0px), 1rem) * -1)',
-        }}
+        // Sticks BELOW the bar above it rather than at top:0 — see
+        // .pm-sticky-under-bar. At top:0 it sat behind the shell's own sticky
+        // header (z-40) and slid out of sight on the first scroll; Karl: "the
+        // date row should not move".
+        //
+        // And it no longer reserves env(safe-area-inset-top). It used to pad
+        // the status bar and cancel <main>'s reserve, which is right for a bar
+        // that IS the top of the screen. This one never is: the shell's header
+        // sits above it on a phone, and the fixed top bar does on desktop. So
+        // the reserve was a second copy — ~59px of white between "Schedule"
+        // and the date on a notched phone, which is what Karl circled.
+        // PHONE: the shell's header is env(safe-area-inset-top) of status-bar
+        // reserve + a 3.5rem row + its 1px border, so that's where this parks.
+        // DESKTOP: that header is gone and the fixed top bar takes over, whose
+        // height <main> publishes as --app-top-offset.
+        className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-30 flex items-center px-4 md:px-6 gap-3 flex-wrap border-b border-slate-100 bg-white py-2.5"
       >
         {/* Hidden on desktop — the top bar shows "Schedule" there. Shown on
             small tablets (sm) where the top bar isn't present. */}
