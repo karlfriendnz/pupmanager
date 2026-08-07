@@ -99,10 +99,16 @@ export default async function TrainerNotificationsPage({
         look different" half of Karl's note. PageHeader is a SIBLING of the
         content wrapper, per its own layout contract. */}
     <PageHeader title="Notifications" />
-    <div className="w-full px-5 py-6 lg:px-8" data-review-scope={`Tab: ${TABS.find(t => t.id === tab)?.label}`}>
+    {/* Laid out like Messages and To do: the strip goes hard against the
+        control bar and stays there while the list scrolls under it, rather
+        than floating inside the page's padding. The negative margin gives back
+        <main>'s top reserve — min(inset, 1rem) it holds for pages with no bar
+        of their own — which is a band of white on a notched phone and nothing
+        at all in a browser. */}
+    <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 -mt-[calc(min(env(safe-area-inset-top,0px),1rem))] md:mt-0 bg-white px-5 lg:px-8">
       <PageTabs
         label="Notification sections"
-        className="mb-6"
+        className="mb-0"
         active={tab}
         tabs={TABS.map(t => ({
           id: t.id,
@@ -110,7 +116,8 @@ export default async function TrainerNotificationsPage({
           href: t.id === 'feed' ? '/notifications' : `/notifications?tab=${t.id}`,
         }))}
       />
-
+    </div>
+    <div className="w-full px-5 py-6 lg:px-8" data-review-scope={`Tab: ${TABS.find(t => t.id === tab)?.label}`}>
       {tab === 'whats-new' ? (
         releases.length === 0 ? (
           <div className="py-12 text-center text-slate-400">
