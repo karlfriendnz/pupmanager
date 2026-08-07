@@ -551,11 +551,26 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
   // back, empty ones included — see lib/flow-timeline.ts. A membership has none
   // (no session to be before, during or after), and gets one plain spine.
   const stages = useMemo(() => groupStepsByStage(ordered, anchor), [ordered, anchor])
-  // A step's number is its place in the WHOLE flow, not in its stage: it is
-  // also the index flowStepSummary reads to phrase a journey's timing ("Once
-  // the step before is done"), and restarting it per heading would say that of
-  // the first step of a stage, which is a different claim entirely.
-  const positions = useMemo(() => new Map(ordered.map((s, i) => [s.id, i])), [ordered])
+  // A step's number is its place READING DOWN THE PAGE.
+  //
+  // It used to be the index in `ordered` — the stored order — while the page
+  // shows those same steps grouped into stages that run in a fixed sequence
+  // (before confirm → when they enrol → during → after). The two don't line
+  // up, so the rail counted 6, 1, 2, 3, 4, 5 down the screen (Karl: "why are
+  // there numbers, they don't make sense"). The stored order is still what
+  // drives a reorder and what the server persists; it just isn't what a
+  // reader is looking at.
+  //
+  // Numbering the flattened stages fixes the summary line too: flowStepSummary
+  // uses this index to say "once the step before is done", and "the step
+  // before" now means the row directly above rather than whichever step
+  // happens to sit one earlier in storage.
+  const positions = useMemo(() => {
+    const map = new Map<string, number>()
+    let n = 0
+    for (const { steps: inStage } of stages) for (const step of inStage) map.set(step.id, n++)
+    return map
+  }, [stages])
 
   const sensors = useSensors(
     // A few pixels of slop so a tap on a row opens it instead of starting a drag.
