@@ -46,7 +46,6 @@
 // explanation each is not a 56px menu hanging off a corner.
 import { useState, useEffect, useCallback, useMemo, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
-import Link from 'next/link'
 import {
   closestCenter,
   KeyboardSensor,
@@ -65,7 +64,7 @@ import { CSS } from '@dnd-kit/utilities'
 import {
   Bell, Mail, Smartphone, Plus, Trash2, Loader2, Star, Check, Sparkles, Save, X, Users, Eye,
   ChevronLeft, GripVertical, AlertTriangle, FileText, Camera, ClipboardList, KeyRound,
-  ShoppingBag, UserCheck, MessageSquare, Maximize2,
+  ShoppingBag, UserCheck, MessageSquare,
 } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { RichTextEditor } from '@/components/shared/rich-text-editor'
@@ -342,22 +341,10 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
   // where dragging a step changes what actually happens.
   const sequenced = !!formId
   const anchor = sequenced ? 'PERSON' : isMembership ? 'PURCHASE' : 'SESSION'
-  // The same flow, on its own page. Derived from the id this editor already
-  // holds rather than passed in, so the five in-place mounts cannot each forget
-  // it — and so there is exactly one place the route is spelled.
-  const timelinePath = runId
-    ? `/automations/run/${runId}`
-    : membershipId
-      ? `/automations/membership/${membershipId}`
-      : formId
-        ? `/automations/form/${formId}`
-        : `/automations/package/${packageId}`
-  // Where "Back" goes afterwards: the screen they left, tab and all. Read from
-  // the browser in an effect rather than from useSearchParams — this component
-  // mounts on six pages and a hook that forces a Suspense boundary would be six
-  // places to get that right. Nothing renders differently before it arrives.
-  const [returnTo, setReturnTo] = useState<string | null>(null)
-  useEffect(() => { setReturnTo(window.location.pathname + window.location.search) }, [])
+  // The route to this flow's own page, and the "where did I come from" it
+  // carried, both went with the expand link they existed for. That page is
+  // unchanged and still reached from Settings -> Automations; it is simply no
+  // longer advertised from inside the editor that duplicates it.
   const placeholderOptions = commsPlaceholderOptionsFor(isMembership ? 'membership' : 'session')
   const [steps, setSteps] = useState<Step[] | null>(null)
   const [templates, setTemplates] = useState<TemplateSummary[]>([])
@@ -695,18 +682,13 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
             <h3 className="text-base font-semibold text-slate-900">{heading}</h3>
             <p className="text-sm text-slate-500 mt-0.5 max-w-prose">{blurb}</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {/* The same flow with nothing else on the screen. A link, not a
-                modal: it is a place, so it can be bookmarked, shared and
-                backed out of. */}
-            <Link
-              href={returnTo ? `${timelinePath}?from=${encodeURIComponent(returnTo)}` : timelinePath}
-              className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-            >
-              <Maximize2 className="h-4 w-4 text-slate-500" strokeWidth={1.75} /> Full screen
-            </Link>
-            {templateButton}
-          </div>
+          {/* No expand-to-its-own-page link (Karl). It offered the same flow on
+              its own page — the editor here is already the whole tab, so it
+              was a second door to the room you were standing in. The timeline
+              page is still a real place, reached from Settings → Automations,
+              and still bookmarkable; it just isn't advertised from inside the
+              thing it duplicates. */}
+          <div className="flex flex-wrap items-center gap-2">{templateButton}</div>
         </div>
       )}
 

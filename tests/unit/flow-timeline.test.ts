@@ -738,14 +738,19 @@ describe('the five in-place mounts are unchanged', () => {
     for (const m of mounts) expect(file(m), m).not.toContain('fullPage')
   })
 
-  it('and each still offers the way through to it', () => {
-    // The link is derived inside the editor from the id it already holds, so no
-    // mount can forget it.
+  it('the editor no longer advertises the full-screen page', () => {
+    // It used to carry a "Full screen" link to the same flow on its own page.
+    // Karl removed it on 2026-08-07: the editor already IS the whole tab it
+    // sits in, so that was a second door to the room you were standing in.
     const editor = file('src/components/trainer/comms-flow-editor.tsx')
-    expect(editor).toContain('/automations/run/')
-    expect(editor).toContain('/automations/package/')
-    expect(editor).toContain('/automations/membership/')
-    expect(editor).toContain('/automations/form/')
-    expect(editor).toContain('Full screen')
+    expect(editor).not.toContain('Full screen')
+    expect(editor).not.toContain('/automations/package/')
+  })
+
+  it('but the page is still reachable, so the route is not orphaned', () => {
+    // Settings → Automations is the way in now: every row links to a flow's
+    // own timeline. If that ever stops, these pages become unreachable code.
+    const panel = file('src/app/(trainer)/settings/automations-panel.tsx')
+    expect(panel).toContain('flowTimelineHref')
   })
 })

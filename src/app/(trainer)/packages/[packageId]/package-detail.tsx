@@ -237,8 +237,16 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             desktop. The Clients and Sessions lists are both longer than a
             phone, and switching tab meant scrolling back up to find the
             switch. bg-white because the list scrolls UNDER it. */}
-        <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 mb-4 flex flex-col gap-3 bg-white pt-2 sm:flex-row sm:items-end sm:justify-between">
-          <OfferingTabs tabs={tabs} value={tab} onChange={setTab} className="mb-0 min-w-0" />
+        {/* -mt-6 eats EditScreen's gap above this, so the strip meets the bar
+            rather than floating below it (Karl: "a bit messy"). -mb-2 pulls the
+            content up under it by the same idea — the hairline is the join, it
+            doesn't need a band of air on both sides. */}
+        <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 -mt-6 -mb-2 flex flex-col gap-3 bg-white pt-2 sm:flex-row sm:items-end sm:justify-between">
+          {/* flex-1: the strip takes the whole row like every other tab strip
+              in the app (Karl: "tabs are not going full width"). It was
+              content-width, so on a wide screen it stopped short of the page
+              and its hairline stopped with it. */}
+          <OfferingTabs tabs={tabs} value={tab} onChange={setTab} className="mb-0 min-w-0 flex-1" />
           {tab === 'homework' && onSessionList && (
             <span className="flex flex-shrink-0 items-center justify-end gap-2 sm:pb-1.5">
               <OfferingViewToggle value={sessionView} onChange={setSessionView} />
@@ -266,9 +274,11 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
                     the screen's actions, not the card's — pinned to the foot of
                     it now, where they are on every other screen (Karl: "this
                     should have the same view as product"). */}
-                <CardHeading icon={<Info className="h-4 w-4 text-slate-400" />}>
-                  Details
-                </CardHeading>
+                {/* No "Details" heading: the tab directly above already says
+                    Details, and it's the selected one (Karl). Nothing says the
+                    same thing twice. The Clients and Class settings cards keep
+                    theirs — those name a card WITHIN a tab, which is a
+                    different claim. */}
                 <div className="divide-y divide-slate-100">
                   <Detail label="Type" value={pkg.isGroup ? 'Group class' : '1:1'} />
                   <Detail label="Sessions" value={pkg.sessionCount === 0 ? 'Ongoing' : String(pkg.sessionCount)} />

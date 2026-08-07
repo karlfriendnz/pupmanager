@@ -148,7 +148,14 @@ describe('a read screen fits the same shell', () => {
   })
 
   it('stops drawing Edit inside the card it used to float in', () => {
-    expect(packageDetail).toMatch(/<CardHeading icon=\{<Info className="h-4 w-4 text-slate-400" \/>\}>/)
+    // Edit and More used to float in the details card's own heading row. They
+    // are the SCREEN's actions, so they live in the pinned bar — asserted by
+    // the primary test above. The heading that replaced them has since gone
+    // too (Karl, 2026-08-07: "we should not see the 'details' title on the
+    // page" — the selected tab already says Details), so what's left to hold
+    // is simply that neither came back into the card.
+    expect(packageDetail).not.toMatch(/<CardHeading icon=\{<Info /)
+    expect(packageDetail).not.toMatch(/<OfferingActions\b/)
   })
 })
 
