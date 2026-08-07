@@ -132,9 +132,14 @@ export function EventDetail({
       <div className="p-4 md:p-8 w-full">
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
-      {/* Icon on top on a phone — the labels are too long to sit beside one
-          at 390px, which used to push the last tab off-screen. */}
-      <OfferingTabs tabs={tabs} value={tab} onChange={setTab} />
+      {/* Sticky and edge to edge, the same as the other offering screens
+          (Karl). The page wrapper is p-4 md:p-8, so the negative margins break
+          the strip out of it and the matching padding puts the tab text back
+          in line with the content — otherwise its background and hairline stop
+          short of the page. */}
+      <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 -mx-4 mb-4 bg-white px-4 pt-2 md:-mx-8 md:px-8">
+        <OfferingTabs tabs={tabs} value={tab} onChange={setTab} className="mb-0" />
+      </div>
 
       {/* Details: what the event is and what it sells (left), a compact guest
           snapshot (right). No sessions card — an event is one occasion. */}

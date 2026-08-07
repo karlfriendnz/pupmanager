@@ -243,8 +243,15 @@ export function RunDetail({
           The tab's own actions sit on the SAME line, at the right, the way
           every other screen in the app puts them — the roster's Enrol button
           and seat count came off a card heading to get here. */}
-      <div className="mb-4 flex items-end justify-between gap-3">
-        <OfferingTabs tabs={tabs} value={tab} onChange={setTab} />
+      {/* Sticky and edge to edge, the same as the 1:1 session screen (Karl:
+          "apply all the same logic to the other offering pages"). The page
+          wrapper is p-4 md:p-8, so the negative margins break the strip out of
+          it and the matching padding puts the tab text back in line with the
+          content — otherwise the white background and the hairline stop short
+          of the page. The roster is longer than a phone, so without sticky,
+          switching tab means scrolling back up to find the switch. */}
+      <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 -mx-4 mb-4 flex items-end justify-between gap-3 bg-white px-4 pt-2 md:-mx-8 md:px-8">
+        <OfferingTabs tabs={tabs} value={tab} onChange={setTab} className="mb-0 min-w-0 flex-1" />
         {tab === 'clients' && (
           <span className="flex flex-shrink-0 items-center gap-2.5 pb-1.5">
             {seatsLabel && <span className="hidden text-xs text-slate-500 sm:inline">{seatsLabel}</span>}
