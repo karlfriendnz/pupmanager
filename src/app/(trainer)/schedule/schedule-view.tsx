@@ -4007,11 +4007,20 @@ export function ScheduleView({
         // sits above it on a phone, and the fixed top bar does on desktop. So
         // the reserve was a second copy — ~59px of white between "Schedule"
         // and the date on a notched phone, which is what Karl circled.
-        // PHONE: the shell's header is env(safe-area-inset-top) of status-bar
-        // reserve + a 3.5rem row + its 1px border, so that's where this parks.
-        // DESKTOP: that header is gone and the fixed top bar takes over, whose
-        // height <main> publishes as --app-top-offset.
-        className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-30 flex items-center px-4 md:px-6 gap-3 flex-wrap border-b border-slate-100 bg-white py-2.5"
+        // WHERE IT STICKS — phone: the shell's header is
+        // env(safe-area-inset-top) of status-bar reserve + a 3.5rem row + its
+        // 1px border, so that's where this parks. Desktop: that header is gone
+        // and the fixed top bar takes over, whose height <main> publishes as
+        // --app-top-offset.
+        //
+        // WHERE IT SITS AT REST — <main> reserves min(inset, 1rem) at its top
+        // for pages with no bar of their own, and the negative margin gives
+        // that back. Without it there's 16px of white under the header on a
+        // notched phone and NOTHING on a desktop, which is exactly why it
+        // measured clean here and Karl still saw a gap. It is not the same
+        // thing as padding the status bar, which this bar must not do — the
+        // header above it already has.
+        className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] mt-[calc(min(env(safe-area-inset-top,0px),1rem)*-1)] md:mt-0 z-30 flex items-center px-4 md:px-6 gap-3 flex-wrap border-b border-slate-100 bg-white py-2.5"
       >
         {/* Hidden on desktop — the top bar shows "Schedule" there. Shown on
             small tablets (sm) where the top bar isn't present. */}
