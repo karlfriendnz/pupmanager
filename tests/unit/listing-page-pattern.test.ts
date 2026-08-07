@@ -116,19 +116,23 @@ describe('the add action is a button at the top, not a row under the last card',
     expect(src).toContain(label)
   })
 
-  it('the shared bar never hides a page-level add button now the circle is home-only', () => {
+  it('every list can still be added to on a phone', () => {
     const offeringCard = readFileSync(
       join(process.cwd(), 'src', 'components', 'shared', 'offering-card.tsx'),
       'utf8',
     )
-    // This used to hide the button on a phone on the four lists the floating
-    // create circle could make the same thing from. The circle only appears on
-    // the home screen now (Karl, 2026-08-06: "the plus circle should only be on
-    // the home page"), so that hiding would strand classes, drop-ins, events
-    // and packages with no way to add anything on a phone at all — the same
-    // trap the old rule was written to avoid, arriving from the other side.
+    // The rule this protects has survived three designs: a phone must never be
+    // left with no way to add. It has been broken once, when the button hid
+    // itself on phones and deferred to a floating create circle that had since
+    // become home-only — stranding classes, drop-ins, events and packages.
+    //
+    // Karl asked for the circle per page on 2026-08-07 ("I only want plus
+    // circle on mobile"), so the button now hides below md — but ONLY because
+    // it renders its own circle there. Both halves have to be present: assert
+    // them together, because either alone is the bug.
     expect(offeringCard).not.toContain('prePickedOfferingHref')
-    expect(offeringCard).not.toContain('hidden md:inline-flex')
+    expect(offeringCard).toContain('hidden md:inline-flex')
+    expect(offeringCard).toContain('md:hidden fixed')
   })
 
   it('the create circle is the home screen\'s, and nowhere else', () => {

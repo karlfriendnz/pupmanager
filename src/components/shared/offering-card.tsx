@@ -513,17 +513,32 @@ export function OfferingListBar({ children, view, onView, action, grouped, onGro
  * no tab bar.
  */
 export function AddOfferingButton({ href, label, onClick }: { href?: string; label: string; onClick?: () => void }) {
-  const className =
-    'fixed right-4 z-40 bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] md:bottom-6 md:right-6 ' +
+  // PHONE: the circle, in the corner. DESKTOP: the labelled button, in the row
+  // it was always in (Karl: "I only want plus circle on mobile"). There is
+  // room for the words on a wide screen and they save a guess; there isn't on
+  // a 390px phone, where the label was taking half the toolbar off the tabs.
+  // Never both at once — that's what he was looking at when he asked.
+  const fab =
+    'md:hidden fixed right-4 z-40 bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] ' +
     'grid h-14 w-14 place-items-center rounded-full bg-[var(--pm-brand-600)] text-white shadow-lg ' +
-    'transition-colors hover:bg-[var(--pm-brand-700)] active:bg-[var(--pm-brand-700)]'
-  const inner = <Plus className="h-6 w-6" strokeWidth={2.25} />
+    'transition-colors active:bg-[var(--pm-brand-700)]'
+  const inline =
+    'hidden md:inline-flex h-9 items-center gap-1.5 rounded-xl bg-[var(--pm-brand-600)] px-3 text-sm ' +
+    'font-semibold text-white transition-colors hover:bg-[var(--pm-brand-700)]'
+
+  const render = (className: string, children: ReactNode) =>
+    onClick
+      ? <button type="button" onClick={onClick} aria-label={label} title={label} className={className}>{children}</button>
+      : <Link href={href ?? '#'} aria-label={label} title={label} className={className}>{children}</Link>
+
   return (
-    <ModalPortal>
-      {onClick
-        ? <button type="button" onClick={onClick} aria-label={label} title={label} className={className}>{inner}</button>
-        : <Link href={href ?? '#'} aria-label={label} title={label} className={className}>{inner}</Link>}
-    </ModalPortal>
+    <>
+      {render(inline, <><Plus className="h-4 w-4 flex-shrink-0" strokeWidth={2.25} /> {label}</>)}
+      {/* Portalled, so it lands in the corner from wherever it's declared —
+          and because `position: fixed` anchors to a filtered ancestor rather
+          than the viewport, which this app's blurred header would do. */}
+      <ModalPortal>{render(fab, <Plus className="h-6 w-6" strokeWidth={2.25} />)}</ModalPortal>
+    </>
   )
 }
 

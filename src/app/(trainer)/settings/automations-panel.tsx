@@ -3,9 +3,10 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, ChevronRight, ExternalLink, Plus, Workflow } from 'lucide-react'
+import { AlertTriangle, ChevronRight, ExternalLink, Workflow } from 'lucide-react'
 
 import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
+import { AddOfferingButton } from '@/components/shared/offering-card'
 import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
 import {
   flowTimelineHref,
@@ -85,16 +86,11 @@ export function AutomationsPanel({
     router.push(flowTimelineHref(owner, '/settings?tab=automations'))
   }
 
-  const newButton = (
-    <button
-      type="button"
-      onClick={() => setPicking(true)}
-      className="inline-flex h-10 flex-shrink-0 items-center gap-1.5 rounded-xl bg-[var(--pm-brand-600)] px-3.5 text-sm font-semibold text-white hover:bg-[var(--pm-brand-700)]"
-    >
-      <Plus className="h-4 w-4" strokeWidth={2} />
-      New automation
-    </button>
-  )
+  // The shared control, so this follows the same rule as every other list:
+  // the circle in the corner on a phone, the labelled button on desktop. It
+  // used to draw its own labelled button at both sizes, so on a phone you got
+  // that AND the circle — which is what Karl was looking at.
+  const newButton = <AddOfferingButton label="New automation" onClick={() => setPicking(true)} />
 
   return (
     <div className="max-w-3xl" data-review-scope="Tab: Automations">
