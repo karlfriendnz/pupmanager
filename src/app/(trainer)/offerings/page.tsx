@@ -5,6 +5,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { getEnabledAddons } from '@/lib/billing'
 import { EVENT_PACKAGE, NON_EVENT_PACKAGE } from '@/lib/class-runs'
 import { OfferingsList, type OfferingRowData } from './offerings-list'
+import { labelFor, sanitizeNavLabels, type NavLabelKey } from '@/lib/nav-labels'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Offerings' }
@@ -65,11 +66,25 @@ export default async function OfferingsPage() {
     { href: '/settings?tab=tags', label: 'Tags', icon: 'tags', count: tags, one: 'tag', many: 'tags', on: true },
   ] as const
 
+  // The trainer's own words for these, exactly as the left menu uses them.
+  // This hub hard-coded "1:1 Sessions", "Group Classes", "Packages"… so a
+  // trainer who renamed them in Settings saw their words in the menu and ours
+  // here. It shows up on a PHONE (Karl) because there is no left menu there —
+  // this hub IS how you reach these, so it's the only name you're given.
+  // The catalog keys ARE these hrefs; anything not in it (Tags, which links to
+  // a settings tab) falls through to the default.
+  const navLabels = sanitizeNavLabels(
+    (await prisma.trainerProfile.findUnique({
+      where: { id: trainerId },
+      select: { navLabels: true },
+    }))?.navLabels,
+  )
+
   const visible: OfferingRowData[] = rows
     .filter(r => r.on)
     .map(r => ({
       href: r.href,
-      label: r.label,
+      label: labelFor(r.href as NavLabelKey, r.label, navLabels),
       icon: r.icon,
       sub:
         r.count === null
