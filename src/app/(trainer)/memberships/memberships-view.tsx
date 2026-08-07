@@ -436,17 +436,27 @@ export function MembershipsView({
           >
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           <div className="lg:col-span-7">
-            {/* One job at a time. The house pill strip, not an underline rail:
-                five labels on one line put "Automation" off the right edge at
-                394px (Karl: "bit messy"). Past four tabs the strip scrolls and
-                keeps the active one in view — see OfferingTabs. */}
-            <SectionTabs
-              tabs={BUILDER_TABS.map(t => (t.id === 'included' && draft.items.length ? { ...t, badge: draft.items.length } : t))}
-              value={tab}
-              onChange={setTab}
-              label="Package sections"
-              className="mb-4"
-            />
+            {/* One job at a time. Sticky and on its own white surface, like
+                every other tab strip (Karl: "please fix up the tabs on
+                /memberships" — his screenshot had them floating on the grey
+                page with the strip stopping short).
+
+                It does NOT break out to the page edges the way the offering
+                screens do: this builder is a 7/5 grid, and a full-bleed strip
+                would run under the column beside it. It fills its own column
+                instead, which is the honest edge here.
+
+                Past four tabs the strip scrolls and keeps the active one in
+                view — see PageTabs. */}
+            <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 mb-4 rounded-t-2xl bg-white pt-2">
+              <SectionTabs
+                tabs={BUILDER_TABS.map(t => (t.id === 'included' && draft.items.length ? { ...t, badge: draft.items.length } : t))}
+                value={tab}
+                onChange={setTab}
+                label="Package sections"
+                className="mb-0"
+              />
+            </div>
             <div className="rounded-2xl border border-slate-200 bg-white">
             <div className={tab === 'details' ? 'p-5 flex flex-col gap-3' : 'hidden'}>
               <input value={draft.name} onChange={e => patch({ name: e.target.value })} placeholder="Package name (e.g. Puppy Starter)" className="w-full h-10 rounded-lg border border-slate-200 px-3 text-sm" />

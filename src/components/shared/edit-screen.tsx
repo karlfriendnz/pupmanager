@@ -130,7 +130,13 @@ export function EditScreen({
       <div className="flex flex-1 flex-col gap-6">{children}</div>
 
       {/* Pinned actions. `mt-auto` is deliberately absent: this sits after the
-          last field, and sticky does the pinning. */}
+          last field, and sticky does the pinning.
+
+          Not drawn at all when there is nothing to put in it. `primary` became
+          optional so a tab could have no action (the automation timeline), and
+          an empty bordered bar across the foot of the screen reads as the
+          bottom nav coming back — which is exactly what Karl reported. */}
+      {(primary || secondary || (menu && menu.length > 0)) && (
       <div
         className="sticky bottom-0 z-30 -mx-4 flex items-center gap-2 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:mx-0 md:justify-end"
         // The home indicator on an iPhone sits over the bottom 34px of the
@@ -203,6 +209,7 @@ export function EditScreen({
           </Button>
         )}
       </div>
+      )}
 
       {/* Picking anything closes the sheet — including Delete, which opens a
           confirm of its own and would otherwise open it BEHIND this one. Done
