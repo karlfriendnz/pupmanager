@@ -7,6 +7,12 @@ import {
 } from 'lucide-react'
 import { FlatSummaryGrid, FlatSummaryTile } from '@/components/shared/flat-list'
 import { SetPageImmersive } from '@/components/shared/page-title'
+import Link from 'next/link'
+import { Card, CardBody } from '@/components/ui/card'
+import { formatDate } from '@/lib/utils'
+import { isRichTextEmpty, richTextToPlain } from '@/lib/rich-text'
+import { ClientUnpaidInvoicesCard } from './client-invoices'
+import { CommunicationRow } from './client-sections'
 import { formatMoney } from '@/lib/money'
 import {
   agoLine, countLine, dogsTileLine, nextSessionLine, notesLine, owingLine,
@@ -80,6 +86,17 @@ export function ClientProfileView({
   actions,
 }: Props) {
   const now = new Date()
+
+  // Split once, for the desktop cards below. `sessions` is already here for the
+  // tiles' lines, so neither costs a query.
+  // No cancelled state to filter out: a session here is UPCOMING, COMPLETED,
+  // COMMENTED or INVOICED (see SessionStatus), so the split is purely by date.
+  const upcomingSessions = sessions
+    .filter(x => new Date(x.scheduledAt) >= now)
+    .sort((a, b) => +new Date(a.scheduledAt) - +new Date(b.scheduledAt))
+  const latestPastSession = sessions
+    .filter(x => new Date(x.scheduledAt) < now)
+    .sort((a, b) => +new Date(b.scheduledAt) - +new Date(a.scheduledAt))[0] ?? null
 
   // ── What each tile SAYS ────────────────────────────────────────────────────
   //
@@ -160,8 +177,92 @@ export function ClientProfileView({
         </FlatSummaryGrid>
       </div>
 
-      {/* Assign, and a ⋯ for the occasional actions. The last thing on the
-          screen — there is nothing below it any more. */}
+      {/* ── The cards, DESKTOP ONLY ────────────────────────────────────────
+          Karl, on the desktop profile: "really really don't like this page…
+          can we restore but make the cards dynamic so if there is nothing to
+          show then they don't show but if there is something then show".
+
+          A phone gets hero → tiles → action and nothing else; that is the
+          screen he asked for and likes. On a 1444px-wide <main> the same
+          layout was a 318px photo, nine buttons and 419px of empty screen
+          (measured), because every card that used to fill it was deleted when
+          the tiles arrived.
+
+          So they come back above md, and each one still earns its place the
+          way it always did — the conditions below are the originals, not new
+          ones. An empty card is worse than no card: it is a promise of
+          content that isn't there.
+
+          Deliberately NOT restored: the "Bring to next session" card. It was
+          interactive (pick a product, dismiss a request) and that whole job
+          moved to the Products section page, which owns it now. Bringing back
+          a second copy is how two screens drift apart. */}
+      <div className="mb-4 hidden gap-4 md:grid lg:grid-cols-2">
+        {canViewBilling && invoiceSummary.count > 0 && (
+          <ClientUnpaidInvoicesCard clientId={clientId} viewAllHref={`/clients/${clientId}/invoices`} />
+        )}
+
+        {upcomingSessions.length > 0 && (
+          <Card>
+            <CardBody className="py-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-slate-900">Coming up</h2>
+                <Link href={`/clients/${clientId}/sessions`} className="text-xs font-medium text-blue-600 hover:underline">
+                  View all
+                </Link>
+              </div>
+              <div className="flex flex-col gap-2">
+                {upcomingSessions.slice(0, 3).map(x => (
+                  <Link key={x.id} href={`/sessions/${x.id}`} className="group flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-sm font-medium text-slate-900 group-hover:underline">{x.title}</span>
+                    <span className="text-xs text-slate-400">{formatDate(x.scheduledAt)}</span>
+                  </Link>
+                ))}
+              </div>
+            </CardBody>
+          </Card>
+        )}
+
+        {latestPastSession && (
+          <Card>
+            <CardBody className="py-5">
+              <h2 className="mb-3 text-sm font-semibold text-slate-900">Latest session</h2>
+              <Link href={`/sessions/${latestPastSession.id}`} className="group block">
+                <div className="mb-1.5 flex flex-wrap items-baseline gap-x-2">
+                  <p className="text-sm font-medium text-slate-900 group-hover:underline">{latestPastSession.title}</p>
+                  <span className="text-xs text-slate-400">{formatDate(latestPastSession.scheduledAt)}</span>
+                </div>
+                {!isRichTextEmpty(latestPastSession.description) ? (
+                  <p className="line-clamp-3 text-sm text-slate-600">{richTextToPlain(latestPastSession.description)}</p>
+                ) : (
+                  // Kept, unlike the other zero states: there is no action
+                  // beside this line, and it says where the recap gets written
+                  // rather than restating a zero.
+                  <p className="text-sm text-slate-400">No notes recorded — open the session to add a recap.</p>
+                )}
+              </Link>
+            </CardBody>
+          </Card>
+        )}
+
+        {communications.length > 0 && (
+          <Card>
+            <CardBody className="py-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-sm font-semibold text-slate-900">Recent communication</h2>
+                <Link href={`/clients/${clientId}/communication`} className="text-xs font-medium text-blue-600 hover:underline">
+                  View all
+                </Link>
+              </div>
+              <div className="flex flex-col gap-2">
+                {communications.slice(0, 3).map(c => <CommunicationRow key={c.id} item={c} />)}
+              </div>
+            </CardBody>
+          </Card>
+        )}
+      </div>
+
+      {/* Assign, and a ⋯ for the occasional actions. */}
       {actions}
     </>
   )
