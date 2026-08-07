@@ -17,6 +17,7 @@ import { CompleteCell, InvoicedCell, DeleteSessionRow } from './session-actions'
 import { DisclosureRow, FactRow, LinkRow } from './session-rows'
 import { FlatBlock } from '@/components/shared/flat-list'
 import { PageHeader } from '@/components/shared/page-header'
+import { SetPageImmersive } from '@/components/shared/page-title'
 import { SampleRecordBadge } from '@/components/sample-record-badge'
 import type { Metadata } from 'next'
 
@@ -286,6 +287,16 @@ export default async function SessionPage({
 
   return (
     <>
+      {/* The five bottom tabs stand down while you're writing up a session
+          (Karl: "no nav bar on these please"). Same reasoning as the class
+          register next door: they offer to go somewhere ELSE, which is the one
+          thing a half-written write-up shouldn't invite. keepTopBar, so the
+          back arrow survives as the way out. */}
+      <SetPageImmersive value keepTopBar />
+      {/* The shell reserves 5rem at the foot of every phone screen for those
+          tabs. They aren't here, so that reservation is a band of nothing. */}
+      <style>{`@media (max-width: 767px) { .pm-main { padding-bottom: 0 !important; } }`}</style>
+
       <PageHeader
         title="Session notes"
         back={clientId ? { href: `/clients/${clientId}/sessions`, label: 'Back to client' } : undefined}

@@ -214,21 +214,30 @@ describe('the clients search row on a phone', () => {
     expect(list).not.toContain('<span className="hidden sm:inline">{selectMode')
   })
 
-  // One flat block split by hairlines — the house pattern, same as the
-  // reschedule banner. Not a floating pill strip, and not a row of chips.
-  it('wears the house flat-block shape', () => {
+  // This strip used to be a bespoke flat block split by hairlines, written
+  // rather than reused because the shared strip was then a grey pill row and
+  // bending it here needed three flags only this caller would ever set.
+  //
+  // Karl asked for ONE tab design across the platform on 2026-08-07 and chose
+  // the underline, so there is nothing left to bend: this now renders the
+  // shared strip like every other screen. The shape assertions that used to
+  // live here described the design that decision replaced.
+  it('uses the shared tab strip, not a fourth design of its own', () => {
     const wrapper = readFileSync('src/app/(trainer)/clients/client-view-tabs.tsx', 'utf8')
-    // No count beside a tab: it's a fact about a list you aren't looking at.
-    expect(wrapper).not.toContain('t.badge')
-    expect(wrapper).toContain('rounded-xl border border-slate-200 bg-white')
-    expect(wrapper).toContain('[&>*+*]:border-l')
-    // Even split, so the longest label can't set everyone else's width.
-    expect(wrapper).toContain('flex-1 min-w-0')
+    expect(wrapper).toContain('<PageTabs')
+    expect(wrapper).not.toContain('rounded-xl border border-slate-200 bg-white')
   })
 
-  // It borrows the shape, not the component: bending OfferingTabs into it took
-  // three flags only this caller would ever set.
-  it('leaves the shared offering strip alone', () => {
+  it('still shows no count beside a tab', () => {
+    // A number here is a fact about a list you AREN'T looking at, and four of
+    // them turned the row into an arithmetic problem. PageTabs supports counts;
+    // this deliberately doesn't pass one.
+    const wrapper = readFileSync('src/app/(trainer)/clients/client-view-tabs.tsx', 'utf8')
+    expect(wrapper).not.toContain('t.badge')
+    expect(wrapper).not.toContain('count:')
+  })
+
+  it('the shared strip never grew per-caller flags', () => {
     const shared = readFileSync('src/components/shared/offering-tabs.tsx', 'utf8')
     expect(shared).not.toContain('stackedAlways')
     expect(shared).not.toContain('fullWidth')
