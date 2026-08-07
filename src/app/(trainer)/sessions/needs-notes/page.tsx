@@ -220,10 +220,15 @@ export default async function SessionsTodoPage({
     <>
       <PageHeader
         title="To do"
-        back={{ href: '/dashboard', label: 'Back to dashboard' }}
-        // No decorative icon in the actions slot: it sat beside the "+" and the
-        // search glass, which are both controls, so it read as a third button
-        // that did nothing. The page is already named "To do".
+        // No `back`. To do is one of the five bottom tabs, and the shell swaps
+        // the ☰ menu for a back arrow on any page that declares one — so this
+        // was the only primary destination without a menu, offering to "go
+        // back" from a tab you can reach from anywhere. Schedule, Messages and
+        // Alerts all show the menu; now so does this.
+        //
+        // No decorative icon in the actions slot either: it sat beside the "+"
+        // and the search glass, which are both controls, so it read as a third
+        // button that did nothing. The page is already named "To do".
       />
       {/* Full width, like every other list. The Notes tab is a table of
           sessions with a client, a dog, a value and two states against each,
