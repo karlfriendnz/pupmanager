@@ -293,9 +293,11 @@ export default async function SessionPage({
           thing a half-written write-up shouldn't invite. keepTopBar, so the
           back arrow survives as the way out. */}
       <SetPageImmersive value keepTopBar />
-      {/* The shell reserves 5rem at the foot of every phone screen for those
-          tabs. They aren't here, so that reservation is a band of nothing. */}
-      <style>{`@media (max-width: 767px) { .pm-main { padding-bottom: 0 !important; } }`}</style>
+      {/* The shell's foot reserve is 5rem for the tabs PLUS the home-indicator
+          inset. Only the 5rem goes: this page has no pinned bar at all, so if
+          the inset went too the last row of the write-up would sit under the
+          home indicator. */}
+      <style>{`@media (max-width: 767px) { .pm-main { padding-bottom: env(safe-area-inset-bottom, 0px) !important; } }`}</style>
 
       <PageHeader
         title="Session notes"

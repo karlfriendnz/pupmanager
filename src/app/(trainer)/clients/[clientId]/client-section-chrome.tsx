@@ -19,9 +19,11 @@ export function ClientSectionChrome() {
   return (
     <>
       <SetPageImmersive value keepTopBar />
-      {/* The shell reserves 5rem at the foot of every phone screen for the tab
-          bar. It isn't there, so that reservation is a band of nothing. */}
-      <style>{`@media (max-width: 767px) { .pm-main { padding-bottom: 0 !important; } }`}</style>
+      {/* The shell's foot reserve is 5rem for the tab bar PLUS the
+          home-indicator inset. Only the 5rem goes — these section pages have no
+          pinned bar to hold that strip themselves, so zeroing both put the last
+          row under the home indicator (Karl: "no safe space"). */}
+      <style>{`@media (max-width: 767px) { .pm-main { padding-bottom: env(safe-area-inset-bottom, 0px) !important; } }`}</style>
     </>
   )
 }

@@ -89,9 +89,14 @@ export default async function AutomationTimelinePage({
           an automation is a job you finish; the tabs offer to leave it, and the
           Save bar wants the floor. keepTopBar leaves the back arrow. */}
       <SetPageImmersive value keepTopBar />
-      {/* The shell reserves 5rem at the foot of every phone screen for those
-          tabs. They aren't here, so that reservation is a band of nothing. */}
-      <style>{`@media (max-width: 767px) { .pm-main { padding-bottom: 0 !important; } }`}</style>
+      {/* The shell reserves 5rem PLUS the home-indicator inset at the foot of
+          every phone screen: 5rem for the tabs, the inset so the last row
+          isn't under the indicator. The tabs aren't here, so the 5rem is a
+          band of nothing — but the inset still is, because the Save bar below
+          hides itself when there's nothing to save and then NOTHING is holding
+          that strip. Zeroing both is what left this page with no safe space at
+          the bottom (Karl). */}
+      <style>{`@media (max-width: 767px) { .pm-main { padding-bottom: env(safe-area-inset-bottom, 0px) !important; } }`}</style>
 
       {/* The page used to draw its OWN header row — a back arrow, the offering
           name and the section under it — while every other trainer screen gets
