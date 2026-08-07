@@ -909,16 +909,21 @@ function FlowStepRow({ step, index, first, last, names, draggable, busy, onEdit,
 
       {/* THE RAIL. One hairline down the flow, a node per step — the whole of
           "make it look like a timeline". Decorative to a screen reader: the
-          order is already in the list markup and the number is on the node. */}
+          order is already in the list markup.
+
+          The node used to carry the step's number. Karl: "they are just
+          noise" — and he's right, nothing on the page refers to a step BY its
+          number, so it was a count for its own sake. The dot still marks where
+          each step sits on the rail, filled when the step is one of ours to
+          do and hollow when it's the client's, which is the one distinction
+          worth a mark here. */}
       <div className={`flex shrink-0 flex-col items-center ${draggable ? 'w-7' : 'w-10'}`} aria-hidden>
         <span className={`h-3.5 w-px ${first ? 'bg-transparent' : 'bg-slate-200'}`} />
         <span
-          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold tabular-nums ${
-            mine ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 bg-white text-slate-500'
+          className={`h-2.5 w-2.5 shrink-0 rounded-full border ${
+            mine ? 'border-slate-900 bg-slate-900' : 'border-slate-300 bg-white'
           }`}
-        >
-          {index + 1}
-        </span>
+        />
         <span className={`w-px flex-1 ${last ? 'bg-transparent' : 'bg-slate-200'}`} />
       </div>
 
