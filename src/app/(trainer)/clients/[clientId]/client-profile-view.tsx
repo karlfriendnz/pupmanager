@@ -197,7 +197,14 @@ export function ClientProfileView({
           interactive (pick a product, dismiss a request) and that whole job
           moved to the Products section page, which owns it now. Bringing back
           a second copy is how two screens drift apart. */}
-      <div className="mb-4 hidden gap-4 md:grid lg:grid-cols-2">
+      {/* Full width of this column, stacked (Karl: "the desktop cards should
+          be full width on 2nd column"). The page already splits hero-left /
+          content-right; giving the cards a column of their OWN inside that
+          made a third one 349px wide, which truncated invoice descriptions to
+          "Hear…", overflowed "Mark paid" and crushed a message row to four
+          words a line. A card here holds a table and a row of buttons — it
+          wants the width. */}
+      <div className="mb-4 hidden w-full flex-col gap-4 md:flex">
         {canViewBilling && invoiceSummary.count > 0 && (
           <ClientUnpaidInvoicesCard clientId={clientId} viewAllHref={`/clients/${clientId}/invoices`} />
         )}
