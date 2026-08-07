@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { CalendarPlus, Receipt } from 'lucide-react'
 import { EditScreen } from '@/components/shared/edit-screen'
 import { SaleComposer } from '@/components/shared/sale-composer'
@@ -70,7 +71,12 @@ export function ClientSessionsScreen({
   canAssign: boolean
   children: ReactNode
 }) {
-  const [open, setOpen] = useState(false)
+  // `?assign=1` opens the sheet on arrival. It's how "Enrol a client" from a
+  // package's own screen hands over: that page can ask WHO, but not assign —
+  // the flow needs this client's dogs, availability, trainer and invoicing,
+  // none of which a package page loads. One flow, reachable from both ends.
+  const assignOnArrival = useSearchParams().get('assign') === '1'
+  const [open, setOpen] = useState(assignOnArrival)
 
   if (!canAssign) return <>{children}</>
 

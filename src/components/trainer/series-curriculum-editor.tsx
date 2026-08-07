@@ -602,13 +602,29 @@ export function AddSessionButton({
   packageId,
   sessionCount,
   scheduled,
+  open: externalOpen,
+  onOpenChange,
 }: {
   packageId: string
   sessionCount: number
   scheduled?: ScheduledSession[]
+  /**
+   * Controlled mode, the same shape AssignPackageButton uses: the caller owns
+   * the open state and draws its own trigger, so "Add" can live in the screen's
+   * pinned action bar while the confirm and the PATCH stay in here. Passing
+   * this hides the button below — otherwise the screen would show two.
+   */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }) {
   const router = useRouter()
-  const [confirming, setConfirming] = useState(false)
+  const isControlled = externalOpen !== undefined
+  const [internalConfirming, setInternalConfirming] = useState(false)
+  const confirming = isControlled ? externalOpen : internalConfirming
+  const setConfirming = (v: boolean) => {
+    if (isControlled) onOpenChange?.(v)
+    else setInternalConfirming(v)
+  }
   const [busy, setBusy] = useState(false)
   const [failed, setFailed] = useState<string | null>(null)
 
@@ -635,14 +651,16 @@ export function AddSessionButton({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setConfirming(true)}
-        className="mt-3 inline-flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-      >
-        <Plus className="h-4 w-4 text-slate-500" strokeWidth={2.25} />
-        Add a session
-      </button>
+      {!isControlled && (
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          className="mt-3 inline-flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+        >
+          <Plus className="h-4 w-4 text-slate-500" strokeWidth={2.25} />
+          Add a session
+        </button>
+      )}
       {failed && <p className="mt-2 px-1 text-xs text-red-600">{failed}</p>}
 
       {confirming && (

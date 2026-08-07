@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { RichText } from '@/components/shared/rich-text'
 import { isRichTextEmpty } from '@/lib/rich-text'
 import Link from 'next/link'
@@ -12,12 +12,14 @@ import { ClientSnapshotRow } from '@/components/shared/client-snapshot-row'
 import { CardHeading } from '@/components/shared/card-heading'
 import { useOfferingActions } from '@/components/trainer/offering-actions'
 import { EditScreen } from '@/components/shared/edit-screen'
-import { Info, Users, Package as PackageIcon, Bell, MessageSquare, ListChecks, Pencil } from 'lucide-react'
+import { Info, Users, Package as PackageIcon, Bell, MessageSquare, ListChecks, Pencil, Plus, ChevronRight } from 'lucide-react'
 import { formatMoney } from '@/lib/money'
 import { CommsFlowEditor } from '@/components/trainer/comms-flow-editor'
 import { AddSessionButton, SeriesCurriculumEditor } from '@/components/trainer/series-curriculum-editor'
 import { OfferingViewToggle, useOfferingView } from '@/components/shared/offering-card'
 import { OfferingTabs, type OfferingTab } from '@/components/shared/offering-tabs'
+import { FullScreenSheet } from '@/components/shared/full-screen-sheet'
+import { FlatBlock } from '@/components/shared/flat-list'
 
 // 'discounts' is deliberately absent: the discount engine is built but not
 // something we're showing trainers yet, so the tab and its panel are off. Put
@@ -114,6 +116,11 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
   // Assignments arrive newest-first, so the row kept is their current one.
   const snapshot = Array.from(new Map(present.map(r => [r.clientId, r])).values()).slice(0, 6)
 
+  // Driven by the pinned action bar rather than a button inside the tab — see
+  // the `primary` prop below.
+  const [addingSession, setAddingSession] = useState(false)
+  const [pickingClient, setPickingClient] = useState(false)
+
   const effectivePrice = pkg.specialPriceCents ?? pkg.priceCents
   const totalRevenue = effectivePrice != null ? effectivePrice * rows.length : null
   const completedCount = rows.filter(r => r.derived.label === 'Completed').length
@@ -178,12 +185,43 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
       <EditScreen
         menu={menu}
         menuTitle={pkg.name}
-        primary={{ label: 'Edit', href: editHref, icon: <Pencil className="h-4 w-4" strokeWidth={1.75} /> }}
+        // The action follows the TAB. "Edit" is right on Details — it's the
+        // package you're looking at — but on Clients it offered to edit the
+        // package while you were looking at who's on it, and on Sessions the
+        // same (Karl: "this tab should not have edit, it should have add to
+        // enrol the client" / "the sessions tab should have an add button").
+        // Editing the package is still one tap away in the ⋯ on those tabs.
+        primary={
+          tab === 'clients'
+            ? { label: 'Add', icon: <Plus className="h-4 w-4" strokeWidth={2} />, onClick: () => setPickingClient(true) }
+            : tab === 'homework' && onSessionList
+              ? { label: 'Add', icon: <Plus className="h-4 w-4" strokeWidth={2} />, onClick: () => setAddingSession(true) }
+              : { label: 'Edit', href: editHref, icon: <Pencil className="h-4 w-4" strokeWidth={1.75} /> }
+        }
       >
         {actionError && (
           <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-800">{actionError}</p>
         )}
         {overlays}
+
+        {/* Controlled: the trigger is the pinned "Add" above, this holds the
+            confirm and the PATCH. Mounted whatever tab is showing so closing
+            the confirm can't unmount it mid-request. */}
+        {onSessionList && (
+          <AddSessionButton
+            packageId={pkg.id}
+            sessionCount={pkg.sessionCount}
+            open={addingSession}
+            onOpenChange={setAddingSession}
+          />
+        )}
+
+        {pickingClient && (
+          <ClientPicker
+            packageName={pkg.name}
+            onClose={() => setPickingClient(false)}
+          />
+        )}
 
         {/* Tabs — Details, Clients, Automation. Icon on top on a
             phone (the labels are too long to sit beside one at 390px).
@@ -194,12 +232,16 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
         {/* The strip gets the whole width on a phone. Sharing the line with
             the Sessions tab's own controls squeezed it to 239px, and four
             labels in 239px clip inside their own columns. */}
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        {/* Sticky (Karl), the same offset the schedule bar and the product tabs
+            use: under the shell's phone header, under the fixed top bar on
+            desktop. The Clients and Sessions lists are both longer than a
+            phone, and switching tab meant scrolling back up to find the
+            switch. bg-white because the list scrolls UNDER it. */}
+        <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 mb-4 flex flex-col gap-3 bg-white pt-2 sm:flex-row sm:items-end sm:justify-between">
           <OfferingTabs tabs={tabs} value={tab} onChange={setTab} className="mb-0 min-w-0" />
           {tab === 'homework' && onSessionList && (
             <span className="flex flex-shrink-0 items-center justify-end gap-2 sm:pb-1.5">
               <OfferingViewToggle value={sessionView} onChange={setSessionView} />
-              <AddSessionButton packageId={pkg.id} sessionCount={pkg.sessionCount} />
             </span>
           )}
         </div>
@@ -551,6 +593,78 @@ function Detail({ label, value }: { label: string; value: string }) {
       <p className="w-28 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
       <p className="min-w-0 flex-1 text-sm font-medium text-slate-800" suppressHydrationWarning>{value}</p>
     </div>
+  )
+}
+
+/**
+ * "Who are you enrolling?" — the missing half of enrolling from THIS side.
+ *
+ * Assigning has always started from a client (their Sessions screen), because
+ * the flow needs their dogs, their availability, their trainer and their
+ * invoicing — none of which this page loads. So this doesn't try to assign:
+ * it asks who, and hands over to the screen that can, with the assign sheet
+ * already open. One flow, one place it lives, reachable from both ends.
+ */
+function ClientPicker({ packageName, onClose }: { packageName: string; onClose: () => void }) {
+  const router = useRouter()
+  const [items, setItems] = useState<{ id: string; name: string | null; dogName: string | null }[] | null>(null)
+  const [q, setQ] = useState('')
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let live = true
+    fetch('/api/clients')
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error('failed'))))
+      .then(d => { if (live) setItems(d.items ?? []) })
+      .catch(() => { if (live) setFailed(true) })
+    return () => { live = false }
+  }, [])
+
+  const shown = (items ?? []).filter(c =>
+    !q.trim() || `${c.name ?? ''} ${c.dogName ?? ''}`.toLowerCase().includes(q.trim().toLowerCase()),
+  )
+
+  return (
+    <FullScreenSheet
+      title="Enrol a client"
+      sub={packageName}
+      onClose={onClose}
+      headerExtra={
+        <input
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          placeholder="Search clients…"
+          className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+        />
+      }
+    >
+      {failed ? (
+        <p className="px-4 py-8 text-center text-sm text-red-600">Could not load your clients.</p>
+      ) : items === null ? (
+        <p className="px-4 py-8 text-center text-sm text-slate-500">Loading…</p>
+      ) : shown.length === 0 ? (
+        <p className="px-4 py-8 text-center text-sm text-slate-500">
+          {q.trim() ? 'No client matches that.' : 'No clients yet.'}
+        </p>
+      ) : (
+        <FlatBlock>
+          {shown.map(c => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => router.push(`/clients/${c.id}/sessions?assign=1`)}
+              className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-slate-50"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[15px] font-medium text-slate-900">{c.name ?? 'Unnamed'}</span>
+                {c.dogName && <span className="block truncate text-[13px] text-slate-500">{c.dogName}</span>}
+              </span>
+              <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" strokeWidth={1.75} />
+            </button>
+          ))}
+        </FlatBlock>
+      )}
+    </FullScreenSheet>
   )
 }
 

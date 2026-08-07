@@ -120,8 +120,19 @@ describe('a read screen fits the same shell', () => {
     expect(editScreen).toMatch(/<Link\s+href=\{primary\.href\}/)
   })
 
-  it('the offering screen passes Edit as that primary, and no secondary', () => {
-    expect(packageDetail).toMatch(/primary=\{\{ label: 'Edit', href: editHref/)
+  it('the offering screen passes a primary that follows the tab, and no secondary', () => {
+    // Edit stays the primary on Details — it's the package you're looking at.
+    // On Clients and Sessions it offered to edit the package while you were
+    // looking at who's enrolled or what each session covers, so those get
+    // "Add" instead (Karl, 2026-08-07: "this tab should not have edit, it
+    // should have add to enrol the client" / "the sessions tab should have an
+    // add button"). Editing is still one tap away in the ⋯ .
+    expect(packageDetail).toMatch(/label: 'Edit', href: editHref/)
+    expect(packageDetail).toMatch(/tab === 'clients'/)
+    expect(packageDetail).toMatch(/setPickingClient\(true\)/)
+    expect(packageDetail).toMatch(/setAddingSession\(true\)/)
+    // Still no Cancel: nothing is being edited, and the way out is the back
+    // arrow the header already carries.
     expect(packageDetail).not.toMatch(/secondary=\{/)
   })
 
