@@ -85,7 +85,11 @@ test.describe('the message composer sits on the tab bar, not above a gap', () =>
       // against a bar that is deliberately absent is what made it fail.)
       const fixedNavs = [...document.querySelectorAll('nav')]
         .filter(n => getComputedStyle(n).position === 'fixed')
-      const composer = document.querySelector('input[placeholder="Type a message…"]')!.closest('div')!
+      // Match the field by placeholder ONLY. It was `input[placeholder=…]`,
+      // and the composer is a textarea (it grows with a long message) — so
+      // querySelector returned null and .closest() threw inside evaluate,
+      // which reads as a broken spec rather than the geometry assertion it is.
+      const composer = document.querySelector('[placeholder="Type a message…"]')!.closest('div')!
       return {
         tabBarCount: fixedNavs.filter(n => n.className.includes('bottom-0')).length,
         composerBottom: Math.round(composer.getBoundingClientRect().bottom),
@@ -101,6 +105,51 @@ test.describe('the message composer sits on the tab bar, not above a gap', () =>
       'the composer must reach the bottom of the screen — no dead band',
     ).toBeLessThanOrEqual(1)
     expect(geometry.pageOverflow, 'the page itself must not scroll').toBeLessThanOrEqual(0)
+  })
+
+  // The pane's height is MEASURED (FillViewport), and a measurement can be
+  // taken at the wrong moment. Two ways that happened, both leaving a dead
+  // band Karl saw on his phone:
+  //   • at mount, the shell's phone top bar was still there — the thread
+  //     declares itself immersive in an effect, so the bar goes a tick LATER,
+  //     and the pane kept a height 57px short of the screen;
+  //   • on a resize across `md:`, the reading landed mid-layout, and nothing
+  //     came back to correct it (a settled page fires no mutation or document
+  //     resize).
+  // Neither shows at a fixed desktop size, which is how both got shipped.
+  test('the thread fills the screen exactly, at rest and after resizing', async ({ page }) => {
+    await login(page, SEED.owner.email, SEED.owner.password)
+    await page.goto(`/messages?client=${SEED.assignedClientId}`)
+    await expect(page.getByPlaceholder('Type a message…')).toBeVisible({ timeout: 20_000 })
+
+    const measure = () => page.evaluate(() => {
+      const pane = document.querySelector('main .flex.flex-col.overflow-hidden')!
+      const box = pane.getBoundingClientRect()
+      return {
+        gapBelowPane: Math.round(window.innerHeight - box.bottom),
+        pageOverflow: document.documentElement.scrollHeight - window.innerHeight,
+        headerTop: Math.round(
+          document.querySelector('main .sticky.top-0.z-10.flex.items-center')!.getBoundingClientRect().top,
+        ),
+      }
+    })
+
+    // Phone, desktop, tablet, and back — each way through the breakpoint.
+    for (const size of [PHONE, DESKTOP, { width: 768, height: 1024 }, PHONE]) {
+      await page.setViewportSize(size)
+      // Let the resize settle before reading, the same way the component does.
+      await expect.poll(async () => (await measure()).gapBelowPane, {
+        message: `the pane must end at the bottom of the screen at ${size.width}px`,
+        timeout: 5_000,
+      }).toBe(0)
+      const m = await measure()
+      expect(m.pageOverflow, `the page itself must not scroll at ${size.width}px`).toBeLessThanOrEqual(0)
+      if (size.width < 768) {
+        // Immersive: no shell bar above it, so the thread's own header is the
+        // top of the screen — "the top should act like the control bar".
+        expect(m.headerTop, 'the thread header owns the top of the phone').toBe(0)
+      }
+    }
   })
 
   test('the thread list still scrolls inside its own pane', async ({ page }) => {

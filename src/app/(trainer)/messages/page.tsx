@@ -188,8 +188,11 @@ export default async function MessagesPage({
           `-mb-20` cancels <main>'s pb-20, which exists so ordinary
           scrolling pages clear the tab bar — this pane measures the bar
           itself, so counting it twice would push the page taller than
-          the viewport. env(safe-area-inset-bottom) is deliberately
-          absent: `html[data-native] body` already pads it once, globally.
+          the viewport. The cancel MUST include env(safe-area-inset-bottom)
+          because <main>'s pad does — cancelling less leaves the difference
+          as dead space. With a thread open the pane then runs to the
+          physical bottom of the screen, so the composer pads the inset
+          itself, exactly like the tab bar it replaces.
           DESKTOP: no tab bar, so it keeps viewport-minus-header. */}
       {/* The height is MEASURED, not calculated — see FillViewport. Every
           constant that used to live here was a guess about the chrome above,

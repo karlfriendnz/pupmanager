@@ -41,8 +41,13 @@ export function FillViewport({
       // Viewport-relative top. Read with the page at rest: if anything HAS
       // scrolled we add it back, so a mid-scroll resize can't shrink the pane.
       const top = el.getBoundingClientRect().top + window.scrollY
-      const h = Math.max(0, window.innerHeight - top)
-      el.style.height = `${Math.round(h)}px`
+      const h = `${Math.round(Math.max(0, window.innerHeight - top))}px`
+      // Only write when it actually changes. The MutationObserver below is
+      // watching this very element's style attribute, and a same-value write
+      // still records a mutation — which would schedule another frame, which
+      // would write again, forever.
+      if (el.style.height === h) return
+      el.style.height = h
     }
 
     apply()
@@ -51,15 +56,55 @@ export function FillViewport({
     // the window.
     const ro = new ResizeObserver(apply)
     ro.observe(document.documentElement)
-    window.addEventListener('resize', apply)
+
+    // …and it can also be REMOVED, which no resize reports. An open message
+    // thread declares itself immersive in an effect, and the shell unmounts
+    // its phone top bar in response — a tick AFTER this measured. The page's
+    // own height never changes (the shell is min-h-screen), so the
+    // ResizeObserver above stays silent and the pane keeps a height that is
+    // short by the bar it no longer has to clear: 57px of dead white above the
+    // composer, on a phone, every time. Watching the DOM catches the element
+    // moving up, which is the thing that actually invalidates the reading.
+    // Coalesced to a frame so a chatty subtree can't measure per mutation.
+    let queued = 0
+    const remeasure = () => {
+      if (queued) return
+      queued = requestAnimationFrame(() => {
+        queued = 0
+        apply()
+      })
+    }
+    const mo = new MutationObserver(remeasure)
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] })
+
+    // A resize needs measuring more than once. Crossing `md:` swaps the chrome
+    // above — the desktop top bar appears and <main> gains its 3.5rem reserve —
+    // and both the resize event itself and the frame after it can still read
+    // the OLD arrangement while innerHeight already reports the new one. That
+    // stale number then sticks forever: a settled layout produces no mutation
+    // and no document resize, so nothing comes along to correct it. Seen in
+    // both directions (390 → 1280 overflowed by the top bar; 1280 → 390 left a
+    // 56px band under the composer). So re-read across a couple of frames and
+    // once more after the dust settles. Bounded, and each pass is a no-op when
+    // the number hasn't moved.
+    const timers: ReturnType<typeof setTimeout>[] = []
+    const onResize = () => {
+      apply()
+      remeasure()
+      timers.push(setTimeout(apply, 60), setTimeout(apply, 250))
+    }
+    window.addEventListener('resize', onResize)
     // Mobile browsers change innerHeight as the URL bar hides; visualViewport
     // reports that where it exists.
-    window.visualViewport?.addEventListener('resize', apply)
+    window.visualViewport?.addEventListener('resize', onResize)
 
     return () => {
       ro.disconnect()
-      window.removeEventListener('resize', apply)
-      window.visualViewport?.removeEventListener('resize', apply)
+      mo.disconnect()
+      if (queued) cancelAnimationFrame(queued)
+      timers.forEach(clearTimeout)
+      window.removeEventListener('resize', onResize)
+      window.visualViewport?.removeEventListener('resize', onResize)
       el.style.height = ''
     }
   }, [])
