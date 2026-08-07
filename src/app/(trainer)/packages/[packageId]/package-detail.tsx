@@ -486,7 +486,13 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
         {/* Automation tab — what this offering does on its own (1:1 only). */}
         {!pkg.isGroup && (
           <div className={tab === 'messages' ? '' : 'hidden'}>
-            <h2 className="mb-3 hidden text-base font-semibold text-slate-900 md:block">Automation</h2>
+            {/* Heading left, the flow's own action right — "Use starter
+                reminders" portals into this slot (see HeaderSlot in the
+                editor). It was at the foot of the card, below every stage. */}
+            <div className="mb-3 flex min-h-9 items-center justify-between gap-3">
+              <h2 className="hidden text-base font-semibold text-slate-900 md:block">Automation</h2>
+              <div id="flow-header-actions" className="ml-auto flex items-center gap-2 empty:hidden" />
+            </div>
             <CommsFlowEditor
               packageId={pkg.id}
               offeringName={pkg.name}

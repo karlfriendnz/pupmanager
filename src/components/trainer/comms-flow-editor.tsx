@@ -749,9 +749,15 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
             appended. It stays at the bottom rather than moving onto a heading:
             it fills EVERY stage, not one. */}
         {steps.length === 0 && !sequenced && (
-          <button onClick={seedStarter} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
-            <Sparkles className="h-4 w-4 text-slate-500" strokeWidth={1.75} /> Use starter reminders
-          </button>
+          // Karl asked for this at the top right, in line with the panel's
+          // heading — so it goes through the header slot when the page draws
+          // one, and stays here when it doesn't. It seeds EVERY stage at once,
+          // which is why it never sat on a single stage heading.
+          <HeaderSlot>
+            <button onClick={seedStarter} disabled={busy} className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+              <Sparkles className="h-4 w-4 text-slate-500" strokeWidth={1.75} /> Use starter reminders
+            </button>
+          </HeaderSlot>
         )}
         {templates.length > 0 && !sequenced && <TemplatePicker templates={templates} onApply={applyTemplate} busy={busy} applying={applying} />}
       </div>
@@ -823,7 +829,11 @@ function HeaderSlot({ children }: { children: React.ReactNode }) {
   const hydrated = useSyncExternalStore(neverChanges, onTheClient, onTheServer)
   if (!hydrated || typeof document === 'undefined') return null
   const node = document.getElementById('flow-header-actions')
-  return node ? createPortal(children, node) : null
+  // Falls back to rendering IN PLACE when the page offers no slot, rather than
+  // vanishing. It used to return null, which was safe only while the one
+  // caller that used this also drew the slot; now that an in-page mount can
+  // opt in too, a missing slot must not swallow the button.
+  return node ? createPortal(children, node) : <>{children}</>
 }
 const neverChanges = () => () => {}
 const onTheClient = () => true
