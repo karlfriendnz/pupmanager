@@ -117,7 +117,7 @@ export function PageTabs({
     // Growing from the content width means: spare room is shared out, and when
     // there isn't any the labels stay whole and the row scrolls instead.
     const cls = cn(
-      'relative flex grow shrink-0 items-center justify-center gap-2 whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors sm:px-4',
+      'relative flex grow shrink-0 items-center justify-center gap-2 whitespace-nowrap px-3 py-2.5 text-sm font-medium transition-colors sm:px-4 md:grow-0 md:justify-start',
       isActive ? 'text-accent' : 'text-slate-500 hover:text-slate-700',
     )
 

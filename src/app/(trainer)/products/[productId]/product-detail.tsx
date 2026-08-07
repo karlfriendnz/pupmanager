@@ -57,7 +57,7 @@ export function ProductDetail({
   // over. `bg-white` matters — content scrolls UNDER this, and a transparent
   // sticky bar shows it through.
   const strip = (
-    <div className="max-md:sticky max-md:top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] z-20 max-md:-mx-4 bg-white max-md:px-4 py-2">
+    <div className="max-md:sticky max-md:top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] z-20 max-md:-mx-4 bg-white max-md:px-4 py-2 md:pt-0">
       <OfferingTabs tabs={tabs} value={tab} onChange={setTab} className="mb-0" />
     </div>
   )
