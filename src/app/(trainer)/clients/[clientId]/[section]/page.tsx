@@ -17,6 +17,7 @@ import { formatDate, personLabel } from '@/lib/utils'
 import { PageHeader } from '@/components/shared/page-header'
 import { EditScreen } from '@/components/shared/edit-screen'
 import { ClientSectionChrome } from '../client-section-chrome'
+import { ClientSectionTabs } from '../client-section-tabs'
 import { ClientInvoicesScreen, ClientSessionsScreen } from '../client-section-actions'
 import { ClientProductsSection } from '../client-products-section'
 import { ClientNotesTab } from '../client-notes-tab'
@@ -120,6 +121,16 @@ export default async function ClientSectionPage({
     if (!clientAppEnabled && !client.user.email) notFound()
   }
 
+  // The same three flags the profile uses, so the desktop tab strip below
+  // offers exactly the sections this trainer can actually open — the checks
+  // above 404 one by one, and a tab that 404s is worse than no tab.
+  const [achievementsOn, clientAppOn] = await Promise.all([
+    hasAddon(access.trainerId, 'achievements'),
+    hasAddon(access.trainerId, 'clientapp'),
+  ])
+  const canViewBilling = !!trainerCtx && can('billing.view', trainerCtx.role, trainerCtx.permissions)
+  const showComms = clientAppOn || !!client.user.email
+
   // Whose record this is, INSIDE the header rather than in a strip under it:
   //
   //   ←   Details
@@ -140,6 +151,16 @@ export default async function ClientSectionPage({
       />
       <ClientSectionChrome />
       <div className="p-4 md:p-8 w-full max-w-5xl xl:max-w-7xl mx-auto">
+        {/* The strip stays put as you move between sections — it would be an
+            odd tab view that vanished the moment you used it. */}
+        <ClientSectionTabs
+          clientId={clientId}
+          active={section}
+          canViewBilling={canViewBilling}
+          showAchievements={achievementsOn}
+          showComms={showComms}
+          className="mb-4"
+        />
         {body}
       </div>
     </>

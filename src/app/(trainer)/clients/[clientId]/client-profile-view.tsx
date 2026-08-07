@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { FlatSummaryGrid, FlatSummaryTile } from '@/components/shared/flat-list'
 import { SetPageImmersive } from '@/components/shared/page-title'
+import { ClientSectionTabs } from './client-section-tabs'
 import Link from 'next/link'
 import { Card, CardBody } from '@/components/ui/card'
 import { formatDate } from '@/lib/utils'
@@ -163,7 +164,30 @@ export function ClientProfileView({
           phone it overlaps the hero above it by 28px, the same way the client
           app's own quick actions do, so the photo and the facts read as one
           block rather than two stacked panels. */}
-      <div className="relative z-20 -mt-7 mb-4 lg:mt-0">
+      {/* DESKTOP: the same tab strip the offering screens wear (Karl: "make the
+          client page have the same tab view as the sessions etc for desktop").
+          They're LINKS, because each section is genuinely its own page — so
+          the URL is shareable and a middle-click opens one in a tab, and there
+          is no second copy of any section's content to keep in step.
+
+          Built from the same list as the tiles below, so the gating can't
+          drift: no Invoices tab without billing permission, no Comms without a
+          channel, no Achievements without the add-on.
+
+          PHONE keeps the tiles: nine tabs do not fit a 390px row, and a tile
+          carries a line of state ("$116.00 owing") that a tab cannot. */}
+      <ClientSectionTabs
+        clientId={clientId}
+        active="overview"
+        canViewBilling={canViewBilling}
+        showAchievements={showAchievements}
+        showComms={showComms}
+        className="mb-4"
+      />
+
+      {/* The tiles are the phone's navigation — hidden once the tabs above take
+          that job, rather than showing both. */}
+      <div className="relative z-20 -mt-7 mb-4 md:hidden lg:mt-0">
         <FlatSummaryGrid>
           {tiles.map(t => (
             <FlatSummaryTile
