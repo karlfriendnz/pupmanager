@@ -45,6 +45,42 @@ html[data-native='true'] body {
   padding-right: env(safe-area-inset-right);
 }
 
+/* A message thread's own top bar and composer. They live in a pane that is
+   either IN FLOW (desktop, and the list view) or PINNED to the visual viewport
+   (an open thread on a phone — see FillViewport), and the two need opposite
+   things at the edges:
+
+   • In flow, <main> has already reserved a capped top inset, so the header
+     cancels it and lays its own solid background behind the status bar
+     instead. Body has already reserved the home-indicator strip, so the
+     composer must NOT reserve it again — that second copy is a second gap.
+   • Pinned, the pane is position:fixed over the whole screen. Nothing above
+     or below it has reserved anything, because those reserves belong to boxes
+     the pane is no longer inside. So the header cancels nothing, and the
+     composer pads the home indicator itself, exactly like the tab bar it
+     replaces.
+
+   Both were inline styles that only described the in-flow case, which is how
+   the phone ended up with a band of dead space under the composer. */
+.pm-thread-header {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.625rem);
+  padding-bottom: 0.625rem;
+  margin-top: calc(min(env(safe-area-inset-top, 0px), 1rem) * -1);
+}
+
+.pm-thread-composer {
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+
+[data-pinned='true'] .pm-thread-header {
+  margin-top: 0;
+}
+
+[data-pinned='true'] .pm-thread-composer {
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.75rem);
+}
+
 /* Capped top safe-area inset, shared by the desktop top bar and its fixed
    sidebars. iPad renders the desktop layout inside the native shell, so those
    fixed surfaces must clear the status bar (previously they pinned to top-0 /

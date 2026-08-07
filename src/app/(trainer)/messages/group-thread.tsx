@@ -659,12 +659,7 @@ function Header({
   const router = useRouter()
   return (
     <div
-      className="sticky top-0 z-10 flex items-center gap-3 border-b border-slate-100 bg-white px-4"
-      style={{
-        paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.625rem)',
-        paddingBottom: '0.625rem',
-        marginTop: 'calc(min(env(safe-area-inset-top, 0px), 1rem) * -1)',
-      }}
+      className="pm-thread-header sticky top-0 z-10 flex items-center gap-3 border-b border-slate-100 bg-white px-4"
     >
       <button
         type="button"
@@ -727,10 +722,7 @@ function Composer({
 }) {
   const busy = !!photos?.busy
   return (
-    <div
-      className="border-t border-slate-200 bg-white px-4 pt-3"
-      style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
-    >
+    <div className="pm-thread-composer border-t border-slate-200 bg-white px-4">
       {photos && <PhotoDraftStrip photos={photos} />}
       <div className="flex items-end gap-2">
       {photos && (

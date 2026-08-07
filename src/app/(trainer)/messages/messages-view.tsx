@@ -494,14 +494,7 @@ export function MessagesView({
           />
         ) : selectedClient ? (
           <>
-            <div
-              className="sticky top-0 z-10 flex items-center gap-3 px-4 border-b border-slate-100 bg-white"
-              style={{
-                paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.625rem)',
-                paddingBottom: '0.625rem',
-                marginTop: 'calc(min(env(safe-area-inset-top, 0px), 1rem) * -1)',
-              }}
-            >
+            <div className="pm-thread-header sticky top-0 z-10 flex items-center gap-3 px-4 border-b border-slate-100 bg-white">
               {/* Mobile back → clears the ?client param to return to the
                   list pane. Hidden on desktop where the list is always
                   visible alongside. router.push is preferred over Link

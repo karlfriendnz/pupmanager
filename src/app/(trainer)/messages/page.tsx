@@ -203,11 +203,14 @@ export default async function MessagesPage({
           <main>'s bottom padding, which exists for ordinary scrolling pages
           and would otherwise be counted twice under a pane that already ends
           at the viewport. */}
-      <FillViewport className={`flex flex-col overflow-hidden px-4 md:mb-0 md:px-8 ${
-        selectedClient || selectedGroupId
-          ? '-mb-[calc(5rem+env(safe-area-inset-bottom,0px))]'
-          : '-mb-20'
-      }`}>
+      <FillViewport
+        pin={!!(selectedClient || selectedGroupId)}
+        className={`flex flex-col overflow-hidden bg-white px-4 md:mb-0 md:px-8 ${
+          selectedClient || selectedGroupId
+            ? '-mb-[calc(5rem+env(safe-area-inset-bottom,0px))]'
+            : '-mb-20'
+        }`}
+      >
         <MessagesView
           activeClients={activeClients}
           inactiveClients={inactiveClients}

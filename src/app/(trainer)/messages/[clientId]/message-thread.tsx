@@ -217,13 +217,10 @@ export function MessageThread({
       {/* Composer — sticky to the bottom of the thread pane. flex-shrink-0
           stops it from collapsing if the messages list ever needs more
           room.
-          It does NOT pad env(safe-area-inset-bottom). `html[data-native]
-          body` reserves the home-indicator strip once for the whole app,
-          and the pane above stops at the body's content edge — so this
-          bar is already clear of it. Adding a second copy here is a
-          second gap, which is exactly what Karl saw on the phone when it
-          was tried. ONE owner of the inset: body. */}
-      <div className="flex-shrink-0 sticky bottom-0 border-t border-slate-100 px-4 py-3 bg-white">
+          Its vertical padding lives in `.pm-thread-composer` (globals.css),
+          because who reserves the home-indicator strip depends on whether
+          the pane is in flow or pinned to the visual viewport. */}
+      <div className="pm-thread-composer flex-shrink-0 sticky bottom-0 border-t border-slate-100 px-4 bg-white">
         {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
         <PhotoDraftStrip photos={photos} />
         <form onSubmit={sendMessage} className="flex gap-2">
