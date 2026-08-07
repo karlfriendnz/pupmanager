@@ -76,10 +76,16 @@ export function PageTabs({
 
   const inner = tabs.map(t => {
     const isActive = t.id === active
-    const Icon = t.icon
     const body = (
       <>
-        {Icon && <Icon className="h-4 w-4" strokeWidth={1.75} />}
+        {/* No icon, on any strip. Half the app's tabs carried one and half
+            didn't, which is the "the tab is different to the other tabs"
+            Karl kept hitting. Dropping them is the side that also wins on
+            merit: the labels are already unambiguous ("Details", "Clients",
+            "Active"), so an icon beside them decorates rather than explains —
+            and now tabs share the row, a 16px glyph plus its gap is width the
+            words could have used. `icon` stays on the type because callers
+            pass it; it simply isn't drawn. */}
         {t.label}
         {t.count != null && t.count > 0 && (
           <span className="text-xs tabular-nums text-slate-400">{t.count}</span>

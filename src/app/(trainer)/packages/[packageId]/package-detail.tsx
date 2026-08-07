@@ -237,11 +237,16 @@ export function PackageDetail({ pkg, clients, currency }: { pkg: PackageInfo; cl
             desktop. The Clients and Sessions lists are both longer than a
             phone, and switching tab meant scrolling back up to find the
             switch. bg-white because the list scrolls UNDER it. */}
-        {/* -mt-6 eats EditScreen's gap above this, so the strip meets the bar
-            rather than floating below it (Karl: "a bit messy"). -mb-2 pulls the
-            content up under it by the same idea — the hairline is the join, it
-            doesn't need a band of air on both sides. */}
-        <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 -mt-6 -mb-2 flex flex-col gap-3 bg-white pt-2 sm:flex-row sm:items-end sm:justify-between">
+        {/* Edge to edge, like every other tab strip in the app (Karl: "tabs are
+            not going full width" — both arrows in his screenshot were the gaps
+            at the sides). The page wrapper is p-4 md:p-8, so the negative
+            margins break out of it and the matching padding puts the tab text
+            back in line with the content beneath. Without this the white
+            background and the hairline both stop short of the page edges,
+            which is what made this strip look unlike the others.
+            -mt-6 eats EditScreen's gap above, so it meets the bar rather than
+            floating below it; -mb-2 does the same underneath. */}
+        <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 -mx-4 -mt-6 -mb-2 flex flex-col gap-3 bg-white px-4 pt-2 sm:flex-row sm:items-end sm:justify-between md:-mx-8 md:px-8">
           {/* flex-1: the strip takes the whole row like every other tab strip
               in the app (Karl: "tabs are not going full width"). It was
               content-width, so on a wide screen it stopped short of the page
