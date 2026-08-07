@@ -49,7 +49,18 @@ export function ProductDetail({
   // underline row here, which is the LIST style; a detail screen you switch
   // views on is the other one, and there is no reason for products to be the
   // odd one out.
-  const strip = <OfferingTabs tabs={tabs} value={tab} onChange={setTab} className="mb-0" />
+  // Sticky, so switching Details / Options / Purchases doesn't mean scrolling
+  // back up to find the switch — the Purchases list and the Details form are
+  // both longer than a phone. It parks under the shell's header, the same
+  // offset the schedule's date row uses: safe-area + the 3.5rem row + its 1px
+  // border on a phone, and --app-top-offset once the desktop top bar takes
+  // over. `bg-white` matters — content scrolls UNDER this, and a transparent
+  // sticky bar shows it through.
+  const strip = (
+    <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 bg-white py-2">
+      <OfferingTabs tabs={tabs} value={tab} onChange={setTab} className="mb-0" />
+    </div>
+  )
 
   return (
     <div className="flex flex-col gap-4">

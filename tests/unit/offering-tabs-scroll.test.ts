@@ -6,41 +6,61 @@ import { resolve } from 'node:path'
  * Five tabs do not fit on a 394px line.
  *
  * The package builder's — Details · Included · Appearance · Who it's for ·
- * Automation — were an underlined rail that ran off the right edge, with
- * "Automation" simply not on screen (Karl: "bit messy"). An even split does not
- * save them either: five columns of 70px break "Who it's for" across three
- * lines. Past four, the strip scrolls.
+ * Automation — ran off the right edge with "Automation" simply not on screen
+ * (Karl: "bit messy"). And a strip that scrolls has a quieter second failure:
+ * opening on a tab that starts off-screen shows a row that doesn't contain the
+ * thing you're looking at, with nothing to say it moves.
  *
- * And a strip that scrolls has a second failure that is quieter than the first:
- * opening on a tab that starts off-screen shows a row that does not contain the
- * thing you are looking at, with nothing to say it moves.
+ * REWRITTEN 2026-08-07. There were two tab designs — a grey pill track on ten
+ * detail screens, a flat underline on To do / Messages / Alerts. Karl asked for
+ * one; he chose the underline. OfferingTabs now renders PageTabs, so the
+ * behaviour these tests protect moved there with it.
+ *
+ * Two assertions are deliberately GONE rather than ported, because the design
+ * they describe is gone: the even-split-until-five rule and the "skip the strip
+ * that is display:none" guard both existed to manage TWO strips (a phone one
+ * and a wide one). There is one strip now, it always scrolls, and neither
+ * failure can occur.
  */
 const src = (rel: string) => readFileSync(resolve(__dirname, '../../src/', rel), 'utf8')
 
-const tabs = src('components/shared/offering-tabs.tsx')
+const pageTabs = src('components/shared/page-tabs.tsx')
+const offeringTabs = src('components/shared/offering-tabs.tsx')
 const editScreen = src('components/shared/edit-screen.tsx')
 
+describe('one tab design, not two', () => {
+  it('OfferingTabs renders PageTabs rather than its own markup', () => {
+    // The whole point: ten detail screens and three list screens draw the same
+    // strip. If this ever grows its own <button> again the app has two designs
+    // back, which is exactly what Karl reported.
+    expect(offeringTabs).toContain('<PageTabs')
+    expect(offeringTabs).not.toMatch(/<button/)
+  })
+
+  it('keeps its generic tab ids, so a screen cannot pass a tab that does not exist', () => {
+    expect(offeringTabs).toMatch(/export function OfferingTabs<T extends string>/)
+  })
+
+  it('has no pill track left anywhere', () => {
+    // The grey rounded track with white pills. Its colour was also the one
+    // strip in the app not using the trainer's accent.
+    expect(offeringTabs).not.toContain('bg-slate-100 rounded-2xl')
+    expect(pageTabs).not.toContain('bg-slate-100 rounded-2xl')
+  })
+})
+
 describe('the strip scrolls rather than squeezing', () => {
-  it('decides on the COUNT, not on a flag the caller has to know to pass', () => {
-    expect(tabs).toMatch(/const scrolls = tabs\.length > 4/)
-  })
-
-  it('swaps the even split for fixed-width tabs once it scrolls', () => {
-    expect(tabs).toMatch(/scrolls \? 'shrink-0 basis-\[5\.5rem\]' : 'flex-1 min-w-\[4\.5rem\]'/)
-  })
-
-  it('can scroll even in the even-split mode, because the box may be narrow', () => {
-    // The split is only even if the box is as wide as the screen. On the
-    // offering detail screen this strip shares a row with a tab's own actions,
-    // which squeezed it to 239px and clipped "Homework" and "Automation"
-    // INSIDE their columns — a four-tab strip, so the count rule never fired.
-    // A minimum width per tab plus somewhere to scroll survives any container.
-    expect(tabs).toMatch(/sm:hidden flex gap-1 p-1 bg-slate-100 rounded-2xl overflow-x-auto no-scrollbar/)
+  it('scrolls sideways instead of wrapping to a second row', () => {
+    expect(pageTabs).toContain('overflow-x-auto')
   })
 
   it('hides the rail — a bar here would be the second one on screen', () => {
-    // Karl's standing rule. Both strips, not just the phone one.
-    expect(tabs.match(/no-scrollbar/g)?.length).toBeGreaterThanOrEqual(2)
+    // Karl's standing rule.
+    expect(pageTabs).toContain('no-scrollbar')
+  })
+
+  it('does not let a long label wrap mid-tab', () => {
+    expect(pageTabs).toContain('whitespace-nowrap')
   })
 })
 
@@ -48,37 +68,36 @@ describe('the active tab is brought into view', () => {
   it('scrolls the strip, never the page', () => {
     // scrollIntoView would walk up and move the document too. This moves the
     // one box.
-    expect(tabs).toContain('box.scrollTo({ left:')
-    expect(tabs).not.toContain('scrollIntoView')
-  })
-
-  it('skips the strip that is display:none at this width', () => {
-    // One of the two is always hidden; it has no geometry, and scrolling it
-    // would be scrolling the row nobody can see.
-    expect(tabs).toMatch(/if \(!box \|\| box\.clientWidth === 0\) continue/)
+    expect(pageTabs).toContain('el.scrollTo({ left:')
+    expect(pageTabs).not.toContain('scrollIntoView')
   })
 
   it('does nothing when there is nothing to scroll', () => {
-    expect(tabs).toMatch(/if \(box\.scrollWidth <= box\.clientWidth\) continue/)
+    expect(pageTabs).toMatch(/if \(!el \|\| el\.scrollWidth <= el\.clientWidth\) return/)
   })
 
   it('re-runs when the tab changes', () => {
-    expect(tabs).toMatch(/\}, \[value\]\)/)
+    expect(pageTabs).toMatch(/\}, \[active\]\)/)
   })
 })
 
-describe('the tabs announce themselves as tabs', () => {
-  it('is a tablist of tabs, not a set of current links', () => {
-    // aria-current="page" means "this is the page you are on" in a set of
-    // LINKS. These switch a panel in place — and role=tab is what the specs
-    // already reach for on every other strip in the app.
-    expect(tabs).toContain('role="tablist"')
-    // Two strips, one for each width. (The count skips the comment above them
-    // by requiring the JSX indentation.)
-    expect(tabs.match(/\n\s+role="tab"\n/g)?.length).toBe(2)
-    expect(tabs.match(/aria-selected=\{active\}/g)?.length).toBe(2)
-    // As an attribute — the word still appears in the comment explaining why.
-    expect(tabs).not.toMatch(/aria-current=\{/)
+describe('the tabs announce themselves correctly', () => {
+  it('panel-switching tabs are a real tablist', () => {
+    // These switch a panel in place, so role=tab + aria-selected — which is
+    // also what the specs reach for.
+    expect(pageTabs).toContain('role="tablist"')
+    expect(pageTabs).toContain('role="tab"')
+    expect(pageTabs).toContain('aria-selected={isActive}')
+  })
+
+  it('link tabs stay links, and never claim role=tab', () => {
+    // A tab with an href is navigation. role="tab" would override the implicit
+    // link role — breaking screen readers AND every getByRole('link') aimed at
+    // one. The link branch marks itself with aria-current instead.
+    expect(pageTabs).toContain("aria-current={isActive ? 'page' : undefined}")
+    // The <nav> wrapper, not a tablist, when the tabs are links. ([\s\S] not
+    // [^>]: the ref's generic type contains a '>' of its own.)
+    expect(pageTabs).toMatch(/<nav[\s\S]*?aria-label=\{label\}/)
   })
 })
 

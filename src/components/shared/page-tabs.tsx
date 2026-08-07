@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import Link from 'next/link'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -56,6 +57,22 @@ export function PageTabs({
   className?: string
 }) {
   const asLinks = tabs.some(t => t.href)
+  const box = useRef<HTMLElement>(null)
+
+  // Scroll the active tab into view. A strip that scrolls but opens with the
+  // current tab off-screen is the version that feels broken — nothing tells you
+  // the row moves, and the thing you're looking at isn't on it. (Carried over
+  // from OfferingTabs, which this replaced; it matters most on the package
+  // builder's five tabs.)
+  useEffect(() => {
+    const el = box.current
+    if (!el || el.scrollWidth <= el.clientWidth) return
+    const target = el.querySelector<HTMLElement>('[data-tab-active="true"]')
+    if (!target) return
+    const b = el.getBoundingClientRect()
+    const t = target.getBoundingClientRect()
+    el.scrollTo({ left: Math.max(0, el.scrollLeft + (t.left - b.left) - (b.width - t.width) / 2), behavior: 'smooth' })
+  }, [active])
 
   const inner = tabs.map(t => {
     const isActive = t.id === active
@@ -87,7 +104,7 @@ export function PageTabs({
     )
 
     return t.href ? (
-      <Link key={t.id} href={t.href} aria-current={isActive ? 'page' : undefined} className={cls}>
+      <Link key={t.id} href={t.href} aria-current={isActive ? 'page' : undefined} data-tab-active={isActive} className={cls}>
         {body}
       </Link>
     ) : (
@@ -96,6 +113,7 @@ export function PageTabs({
         type="button"
         role="tab"
         aria-selected={isActive}
+        data-tab-active={isActive}
         onClick={() => onSelect?.(t.id)}
         className={cls}
       >
@@ -110,8 +128,8 @@ export function PageTabs({
   const cn_ = cn('flex gap-1 overflow-x-auto no-scrollbar border-b border-slate-200', className)
 
   return asLinks ? (
-    <nav aria-label={label} className={cn_}>{inner}</nav>
+    <nav ref={box as React.RefObject<HTMLElement>} aria-label={label} className={cn_}>{inner}</nav>
   ) : (
-    <div role="tablist" aria-label={label} className={cn_}>{inner}</div>
+    <div ref={box as React.RefObject<HTMLDivElement>} role="tablist" aria-label={label} className={cn_}>{inner}</div>
   )
 }
