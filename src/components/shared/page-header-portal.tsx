@@ -12,17 +12,67 @@ type BackLink = { href?: string; label?: string; onClick?: () => void }
 // header row. The slots (#pm-topbar-back / #pm-topbar-actions) live in the bar
 // and auto-collapse (empty:hidden) when a page has none. Mobile has no top bar,
 // so PageHeader renders these in place instead.
-export function PageHeaderTopBarPortal({ back, actions }: { back?: BackLink; actions?: ReactNode }) {
-  const [ready, setReady] = useState(false)
-  useEffect(() => setReady(true), [])
-  if (!ready) return null
+type Slots = {
+  back: HTMLElement | null
+  actions: HTMLElement | null
+  backMobile: HTMLElement | null
+  actionsMobile: HTMLElement | null
+}
 
-  const backSlot = document.getElementById('pm-topbar-back')
-  const actionsSlot = document.getElementById('pm-topbar-actions')
-  // Mobile counterparts — the trainer phone top bar shows the page title, so it
-  // hosts the back arrow + actions there too (see app-shell mobile header).
-  const backSlotMobile = document.getElementById('pm-topbar-back-mobile')
-  const actionsSlotMobile = document.getElementById('pm-topbar-actions-mobile')
+const NO_SLOTS: Slots = { back: null, actions: null, backMobile: null, actionsMobile: null }
+
+export function PageHeaderTopBarPortal({ back, actions }: { back?: BackLink; actions?: ReactNode }) {
+  // The slots are found in an EFFECT and kept in state, and the lookup re-runs
+  // whenever the DOM changes. It used to be a bare getElementById during
+  // render, which reads the bar exactly once and never again — and the bar is
+  // not always there at that moment.
+  //
+  // How that showed up: open a message thread (immersive, no top bar, so the
+  // bar is unmounted), tap "View profile". The profile mounts, this looks for
+  // the slot, finds nothing because the bar is still gone, and the profile's
+  // own `keepTopBar` brings the bar back a tick LATER. Nothing re-rendered
+  // this, so the back arrow never appeared — on a screen that also hides the
+  // bottom tabs, i.e. a dead end with no way out. Karl found it; it would have
+  // hit any immersive page reached from another immersive page.
+  const [slots, setSlots] = useState<Slots>(NO_SLOTS)
+
+  useEffect(() => {
+    let queued = 0
+    const read = () => {
+      const next: Slots = {
+        back: document.getElementById('pm-topbar-back'),
+        actions: document.getElementById('pm-topbar-actions'),
+        backMobile: document.getElementById('pm-topbar-back-mobile'),
+        actionsMobile: document.getElementById('pm-topbar-actions-mobile'),
+      }
+      setSlots(prev =>
+        prev.back === next.back &&
+        prev.actions === next.actions &&
+        prev.backMobile === next.backMobile &&
+        prev.actionsMobile === next.actionsMobile
+          ? prev
+          : next,
+      )
+    }
+    // Coalesced to a frame — this watches the whole body, and portalling into a
+    // slot is itself a mutation.
+    const schedule = () => {
+      if (queued) return
+      queued = requestAnimationFrame(() => {
+        queued = 0
+        read()
+      })
+    }
+    read()
+    const mo = new MutationObserver(schedule)
+    mo.observe(document.body, { childList: true, subtree: true })
+    return () => {
+      mo.disconnect()
+      if (queued) cancelAnimationFrame(queued)
+    }
+  }, [])
+
+  const { back: backSlot, actions: actionsSlot, backMobile: backSlotMobile, actionsMobile: actionsSlotMobile } = slots
 
   // A fresh back element per slot — the same React node can't be portalled twice.
   const backEl = (cls: string) =>
