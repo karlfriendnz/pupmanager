@@ -9,7 +9,9 @@ import { Card, CardBody } from '@/components/ui/card'
 import { Alert } from '@/components/ui/alert'
 import { PageHeader } from '@/components/shared/page-header'
 import { CardHeading } from '@/components/shared/card-heading'
-import { OfferingActions } from '@/components/trainer/offering-actions'
+import { useOfferingActions } from '@/components/trainer/offering-actions'
+import { EditScreen } from '@/components/shared/edit-screen'
+import { Plus, Pencil } from 'lucide-react'
 import { Users, UserPlus, Info, Bell, Tag, ListChecks } from 'lucide-react'
 import { useCurrency } from '@/components/currency-context'
 import { formatMoney } from '@/lib/money'
@@ -198,6 +200,20 @@ export function RunDetail({
     basePath === '/casual-classes' ? 'casual class'
     : basePath === '/doggy-daycare' ? 'programme'
     : 'class'
+  // Edit, and everything occasional behind the ⋯ — the same hook the 1:1
+  // session screen uses, so the routes, confirmations and refusal prose have
+  // one copy between them rather than one per offering kind.
+  const runActions = useOfferingActions({
+    name: run.name,
+    noun: offeringNoun,
+    editHref: `/packages/${run.packageId}/edit`,
+    packageId: run.packageId,
+    runId: run.id,
+    // Daycare deliberately passes nothing: it converts nowhere, so it is
+    // offered nothing rather than something the API would refuse.
+    runKind: basePath === '/casual-classes' ? 'casual' : basePath === '/classes' ? 'class' : undefined,
+    backHref: basePath,
+  })
 
   const tabs: OfferingTab<Tab>[] = [
     { id: 'details', label: 'Details', icon: Info },
@@ -235,6 +251,27 @@ export function RunDetail({
           scrolls sideways on a phone. The table's own overflow-x-auto is the
           only thing that should scroll. */}
       <div className="p-4 md:p-8 w-full min-w-0">
+      {/* The house shell: the five bottom tabs stand down, and the screen's
+          actions are pinned to the foot instead of floating in a card (Karl:
+          "things like the primary button, nav bar, tabs, headings"). The
+          action follows the TAB, same rule as the 1:1 session screen. */}
+      <EditScreen
+        menu={runActions.menu}
+        menuTitle={run.name}
+        primary={
+          tab === 'clients'
+            ? { label: 'Add', icon: <Plus className="h-4 w-4" strokeWidth={2} />, onClick: () => setAdding(true) }
+            // Automation, Sessions and Discounts get none. Their steps, sessions
+            // and rules each carry their own controls, and "Edit" there offered
+            // to edit the CLASS while you were inside one of them. It stays in
+            // the ⋯ on every tab.
+            : tab === 'details'
+              ? { label: 'Edit', href: runActions.editHref, icon: <Pencil className="h-4 w-4" strokeWidth={1.75} /> }
+              : undefined
+        }
+      >
+      {runActions.error && <Alert variant="error" className="mb-4">{runActions.error}</Alert>}
+      {runActions.overlays}
       {error && <Alert variant="error" className="mb-4">{error}</Alert>}
 
       {/* Tabs — Details, Clients, Automation, Discounts. Icon on top on a phone
@@ -252,13 +289,8 @@ export function RunDetail({
           switching tab means scrolling back up to find the switch. */}
       <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.5rem+1px)] md:top-[var(--app-top-offset,0px)] z-20 -mx-4 mb-4 flex items-end justify-between gap-3 bg-white px-4 pt-2 md:-mx-8 md:px-8">
         <OfferingTabs tabs={tabs} value={tab} onChange={setTab} className="mb-0 min-w-0 flex-1" />
-        {tab === 'clients' && (
-          <span className="flex flex-shrink-0 items-center gap-2.5 pb-1.5">
-            {seatsLabel && <span className="hidden text-xs text-slate-500 sm:inline">{seatsLabel}</span>}
-            <Button variant="secondary" onClick={() => setAdding(true)}>
-              <UserPlus className="h-4 w-4" /> Enrol client
-            </Button>
-          </span>
+        {tab === 'clients' && seatsLabel && (
+          <span className="hidden flex-shrink-0 pb-1.5 text-xs text-slate-500 sm:inline">{seatsLabel}</span>
         )}
         {tab === 'homework' && onSessionList && (
           <span className="flex flex-shrink-0 items-center gap-2 pb-1.5">
@@ -286,27 +318,10 @@ export function RunDetail({
           {/* Class details */}
           <Card>
             <CardBody className="py-5">
-              {/* Edit at the top of what it edits; duplicate, convert and
-                  delete behind More. */}
-              <CardHeading
-                icon={<Info className="h-4 w-4 text-slate-400" />}
-                action={
-                  <OfferingActions
-                    name={run.name}
-                    noun={offeringNoun}
-                    editHref={`/packages/${run.packageId}/edit`}
-                    packageId={run.packageId}
-                    runId={run.id}
-                    // Daycare deliberately passes nothing: it converts nowhere,
-                    // so it is offered nothing rather than being offered
-                    // something the API would refuse.
-                    runKind={basePath === '/casual-classes' ? 'casual' : basePath === '/classes' ? 'class' : undefined}
-                    backHref={basePath}
-                  />
-                }
-              >
-                Details
-              </CardHeading>
+              {/* No heading, and no actions in it. "Details" repeated the
+                  selected tab directly above, and Edit/More are the SCREEN's
+                  actions — they're in the pinned bar now, like every other
+                  offering screen (Karl). */}
               <div className="divide-y divide-slate-100">
                 {/* Read-only here, like every other fact on this card. It's
                     changed on the edit page, with the rest of the class. */}
@@ -551,6 +566,7 @@ export function RunDetail({
         />
       )}
 
+      </EditScreen>
       </div>
     </>
   )
