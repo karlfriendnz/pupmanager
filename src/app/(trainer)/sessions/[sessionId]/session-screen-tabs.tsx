@@ -48,6 +48,12 @@ export function SessionScreenTabs({
 
   return (
     <>
+      {/* Who, and when — ABOVE the tabs (Karl), not inside one. It is true of
+          the whole screen, not of a section of it: the same dog and the same
+          Thursday whether you're writing the report, reading the last one, or
+          changing the booking. A copy in each tab would be three copies. */}
+      <div className="mb-4">{details}</div>
+
       <div className="mb-4">
         <PageTabs
           label="Session sections"
@@ -72,12 +78,10 @@ export function SessionScreenTabs({
         )}
       </div>
 
-      {/* Who, when, and everything that isn't the write-up — the session's
-          facts, its actions, photos, homework, time tracking, delete. */}
-      <div className={tab === 'details' ? 'flex flex-col gap-4' : 'hidden'}>
-        {details}
-        {more}
-      </div>
+      {/* Everything that isn't the write-up: photos, homework, time tracking,
+          the report preview, the way to the client, delete. The facts card
+          lives on Notes now, not here — one copy, where it's used. */}
+      <div className={tab === 'details' ? 'flex flex-col gap-4' : 'hidden'}>{more}</div>
     </>
   )
 }
