@@ -251,10 +251,14 @@ export function OfferingActions(props: OfferingActionsProps) {
   const [sheetOpen, setSheetOpen] = useState(false)
 
   return (
-    <div className="flex items-center gap-1.5">
-      {error && (
-        <p role="alert" className="max-w-[16rem] truncate text-xs text-red-600" title={error}>{error}</p>
-      )}
+    // The refusal wraps UNDER the buttons rather than sharing their line. It
+    // used to be capped at 16rem and truncated to "This 1:1 session has been
+    // billed for. Deleting it…", with the rest only in a `title` tooltip —
+    // which a phone cannot show at all, and which hid the half that says what
+    // to do about it ("cancel them first"). A refusal you can't read is a
+    // dead end (Karl).
+    <div className="flex flex-col items-end gap-1.5">
+      <div className="flex items-center gap-1.5">
       <Link
         href={editHref}
         className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -271,6 +275,11 @@ export function OfferingActions(props: OfferingActionsProps) {
       >
         <MoreHorizontal className="h-4 w-4" strokeWidth={1.75} />
       </button>
+      </div>
+
+      {error && (
+        <p role="alert" className="max-w-xs text-right text-xs leading-relaxed text-red-600">{error}</p>
+      )}
 
       {sheetOpen && (
         <ActionSheet

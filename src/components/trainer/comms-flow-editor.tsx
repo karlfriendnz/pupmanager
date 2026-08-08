@@ -476,10 +476,8 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
     setDraft(null)
     return true
   }
-  async function toggleEnabled(step: Step) {
-    setSteps(prev => (prev ?? []).map(s => (s.id === step.id ? { ...s, enabled: !s.enabled } : s)))
-    await api(`${base}/${step.id}`, { method: 'PATCH', body: JSON.stringify({ enabled: !step.enabled }) })
-  }
+  // No toggleEnabled: the row's switch is gone, and `enabled` now rides on the
+  // step's own save with the rest of its settings (see the PATCH above).
   async function remove(id: string) {
     const res = await api(`${base}/${id}`, { method: 'DELETE' })
     if (res) {
@@ -646,7 +644,6 @@ export function CommsFlowEditor({ runId, packageId, membershipId, formId, client
                   busy={busy}
                   onEdit={() => setDraft({ ...step })}
                   onPreview={() => setPreviewing(step)}
-                  onToggle={() => toggleEnabled(step)}
                 />
               ))}
             </ol>
@@ -857,7 +854,7 @@ const onTheServer = () => false
  * the spine starts at the first node under a heading and stops at the last
  * rather than running into the gap.
  */
-function FlowStepRow({ step, index, first, last, names, draggable, busy, onEdit, onPreview, onToggle }: {
+function FlowStepRow({ step, index, first, last, names, draggable, busy, onEdit, onPreview }: {
   step: Step
   index: number
   first: boolean
@@ -867,7 +864,6 @@ function FlowStepRow({ step, index, first, last, names, draggable, busy, onEdit,
   busy: boolean
   onEdit: () => void
   onPreview: () => void
-  onToggle: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: step.id,
@@ -955,7 +951,15 @@ function FlowStepRow({ step, index, first, last, names, draggable, busy, onEdit,
             <Eye className="h-4 w-4" strokeWidth={1.75} /><span className="sr-only">Preview {summary.what}</span>
           </button>
         )}
-        <Switch checked={step.enabled} onChange={onToggle} disabled={busy} onColor="bg-slate-900" aria-label={step.enabled ? `Turn off ${summary.what}` : `Turn on ${summary.what}`} />
+        {/* No on/off switch here (Karl: "we don't need these switches"). One
+            sat at the end of every row, so a flow of six steps was six
+            controls competing with the six things they described — and
+            turning a step off is rare next to reading the flow. It moved
+            INTO the step, where the rest of that step's settings are. A step
+            that is off still says so on its own line, below. */}
+        {!step.enabled && (
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">Off</span>
+        )}
       </div>
     </li>
   )
@@ -1171,6 +1175,21 @@ function StepSheet({ draft, clients, busy, isMembership = false, sequenced = fal
             not a membership (which has no slot). And only once a form is
             actually chosen: a gate with nothing to answer is a wall with no
             door. */}
+        {/* Turning a step off without deleting it — the switch that used to sit
+            on every row in the list. Here it is one of this step's settings,
+            which is what it always was. */}
+        <label className="flex items-start gap-2.5 cursor-pointer">
+          <Switch checked={draft.enabled} onChange={() => onPatch({ enabled: !draft.enabled })} onColor="bg-slate-900" className="mt-0.5" aria-label={draft.enabled ? 'Turn this step off' : 'Turn this step on'} />
+          <span className="text-sm text-slate-700">
+            <span className="font-medium">This step is on</span>
+            <span className="mt-0.5 block text-xs text-slate-500">
+              {draft.enabled
+                ? 'It runs whenever this flow does.'
+                : 'It stays in the flow but never runs — turn it back on any time.'}
+            </span>
+          </span>
+        </label>
+
         {canGateBooking(draft.kind, sequenced ? 'PERSON' : isMembership ? 'PURCHASE' : 'SESSION', draft.payload) && (
           <label className="flex items-start gap-2.5 cursor-pointer">
             <Switch checked={draft.gatesBooking} onChange={() => onPatch({ gatesBooking: !draft.gatesBooking })} onColor="bg-slate-900" className="mt-0.5" aria-label="Ask before they can book" />

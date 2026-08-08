@@ -261,7 +261,14 @@ describe('a step’s stage is derived, not stored', () => {
     const editor = file('src/components/trainer/comms-flow-editor.tsx')
     // The one place the builder writes a step. If a stage ever appears in this
     // payload, there are two answers to when a step happens.
-    const save = editor.slice(editor.indexOf('async function saveDraft('), editor.indexOf('async function toggleEnabled('))
+    // Anchored to the function that FOLLOWS saveDraft. It used to be
+    // toggleEnabled, which no longer exists (the row's on/off switch moved
+    // into the step sheet, so `enabled` rides on this same save) — and an
+    // indexOf that misses returns -1, which quietly slices to the end of the
+    // file and made this pass or fail for the wrong reason.
+    const end = editor.indexOf('async function remove(')
+    expect(end).toBeGreaterThan(0)
+    const save = editor.slice(editor.indexOf('async function saveDraft('), end)
     expect(save).toContain('direction')
     expect(save).not.toMatch(/\bstage\b/)
   })
