@@ -767,6 +767,8 @@ function WeekGrid({
   matchedIds,
   searchActive,
   onAdvanceWeek,
+  dayStart = 0,
+  onStepDays,
   forceFullWeek = false,
   previewBlocks = [],
   previewClashes,
@@ -801,12 +803,16 @@ function WeekGrid({
   customFields: CustomFieldMeta[]
   matchedIds: Set<string>
   searchActive: boolean
-  // Called when the mobile 3-day window steps past either end of the
-  // current week. Parent should advance the week by `delta` (±1) and
-  // re-render with the new weekDays. We track the spill direction in
-  // local state so the next render lands at the right end of the new
-  // week (start when spilling forward, end when spilling backward).
+  // Advance a WHOLE week (the full-week press-and-drag on a tablet).
   onAdvanceWeek?: (delta: 1 | -1) => void
+  // Index into weekDays of the leftmost visible day when the 3-day window
+  // is on. The window is the PARENT's state, not ours: the same step has
+  // to happen from the toolbar arrows above the grid, and two copies of
+  // "which three days" drift the moment either one moves.
+  dayStart?: number
+  // Step the 3-day window by ±3 days (spilling into the next/previous week
+  // is the parent's business, since only it can fetch that week).
+  onStepDays?: (delta: 1 | -1) => void
   // When true, skip the mobile 3-day windowing and render every day in
   // weekDays even on a phone. Lets trainers see the whole configured
   // week at a glance on mobile (the "Week" view option).
@@ -835,15 +841,6 @@ function WeekGrid({
   // pxPerHour up and the calendar grows forever.
   const [pxPerHour, setPxPerHour] = useState(PX_PER_HOUR)
   const totalHours = Math.max(1, endHour - startHour)
-  // Mobile 3-day window state. `mobileDayStart` is the index in weekDays
-  // of the leftmost visible day; valid range is 0..(weekDays.length - 3).
-  // `isMobile` toggles between the 3-day phone layout and the full
-  // 7-day desktop layout. `pendingSpill` remembers which edge the user
-  // spilled past so once the new week's weekDays arrives we land at
-  // the matching end (start for forward spill, end for backward).
-  const [mobileDayStart, setMobileDayStart] = useState(0)
-  const [isMobile, setIsMobile] = useState(false)
-  const [pendingSpill, setPendingSpill] = useState<1 | -1 | null>(null)
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return
     // Approximate chrome height above the schedule grid (page header, FAB,
@@ -854,59 +851,11 @@ function WeekGrid({
       const available = Math.max(window.innerHeight - CHROME_PX, totalHours * 48)
       const fitted = Math.max(48, Math.floor(available / totalHours))
       setPxPerHour(fitted)
-      setIsMobile(window.innerWidth < 640)
     }
     update()
     window.addEventListener('resize', update)
     return () => window.removeEventListener('resize', update)
   }, [totalHours])
-
-  // When the parent jumps to a new week, default the mobile window.
-  // Two cases:
-  //  • `pendingSpill` set → user just stepped off an edge of the old
-  //    week. Land at the matching end of the new week so the next 3
-  //    days continue naturally.
-  //  • otherwise → centre the window on `selectedDate` so a week-level
-  //    nav (top date arrows) puts the trainer somewhere sensible.
-  useEffect(() => {
-    if (!isMobile) return
-    if (pendingSpill != null) {
-      setMobileDayStart(pendingSpill === 1 ? 0 : Math.max(0, weekDays.length - 3))
-      setPendingSpill(null)
-      return
-    }
-    const idx = weekDays.findIndex(d => toDateStr(d) === selectedDate)
-    if (idx < 0) return
-    const start = Math.min(Math.max(0, idx - 1), Math.max(0, weekDays.length - 3))
-    setMobileDayStart(start)
-  }, [isMobile, weekDays, selectedDate, pendingSpill])
-
-  // Step the mobile 3-day window. If the next/prev step would cross the
-  // current week's boundary, we tell the parent to advance the week
-  // (`onAdvanceWeek`) and stash a pending direction so the post-nav
-  // effect above lands us at the matching end.
-  function handleMobileNext() {
-    const next = mobileDayStart + 3
-    if (next + 3 <= weekDays.length) {
-      setMobileDayStart(next)
-    } else if (onAdvanceWeek) {
-      setPendingSpill(1)
-      onAdvanceWeek(1)
-    } else {
-      setMobileDayStart(Math.max(0, weekDays.length - 3))
-    }
-  }
-  function handleMobilePrev() {
-    const prev = mobileDayStart - 3
-    if (prev >= 0) {
-      setMobileDayStart(prev)
-    } else if (onAdvanceWeek) {
-      setPendingSpill(-1)
-      onAdvanceWeek(-1)
-    } else {
-      setMobileDayStart(0)
-    }
-  }
 
   // Windowed to three days whenever the parent hasn't asked for every day.
   //
@@ -916,13 +865,8 @@ function WeekGrid({
   // screen size; forceFullWeek is what the Week and Day views use to opt out.
   const useThreeDayWindow = !forceFullWeek
   const visibleDays = useThreeDayWindow
-    ? weekDays.slice(mobileDayStart, mobileDayStart + 3)
+    ? weekDays.slice(dayStart, dayStart + 3)
     : weekDays
-  // Both buttons stay enabled when onAdvanceWeek is wired — the spill
-  // handler takes the user into the next/previous week. Without an
-  // advance callback the buttons clamp to the current week's edges.
-  const canMobilePrev = useThreeDayWindow && (mobileDayStart > 0 || !!onAdvanceWeek)
-  const canMobileNext = useThreeDayWindow && (mobileDayStart + 3 < weekDays.length || !!onAdvanceWeek)
 
   // Horizontal touch navigation, two flavours:
   //  • 3-day window (phones): a quick flick steps the 3-day window / week.
@@ -979,8 +923,7 @@ function WeekGrid({
     // Require a clear horizontal flick so vertical scrolls are never mistaken
     // for a day change.
     if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return
-    if (dx < 0) { if (canMobileNext) handleMobileNext() }
-    else if (canMobilePrev) handleMobilePrev()
+    onStepDays?.(dx < 0 ? 1 : -1)
   }
 
   // ── Drag state ──────────────────────────────────────────────────────────────
@@ -1227,42 +1170,12 @@ function WeekGrid({
     // card comes back — there the width is not scarce and it separates the
     // grid from the page around it.
     <div className="flex flex-col bg-white overflow-clip sm:rounded-2xl sm:border sm:border-slate-100 sm:shadow-sm sm:h-full">
-      {/* Mobile 3-day window navigator — sits above the day headers so the
-          trainer can step through the week in 3-day chunks. The week-level
-          date nav (in the page header) still moves between weeks. Hidden
-          when forceFullWeek is on (mobile "Week" view) since every day is
-          already visible. */}
-      {/* hidden below sm: the toolbar above already shows a date range and
-          arrows, and two date headers stacked read as one thing said twice
-          (Karl, 2026-07-27). Stepping the 3-day window still works by swipe,
-          and the row returns at sm+ where there is room for both. */}
-      {useThreeDayWindow && weekDays.length > 3 && (
-        <div className="hidden sm:flex items-center justify-between px-3 py-1.5 border-b border-slate-100 bg-slate-50">
-          <button
-            onClick={handleMobilePrev}
-            disabled={!canMobilePrev}
-            className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 disabled:text-slate-300 px-2 py-1 rounded-md hover:bg-white"
-            aria-label="Previous 3 days"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            <span>Prev</span>
-          </button>
-          <p data-testid="three-day-range" className="text-[11px] text-slate-500 tabular-nums">
-            {visibleDays[0]?.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })}
-            {' – '}
-            {visibleDays[visibleDays.length - 1]?.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })}
-          </p>
-          <button
-            onClick={handleMobileNext}
-            disabled={!canMobileNext}
-            className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 disabled:text-slate-300 px-2 py-1 rounded-md hover:bg-white"
-            aria-label="Next 3 days"
-          >
-            <span>Next</span>
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
-      )}
+      {/* There was a second Prev/Next row here, above the day headers, with
+          its own copy of the visible range. The toolbar's arrows step the
+          3-day window themselves now, so this was the same control and the
+          same dates said twice (Karl's standing rule), and on a phone it was
+          hidden anyway — which is exactly how the toolbar arrows came to be
+          stepping a whole week without anyone noticing. */}
 
       {/* Day headers.
           Sticky directly under the control bar, so the day you are looking at
@@ -3480,7 +3393,14 @@ export function ScheduleView({
   const [navigatingWeek, setNavigatingWeek] = useState(false)
   // If the parent re-renders with a new initialSelectedDate (e.g. via a
   // router.push from outside), keep local state in sync.
-  useEffect(() => { setSelectedDate(initialSelectedDate) }, [initialSelectedDate])
+  // A date arriving from outside also has to carry the 3-day window with it,
+  // or the grid shows one week's days under another week's dates.
+  useEffect(() => {
+    setSelectedDate(initialSelectedDate)
+    setThreeDayStart(windowStartFor(weekDaysFor(initialSelectedDate), initialSelectedDate))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- weekDaysFor is
+    // rebuilt every render; re-running this on it would undo every step.
+  }, [initialSelectedDate])
   useEffect(() => { setClientExtras(initialClientExtras) }, [initialClientExtras])
   // Validate the persisted selection: drop entries that aren't a known
   // session field, a known client field, or a custom-field ID we still know
@@ -3711,14 +3631,45 @@ export function ScheduleView({
   // the availability bands, imported busy blocks, the now-line — comes with it.
   // Not filtered by the working-day set: asking for a specific day means you want
   // THAT day, even if you don't normally work it.
-  const weekDays = view === 'day'
-    ? [parseLocalDate(selectedDate)]
-    : Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
-        .filter(d => {
-          const js = d.getDay()
-          const iso = js === 0 ? 7 : js
-          return visibleDaySet.has(iso)
-        })
+  // The days a given date's week shows, in order. Used for the rendered week
+  // AND, by the 3-day stepper, to work out where to land in the week it is
+  // about to move to — that week's days have to be known BEFORE its data
+  // arrives, or the window can only be corrected after a flash.
+  function weekDaysFor(dateStr: string): Date[] {
+    if (view === 'day') return [parseLocalDate(dateStr)]
+    const mon = getMondayOf(dateStr)
+    return Array.from({ length: 7 }, (_, i) => addDays(mon, i))
+      .filter(d => {
+        const js = d.getDay()
+        const iso = js === 0 ? 7 : js
+        return visibleDaySet.has(iso)
+      })
+  }
+  const weekDays = weekDaysFor(selectedDate)
+
+  // The 3-day view's window: the index in weekDays of its leftmost day.
+  // It lives HERE rather than in the grid because the toolbar arrows above
+  // the grid are what step it — that is the bug this state moved to fix
+  // (Karl, 2026-08-08: "if I'm on three days and click next or previous it
+  // jumps a week not 3 days").
+  // Seeded from the day being shown, so the first paint opens on today
+  // rather than on Monday. (`windowStartFor` is a hoisted declaration —
+  // it closes over nothing, so calling it here is safe.)
+  const [threeDayStart, setThreeDayStart] = useState(() => windowStartFor(weekDays, selectedDate))
+  // Where a window should sit in `days` to keep `dateStr` in view — one day
+  // in from the left, so the chosen day has a day either side of it.
+  function windowStartFor(days: Date[], dateStr: string): number {
+    const max = Math.max(0, days.length - 3)
+    const idx = days.findIndex(d => toDateStr(d) === dateStr)
+    if (idx < 0) return 0
+    return Math.min(Math.max(0, idx - 1), max)
+  }
+  // Clamped on read, so a trainer who drops a working day can't leave the
+  // window pointing past the end of a now-shorter week.
+  const dayWindowStart = Math.min(threeDayStart, Math.max(0, weekDays.length - 3))
+  const visibleWeekDays = view === 'threeDay'
+    ? weekDays.slice(dayWindowStart, dayWindowStart + 3)
+    : weekDays
 
   // Client-side week/day navigation. We avoid `router.push` here because that
   // re-runs the whole server component on every click (3+ seconds in dev
@@ -3756,11 +3707,17 @@ export function ScheduleView({
   // Load a specific date's window (fetches its sessions + client extras and
   // updates the URL). The shared core behind the arrows, the "Today" button and
   // the "jump ahead" dropdown.
-  async function goToDate(nextDateStr: string) {
+  // `windowStart` places the 3-day window in the week being moved to. Left
+  // out (Today, the jump dropdown, the date picker, a member switch) the
+  // window centres on the date asked for; the 3-day stepper passes an
+  // explicit end so walking forward continues from the week's first days
+  // and walking back from its last.
+  async function goToDate(nextDateStr: string, windowStart?: number) {
     const seq = ++navSeq.current
 
     setNavigatingWeek(true)
     setSelectedDate(nextDateStr)
+    setThreeDayStart(windowStart ?? windowStartFor(weekDaysFor(nextDateStr), nextDateStr))
     if (typeof window !== 'undefined') {
       window.history.replaceState(null, '', scheduleUrlWith({ date: nextDateStr }))
     }
@@ -3782,11 +3739,12 @@ export function ScheduleView({
     }
   }
 
-  // Step by whole weeks (week / 3-day views) or single days (the day grid and the
-  // agenda list, both of which show one day).
+  // Step by whole weeks (week view), three days (3-day view) or single days
+  // (the day grid and the agenda list, both of which show one day).
   function navigate(delta: number) {
+    if (view === 'threeDay') return stepThreeDays(delta >= 0 ? 1 : -1)
     let nextDateStr: string
-    if (view === 'week' || view === 'threeDay') {
+    if (view === 'week') {
       const monday = getMondayOf(selectedDate)
       nextDateStr = toDateStr(addDays(monday, delta * 7))
     } else {
@@ -3795,6 +3753,32 @@ export function ScheduleView({
       nextDateStr = toDateStr(d)
     }
     return goToDate(nextDateStr)
+  }
+
+  // Move the 3-day window three days. Within the week that is arithmetic;
+  // off either end it becomes a week change, landing at the far end of the
+  // week we arrive in so the walk continues without repeating or skipping.
+  //
+  // The clamp matters at the back edge: a 7-day week steps 0 → 3 → 4 (not
+  // 0 → 3 → spill), because the alternative drops Sunday out of a forward
+  // walk entirely. Two days shown twice beats one day never shown.
+  function stepThreeDays(delta: 1 | -1) {
+    const max = Math.max(0, weekDays.length - 3)
+    if (delta > 0 && threeDayStart < max) {
+      setThreeDayStart(Math.min(threeDayStart + 3, max))
+      return
+    }
+    if (delta < 0 && threeDayStart > 0) {
+      setThreeDayStart(Math.max(threeDayStart - 3, 0))
+      return
+    }
+    const nextMonday = toDateStr(addDays(getMondayOf(selectedDate), delta * 7))
+    const days = weekDaysFor(nextMonday)
+    // The date the header and any day-level nav should now be "on": the
+    // first day of the window we land in.
+    const start = delta > 0 ? 0 : Math.max(0, days.length - 3)
+    const landing = days[start] ? toDateStr(days[start]) : nextMonday
+    return goToDate(landing, start)
   }
 
   // Jump forward N whole weeks from the current view (the "jump ahead" dropdown).
@@ -4206,7 +4190,16 @@ export function ScheduleView({
             <ChevronLeft className="h-4 w-4" />
           </button>
           <div className="flex-1 sm:flex-initial sm:min-w-[8rem] text-center">
-            {view !== 'agenda' ? (
+            {view === 'threeDay' ? (
+              /* The three days actually on screen, not the week they come
+                 from — a header reading "3 Aug – 9 Aug" above Fri/Sat/Sun was
+                 the arrows' week-sized step showing through (Karl). */
+              <p data-testid="three-day-range" className="font-semibold text-slate-900 text-sm tabular-nums">
+                {visibleWeekDays[0]?.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })}
+                {' – '}
+                {visibleWeekDays[visibleWeekDays.length - 1]?.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })}
+              </p>
+            ) : view !== 'agenda' ? (
               <p className="font-semibold text-slate-900 text-sm tabular-nums">
                 {weekStart.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })} – {addDays(weekStart, 6).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })}
               </p>
@@ -4454,6 +4447,8 @@ export function ScheduleView({
             matchedIds={matchedIds}
             searchActive={searchTokens.length > 0}
             onAdvanceWeek={navigate}
+            dayStart={dayWindowStart}
+            onStepDays={stepThreeDays}
             // Week wants every configured day; the day grid is already a
             // single-day array and must not be windowed.
             forceFullWeek={view === 'week' || view === 'day'}
