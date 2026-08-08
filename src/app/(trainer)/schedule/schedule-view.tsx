@@ -16,7 +16,7 @@ import { Alert } from '@/components/ui/alert'
 import Link from 'next/link'
 import {
   ChevronLeft, ChevronRight, Plus, Calendar, CalendarDays,
-  Clock, Trash2, X, MapPin, Video, Loader2, Play, Pencil, AlertTriangle, Search, Users, Check, CalendarClock, ArrowUpRight, Phone, MessageSquare, User,} from 'lucide-react'
+  Clock, Trash2, X, MapPin, Video, Loader2, Play, Pencil, AlertTriangle, Search, Users, Check, CalendarClock, ArrowUpRight, Phone, MessageSquare, User, Calendar as CalendarIcon,} from 'lucide-react'
 import {
   AssignPackageFromScheduleModal,
 } from './assign-package-from-schedule'
@@ -3318,6 +3318,7 @@ export function ScheduleView({
   showHints = false,
   initialBusyBlocks = [],
   previewRequest = null,
+  moveSession = null,
 }: {
   tz: string
   sessions: Session[]
@@ -3373,6 +3374,19 @@ export function ScheduleView({
   showHints?: boolean
   // Set when the trainer clicked a pending booking request to preview its
   // proposed sessions on the grid. Ghost blocks + an Approve/Decline banner.
+  /**
+   * "Pick a new time for this session." Set when the trainer tapped the date
+   * on a session screen; the grid answers a tap on any empty slot by MOVING
+   * that session there and going back where they came from (Karl).
+   */
+  moveSession?: {
+    id: string
+    /** Whose session it is, for the banner — the dog's name, usually. */
+    label: string
+    durationMins: number
+    /** Where to return once it has moved. */
+    backHref: string
+  } | null
   previewRequest?: {
     id: string
     clientName: string | null
@@ -3441,6 +3455,14 @@ export function ScheduleView({
     // are visible — a one-off, never saved as the trainer's preference.
     if (previewRequest) {
       if (phone) setViewState('threeDay')
+    } else if (moveSession) {
+      // Same one-off for moving a session: "tap any empty slot" needs a grid
+      // with empty slots in it, and the agenda is a list of what's already
+      // booked. Only overrides an agenda — a trainer already on a grid keeps
+      // the one they chose.
+      const saved = phone ? savedMobileView : savedView
+      const effective = saved ?? (phone ? 'agenda' : 'week')
+      setViewState(effective === 'agenda' ? (phone ? 'threeDay' : 'week') : effective)
     } else {
       const saved = phone ? savedMobileView : savedView
       setViewState(saved ?? (phone ? 'agenda' : 'week'))
@@ -3449,7 +3471,7 @@ export function ScheduleView({
     update()
     window.addEventListener('resize', update)
     return () => window.removeEventListener('resize', update)
-  }, [previewRequest, savedView, savedMobileView])
+  }, [previewRequest, moveSession, savedView, savedMobileView])
 
   // Changing the layout remembers it for this device class, for this trainer,
   // everywhere they sign in. Fire-and-forget: the grid has already switched, and
@@ -4013,6 +4035,32 @@ export function ScheduleView({
   // points, one screen — the copy Karl signs off then exists once.
   const [proposeAt, setProposeAt] = useState<{ iso: string; date: string } | null>(null)
 
+  // Moving a session: a tap on an empty slot IS the answer, so it writes and
+  // leaves. No confirm step — the trainer came here to pick a time, picked
+  // one, and a dialog asking whether they meant it would be asking twice.
+  const [moving, setMoving] = useState(false)
+  const [moveError, setMoveError] = useState<string | null>(null)
+  const handleMoveTo = useCallback(async (dateStr: string, time: string) => {
+    if (!moveSession || moving) return
+    const [h, m] = time.split(':').map(Number)
+    const [y, mo, d] = dateStr.split('-').map(Number)
+    const at = new Date(y, mo - 1, d, h, m, 0, 0)
+    setMoving(true)
+    setMoveError(null)
+    const res = await fetch(`/api/schedule/${moveSession.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scheduledAt: at.toISOString() }),
+    })
+    if (!res.ok) {
+      setMoveError('Could not move the session — try another time.')
+      setMoving(false)
+      return
+    }
+    router.push(moveSession.backHref)
+    router.refresh()
+  }, [moveSession, moving, router])
+
   const handleProposeTime = useCallback((dateStr: string, time: string) => {
     const [h, m] = time.split(':').map(Number)
     const [y, mo, d] = dateStr.split('-').map(Number)
@@ -4347,6 +4395,31 @@ export function ScheduleView({
 
       {/* Booking-request preview banner — keeps Approve/Decline reachable while
           the proposed sessions are painted as ghost blocks on the grid. */}
+      {/* Move mode: say what a tap will do, and give a way out. Without this
+          the grid looks exactly like the one you add sessions on, and the
+          first tap would be a surprise. */}
+      {moveSession && (
+        <div className="px-4 pt-3 md:px-6">
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+            <CalendarIcon className="h-[18px] w-[18px] flex-shrink-0 text-slate-700" strokeWidth={1.75} />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-slate-900">
+                {moving ? 'Moving…' : `Pick a new time for ${moveSession.label}`}
+              </span>
+              <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                {moveError ?? `Tap any empty slot · ${moveSession.durationMins} min`}
+              </span>
+            </span>
+            <Link
+              href={moveSession.backHref}
+              className="flex-shrink-0 rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-slate-600 hover:bg-slate-100"
+            >
+              Cancel
+            </Link>
+          </div>
+        </div>
+      )}
+
       {previewRequest && (
         <div className="px-4 md:px-6 pt-3">
           <BookingRequestPreviewBanner
@@ -4451,9 +4524,14 @@ export function ScheduleView({
             forceFullWeek={view === 'week' || view === 'day'}
             previewBlocks={previewBlocks}
             previewClashes={previewClashes}
-            // Only while previewing — otherwise a tap on an empty slot must
-            // keep meaning "add something here".
-            onProposeTime={previewRequest ? handleProposeTime : undefined}
+            // A tap on an empty slot means "add something here" — unless the
+            // trainer came to move a session (then it means "put it there") or
+            // to preview a request (then it means "how about this instead").
+            onProposeTime={
+              moveSession ? handleMoveTo
+                : previewRequest ? handleProposeTime
+                : undefined
+            }
           />
         ) : (
           <div className="h-full" data-testid="day-swipe" onTouchStart={handleDayTouchStart} onTouchEnd={handleDayTouchEnd}>

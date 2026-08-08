@@ -227,6 +227,12 @@ export default async function SessionPage({
   // is no write-up to start, so the button that offers one goes too.
   const notesOn = await hasAddon(trainerId, 'notes')
 
+  // Same for time (Karl: "log time should only show if timesheets is turned
+  // on"). A trainer who doesn't track hours shouldn't be offered a row that
+  // opens a timesheet — and the row was pulling its entries down with the page
+  // whether they used it or not.
+  const timeOn = await hasAddon(trainerId, 'timesheets')
+
   // The trainer's brand colour + payout currency in one read. The accent tints
   // ONLY the row icons, via color-mix toward slate-900 (AGENTS.md) — a pastel
   // brand stays legible and nothing else on the page is painted.
@@ -312,7 +318,9 @@ export default async function SessionPage({
     note: e.note,
     createdAt: e.createdAt.toISOString(),
   }))
-  const timeMembers = (await ensureTimeMembers(trainerId)).map(m => ({ id: m.id, name: personLabel(m.user) }))
+  const timeMembers = timeOn
+    ? (await ensureTimeMembers(trainerId)).map(m => ({ id: m.id, name: personLabel(m.user) }))
+    : []
 
   // The client this session belongs to — directly, or through the dog's
   // primary owner (an ad-hoc session can carry only a dog).
@@ -427,12 +435,15 @@ export default async function SessionPage({
           {/* Date, time, duration and — when there IS one — the place, all on
               one row. "In-person" had a row to itself and spent it saying the
               default; a real address is worth showing but not worth a row.
-              Tapping it moves the session (Karl). */}
+              Tapping it opens the schedule to pick a new time (Karl). */}
           <SessionWhenRow
             sessionId={trainingSession.id}
             scheduledAt={d.toISOString()}
             durationMins={trainingSession.durationMins}
             accent={accent}
+            backHref={cameFrom
+              ? `/sessions/${trainingSession.id}?from=${encodeURIComponent(cameFrom)}`
+              : `/sessions/${trainingSession.id}`}
             extra={[
               trainingSession.sessionType === 'VIRTUAL'
                 ? (trainingSession.virtualLink ? null : 'Virtual')
@@ -513,12 +524,14 @@ export default async function SessionPage({
             attachments={attachments}
             accent={accent}
           />
-          <LogTimeRow
-            sessionId={trainingSession.id}
-            entries={timeEntries}
-            members={timeMembers}
-            accent={accent}
-          />
+          {timeOn && (
+            <LogTimeRow
+              sessionId={trainingSession.id}
+              entries={timeEntries}
+              members={timeMembers}
+              accent={accent}
+            />
+          )}
         </FlatBlock>
 
         {/* 4 · Closing it off — its own group, because these are the ones you

@@ -62,7 +62,7 @@ function nextWorkingDay(dateStr: string, scheduleDays: number[]): string {
 export default async function SchedulePage({
   searchParams,
 }: {
-  searchParams: Promise<{ date?: string; previewRequest?: string; member?: string; full?: string }>
+  searchParams: Promise<{ date?: string; previewRequest?: string; member?: string; full?: string; move?: string; back?: string }>
 }) {
   // Resolve via membership so invited trainers reach their company's schedule.
   const ctx = await getTrainerContext()
@@ -156,6 +156,36 @@ export default async function SchedulePage({
         },
       })
     : null
+  // "Move this session": the trainer tapped the date on a session screen and
+  // came here to pick a new time on the grid itself (Karl: "when you click on
+  // the date, be taken to the schedule view where you can select a time for
+  // that session and then be redirected back"). Loaded scoped, so a session id
+  // in the URL can only ever move a session this business owns.
+  const moveRow = sp.move
+    ? await prisma.trainingSession.findFirst({
+        where: { id: sp.move, trainerId: trainerProfile.id },
+        select: {
+          id: true,
+          title: true,
+          durationMins: true,
+          scheduledAt: true,
+          dog: { select: { name: true } },
+          client: { select: { user: { select: { name: true } } } },
+        },
+      })
+    : null
+  // Only an in-app path comes back — `back` arrives in the URL, so anything
+  // else is an open redirect, and `//host` is one wearing a path.
+  const moveBack = sp.back && sp.back.startsWith('/') && !sp.back.startsWith('//') ? sp.back : null
+  const moveSession = moveRow
+    ? {
+        id: moveRow.id,
+        label: moveRow.dog?.name ?? moveRow.client?.user?.name ?? moveRow.title,
+        durationMins: moveRow.durationMins,
+        backHref: moveBack ?? `/sessions/${moveRow.id}`,
+      }
+    : null
+
   const latestProposal = previewRow?.proposals[0] ?? null
   const previewBlocks = previewRow
     ? buildPreviewBlocks(latestProposal?.sessionDates ?? previewRow.sessionDates, previewRow.package)
@@ -501,6 +531,7 @@ export default async function SchedulePage({
       clientExtras={clientExtras}
       showHints={showHints}
       previewRequest={previewRequest}
+      moveSession={moveSession}
     />
     {showGoogleNudge && (
       <GoogleCalendarNudge googleAddonOn={googleAddonOn} forceShow={isDevPreview} dismissed={googleNudgeDismissed} />
