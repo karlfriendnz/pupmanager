@@ -32,6 +32,8 @@ import { ClassFormModal } from '../classes/class-form-modal'
 import { ScheduleSettings } from './schedule-settings'
 import { ScheduleReport } from './schedule-report'
 import { SessionFormReport } from '@/components/session-form-report'
+import { PageTabs } from '@/components/shared/page-tabs'
+import { SessionWriteUp } from './session-write-up'
 import { SessionRowCard } from '@/components/shared/session-row-card'
 import { RichText } from '@/components/shared/rich-text'
 import { isRichTextEmpty } from '@/lib/rich-text'
@@ -2088,6 +2090,10 @@ function SessionModal({
   const router = useRouter()
   const [session, setSession] = useState(initialSession)
   const [tasks, setTasks] = useState<SessionTask[]>([])
+  // A 1:1 session gets two tabs (Karl): the write-up you do DURING it, and the
+  // booking details you change AROUND it. A buddy walk or a session with no
+  // client has no single write-up to show, so it keeps the one view it had.
+  const [modalTab, setModalTab] = useState<'session' | 'edit'>('session')
   const [savingStatus, setSavingStatus] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [addingTask, setAddingTask] = useState<string | null>(null) // taskId or 'custom' being added
@@ -2425,6 +2431,10 @@ function SessionModal({
   // A "buddy walk" is any session with at least one buddy. The popup uses a
   // distinctive amber treatment + unified Attendees list when this is true.
   const isBuddyWalk = session.buddies.length > 0
+  // The write-up tab is for a 1:1: one client, one dog, one form. A buddy
+  // walk has several clients and its write-ups belong to each of them, and a
+  // session with no client has nobody to write up.
+  const showWriteUpTab = !isBuddyWalk && !!clientId
   // Unified attendee list (primary + buddies) for the buddy-walk view.
   const attendees = [
     ...(clientId ? [{
@@ -2573,6 +2583,34 @@ function SessionModal({
 
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-5">
+
+          {showWriteUpTab && (
+            <PageTabs
+              label="Session sections"
+              active={modalTab}
+              onSelect={(id: string) => setModalTab(id as 'session' | 'edit')}
+              tabs={[
+                { id: 'session', label: 'Session' },
+                { id: 'edit', label: 'Details' },
+              ]}
+            />
+          )}
+
+          {showWriteUpTab && (
+            <div className={modalTab === 'session' ? '' : 'hidden'}>
+              <SessionWriteUp
+                sessionId={session.id}
+                sessionStatus={session.status}
+                clientName={clientName}
+                dogNames={allDogsAttending.map(d => d.name)}
+              />
+            </div>
+          )}
+
+          {/* Everything below is the booking: status, dog, group walk, when,
+              and which offering it came from. Under the second tab once there
+              is a write-up to show beside it. */}
+          <div className={showWriteUpTab && modalTab !== 'edit' ? 'hidden' : 'flex flex-col gap-5'}>
 
           {/* Status */}
           <div>
@@ -3132,6 +3170,7 @@ function SessionModal({
             })()}
           </div>
           )}
+          </div>
         </div>
 
         {/* Footer */}
