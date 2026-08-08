@@ -143,7 +143,13 @@ export function PageTabs({
   // Scrolls sideways rather than wrapping to a second row — four tabs and a
   // count don't fit across a 390px phone, and a wrapped tab row reads as a
   // broken grid. no-scrollbar because a rail under the tabs is not a thing.
-  const cn_ = cn('flex gap-1 overflow-x-auto no-scrollbar border-b border-slate-200', className)
+  // `shrink-0` is load-bearing, not tidiness. A tab strip is very often a
+  // child of a flex COLUMN — the session popover's scrollable body is one —
+  // and flex children shrink by default. When the panel below it filled up
+  // (the session report opening as a full list), this strip was squeezed to
+  // 1px: every tab still in the DOM, with its text, and nothing on screen but
+  // a hairline. Karl saw empty boxes where the tabs had been.
+  const cn_ = cn('flex shrink-0 gap-1 overflow-x-auto no-scrollbar border-b border-slate-200', className)
 
   return asLinks ? (
     <nav ref={box as React.RefObject<HTMLElement>} aria-label={label} className={cn_}>{inner}</nav>
