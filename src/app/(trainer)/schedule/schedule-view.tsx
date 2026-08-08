@@ -1219,7 +1219,14 @@ function WeekGrid({
     // does NOT become a scroll container — and `hidden` here is what pinned the
     // sticky day-header row 41px too low (it resolved its `top` against this
     // card instead of the page, leaving a strip of grid showing above it).
-    <div className="flex flex-col bg-white rounded-2xl border border-slate-100 shadow-sm overflow-clip sm:h-full">
+    // No card on a phone (Karl: "make it so the calendar is not in a card —
+    // goes the full width of the screen and utilise the space as best you
+    // can"). A rounded, bordered, shadowed panel inside a padded page spent
+    // ~40px of a 390px screen on decoration, and the day columns are the one
+    // thing on this screen that genuinely needs every pixel. From sm up the
+    // card comes back — there the width is not scarce and it separates the
+    // grid from the page around it.
+    <div className="flex flex-col bg-white overflow-clip sm:rounded-2xl sm:border sm:border-slate-100 sm:shadow-sm sm:h-full">
       {/* Mobile 3-day window navigator — sits above the day headers so the
           trainer can step through the week in 3-day chunks. The week-level
           date nav (in the page header) still moves between weeks. Hidden
@@ -4404,7 +4411,9 @@ export function ScheduleView({
           the day-header row landed 41px below the control bar with a strip of
           grid showing through the gap. `clip` creates no scroll container, so
           the dates stick where they are told. */}
-      <div className="px-4 md:px-6 py-4 sm:flex-1 sm:overflow-clip">
+      {/* Edge to edge on a phone — the padding that framed the card goes with
+          it, so the grid starts at the screen edge. */}
+      <div className="px-0 py-0 sm:px-4 sm:py-4 md:px-6 sm:flex-1 sm:overflow-clip">
         {view !== 'agenda' ? (
           <WeekGrid
             weekDays={weekDays}
