@@ -385,9 +385,10 @@ export default async function SessionPage({
             </FlatBlock>
           )}
 
-          {/* What the client will actually receive — after the writing and
-              the homework that goes with it, because it is the check you do
-              once both are done. */}
+          {/* What the client will actually receive. Back as a row of its own
+              (Karl: "please put back into the notes") — it briefly lived in a
+              "…" menu with Cancel and Remove, which cost a tap to reach a
+              thing that fits on the page. */}
           <FlatBlock>
             <LinkRow
               icon={Eye}

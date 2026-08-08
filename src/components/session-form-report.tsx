@@ -357,8 +357,13 @@ export function SessionFormReport({
             write-up when there IS one (under the closing message, per Karl),
             and a session where the trainer hasn't picked a form yet still has
             homework to set — losing it with the form would be a feature that
-            works only sometimes. */}
-        {afterClosing}
+            works only sometimes.
+
+            It carries its own padding HERE and not in the editor: there the
+            body is already `p-5`, and here it is a bare child of the card, so
+            without this the heading sat hard against the border (Karl: "looks
+            nasty — there is no padding"). */}
+        {afterClosing && <div className="px-5 pb-5">{afterClosing}</div>}
       </>
     )
   }
@@ -369,19 +374,21 @@ export function SessionFormReport({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
-          Session report
-        </p>
-        {canAttach && (
+      {/* No "Session report" heading (Karl: "I don't think we need the
+          'Report' title, just takes up space"). The screen is called Session
+          notes, this is the only thing on it, and a label repeating that
+          spent a row saying where you already are. The row only exists at all
+          when there is a form to attach. */}
+      {canAttach && (
+        <div className="mb-3 flex items-center justify-end">
           <button
             onClick={() => setPickerOpen(true)}
-            className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200"
+            className="flex items-center gap-1 rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200"
           >
             <Plus className="h-3 w-3" /> Attach form
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {!loaded ? (
         <div className="flex items-center gap-2 text-sm text-slate-400 py-2">
@@ -535,23 +542,21 @@ function InlineNotesPreview({
   }
   return (
     <div>
-      {/* Header strip */}
-      <div className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-slate-100 bg-gradient-to-r from-slate-50 via-white to-white">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm flex-shrink-0">
-            <FileText className="h-4 w-4" />
-          </span>
-          <div className="min-w-0">
-            <p className="font-semibold text-slate-900 text-sm truncate leading-tight">{response.form.name}</p>
-            <p className="text-[11px] leading-tight">
-              {filled.length === 0
-                ? <span className="text-slate-400">Session notes</span>
-                : visible
-                  ? <span className="text-emerald-600">Your client can read this</span>
-                  : <span className="font-medium text-amber-600">Draft — mark the session complete to show your client</span>}
-            </p>
-          </div>
-        </div>
+      {/* Header strip — the STATE of the write-up and the way into it, and
+          nothing else (Karl: "I don't think we need the 'Report' title, just
+          takes up space"). The form's name told the trainer what they already
+          knew they were looking at, and it arrived wearing a dark rounded icon
+          tile and a gradient, which is the clearest tell of a machine-made
+          screen (AGENTS.md). What's left is the one line worth a row: whether
+          the client can read this yet. */}
+      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
+        <p className="min-w-0 flex-1 truncate text-[13px] leading-tight">
+          {filled.length === 0
+            ? <span className="text-slate-400">Nothing written up yet</span>
+            : visible
+              ? <span className="text-emerald-600">Your client can read this</span>
+              : <span className="font-medium text-amber-600">Draft — mark the session complete to show your client</span>}
+        </p>
         <div className="flex flex-shrink-0 items-center gap-2">
           {filled.length > 0 && !visible && (
             <button
@@ -845,7 +850,6 @@ function FormFillerBody({
   const [saving, setSaving] = useState(false)
   const [sendingNow, setSendingNow] = useState(false)
   const [polishing, setPolishing] = useState(false)
-  const [confirmingRemove, setConfirmingRemove] = useState(false)
   // The two ticks that decide what Save does. Both default OFF: polishing
   // rewrites the trainer's words and sending publishes them to a client, and
   // neither should happen because a box was already ticked when they arrived.
@@ -870,13 +874,9 @@ function FormFillerBody({
   const [homeworkPhase, setHomeworkPhase] = useState<{ clientId: string | null; date: string } | null>(null)
   const savedResponseRef = useRef<FormResponse | null>(null)
 
-  // Auto-revert the "are you sure?" Remove state if the trainer doesn't follow
-  // through within a few seconds — nudges them away from accidental deletes.
-  useEffect(() => {
-    if (!confirmingRemove) return
-    const t = setTimeout(() => setConfirmingRemove(false), 5000)
-    return () => clearTimeout(t)
-  }, [confirmingRemove])
+  // The two-tap "click again to confirm" Remove went with the button — the
+  // action lives in a sheet you had to open on purpose now, and the host still
+  // asks before it deletes anything.
 
   function setAnswer(id: string, value: string) {
     setAnswers(prev => ({ ...prev, [id]: value }))
@@ -1359,8 +1359,15 @@ function FormFillerBody({
           Polish, Save changes, Save & send — each did a save-shaped thing, so
           the trainer had to work out which combination they meant. Ticking
           what you want and pressing Save once says the same thing without the
-          arithmetic. Polish runs BEFORE the write, in the same click. */}
-      <div className="flex flex-shrink-0 flex-col gap-3 border-t border-slate-100 p-4">
+          arithmetic. Polish runs BEFORE the write, in the same click.
+
+          It was briefly `sticky bottom-0` and is not any more (Karl: "the
+          sticky can't work on this page sorry"). It could only stick by
+          punching a hole in the card that holds it — FlatBlock clips its
+          children, and sticky resolves against the nearest clipping ancestor —
+          and a bar pinned over a form the trainer is still typing into is
+          covering the thing they're looking at on a small screen. */}
+      <div className="flex flex-shrink-0 flex-col gap-3 border-t border-slate-100 bg-white p-4">
 
         <div className="flex flex-col gap-2.5">
           <label className="flex cursor-pointer items-start gap-2.5">
@@ -1406,28 +1413,22 @@ function FormFillerBody({
           </label>
         </div>
 
-        {/* One button, and it says what the ticks add up to. Full width and
-            stacked on a phone so no label wraps inside its own button; a
-            right-aligned row from sm up. */}
+        {/* Save, with Cancel and Remove beside it. They were behind a "…"
+            for a moment, to make room for a sticky bar that then went; with
+            the bar gone there is nothing to make room FOR, and a menu that
+            hides three controls on a screen with space for them is a tap
+            spent on nothing (Karl: "please put back into the notes"). */}
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
           {onRemove && (
             <button
               type="button"
-              onClick={() => {
-                if (!confirmingRemove) { setConfirmingRemove(true); return }
-                setConfirmingRemove(false)
-                onRemove()
-              }}
-              disabled={saving}
-              className={`flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors disabled:opacity-50 sm:mr-auto ${
-                confirmingRemove
-                  ? 'bg-rose-50 text-rose-600'
-                  : 'whitespace-nowrap text-slate-600 hover:bg-rose-50 hover:text-rose-600'
-              }`}
-              title={confirmingRemove ? 'Click again to confirm' : 'Remove this form from the session'}
+              onClick={onRemove}
+              disabled={saving || polishing}
+              className="flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-2 text-[13px] font-medium text-slate-600 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 sm:mr-auto"
+              title="Remove this form from the session"
             >
               <Trash2 className="h-4 w-4 flex-shrink-0" strokeWidth={1.75} />
-              {confirmingRemove ? 'Click again to permanently remove' : 'Remove'}
+              Remove
             </button>
           )}
           {onCancel && (

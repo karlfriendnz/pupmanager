@@ -5,8 +5,9 @@ import { Calendar, Video, PawPrint, NotebookPen, Users, History } from 'lucide-r
 import { formatSessionTitle, personLabel } from '@/lib/utils'
 import { runSessionHref, runHref, runKind, runKindLabel } from '@/lib/run-kind'
 import { hasAddon } from '@/lib/billing'
+import { isSessionDone } from '@/lib/report-visibility'
 import { PaySessionButton } from './pay-session-button'
-import { LinkRow, PrimaryActionButton, ContactStrip } from './session-rows'
+import { LinkRow, PrimaryActionButton, ActionLinkButton, ContactStrip } from './session-rows'
 import { LogTimeRow } from './log-time-row'
 import { AddPhotosRow } from './add-photos-row'
 import { ensureTimeMembers } from './time-members'
@@ -90,6 +91,9 @@ export default async function SessionPage({
       // Extra dogs attending alongside the primary one. More than one dog in
       // the room is what makes attendance a question worth asking.
       buddies: { select: { id: true } },
+      // Enough of the write-up to know whether there IS one, and whether the
+      // client can already read it.
+      formResponses: { select: { answers: true, introMessage: true, closingMessage: true, sentAt: true } },
       // Photos and time both open in a modal on this screen, so their content
       // comes down with the page rather than behind a fetch.
       attachments: {
@@ -265,6 +269,26 @@ export default async function SessionPage({
       : `/sessions/${trainingSession.id}/notes`
   const attendanceHref = run ? runScreenHref! : `/sessions/${trainingSession.id}/attendance`
 
+  // What state the write-up is in, which is what the top button should say
+  // (Karl: "once some notes have been written I think then it should make the
+  // 'Start notes' different").
+  //
+  //   none  — nothing written. Starting one is the job, so it's the loud button.
+  //   draft — written, client can't see it yet. Still the job: finish it.
+  //   sent  — the client can read it. The job is DONE, so the button stops
+  //           shouting and becomes a way back to something already written.
+  const written = trainingSession.formResponses.some(r => {
+    const answers = (r.answers ?? {}) as Record<string, unknown>
+    return Object.values(answers).some(v => typeof v === 'string' && v.trim() !== '')
+      || !!r.introMessage?.trim()
+      || !!r.closingMessage?.trim()
+  })
+  // Completing a session publishes its write-up, so a complete session's notes
+  // are readable whatever the response's own sentAt says.
+  const notesVisible = isSessionDone(trainingSession.status)
+    || trainingSession.formResponses.some(r => r.sentAt != null)
+  const notesState: 'none' | 'draft' | 'sent' = !written ? 'none' : notesVisible ? 'sent' : 'draft'
+
   const attachments = trainingSession.attachments.map(a => ({
     id: a.id,
     kind: a.kind,
@@ -433,16 +457,33 @@ export default async function SessionPage({
           )}
         </FlatBlock>
 
-        {/* 2 · The one thing this screen is for. The only filled button on
-            the page: six identical white rows told a glance nothing about
-            which to press (Karl: "it's just not there yet"). */}
+        {/* 2 · The write-up, and how loudly it asks depends on whether it is
+            still owed. Nothing written yet or a half-finished draft is the
+            job, so it takes the filled button; once the client can read it
+            there is nothing left to chase and it goes quiet — a screen that
+            keeps shouting about work you already did is a screen you stop
+            reading. */}
         {notesOn && (
-          <PrimaryActionButton
-            href={notesHref}
-            icon={NotebookPen}
-            label="Start notes"
-            sub={run ? 'Write up each client' : undefined}
-          />
+          notesState === 'sent' ? (
+            <ActionLinkButton
+              href={notesHref}
+              icon={NotebookPen}
+              label="View notes"
+              sub="Your client can read this"
+              accent={accent}
+            />
+          ) : (
+            <PrimaryActionButton
+              href={notesHref}
+              icon={NotebookPen}
+              label={notesState === 'draft' ? 'Finish notes' : 'Start notes'}
+              sub={
+                notesState === 'draft'
+                  ? 'Draft — your client cannot see it yet'
+                  : run ? 'Write up each client' : undefined
+              }
+            />
+          )
         )}
 
         {/* 3 · The rest of what you do WHILE it's happening, as one block of
