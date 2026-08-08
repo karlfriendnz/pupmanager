@@ -66,12 +66,16 @@ test('an empty session fits on a phone — one facts block, collapsed sections, 
   await expect(page.getByText('None set')).toBeVisible()
   await expect(page.getByText('Nothing logged')).toBeVisible()
 
-  // Collapsed means collapsed: the uploader only exists once the row is opened.
-  const addPhoto = page.getByRole('button', { name: 'Add photo' })
-  await expect(addPhoto).toBeHidden()
-  await page.getByText('Photos & video', { exact: true }).click()
-  await expect(addPhoto).toBeVisible()
-  await page.getByText('Photos & video', { exact: true }).click()
+  // Collapsed means collapsed: homework's editor only exists once opened.
+  const addHomework = page.getByRole('button', { name: 'Add from library' }).first()
+  await expect(addHomework).toBeHidden()
+  await page.getByText('Homework', { exact: true }).click()
+  await expect(addHomework).toBeVisible()
+  await page.getByText('Homework', { exact: true }).click()
+
+  // Photos are a screen of their own, off the session page's own button — the
+  // row here only points at it.
+  await expect(page.getByRole('link', { name: /Photos & video/ })).toHaveAttribute('href', `/sessions/${id}/photos`)
 
   // The whole screen, closed, has to stay in the same order of magnitude as a
   // couple of phone screens. It was 1375px before the rebuild; this guard trips

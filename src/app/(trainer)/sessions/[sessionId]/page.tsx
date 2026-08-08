@@ -1,12 +1,13 @@
 import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { Calendar, Video, PawPrint, NotebookPen, Users } from 'lucide-react'
+import { Calendar, Video, PawPrint, NotebookPen, Users, Camera } from 'lucide-react'
 import { formatSessionTitle } from '@/lib/utils'
 import { runSessionHref, runHref, runKind, runKindLabel } from '@/lib/run-kind'
 import { hasAddon } from '@/lib/billing'
 import { PaySessionButton } from './pay-session-button'
-import { FactRow, LinkRow, ActionLinkButton } from './session-rows'
+import { LinkRow, ActionLinkButton } from './session-rows'
+import { SessionWhenRow } from './session-when'
 import { CompleteButton, InvoiceButton } from './session-buttons'
 import { FlatBlock } from '@/components/shared/flat-list'
 import { PageHeader } from '@/components/shared/page-header'
@@ -85,6 +86,8 @@ export default async function SessionPage({
       // Extra dogs attending alongside the primary one. More than one dog in
       // the room is what makes attendance a question worth asking.
       buddies: { select: { id: true } },
+      // Just the count, for the photos button's subline.
+      _count: { select: { attachments: true } },
     },
   })
   if (!trainingSession) notFound()
@@ -247,6 +250,8 @@ export default async function SessionPage({
       : `/sessions/${trainingSession.id}/notes`
   const attendanceHref = run ? runScreenHref! : `/sessions/${trainingSession.id}/attendance`
 
+  const attachmentCount = trainingSession._count.attachments
+
   const clientUser = trainingSession.client?.user ?? trainingSession.dog?.primaryFor[0]?.user
   const clientName = clientUser ? (clientUser.name ?? clientUser.email) : null
   const d = trainingSession.scheduledAt
@@ -327,13 +332,14 @@ export default async function SessionPage({
 
           {/* Date, time, duration and — when there IS one — the place, all on
               one row. "In-person" had a row to itself and spent it saying the
-              default; a real address is worth showing but not worth a row. */}
-          <FactRow
-            icon={Calendar}
+              default; a real address is worth showing but not worth a row.
+              Tapping it moves the session (Karl). */}
+          <SessionWhenRow
+            sessionId={trainingSession.id}
+            scheduledAt={d.toISOString()}
+            durationMins={trainingSession.durationMins}
             accent={accent}
-            label={d.toLocaleDateString('en-NZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            sub={[
-              `${d.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })} · ${trainingSession.durationMins} min`,
+            extra={[
               trainingSession.sessionType === 'VIRTUAL'
                 ? (trainingSession.virtualLink ? null : 'Virtual')
                 : trainingSession.location || null,
@@ -380,7 +386,18 @@ export default async function SessionPage({
           />
         )}
 
-        {/* 4 · Billed. */}
+        {/* 4 · What you shot while it was happening. */}
+        <ActionLinkButton
+          href={`/sessions/${trainingSession.id}/photos`}
+          icon={Camera}
+          label="Add photos/video"
+          sub={attachmentCount > 0
+            ? `${attachmentCount} already on this session`
+            : undefined}
+          accent={accent}
+        />
+
+        {/* 5 · Billed. */}
         <InvoiceButton
           sessionId={trainingSession.id}
           initialInvoicedAt={trainingSession.invoicedAt?.toISOString() ?? null}

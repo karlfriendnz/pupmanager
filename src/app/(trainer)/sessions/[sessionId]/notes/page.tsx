@@ -9,7 +9,6 @@ import { SessionFormReport } from '@/components/session-form-report'
 import { hasAddon } from '@/lib/billing'
 import { SessionLibraryTasks } from '@/components/session-library-tasks'
 import { SessionSeriesStep } from '@/components/trainer/session-series-step'
-import { SessionAttachments } from '@/components/session-attachments'
 import { SessionTimeTracking } from '@/components/session-time-tracking'
 import { OpenSessionLink } from '../open-session-link'
 import { DeleteSessionRow } from '../session-actions'
@@ -428,27 +427,17 @@ export default async function SessionPage({
           {/* Everything else, as rows that open. A section with nothing in it
               costs one line; a section with content opens on arrival. */}
           <FlatBlock>
-            <DisclosureRow
+            {/* Photos and video are their own screen now, off the session
+                page's "Add photos/video" button — three taps from the calendar
+                was two too many for the thing you do WHILE the dog is doing
+                it. A copy here would be the same feature in two homes. */}
+            <LinkRow
               icon={Paperclip}
               accent={accent}
               label="Photos & video"
               sub={attachmentSub}
-              defaultOpen={trainingSession.attachments.length > 0}
-            >
-              <SessionAttachments
-                sessionId={trainingSession.id}
-                initialAttachments={trainingSession.attachments.map(a => ({
-                  id: a.id,
-                  kind: a.kind,
-                  url: a.url,
-                  thumbnailUrl: a.thumbnailUrl,
-                  caption: a.caption,
-                  sizeBytes: a.sizeBytes,
-                  durationMs: a.durationMs,
-                  createdAt: a.createdAt.toISOString(),
-                }))}
-              />
-            </DisclosureRow>
+              href={`/sessions/${trainingSession.id}/photos`}
+            />
 
             <DisclosureRow
               icon={ListChecks}
