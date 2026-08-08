@@ -139,3 +139,42 @@ export function DisclosureRow({
     </details>
   )
 }
+
+/**
+ * The look of the session screen's full-width action buttons — 56px tall, one
+ * per row, a line icon and a label. Exported so the client-side buttons
+ * (Complete, Invoice, Take payment) render identically to the server-side
+ * links beside them: they sit in one stack, so a difference of a pixel reads
+ * as two kinds of thing.
+ */
+export const ACTION_BUTTON =
+  'flex min-h-[56px] w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 text-left text-[15px] font-medium text-slate-900 transition-colors hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60'
+
+/**
+ * A full-width action button that goes somewhere. Server-side, because a
+ * server component cannot hand a Lucide icon to a client one — the same
+ * boundary this file exists for.
+ */
+export function ActionLinkButton({
+  href,
+  icon: Icon,
+  label,
+  sub,
+  accent,
+}: {
+  href: string
+  icon: LucideIcon
+  label: string
+  sub?: string | null
+  accent?: string | null
+}) {
+  return (
+    <Link href={href} className={ACTION_BUTTON}>
+      <Icon className="h-5 w-5 flex-shrink-0 text-slate-700" style={iconStyle(accent)} strokeWidth={1.75} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{label}</span>
+        {sub && <span className="mt-0.5 block truncate text-[13px] font-normal text-slate-500">{sub}</span>}
+      </span>
+    </Link>
+  )
+}

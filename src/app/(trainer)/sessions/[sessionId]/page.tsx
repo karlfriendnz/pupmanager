@@ -1,31 +1,32 @@
 import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { Calendar, ChevronDown, Video, User, Clock, History, Paperclip, PawPrint, Eye, ListChecks } from 'lucide-react'
-import { formatSessionTitle, personLabel } from '@/lib/utils'
-import { formatMoney } from '@/lib/money'
+import { Calendar, Video, PawPrint, NotebookPen, Users } from 'lucide-react'
+import { formatSessionTitle } from '@/lib/utils'
 import { runSessionHref } from '@/lib/run-kind'
-import { SessionFormReport } from '@/components/session-form-report'
 import { hasAddon } from '@/lib/billing'
-import { SessionLibraryTasks } from '@/components/session-library-tasks'
-import { SessionSeriesStep } from '@/components/trainer/session-series-step'
 import { PaySessionButton } from './pay-session-button'
-import { SessionAttachments } from '@/components/session-attachments'
-import { SessionTimeTracking } from '@/components/session-time-tracking'
-import { OpenSessionLink } from './open-session-link'
-import { CompleteCell, InvoicedCell, DeleteSessionRow } from './session-actions'
-import { DisclosureRow, FactRow, LinkRow } from './session-rows'
+import { FactRow, LinkRow, ActionLinkButton } from './session-rows'
+import { CompleteButton, InvoiceButton } from './session-buttons'
 import { FlatBlock } from '@/components/shared/flat-list'
 import { PageHeader } from '@/components/shared/page-header'
-import { SetPageImmersive } from '@/components/shared/page-title'
 import { SampleRecordBadge } from '@/components/sample-record-badge'
-import { SessionScreenTabs } from './session-screen-tabs'
 import type { Metadata } from 'next'
 
-export const metadata: Metadata = { title: 'Session notes' }
+export const metadata: Metadata = { title: 'Session' }
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
+/**
+ * A 1:1 session, opened from the calendar. Five parts, in this order (Karl,
+ * 2026-08-08): who and when, start notes, take attendance when the offering
+ * has more than one dog in the room, mark as complete, invoice.
+ *
+ * It is a LANDING screen, not a form: every part of it is one tap wide, so a
+ * trainer standing in a field with a dog on a lead can hit the one they want
+ * without reading a page first. The write-up — which is long, holds unsaved
+ * text and wants the whole screen — lives one tap away at ./notes.
+ */
 export default async function SessionPage({
   params,
   searchParams,
@@ -38,17 +39,11 @@ export default async function SessionPage({
 
   const trainerId = session.user.trainerId
   if (!trainerId) redirect('/login')
-  // Session notes are gated by the Notes add-on (default-on). When off, the
-  // write-up editor is hidden and the page just shows the session details.
-  const notesOn = await hasAddon(trainerId, 'notes')
 
   const { sessionId } = await params
 
-  // Where Back goes. The calendar sends `?from=/schedule?date=…` when it opens
-  // a session on a phone, so Back returns to the week you were looking at
-  // rather than to the client's list — which is where you'd have gone if you'd
-  // arrived from the client (Karl: "unless you can make the back button go
-  // back to the schedule view").
+  // Where Back goes. The calendar sends `?from=/schedule?date=…`, so Back
+  // returns to the week you were looking at rather than to the client's list.
   //
   // Only an in-app path is honoured: `from` arrives in the URL, so anything
   // else is an open redirect wearing a Back button, and `//host` is a
@@ -59,8 +54,8 @@ export default async function SessionPage({
   // Tenant scope only. Do NOT also filter on `clientId: { not: null }` — a
   // GROUP-CLASS session has clientId null BY DESIGN (schema: attendance is
   // per-enrollee via SessionAttendance), so that filter 404'd every class
-  // session in the app. On this dev data that was 588 of 898 sessions. The two
-  // null-client cases are told apart below by `classRunId`.
+  // session in the app. The two null-client cases are told apart below by
+  // `classRunId`.
   const trainingSession = await prisma.trainingSession.findFirst({
     where: { id: sessionId, trainerId },
     include: {
@@ -84,32 +79,16 @@ export default async function SessionPage({
           primaryFor: { take: 1, select: { id: true, user: { select: { name: true, email: true } } } },
         },
       },
-      attachments: {
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true, kind: true, url: true, thumbnailUrl: true,
-          caption: true, sizeBytes: true, durationMs: true, createdAt: true,
-        },
-      },
-      timeEntries: {
-        orderBy: { createdAt: 'asc' },
-        include: { membership: { select: { user: { select: { name: true, email: true } } } } },
-      },
+      // Extra dogs attending alongside the primary one. More than one dog in
+      // the room is what makes attendance a question worth asking.
+      buddies: { select: { id: true } },
     },
   })
-  // No such session for this trainer — a genuine 404, and the tenant guard.
   if (!trainingSession) notFound()
 
   // A session on a RUN belongs to a cohort, not to one client, and already has
   // a screen built for it (attendance per enrollee). Anything landing here — a
   // bookmark, a notification, an old link — gets sent there rather than a wall.
-  //
-  // WHICH screen depends on the kind of run: a ClassRun backs group classes,
-  // casual/drop-in classes, one-off events AND doggy daycare, and each has its
-  // own section. This used to send all four to /classes/…, so a casual run
-  // landed on the group-class screen with "Back to class" pointing out of the
-  // section the trainer came from, and an event — which has no per-session
-  // screen at all — landed on a URL for a session page it doesn't own.
   if (trainingSession.classRunId && trainingSession.classRun) {
     redirect(runSessionHref(
       trainingSession.classRunId,
@@ -119,20 +98,20 @@ export default async function SessionPage({
   }
 
   // Neither a client nor a class: the client was deleted and the session was
-  // left behind. There's nothing to show, but a bare 404 for a row a trainer
+  // left behind. There's nothing to act on, but a bare 404 for a row a trainer
   // just tapped reads as a bug. Say what happened instead.
   if (!trainingSession.clientId && !trainingSession.dog) {
     return (
       <>
-        <PageHeader title="Session notes" back={{ href: '/schedule', label: 'Back to schedule' }} />
-        <div className="p-4 md:p-8 w-full max-w-3xl mx-auto">
+        <PageHeader title="Session" back={{ href: '/schedule', label: 'Back to schedule' }} />
+        <div className="p-4 md:p-8 w-full max-w-2xl mx-auto">
           <FlatBlock>
             <div className="px-4 py-4">
               <p className="text-sm font-medium text-slate-900">This session has no client</p>
               <p className="mt-1 text-[13px] text-slate-500">
                 {formatSessionTitle(trainingSession.title)} on{' '}
                 {trainingSession.scheduledAt.toLocaleDateString('en-NZ', { day: 'numeric', month: 'long', year: 'numeric' })}.
-                Its client was removed, so there are no notes to write up.
+                Its client was removed, so there is nothing to write up or bill.
               </p>
             </div>
             <LinkRow icon={Calendar} label="Back to the schedule" href="/schedule" />
@@ -153,9 +132,8 @@ export default async function SessionPage({
   //
   // FRESH — no invoice exists. Very common: a package created outside the
   // assign route (seeded, imported, back-filled) never raised one. Without a
-  // fallback the button would simply never appear for those — on this dev data
-  // that was 1 session out of 233. So we open a normal sale instead, seeded
-  // with what this session is worth.
+  // fallback the button would simply never appear for those. So we open a
+  // normal sale instead, seeded with what this session is worth.
   //
   // Neither is the session's `invoicedAt` flag (the manual "I billed this
   // elsewhere" marker), which has no amount and no link to any Invoice.
@@ -204,6 +182,10 @@ export default async function SessionPage({
   const posOn = await hasAddon(trainerId, 'pos')
   const canTakePayment = posOn && trainingSession.client != null
 
+  // Session notes are gated by the Notes add-on (default-on). With it off there
+  // is no write-up to start, so the button that offers one goes too.
+  const notesOn = await hasAddon(trainerId, 'notes')
+
   // The trainer's brand colour + payout currency in one read. The accent tints
   // ONLY the row icons, via color-mix toward slate-900 (AGENTS.md) — a pastel
   // brand stays legible and nothing else on the page is painted.
@@ -219,403 +201,170 @@ export default async function SessionPage({
   // sale uses the trainer's payout currency.
   const currency = unpaidInvoice?.currency ?? profile?.payoutCurrency ?? 'nzd'
 
-  // Team members for the "who logged time" picker, plus the session's logged
-  // time entries shaped for the client component.
-  const members = await prisma.trainerMembership.findMany({
-    where: { companyId: trainerId },
-    orderBy: { acceptedAt: 'asc' },
-    select: { id: true, user: { select: { name: true, email: true } } },
-  })
-  const timeMembers = members.map(m => ({ id: m.id, name: personLabel(m.user) }))
-  const timeEntries = trainingSession.timeEntries.map(e => ({
-    id: e.id,
-    membershipId: e.membershipId,
-    memberName: e.membership.user.name ?? e.membership.user.email,
-    minutes: e.minutes,
-    rateCents: e.rateCents,
-    amountCents: e.rateCents == null ? null : Math.round((e.minutes / 60) * e.rateCents),
-    note: e.note,
-    createdAt: e.createdAt.toISOString(),
-  }))
+  // Attendance is a question you can only answer when there is more than one
+  // dog booked in — a buddy session. A plain 1:1 has exactly one dog and the
+  // answer is "they came, or the session didn't happen", which Complete
+  // already says.
+  const buddyCount = trainingSession.buddies.length
+  const canTakeAttendance = buddyCount > 0
 
   const clientUser = trainingSession.client?.user ?? trainingSession.dog?.primaryFor[0]?.user
   const clientName = clientUser ? (clientUser.name ?? clientUser.email) : null
-  const clientId = trainingSession.clientId ?? trainingSession.dog?.primaryFor[0]?.id
   const d = trainingSession.scheduledAt
-
-  // No status word in the header. "Upcoming" is the default state of most
-  // sessions, so it told the trainer nothing, and every state it CAN show is
-  // already said by the Complete / Invoice cells directly below it — the page
-  // must not say the same thing twice (AGENTS.md).
-
-  // Homework already attached — a count for the row, so an empty section costs
-  // one line instead of two full-width buttons.
-  const taskCount = await prisma.trainingTask.count({ where: { sessionId: trainingSession.id } })
-
-  // Pull the last 5 past sessions for the same client so the trainer can
-  // glance at prior notes without clicking away. Ordered most-recent first.
-  const previousSessions = clientId
-    ? await prisma.trainingSession.findMany({
-        where: {
-          clientId,
-          id: { not: trainingSession.id },
-          scheduledAt: { lte: d },
-          status: { in: ['COMPLETED', 'COMMENTED', 'INVOICED'] },
-        },
-        orderBy: { scheduledAt: 'desc' },
-        take: 5,
-        select: {
-          id: true,
-          title: true,
-          scheduledAt: true,
-          formResponses: {
-            select: {
-              introMessage: true,
-              closingMessage: true,
-              answers: true,
-              form: { select: { name: true, questions: true } },
-            },
-          },
-        },
-      })
-    : []
-
-  // Sublines for the collapsed sections. Each says what's inside, so the
-  // trainer never has to open a section to find out it's empty.
-  const totalMinutes = timeEntries.reduce((s, e) => s + e.minutes, 0)
-  const billableCents = timeEntries.reduce((s, e) => s + (e.amountCents ?? 0), 0)
-  const timeSub = timeEntries.length === 0
-    ? 'Nothing logged'
-    : [
-        `${Number((totalMinutes / 60).toFixed(2))} h`,
-        billableCents > 0 ? `${formatMoney(billableCents, currency)} billable` : null,
-      ].filter(Boolean).join(' · ')
-
-  const photoCount = trainingSession.attachments.filter(a => a.kind === 'IMAGE').length
-  const videoCount = trainingSession.attachments.length - photoCount
-  const attachmentSub = trainingSession.attachments.length === 0
-    ? 'No photos or videos'
-    : [
-        photoCount > 0 ? `${photoCount} photo${photoCount === 1 ? '' : 's'}` : null,
-        videoCount > 0 ? `${videoCount} video${videoCount === 1 ? '' : 's'}` : null,
-      ].filter(Boolean).join(' · ')
+  const notesHref = cameFrom
+    ? `/sessions/${trainingSession.id}/notes?from=${encodeURIComponent(cameFrom)}`
+    : `/sessions/${trainingSession.id}/notes`
 
   return (
     <>
-      {/* The five bottom tabs stand down while you're writing up a session
-          (Karl: "no nav bar on these please"). Same reasoning as the class
-          register next door: they offer to go somewhere ELSE, which is the one
-          thing a half-written write-up shouldn't invite. keepTopBar, so the
-          back arrow survives as the way out. */}
-      <SetPageImmersive value keepTopBar />
-      {/* The shell's foot reserve is 5rem for the tabs PLUS the home-indicator
-          inset. Only the 5rem goes: this page has no pinned bar at all, so if
-          the inset went too the last row of the write-up would sit under the
-          home indicator. */}
-      <style>{`@media (max-width: 767px) { .pm-main { padding-bottom: env(safe-area-inset-bottom, 0px) !important; } }`}</style>
-
       <PageHeader
-        title="Session notes"
+        title="Session"
         back={
           cameFrom
             ? { href: cameFrom, label: cameFrom.startsWith('/schedule') ? 'Back to schedule' : 'Back' }
-            : clientId
-              ? { href: `/clients/${clientId}/sessions`, label: 'Back to client' }
-              : undefined
+            : trainingSession.clientId
+              ? { href: `/clients/${trainingSession.clientId}/sessions`, label: 'Back to client' }
+              : { href: '/schedule', label: 'Back to schedule' }
         }
       />
-      {/* Full width. Capped at 5xl the write-up sat in a column down the middle
-          of a desktop screen with a third of the room empty either side — and
-          the write-up is the whole job of this page, so it gets the room. The
-          rail beside it stays 20rem; only the notes column grows. */}
-      <div className="p-4 md:p-8 w-full min-w-0">
 
-      {trainingSession.client?.isSample && (
-        <div className="mb-4">
-          <SampleRecordBadge />
-        </div>
-      )}
+      {/* Capped, and centred on a desktop: this screen is a short column of
+          full-width buttons, and a button stretched across 1400px of monitor
+          is not a bigger button, it is a worse one. */}
+      <div className="p-4 md:p-8 w-full max-w-2xl mx-auto flex flex-col gap-3">
 
-      {/* Two tabs, not two columns (Karl). The facts about the dog and owner
-          used to be a sticky rail BESIDE the write-up; they're the first thing
-          in the first tab now, above it, at a third of the width. */}
-      <SessionScreenTabs
-        details={
-        <div>
-          <FlatBlock>
-            {/* Identity: avatar, name, one subline, status. Was a 340px tinted
-                hero with a photo, a heading, a pill and two more lines. */}
-            <div className="flex items-center gap-3 px-4 py-3">
-              {trainingSession.dog?.photoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={trainingSession.dog.photoUrl}
-                  alt={trainingSession.dog.name}
-                  className="h-11 w-11 flex-shrink-0 rounded-full object-cover"
-                />
-              ) : (
-                <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-slate-100">
-                  <PawPrint className="h-5 w-5 text-slate-500" strokeWidth={1.75} />
-                </span>
-              )}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[15px] font-semibold text-slate-900">
-                  {trainingSession.dog?.name ?? clientName ?? 'Session'}
-                </span>
-                <span className="mt-0.5 block truncate text-[13px] text-slate-500">
-                  {[clientName, formatSessionTitle(trainingSession.title)].filter(Boolean).join(' · ')}
-                </span>
+        {trainingSession.client?.isSample && <SampleRecordBadge />}
+
+        {/* 1 · Who, and when. */}
+        <FlatBlock>
+          <div className="flex items-center gap-3 px-4 py-3">
+            {trainingSession.dog?.photoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={trainingSession.dog.photoUrl}
+                alt={trainingSession.dog.name}
+                className="h-11 w-11 flex-shrink-0 rounded-full object-cover"
+              />
+            ) : (
+              <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-slate-100">
+                <PawPrint className="h-5 w-5 text-slate-500" strokeWidth={1.75} />
               </span>
-            </div>
-
-            {/* Date, time, duration and — when there IS one — the place, all on
-                one row. "In-person" had a row to itself and spent it saying the
-                default; a real address is worth showing but not worth a row. */}
-            <FactRow
-              icon={Calendar}
-              accent={accent}
-              label={d.toLocaleDateString('en-NZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-              sub={[
-                `${d.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })} · ${trainingSession.durationMins} min`,
-                trainingSession.sessionType === 'VIRTUAL'
-                  // A joinable virtual session gets its own row below, because
-                  // that row DOES something. One with no link yet is just a
-                  // fact, so it rides here.
-                  ? (trainingSession.virtualLink ? null : 'Virtual')
-                  : trainingSession.location || null,
-              ].filter(Boolean).join(' · ')}
-            />
-
-            {/* Only when it DOES something: a virtual session you can join. */}
-            {trainingSession.sessionType === 'VIRTUAL' && trainingSession.virtualLink && (
-              <LinkRow
-                icon={Video}
-                accent={accent}
-                label="Virtual session"
-                href={trainingSession.virtualLink}
-                external
-                trailingLabel="Join"
-              />
             )}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[15px] font-semibold text-slate-900">
+                {trainingSession.dog?.name ?? clientName ?? 'Session'}
+              </span>
+              <span className="mt-0.5 block truncate text-[13px] text-slate-500">
+                {[clientName, formatSessionTitle(trainingSession.title)].filter(Boolean).join(' · ')}
+              </span>
+            </span>
+          </div>
 
-            {/* The three things a trainer does at the end of a session, as one
-                divided strip instead of three 130px tiles in three colours. */}
-            <div className={`grid ${canTakePayment ? 'grid-cols-3' : 'grid-cols-2'} divide-x divide-slate-200`}>
-              <CompleteCell
-                sessionId={trainingSession.id}
-                initialStatus={trainingSession.status}
-                accent={accent}
-              />
-              <InvoicedCell
-                sessionId={trainingSession.id}
-                initialInvoicedAt={trainingSession.invoicedAt?.toISOString() ?? null}
-                accent={accent}
-              />
-              {canTakePayment && (
-                <PaySessionButton
-                  accent={accent}
-                  currency={currency}
-                  prefill={{
-                    client: {
-                      id: trainingSession.client!.id,
-                      name: trainingSession.client!.user?.name ?? null,
-                      dogName: trainingSession.dog?.name ?? null,
-                      dogPhotoUrl: trainingSession.dog?.photoUrl ?? null,
-                    },
-                    lines: unpaidInvoice
-                      // Settling: seed with what they already owe. PATCH is
-                      // replace-all, so these must go back with any upsell or
-                      // they'd be wiped.
-                      ? unpaidInvoice.lines.map((l) => ({
-                          description: l.description,
-                          quantity: l.quantity,
-                          unitAmountCents: l.unitAmountCents,
-                          xeroAccountCode: l.xeroAccountCode,
-                        }))
-                      // Fresh: seed this session at its share of the package
-                      // price. Skipped when unpriced — the trainer just picks
-                      // items instead of starting from a $0 line.
-                      : perSessionCents > 0
-                        ? [{
-                            description: formatSessionTitle(trainingSession.title),
-                            quantity: 1,
-                            unitAmountCents: perSessionCents,
-                          }]
-                        : [],
-                    ...(unpaidInvoice
-                      ? { settle: { invoiceId: unpaidInvoice.id, payToken: unpaidInvoice.payToken } }
-                      : {}),
-                  }}
-                />
-              )}
-            </div>
-          </FlatBlock>
-        </div>
-        }
-        previousNotes={
-          // What was written last time, between who's in front of you and the
-          // form you're filling in — the order a trainer needs them in during
-          // a session (Karl). It keeps its own block: it opens and closes, and
-          // burying it in "More" would mean leaving the form to read it.
-          previousSessions.length > 0 ? (
-            <FlatBlock>
-              <DisclosureRow
-                icon={History}
-                accent={accent}
-                label="Previous notes"
-                sub={`${previousSessions.length} earlier session${previousSessions.length === 1 ? '' : 's'}`}
-              >
-                <div className="-mx-4 -my-4 divide-y divide-slate-200">
-                  {previousSessions.map(prev => (
-                    <details key={prev.id} className="group/inner">
-                      <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 active:bg-slate-50">
-                        <span className="w-20 flex-shrink-0 text-[13px] tabular-nums text-slate-400">
-                          {prev.scheduledAt.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: '2-digit' })}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{prev.title}</span>
-                        <OpenSessionLink sessionId={prev.id} />
-                        <ChevronDown className="h-4 w-4 flex-shrink-0 text-slate-400 transition-transform group-open/inner:rotate-180" />
-                      </summary>
-                      <div className="flex flex-col gap-3 px-4 pb-4 text-sm text-slate-600">
-                        {prev.formResponses.length === 0 ? (
-                          <p className="text-[13px] text-slate-400">No notes recorded for this session.</p>
-                        ) : prev.formResponses.map((r, i) => {
-                          const answers = (r.answers ?? {}) as Record<string, string>
-                          const questions = Array.isArray(r.form.questions) ? r.form.questions as { id: string; label?: string; type?: string }[] : []
-                          return (
-                            <div key={i} className="flex flex-col gap-2">
-                              {r.introMessage && (
-                                <p className="border-l-2 border-slate-200 pl-3 text-sm italic text-slate-700">{r.introMessage}</p>
-                              )}
-                              {questions.map(q => {
-                                const v = answers[q.id]
-                                if (!v) return null
-                                return (
-                                  <div key={q.id}>
-                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{q.label ?? 'Answer'}</p>
-                                    <p className="whitespace-pre-line text-sm text-slate-700">{String(v)}</p>
-                                  </div>
-                                )
-                              })}
-                              {r.closingMessage && (
-                                <p className="mt-1 border-l-2 border-slate-200 pl-3 text-sm italic text-slate-700">{r.closingMessage}</p>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </details>
-                  ))}
-                </div>
-              </DisclosureRow>
-            </FlatBlock>
-          ) : null
-        }
-        writeUp={
-        <>
-          {/* What this session covers, when the offering runs a curriculum —
-              above the write-up, because it is the thing the trainer checks
-              BEFORE the session, and the place a step gets skipped for a dog
-              that already has it. Renders nothing on an ordinary session. */}
-          <SessionSeriesStep sessionId={trainingSession.id} />
+          {/* Date, time, duration and — when there IS one — the place, all on
+              one row. "In-person" had a row to itself and spent it saying the
+              default; a real address is worth showing but not worth a row. */}
+          <FactRow
+            icon={Calendar}
+            accent={accent}
+            label={d.toLocaleDateString('en-NZ', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            sub={[
+              `${d.toLocaleTimeString('en-NZ', { hour: 'numeric', minute: '2-digit', hour12: true })} · ${trainingSession.durationMins} min`,
+              trainingSession.sessionType === 'VIRTUAL'
+                ? (trainingSession.virtualLink ? null : 'Virtual')
+                : trainingSession.location || null,
+              buddyCount > 0 ? `+${buddyCount} buddy dog${buddyCount === 1 ? '' : 's'}` : null,
+            ].filter(Boolean).join(' · ')}
+          />
 
-          {/* The write-up itself — the one thing on this page that earns a
-              block of its own. */}
-          {notesOn && (
-            <FlatBlock>
-              <SessionFormReport sessionId={trainingSession.id} sessionStatus={trainingSession.status} layout="inline" autoPromptIfEmpty />
-            </FlatBlock>
-          )}
-        </>
-        }
-        more={
-        <>
-          {/* Everything else, as rows that open. A section with nothing in it
-              costs one line; a section with content opens on arrival. */}
-          <FlatBlock>
-            <DisclosureRow
-              icon={Paperclip}
-              accent={accent}
-              label="Photos & video"
-              sub={attachmentSub}
-              defaultOpen={trainingSession.attachments.length > 0}
-            >
-              <SessionAttachments
-                sessionId={trainingSession.id}
-                initialAttachments={trainingSession.attachments.map(a => ({
-                  id: a.id,
-                  kind: a.kind,
-                  url: a.url,
-                  thumbnailUrl: a.thumbnailUrl,
-                  caption: a.caption,
-                  sizeBytes: a.sizeBytes,
-                  durationMs: a.durationMs,
-                  createdAt: a.createdAt.toISOString(),
-                }))}
-              />
-            </DisclosureRow>
-
-            <DisclosureRow
-              icon={ListChecks}
-              accent={accent}
-              label="Homework"
-              sub={taskCount === 0 ? 'None set' : `${taskCount} task${taskCount === 1 ? '' : 's'}`}
-              defaultOpen={taskCount > 0}
-            >
-              <SessionLibraryTasks
-                sessionId={trainingSession.id}
-                clientId={clientId ?? null}
-                sessionDate={d.toISOString().split('T')[0]}
-              />
-            </DisclosureRow>
-
-            <DisclosureRow
-              icon={Clock}
-              accent={accent}
-              label="Time tracking"
-              sub={timeSub}
-              defaultOpen={timeEntries.length > 0}
-            >
-              <SessionTimeTracking
-                sessionId={trainingSession.id}
-                initialEntries={timeEntries}
-                members={timeMembers}
-              />
-            </DisclosureRow>
-
-
-            {/* Was hidden behind a "…" menu in the header: a whole portal,
-                overlay and outside-click handler to conceal two links. */}
+          {/* Only when it DOES something: a virtual session you can join. */}
+          {trainingSession.sessionType === 'VIRTUAL' && trainingSession.virtualLink && (
             <LinkRow
-              icon={Eye}
+              icon={Video}
               accent={accent}
-              label="Preview report"
-              sub="See what the client will read"
-              href={`/sessions/${trainingSession.id}/preview`}
+              label="Virtual session"
+              href={trainingSession.virtualLink}
+              external
+              trailingLabel="Join"
             />
+          )}
+        </FlatBlock>
 
-            {clientId && (
-              <LinkRow
-                icon={User}
-                accent={accent}
-                label="Client profile"
-                sub={clientName ?? undefined}
-                href={`/clients/${clientId}`}
-              />
-            )}
-          </FlatBlock>
+        {/* 2 · The write-up, which is the job most of the time. */}
+        {notesOn && (
+          <ActionLinkButton
+            href={notesHref}
+            icon={NotebookPen}
+            label="Start notes"
+            accent={accent}
+          />
+        )}
 
-          {/* Destructive, so it sits on its own at the very bottom — quiet red
-              text, and it asks before it does anything. */}
-          <FlatBlock>
-            <DeleteSessionRow
-              sessionId={trainingSession.id}
-              redirectTo={clientId ? `/clients/${clientId}/sessions` : '/schedule'}
-            />
-          </FlatBlock>
-        </>
-        }
-      />
+        {/* 3 · Attendance — only when more than one dog is booked in. */}
+        {canTakeAttendance && (
+          <ActionLinkButton
+            href={`/sessions/${trainingSession.id}/attendance`}
+            icon={Users}
+            label="Take attendance"
+            sub={`${buddyCount + 1} dogs booked in`}
+            accent={accent}
+          />
+        )}
+
+        {/* 4 · Done. */}
+        <CompleteButton
+          sessionId={trainingSession.id}
+          initialStatus={trainingSession.status}
+          accent={accent}
+        />
+
+        {/* 5 · Billed. */}
+        <InvoiceButton
+          sessionId={trainingSession.id}
+          initialInvoicedAt={trainingSession.invoicedAt?.toISOString() ?? null}
+          accent={accent}
+        />
+
+        {/* Taking a card is a different act from recording that you billed
+            them, and only exists when the trainer has the add-on on. It rides
+            below the five so the shape of the screen doesn't change for the
+            trainers who don't. */}
+        {canTakePayment && (
+          <PaySessionButton
+            accent={accent}
+            currency={currency}
+            prefill={{
+              client: {
+                id: trainingSession.client!.id,
+                name: trainingSession.client!.user?.name ?? null,
+                dogName: trainingSession.dog?.name ?? null,
+                dogPhotoUrl: trainingSession.dog?.photoUrl ?? null,
+              },
+              lines: unpaidInvoice
+                // Settling: seed with what they already owe. PATCH is
+                // replace-all, so these must go back with any upsell or
+                // they'd be wiped.
+                ? unpaidInvoice.lines.map((l) => ({
+                    description: l.description,
+                    quantity: l.quantity,
+                    unitAmountCents: l.unitAmountCents,
+                    xeroAccountCode: l.xeroAccountCode,
+                  }))
+                // Fresh: seed this session at its share of the package price.
+                // Skipped when unpriced — the trainer just picks items instead
+                // of starting from a $0 line.
+                : perSessionCents > 0
+                  ? [{
+                      description: formatSessionTitle(trainingSession.title),
+                      quantity: 1,
+                      unitAmountCents: perSessionCents,
+                    }]
+                  : [],
+              ...(unpaidInvoice
+                ? { settle: { invoiceId: unpaidInvoice.id, payToken: unpaidInvoice.payToken } }
+                : {}),
+            }}
+          />
+        )}
       </div>
     </>
   )

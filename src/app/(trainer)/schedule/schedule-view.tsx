@@ -3392,14 +3392,17 @@ export function ScheduleView({
   const [clientExtras, setClientExtras] = useState(initialClientExtras)
   const [navigatingWeek, setNavigatingWeek] = useState(false)
   // If the parent re-renders with a new initialSelectedDate (e.g. via a
-  // router.push from outside), keep local state in sync.
-  // A date arriving from outside also has to carry the 3-day window with it,
-  // or the grid shows one week's days under another week's dates.
+  // router.push from outside), keep local state in sync. A date arriving from
+  // outside also has to carry the 3-day window with it, or the grid shows one
+  // week's days under another week's dates.
+  //
+  // Deps are the incoming date ALONE on purpose: weekDaysFor is rebuilt every
+  // render, so depending on it would re-run this after every step and put the
+  // window straight back where it started.
   useEffect(() => {
     setSelectedDate(initialSelectedDate)
     setThreeDayStart(windowStartFor(weekDaysFor(initialSelectedDate), initialSelectedDate))
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- weekDaysFor is
-    // rebuilt every render; re-running this on it would undo every step.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSelectedDate])
   useEffect(() => { setClientExtras(initialClientExtras) }, [initialClientExtras])
   // Validate the persisted selection: drop entries that aren't a known
@@ -3973,15 +3976,8 @@ export function ScheduleView({
     }
   }
 
-  // Matches WeekGrid's own 640px breakpoint — see handleSessionClick.
-  const [phoneWidth, setPhoneWidth] = useState(false)
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 639.98px)')
-    const sync = () => setPhoneWidth(mq.matches)
-    sync()
-    mq.addEventListener('change', sync)
-    return () => mq.removeEventListener('change', sync)
-  }, [])
+  // The 640px media query that used to decide page-or-popover went with the
+  // popover: every width opens the page now.
 
   function handleSessionClick(s: Session) {
     // Sessions on a run have their own page (attendance + per-client notes) —
@@ -3992,16 +3988,17 @@ export function ScheduleView({
       router.push(runSessionHref(s.classRunId, s.id, s.classRun.package))
       return
     }
-    // PHONE: the session's own page, not a popover over the calendar (Karl).
-    // It carries where it came from, so Back returns to the week you were
-    // looking at rather than to the client — same 640px line the grid uses to
-    // switch to its 3-day layout, so the two agree on what a phone is.
-    if (phoneWidth) {
-      const from = `${window.location.pathname}${window.location.search}`
-      router.push(`/sessions/${s.id}?from=${encodeURIComponent(from)}`)
-      return
-    }
-    setActiveSession(s)
+    // A 1:1 opens its own page — on every screen, not just a phone (Karl,
+    // 2026-08-08: "when you click on the session on a schedule make a full
+    // page"). It carries where it came from, so Back returns to the week you
+    // were looking at rather than to the client.
+    //
+    // SessionModal below is left in place but nothing opens it any more: its
+    // edit controls (change the dog, add a buddy, set tasks) have no home on
+    // the new page yet, and deleting them before they have one would lose
+    // them. Whoever moves them across should delete it in the same change.
+    const from = `${window.location.pathname}${window.location.search}`
+    router.push(`/sessions/${s.id}?from=${encodeURIComponent(from)}`)
   }
 
   function handleSessionStatusChange(id: string, status: SessionStatus) {
