@@ -28,8 +28,10 @@ const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/
 
 export default async function SessionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ sessionId: string }>
+  searchParams: Promise<{ from?: string }>
 }) {
   const session = await auth()
   if (!session) redirect('/login')
@@ -41,6 +43,18 @@ export default async function SessionPage({
   const notesOn = await hasAddon(trainerId, 'notes')
 
   const { sessionId } = await params
+
+  // Where Back goes. The calendar sends `?from=/schedule?date=…` when it opens
+  // a session on a phone, so Back returns to the week you were looking at
+  // rather than to the client's list — which is where you'd have gone if you'd
+  // arrived from the client (Karl: "unless you can make the back button go
+  // back to the schedule view").
+  //
+  // Only an in-app path is honoured: `from` arrives in the URL, so anything
+  // else is an open redirect wearing a Back button, and `//host` is a
+  // protocol-relative URL that leaves the site while looking like a path.
+  const rawFrom = (await searchParams).from
+  const cameFrom = rawFrom && rawFrom.startsWith('/') && !rawFrom.startsWith('//') ? rawFrom : null
 
   // Tenant scope only. Do NOT also filter on `clientId: { not: null }` — a
   // GROUP-CLASS session has clientId null BY DESIGN (schema: attendance is
@@ -302,7 +316,13 @@ export default async function SessionPage({
 
       <PageHeader
         title="Session notes"
-        back={clientId ? { href: `/clients/${clientId}/sessions`, label: 'Back to client' } : undefined}
+        back={
+          cameFrom
+            ? { href: cameFrom, label: cameFrom.startsWith('/schedule') ? 'Back to schedule' : 'Back' }
+            : clientId
+              ? { href: `/clients/${clientId}/sessions`, label: 'Back to client' }
+              : undefined
+        }
       />
       {/* Full width. Capped at 5xl the write-up sat in a column down the middle
           of a desktop screen with a third of the room empty either side — and

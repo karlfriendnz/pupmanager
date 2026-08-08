@@ -3989,6 +3989,16 @@ export function ScheduleView({
     }
   }
 
+  // Matches WeekGrid's own 640px breakpoint — see handleSessionClick.
+  const [phoneWidth, setPhoneWidth] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 639.98px)')
+    const sync = () => setPhoneWidth(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
+
   function handleSessionClick(s: Session) {
     // Sessions on a run have their own page (attendance + per-client notes) —
     // in the section that run belongs to. This used to hard-code /classes/…,
@@ -3996,6 +4006,15 @@ export function ScheduleView({
     // event to a per-session URL events don't have.
     if (s.classRunId && s.classRun) {
       router.push(runSessionHref(s.classRunId, s.id, s.classRun.package))
+      return
+    }
+    // PHONE: the session's own page, not a popover over the calendar (Karl).
+    // It carries where it came from, so Back returns to the week you were
+    // looking at rather than to the client — same 640px line the grid uses to
+    // switch to its 3-day layout, so the two agree on what a phone is.
+    if (phoneWidth) {
+      const from = `${window.location.pathname}${window.location.search}`
+      router.push(`/sessions/${s.id}?from=${encodeURIComponent(from)}`)
       return
     }
     setActiveSession(s)
