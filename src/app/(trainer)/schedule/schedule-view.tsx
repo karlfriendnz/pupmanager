@@ -16,7 +16,7 @@ import { Alert } from '@/components/ui/alert'
 import Link from 'next/link'
 import {
   ChevronLeft, ChevronRight, Plus, Calendar, CalendarDays,
-  Clock, Trash2, X, MapPin, Video, ExternalLink, Loader2, Play, Pencil, AlertTriangle, Search, Users, Check, CalendarClock, ArrowUpRight,} from 'lucide-react'
+  Clock, Trash2, X, MapPin, Video, Loader2, Play, Pencil, AlertTriangle, Search, Users, Check, CalendarClock, ArrowUpRight, Phone, MessageSquare, User,} from 'lucide-react'
 import {
   AssignPackageFromScheduleModal,
 } from './assign-package-from-schedule'
@@ -110,7 +110,7 @@ interface Session {
   // multi-trainer businesses.
   assignedMembershipId: string | null
   assignedTrainerName?: string | null
-  client: { id: string; user: { name: string | null; email: string | null } } | null
+  client: { id: string; phone?: string | null; user: { name: string | null; email: string | null } } | null
   dog: {
     name: string
     photoUrl?: string | null
@@ -2073,6 +2073,7 @@ function SessionModal({
   session: initialSession,
   clients,
   members,
+  canGroupWalk,
   onClose,
   onStatusChange,
   onSessionsUpdate,
@@ -2081,6 +2082,14 @@ function SessionModal({
   session: Session
   clients: ClientOption[]
   members: TeamMemberOption[]
+  /**
+   * Does this business walk dogs? Group walks are a dog-walker's idea (Karl:
+   * "this only makes sense to dog walkers"), and a groomer or a trainer was
+   * being offered "add another client + dog to make this a group walk" on
+   * every session they opened. Same source as the calendar's own "+" menu, so
+   * the two can't disagree about whether this business does walks.
+   */
+  canGroupWalk: boolean
   onClose: () => void
   onStatusChange: (id: string, status: SessionStatus) => void
   onSessionsUpdate: (id: string, updates: Partial<Session>) => void
@@ -2093,7 +2102,7 @@ function SessionModal({
   // A 1:1 session gets two tabs (Karl): the write-up you do DURING it, and the
   // booking details you change AROUND it. A buddy walk or a session with no
   // client has no single write-up to show, so it keeps the one view it had.
-  const [modalTab, setModalTab] = useState<'session' | 'edit'>('session')
+  const [modalTab, setModalTab] = useState<'notes' | 'previous' | 'edit'>('notes')
   const [savingStatus, setSavingStatus] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [addingTask, setAddingTask] = useState<string | null>(null) // taskId or 'custom' being added
@@ -2536,11 +2545,13 @@ function SessionModal({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className={`text-xs font-semibold uppercase tracking-wide ${
-                  session.sessionType === 'VIRTUAL' ? 'text-purple-500' : 'text-blue-500'
-                }`}>
-                  {session.sessionType === 'VIRTUAL' ? '💻 Virtual' : '📍 In person'}
-                </span>
+                {/* No "In person" (Karl: "we don't need to know in person").
+                    The panel is already tinted by kind, a virtual session
+                    carries its join link below, and a label saying the normal
+                    case is a line spent on the absence of news. */}
+                {session.sessionType === 'VIRTUAL' && (
+                  <span className="text-xs font-semibold uppercase tracking-wide text-purple-500">💻 Virtual</span>
+                )}
                 {isBuddyWalk && (
                   <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-200/70 px-2 py-0.5 rounded-full">
                     🐕 Buddy walk · {allDogsAttending.length} dog{allDogsAttending.length === 1 ? '' : 's'}
@@ -2567,12 +2578,55 @@ function SessionModal({
                 you read it — notes, homework, history. Clicking a block used to
                 give you only the first, with no way through to the second. */}
             <div className="flex flex-shrink-0 items-start gap-1">
+              {/* Ring them, or message them — the two things a trainer reaches
+                  for when a session is about to start and something has
+                  changed (Karl: "the bit that's missing is icons for calling
+                  client / messaging client"). Both were a page away.
+                  The call icon only appears when there IS a number: a tel:
+                  link to nothing is a dead button. */}
+              {clientId && session.client?.phone && (
+                <a
+                  href={`tel:${session.client.phone.replace(/\s+/g, '')}`}
+                  aria-label={`Call ${clientName ?? 'client'}`}
+                  title={`Call ${session.client.phone}`}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-white/70 hover:text-slate-900"
+                >
+                  <Phone className="h-4 w-4" strokeWidth={1.75} />
+                </a>
+              )}
+              {clientId && (
+                <Link
+                  href={`/messages?client=${clientId}`}
+                  aria-label={`Message ${clientName ?? 'client'}`}
+                  title="Message"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-white/70 hover:text-slate-900"
+                >
+                  <MessageSquare className="h-4 w-4" strokeWidth={1.75} />
+                </Link>
+              )}
+              {/* The client's own record, as a person (Karl: "change the view
+                  to a person icon"). It also puts back the "View client
+                  profile" the footer used to carry, as an icon rather than a
+                  line of its own. */}
+              {clientId && (
+                <Link
+                  href={`/clients/${clientId}`}
+                  aria-label={`Open ${clientName ?? 'client'}'s profile`}
+                  title="Client profile"
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-white/70 hover:text-slate-900"
+                >
+                  <User className="h-4 w-4" strokeWidth={1.75} />
+                </Link>
+              )}
+              {/* The session's own page — same destination as before, just the
+                  arrow without the word now the row is icons. */}
               <Link
                 href={`/sessions/${session.id}`}
-                className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-blue-600 hover:bg-blue-50"
+                aria-label="Open this session's page"
+                title="Open session page"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-white/70 hover:text-slate-900"
               >
                 <ArrowUpRight className="h-4 w-4" strokeWidth={1.75} />
-                View
               </Link>
               <button onClick={onClose} aria-label="Close" className="p-1 text-slate-400 hover:text-slate-600 mt-0.5">
                 <X className="h-5 w-5" />
@@ -2588,23 +2642,27 @@ function SessionModal({
             <PageTabs
               label="Session sections"
               active={modalTab}
-              onSelect={(id: string) => setModalTab(id as 'session' | 'edit')}
+              onSelect={(id: string) => setModalTab(id as 'notes' | 'previous' | 'edit')}
               tabs={[
-                { id: 'session', label: 'Session' },
+                { id: 'notes', label: 'Notes' },
+                { id: 'previous', label: 'Previous' },
                 { id: 'edit', label: 'Details' },
               ]}
             />
           )}
 
+          {/* Both mounted, toggled with `hidden`: the form holds unsaved text,
+              and unmounting it to glance at last week's notes would throw that
+              away. */}
           {showWriteUpTab && (
-            <div className={modalTab === 'session' ? '' : 'hidden'}>
-              <SessionWriteUp
-                sessionId={session.id}
-                sessionStatus={session.status}
-                clientName={clientName}
-                dogNames={allDogsAttending.map(d => d.name)}
-              />
-            </div>
+            <>
+              <div className={modalTab === 'notes' ? '' : 'hidden'}>
+                <SessionWriteUp sessionId={session.id} sessionStatus={session.status} view="notes" />
+              </div>
+              <div className={modalTab === 'previous' ? '' : 'hidden'}>
+                <SessionWriteUp sessionId={session.id} sessionStatus={session.status} view="previous" />
+              </div>
+            </>
           )}
 
           {/* Everything below is the booking: status, dog, group walk, when,
@@ -2721,7 +2779,7 @@ function SessionModal({
           {/* Buddies — entry point for regular (non-buddy-walk) sessions.
               Once a buddy is added the session becomes a buddy walk and the
               Attendees view above takes over. */}
-          {!isBuddyWalk && clientId && !showBuddyPicker && (
+          {canGroupWalk && !isBuddyWalk && clientId && !showBuddyPicker && (
             <div>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Group walk</p>
@@ -3170,19 +3228,13 @@ function SessionModal({
             })()}
           </div>
           )}
-          </div>
-        </div>
 
-        {/* Footer */}
-        <div className="flex-shrink-0 flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50">
-          {clientId ? (
-            <button
-              onClick={() => router.push(`/clients/${clientId}`)}
-              className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:text-blue-700"
-            >
-              <ExternalLink className="h-4 w-4" /> View client profile
-            </button>
-          ) : <span />}
+          {/* Delete lives with the booking (Karl: "the delete should be on the
+              details tab"), not in a footer under the write-up. Deleting a
+              session is editing the diary — the same job as changing its time
+              — and a red button under a form you're filling in is a red button
+              in the wrong place. */}
+          <div className="flex justify-end border-t border-slate-100 pt-4">
           <DeleteSessionMenu
             deleting={deleting}
             canDeleteFollowing={!!session.clientPackageId}
@@ -3200,7 +3252,11 @@ function SessionModal({
               }
             }}
           />
+          </div>
+          </div>
         </div>
+
+
       </div>
     </div>
   )
@@ -4462,6 +4518,7 @@ export function ScheduleView({
           session={activeSession}
           clients={clients}
           members={members}
+          canGroupWalk={(allowedSlotTypes ?? []).includes('buddies')}
           onClose={() => setActiveSession(null)}
           onStatusChange={handleSessionStatusChange}
           onSessionsUpdate={(id, updates) =>

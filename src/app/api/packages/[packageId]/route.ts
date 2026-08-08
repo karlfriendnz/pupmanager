@@ -446,7 +446,11 @@ export async function DELETE(
     ])
     if (invoiced > 0 || paid > 0) {
       return NextResponse.json(
-        { error: `This ${kind} has been billed for. Deleting it would orphan those invoices — cancel them first.` },
+        // Plain words: Karl read the old one and said "I'm not sure what the
+        // orphan message means". If the person who built the product can't
+        // parse it, a dog trainer mid-delete has no chance. Say what happened
+        // and what to do — not what it does to the database.
+        { error: `You have already invoiced a client for this ${kind}. Cancel those invoices first, then you can delete it.` },
         { status: 409 },
       )
     }

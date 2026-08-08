@@ -255,6 +255,32 @@ export function SessionFormReport({
           </div>
         )
       }
+      // An EMPTY write-up opens straight on the questions — there is nothing to
+      // preview, and a preview of nothing behind an Edit button is a tap that
+      // exists only because this component can also summarise (Karl, on the
+      // calendar popover: "it should load the notes list view so you can start
+      // filling in the notes there and then").
+      //
+      // Once something IS written, the preview is right: you come back to READ
+      // it far more often than to change it, and Edit is one tap away.
+      const nothingWritten =
+        template.questions.every(q => !r.answers[q.id]) &&
+        !r.introMessage && !r.closingMessage
+      if (!editing && nothingWritten && autoPromptIfEmpty) {
+        return (
+          <FormFillerBody
+            sessionId={sessionId}
+            template={template}
+            existing={r}
+            linked={linked}
+            onSaved={handleSaved}
+            onCancel={() => setEditing(null)}
+            onRemove={() => handleDelete(r.formId)}
+            key={r.formId}
+          />
+        )
+      }
+
       // Default to a read-only PREVIEW with an Edit button. Editing reveals the
       // filler; saving (handleSaved sets editing=null) or cancelling returns
       // to the preview.

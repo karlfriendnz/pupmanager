@@ -283,7 +283,10 @@ export default async function SchedulePage({
           },
         },
         client: {
-          select: { id: true, user: { select: { name: true, email: true } } },
+          // `phone` is here for the popover's call button — a trainer looking
+          // at a session wants to ring the owner, and the number was one page
+          // away on the client's profile.
+          select: { id: true, phone: true, user: { select: { name: true, email: true } } },
         },
         clientPackage: {
           select: { package: { select: { color: true } } },

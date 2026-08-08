@@ -95,14 +95,14 @@ export async function GET(req: Request) {
           },
         },
       },
-      client: { select: { id: true, user: { select: { name: true, email: true } } } },
+      client: { select: { id: true, phone: true, user: { select: { name: true, email: true } } } },
       clientPackage: { select: { package: { select: { color: true } } } },
       buddies: {
         select: {
           id: true,
           clientId: true,
           dogId: true,
-          client: { select: { id: true, user: { select: { name: true, email: true } } } },
+          client: { select: { id: true, phone: true, user: { select: { name: true, email: true } } } },
           dog: { select: { id: true, name: true } },
         },
       },

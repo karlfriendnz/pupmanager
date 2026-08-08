@@ -152,7 +152,7 @@ describe('DELETE /api/packages/[packageId] — refuses rather than destroying', 
     h.invoiceCount.mockResolvedValue(1)
     const res = await DELETE(req(), params)
     expect(res.status).toBe(409)
-    expect((await res.json()).error).toContain('billed for')
+    expect((await res.json()).error).toContain('already invoiced')
     expect(h.pkgDelete).not.toHaveBeenCalled()
   })
 

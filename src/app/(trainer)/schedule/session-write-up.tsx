@@ -1,7 +1,6 @@
 'use client'
 
-import { useState } from 'react'
-import { ChevronDown, History } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { SessionFormReport } from '@/components/session-form-report'
 
 type PrevEntry = { label: string | null; value: string; italic: boolean }
@@ -28,104 +27,84 @@ type PrevSession = { id: string; title: string; scheduledAt: string; entries: Pr
 export function SessionWriteUp({
   sessionId,
   sessionStatus,
-  clientName,
-  dogNames,
+  view,
 }: {
   sessionId: string
   sessionStatus: 'UPCOMING' | 'COMPLETED' | 'COMMENTED' | 'INVOICED'
-  clientName: string | null
-  dogNames: string[]
+  /** Which tab is showing — the two share one fetch and one mount. */
+  view: 'notes' | 'previous'
 }) {
-  const [open, setOpen] = useState(false)
   const [prev, setPrev] = useState<PrevSession[] | null>(null)
   const [failed, setFailed] = useState(false)
 
-  async function togglePrevious() {
-    const next = !open
-    setOpen(next)
-    if (!next || prev !== null) return
-    try {
-      const res = await fetch(`/api/sessions/${sessionId}/previous`)
-      if (!res.ok) throw new Error('failed')
-      const data = await res.json()
-      setPrev(data.items ?? [])
-    } catch {
-      setFailed(true)
-    }
+  // Fetched the first time the Previous tab is looked at, and kept. Switching
+  // back and forth must not re-ask the server for something that cannot have
+  // changed while the popover was open.
+  useEffect(() => {
+    if (view !== 'previous' || prev !== null || failed) return
+    let live = true
+    fetch(`/api/sessions/${sessionId}/previous`)
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error('failed'))))
+      .then(d => { if (live) setPrev(d.items ?? []) })
+      .catch(() => { if (live) setFailed(true) })
+    return () => { live = false }
+  }, [view, prev, failed, sessionId])
+
+  if (view === 'previous') {
+    return (
+      <div className="flex flex-col gap-3">
+        {failed ? (
+          <p className="text-[13px] text-red-600">Could not load previous notes.</p>
+        ) : prev === null ? (
+          <p className="text-[13px] text-slate-400">Loading…</p>
+        ) : prev.length === 0 ? (
+          <p className="text-[13px] text-slate-400">Nothing written up for this client yet.</p>
+        ) : (
+          prev.map(s => (
+            <div key={s.id}>
+              <p className="flex flex-wrap items-baseline gap-x-2">
+                <span className="text-sm font-medium text-slate-900">{s.title}</span>
+                <span className="text-xs tabular-nums text-slate-400">
+                  {new Date(s.scheduledAt).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: '2-digit' })}
+                </span>
+              </p>
+              {s.entries.length === 0 ? (
+                <p className="mt-0.5 text-[13px] text-slate-400">No notes recorded.</p>
+              ) : (
+                <div className="mt-1 flex flex-col gap-1.5">
+                  {s.entries.map((e, i) => (
+                    <div key={i}>
+                      {e.label && (
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{e.label}</p>
+                      )}
+                      <p className={`whitespace-pre-line text-[13px] ${e.italic ? 'italic text-slate-600' : 'text-slate-700'}`}>
+                        {e.value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    )
   }
 
+  // NOTES — the same form the session's own page uses, so a write-up started
+  // here and finished there is one write-up, not two.
+  //
+  // `autoPromptIfEmpty` so it opens ON the questions rather than on a button
+  // that opens the questions (Karl: "it should load the notes list view so you
+  // can start filling in the notes there and then"). A trainer taps a session
+  // to write it up; making them tap again to begin is a step that exists only
+  // because the component can also be used as a summary elsewhere.
   return (
-    <div className="flex flex-col gap-4">
-      {/* WHO — a third of the row on a wide popover, full width on a phone
-          where a third is four words a line (Karl asked for the third). */}
-      <div className="sm:max-w-[33%]">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Client</p>
-        <p className="mt-1 truncate text-sm font-medium text-slate-900">{clientName ?? '—'}</p>
-        {dogNames.length > 0 && (
-          <p className="mt-0.5 truncate text-[13px] text-slate-500">{dogNames.join(', ')}</p>
-        )}
-      </div>
-
-      {/* WHAT YOU WROTE LAST TIME — a button, closed by default. It's context,
-          not the task, so it shouldn't push the form down the screen until
-          it's asked for. */}
-      <div className="rounded-xl border border-slate-200">
-        <button
-          type="button"
-          onClick={togglePrevious}
-          aria-expanded={open}
-          className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium text-slate-700 active:bg-slate-50"
-        >
-          <History className="h-4 w-4 shrink-0 text-slate-400" strokeWidth={1.75} />
-          <span className="flex-1">Previous notes</span>
-          <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
-        </button>
-
-        {open && (
-          <div className="border-t border-slate-200 px-3 py-3">
-            {failed ? (
-              <p className="text-[13px] text-red-600">Could not load previous notes.</p>
-            ) : prev === null ? (
-              <p className="text-[13px] text-slate-400">Loading…</p>
-            ) : prev.length === 0 ? (
-              <p className="text-[13px] text-slate-400">Nothing written up for this client yet.</p>
-            ) : (
-              <div className="flex flex-col gap-3">
-                {prev.map(s => (
-                  <div key={s.id}>
-                    <p className="flex flex-wrap items-baseline gap-x-2">
-                      <span className="text-sm font-medium text-slate-900">{s.title}</span>
-                      <span className="text-xs tabular-nums text-slate-400">
-                        {new Date(s.scheduledAt).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: '2-digit' })}
-                      </span>
-                    </p>
-                    {s.entries.length === 0 ? (
-                      <p className="mt-0.5 text-[13px] text-slate-400">No notes recorded.</p>
-                    ) : (
-                      <div className="mt-1 flex flex-col gap-1.5">
-                        {s.entries.map((e, i) => (
-                          <div key={i}>
-                            {e.label && (
-                              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{e.label}</p>
-                            )}
-                            <p className={`whitespace-pre-line text-[13px] ${e.italic ? 'italic text-slate-600' : 'text-slate-700'}`}>
-                              {e.value}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* THE FORM — the same one the session's own page uses, so a write-up
-          started here and finished there is one write-up, not two. */}
-      <SessionFormReport sessionId={sessionId} sessionStatus={sessionStatus} layout="inline" />
-    </div>
+    <SessionFormReport
+      sessionId={sessionId}
+      sessionStatus={sessionStatus}
+      layout="inline"
+      autoPromptIfEmpty
+    />
   )
 }

@@ -138,7 +138,8 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ prod
   }
   if (invoiced > 0 || paid > 0) {
     return NextResponse.json(
-      { error: 'This product has been billed for. Deleting it would orphan those invoices — hide it instead, or cancel them first.' },
+      // Same plain-words rule as the package refusal next door.
+      { error: 'You have already invoiced a client for this product. Hide it instead, or cancel those invoices first.' },
       { status: 409 },
     )
   }
