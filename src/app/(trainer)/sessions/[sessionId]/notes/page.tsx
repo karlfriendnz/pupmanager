@@ -2,14 +2,13 @@ import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Calendar, ChevronDown, Video, User, Clock, History, Paperclip, PawPrint, Eye, ListChecks } from 'lucide-react'
-import { formatSessionTitle, personLabel } from '@/lib/utils'
+import { formatSessionTitle } from '@/lib/utils'
 import { formatMoney } from '@/lib/money'
 import { runSessionHref } from '@/lib/run-kind'
 import { SessionFormReport } from '@/components/session-form-report'
 import { hasAddon } from '@/lib/billing'
 import { SessionLibraryTasks } from '@/components/session-library-tasks'
 import { SessionSeriesStep } from '@/components/trainer/session-series-step'
-import { SessionTimeTracking } from '@/components/session-time-tracking'
 import { OpenSessionLink } from '../open-session-link'
 import { DeleteSessionRow } from '../session-actions'
 import { DisclosureRow, FactRow, LinkRow } from '../session-rows'
@@ -29,7 +28,7 @@ export default async function SessionPage({
   searchParams,
 }: {
   params: Promise<{ sessionId: string }>
-  searchParams: Promise<{ from?: string }>
+  searchParams: Promise<{ from?: string; tab?: string }>
 }) {
   const session = await auth()
   if (!session) redirect('/login')
@@ -51,7 +50,8 @@ export default async function SessionPage({
   // Only an in-app path is honoured: `from` arrives in the URL, so anything
   // else is an open redirect wearing a Back button, and `//host` is a
   // protocol-relative URL that leaves the site while looking like a path.
-  const rawFrom = (await searchParams).from
+  const sp = await searchParams
+  const rawFrom = sp.from
   const cameFrom = rawFrom && rawFrom.startsWith('/') && !rawFrom.startsWith('//') ? rawFrom : null
 
   // Tenant scope only. Do NOT also filter on `clientId: { not: null }` — a
@@ -157,14 +157,8 @@ export default async function SessionPage({
 
   const currency = profile?.payoutCurrency ?? 'nzd'
 
-  // Team members for the "who logged time" picker, plus the session's logged
-  // time entries shaped for the client component.
-  const members = await prisma.trainerMembership.findMany({
-    where: { companyId: trainerId },
-    orderBy: { acceptedAt: 'asc' },
-    select: { id: true, user: { select: { name: true, email: true } } },
-  })
-  const timeMembers = members.map(m => ({ id: m.id, name: personLabel(m.user) }))
+  // The logged entries, for the Time row's subline only — the picker itself
+  // lives on the time screen now, so the member list is loaded there.
   const timeEntries = trainingSession.timeEntries.map(e => ({
     id: e.id,
     membershipId: e.membershipId,
@@ -280,6 +274,7 @@ export default async function SessionPage({
           used to be a sticky rail BESIDE the write-up; they're the first thing
           in the first tab now, above it, at a third of the width. */}
       <SessionScreenTabs
+        initialTab={sp.tab === 'previous' ? 'previous' : sp.tab === 'details' ? 'details' : 'notes'}
         details={
         <div>
           <FlatBlock>
@@ -453,19 +448,15 @@ export default async function SessionPage({
               />
             </DisclosureRow>
 
-            <DisclosureRow
+            {/* Time is its own screen now, off the session page's "Log time"
+                row — one home, same as photos. */}
+            <LinkRow
               icon={Clock}
               accent={accent}
               label="Time tracking"
               sub={timeSub}
-              defaultOpen={timeEntries.length > 0}
-            >
-              <SessionTimeTracking
-                sessionId={trainingSession.id}
-                initialEntries={timeEntries}
-                members={timeMembers}
-              />
-            </DisclosureRow>
+              href={`/sessions/${trainingSession.id}/time`}
+            />
 
 
             {/* Was hidden behind a "…" menu in the header: a whole portal,

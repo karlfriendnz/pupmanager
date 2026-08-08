@@ -34,6 +34,7 @@ export function SessionScreenTabs({
   previousNotes,
   writeUp,
   more,
+  initialTab = 'notes',
 }: {
   /** Dog and owner. A third of the row on a wide screen, per Karl. */
   details: ReactNode
@@ -43,8 +44,14 @@ export function SessionScreenTabs({
   writeUp: ReactNode
   /** Photos, homework, time, preview, profile, delete. */
   more: ReactNode
+  /**
+   * Which tab to open on. The session screen's "Previous notes" row asks for
+   * `previous` — it is a door to what was written last time, and landing on
+   * the write-up instead would make the trainer hunt for what they clicked.
+   */
+  initialTab?: 'notes' | 'previous' | 'details'
 }) {
-  const [tab, setTab] = useState<'notes' | 'previous' | 'details'>('notes')
+  const [tab, setTab] = useState<'notes' | 'previous' | 'details'>(initialTab)
 
   return (
     <>

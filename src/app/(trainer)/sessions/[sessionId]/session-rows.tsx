@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, MessageSquare, Phone, User } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -185,5 +185,79 @@ export function ActionLinkButton({
         {sub && <span className="mt-0.5 block truncate text-[13px] font-normal text-slate-500">{sub}</span>}
       </span>
     </Link>
+  )
+}
+
+/**
+ * The one action this screen is FOR, as a filled brand button.
+ *
+ * Six identical white rows had no shape — nothing on the screen said which
+ * one you were meant to press (Karl: "I am liking this but it's just not
+ * there yet"). One filled button answers that in the only way a glance can
+ * read, and it is the only paint on the page: colour is the trainer's and it
+ * is rationed (AGENTS.md).
+ */
+export function PrimaryActionButton({
+  href,
+  icon: Icon,
+  label,
+  sub,
+}: {
+  href: string
+  icon: LucideIcon
+  label: string
+  sub?: string | null
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex w-full items-center gap-3 rounded-xl bg-[var(--pm-brand-600)] px-4 py-5 text-left text-[15px] font-semibold text-white transition-colors hover:bg-[var(--pm-brand-700)] active:bg-[var(--pm-brand-700)]"
+    >
+      <Icon className="h-5 w-5 flex-shrink-0" strokeWidth={1.75} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{label}</span>
+        {sub && <span className="mt-0.5 block truncate text-[13px] font-normal text-white/80">{sub}</span>}
+      </span>
+    </Link>
+  )
+}
+
+/**
+ * Message, call, profile — the three ways to reach the person whose dog this
+ * is (Karl: "I think we need to have the contact controls on here").
+ *
+ * A divided strip under the identity row, because they belong to the PERSON
+ * named above them, not to the session's list of jobs. Call only appears when
+ * there is a number: a `tel:` link to nothing is a dead end wearing a phone
+ * icon (the same rule the calendar popover used).
+ */
+export function ContactStrip({
+  clientId,
+  phone,
+  accent,
+}: {
+  clientId: string
+  phone?: string | null
+  accent?: string | null
+}) {
+  const cell =
+    'flex min-h-[52px] flex-col items-center justify-center gap-1 px-2 py-2.5 text-[12px] font-medium text-slate-700 transition-colors hover:bg-slate-50 active:bg-slate-100'
+  return (
+    <div className={`grid ${phone ? 'grid-cols-3' : 'grid-cols-2'} divide-x divide-slate-200 border-t border-slate-200`}>
+      <Link href={`/messages?client=${clientId}`} className={cell}>
+        <MessageSquare className="h-[18px] w-[18px]" style={iconStyle(accent)} strokeWidth={1.75} />
+        <span>Message</span>
+      </Link>
+      {phone && (
+        <a href={`tel:${phone.replace(/\s+/g, '')}`} className={cell}>
+          <Phone className="h-[18px] w-[18px]" style={iconStyle(accent)} strokeWidth={1.75} />
+          <span>Call</span>
+        </a>
+      )}
+      <Link href={`/clients/${clientId}`} className={cell}>
+        <User className="h-[18px] w-[18px]" style={iconStyle(accent)} strokeWidth={1.75} />
+        <span>Profile</span>
+      </Link>
+    </div>
   )
 }

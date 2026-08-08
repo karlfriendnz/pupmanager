@@ -1,15 +1,15 @@
 import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { Calendar, Video, PawPrint, NotebookPen, Users, Camera } from 'lucide-react'
+import { Calendar, Video, PawPrint, NotebookPen, Users, Camera, History, Clock } from 'lucide-react'
 import { formatSessionTitle } from '@/lib/utils'
 import { runSessionHref, runHref, runKind, runKindLabel } from '@/lib/run-kind'
 import { hasAddon } from '@/lib/billing'
 import { PaySessionButton } from './pay-session-button'
-import { LinkRow, ActionLinkButton } from './session-rows'
+import { LinkRow, PrimaryActionButton, ContactStrip } from './session-rows'
 import { SessionWhenRow } from './session-when'
 import { CompleteButton, InvoiceButton } from './session-buttons'
-import { FlatBlock } from '@/components/shared/flat-list'
+import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
 import { PageHeader } from '@/components/shared/page-header'
 import { SampleRecordBadge } from '@/components/sample-record-badge'
 import { SetPageImmersive } from '@/components/shared/page-title'
@@ -75,7 +75,7 @@ export default async function SessionPage({
           },
         },
       },
-      client: { select: { id: true, isSample: true, user: { select: { name: true, email: true } } } },
+      client: { select: { id: true, isSample: true, phone: true, user: { select: { name: true, email: true } } } },
       dog: {
         select: {
           name: true,
@@ -86,8 +86,9 @@ export default async function SessionPage({
       // Extra dogs attending alongside the primary one. More than one dog in
       // the room is what makes attendance a question worth asking.
       buddies: { select: { id: true } },
-      // Just the count, for the photos button's subline.
+      // Counts only — the photos and time rows carry them as trailing text.
       _count: { select: { attachments: true } },
+      timeEntries: { select: { minutes: true } },
     },
   })
   if (!trainingSession) notFound()
@@ -251,6 +252,29 @@ export default async function SessionPage({
   const attendanceHref = run ? runScreenHref! : `/sessions/${trainingSession.id}/attendance`
 
   const attachmentCount = trainingSession._count.attachments
+  const loggedMinutes = trainingSession.timeEntries.reduce((sum, e) => sum + e.minutes, 0)
+
+  // The client this session belongs to — directly, or through the dog's
+  // primary owner (an ad-hoc session can carry only a dog).
+  const contactClientId = trainingSession.clientId ?? trainingSession.dog?.primaryFor[0]?.id ?? null
+
+  // When this client was last written up. It is the thing a trainer wants
+  // BEFORE they start writing — "what did we do last time" — so the session
+  // screen carries a door to it with the date on it, and the notes themselves
+  // stay in one home on the write-up's Previous tab.
+  const lastWriteUp = contactClientId
+    ? await prisma.trainingSession.findFirst({
+        where: {
+          clientId: contactClientId,
+          id: { not: trainingSession.id },
+          scheduledAt: { lte: trainingSession.scheduledAt },
+          status: { in: ['COMPLETED', 'COMMENTED', 'INVOICED'] },
+          formResponses: { some: {} },
+        },
+        orderBy: { scheduledAt: 'desc' },
+        select: { scheduledAt: true },
+      })
+    : null
 
   const clientUser = trainingSession.client?.user ?? trainingSession.dog?.primaryFor[0]?.user
   const clientName = clientUser ? (clientUser.name ?? clientUser.email) : null
@@ -330,6 +354,16 @@ export default async function SessionPage({
             </span>
           </div>
 
+          {/* Message, call, profile — attached to the person named above,
+              because that is who they reach. */}
+          {!run && contactClientId && (
+            <ContactStrip
+              clientId={contactClientId}
+              phone={trainingSession.client?.phone}
+              accent={accent}
+            />
+          )}
+
           {/* Date, time, duration and — when there IS one — the place, all on
               one row. "In-person" had a row to itself and spent it saying the
               default; a real address is worth showing but not worth a row.
@@ -363,99 +397,121 @@ export default async function SessionPage({
           )}
         </FlatBlock>
 
-        {/* 2 · The write-up, which is the job most of the time. */}
+        {/* 2 · The one thing this screen is for. The only filled button on
+            the page: six identical white rows told a glance nothing about
+            which to press (Karl: "it's just not there yet"). */}
         {notesOn && (
-          <ActionLinkButton
+          <PrimaryActionButton
             href={notesHref}
             icon={NotebookPen}
             label="Start notes"
-            accent={accent}
+            sub={run ? 'Write up each client' : undefined}
           />
         )}
 
-        {/* 3 · Attendance — every session of a run, and a 1:1 with buddies. */}
-        {canTakeAttendance && (
-          <ActionLinkButton
-            href={attendanceHref}
-            icon={Users}
-            label="Take attendance"
-            sub={run
-              ? `${enrolledCount} booked in`
-              : `${buddyCount + 1} dogs booked in`}
+        {/* 3 · The rest of what you do WHILE it's happening, as one block of
+            rows rather than a stack of separate bordered buttons (AGENTS.md:
+            related things live in one block split by hairlines). */}
+        <FlatBlock>
+          {canTakeAttendance && (
+            <LinkRow
+              icon={Users}
+              accent={accent}
+              label="Take attendance"
+              href={attendanceHref}
+              trailingLabel={run ? `${enrolledCount} in` : `${buddyCount + 1} dogs`}
+            />
+          )}
+          {lastWriteUp && (
+            <LinkRow
+              icon={History}
+              accent={accent}
+              label="Previous notes"
+              href={`/sessions/${trainingSession.id}/notes?tab=previous`}
+              trailingLabel={lastWriteUp.scheduledAt.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })}
+            />
+          )}
+          <LinkRow
+            icon={Camera}
             accent={accent}
+            label="Add photos/video"
+            href={`/sessions/${trainingSession.id}/photos`}
+            trailingLabel={attachmentCount > 0 ? `${attachmentCount} so far` : undefined}
           />
-        )}
-
-        {/* 4 · What you shot while it was happening. */}
-        <ActionLinkButton
-          href={`/sessions/${trainingSession.id}/photos`}
-          icon={Camera}
-          label="Add photos/video"
-          sub={attachmentCount > 0
-            ? `${attachmentCount} already on this session`
-            : undefined}
-          accent={accent}
-        />
-
-        {/* 5 · Billed. */}
-        <InvoiceButton
-          sessionId={trainingSession.id}
-          initialInvoicedAt={trainingSession.invoicedAt?.toISOString() ?? null}
-          accent={accent}
-        />
-
-        {/* Taking a card is a different act from recording that you billed
-            them, and only exists when the trainer has the add-on on. It sits
-            with Invoice because it is the same job done the other way. */}
-        {canTakePayment && (
-          <PaySessionButton
+          <LinkRow
+            icon={Clock}
             accent={accent}
-            currency={currency}
-            prefill={{
-              client: {
-                id: trainingSession.client!.id,
-                name: trainingSession.client!.user?.name ?? null,
-                dogName: trainingSession.dog?.name ?? null,
-                dogPhotoUrl: trainingSession.dog?.photoUrl ?? null,
-              },
-              lines: unpaidInvoice
-                // Settling: seed with what they already owe. PATCH is
-                // replace-all, so these must go back with any upsell or
-                // they'd be wiped.
-                ? unpaidInvoice.lines.map((l) => ({
-                    description: l.description,
-                    quantity: l.quantity,
-                    unitAmountCents: l.unitAmountCents,
-                    xeroAccountCode: l.xeroAccountCode,
-                  }))
-                // Fresh: seed this session at its share of the package price.
-                // Skipped when unpriced — the trainer just picks items instead
-                // of starting from a $0 line.
-                : perSessionCents > 0
-                  ? [{
-                      description: formatSessionTitle(trainingSession.title),
-                      quantity: 1,
-                      unitAmountCents: perSessionCents,
-                    }]
-                  : [],
-              ...(unpaidInvoice
-                ? { settle: { invoiceId: unpaidInvoice.id, payToken: unpaidInvoice.payToken } }
-                : {}),
-            }}
+            label="Log time"
+            href={`/sessions/${trainingSession.id}/time`}
+            trailingLabel={loggedMinutes > 0
+              ? `${Number((loggedMinutes / 60).toFixed(2))} h`
+              : undefined}
           />
-        )}
+        </FlatBlock>
 
-        {/* 5 · Last, because it is last (Karl: "I think then mark as complete
-            is the last step then?"). Completing PUBLISHES the write-up — the
-            notes become readable on the client's own screens and the client is
-            told — so everything you might still do to this session has to have
-            happened above it. It sat third while it was the one thing you
-            couldn't take back. */}
-        <CompleteButton
-          sessionId={trainingSession.id}
-          initialStatus={trainingSession.status}
-          accent={accent}
-        />
+        {/* 4 · Closing it off — its own group, because these are the ones you
+            do at the END, and the last of them can't be taken back. */}
+        <div className="mt-2">
+          <SectionLabel>Finishing up</SectionLabel>
+          <FlatBlock>
+            <InvoiceButton
+              sessionId={trainingSession.id}
+              initialInvoicedAt={trainingSession.invoicedAt?.toISOString() ?? null}
+              accent={accent}
+            />
+
+            {/* Taking a card is a different act from recording that you billed
+                them elsewhere, and only exists when the add-on is on. */}
+            {canTakePayment && (
+              <PaySessionButton
+                accent={accent}
+                currency={currency}
+                prefill={{
+                  client: {
+                    id: trainingSession.client!.id,
+                    name: trainingSession.client!.user?.name ?? null,
+                    dogName: trainingSession.dog?.name ?? null,
+                    dogPhotoUrl: trainingSession.dog?.photoUrl ?? null,
+                  },
+                  lines: unpaidInvoice
+                    // Settling: seed with what they already owe. PATCH is
+                    // replace-all, so these must go back with any upsell or
+                    // they'd be wiped.
+                    ? unpaidInvoice.lines.map((l) => ({
+                        description: l.description,
+                        quantity: l.quantity,
+                        unitAmountCents: l.unitAmountCents,
+                        xeroAccountCode: l.xeroAccountCode,
+                      }))
+                    // Fresh: seed this session at its share of the package
+                    // price. Skipped when unpriced — the trainer picks items
+                    // instead of starting from a $0 line.
+                    : perSessionCents > 0
+                      ? [{
+                          description: formatSessionTitle(trainingSession.title),
+                          quantity: 1,
+                          unitAmountCents: perSessionCents,
+                        }]
+                      : [],
+                  ...(unpaidInvoice
+                    ? { settle: { invoiceId: unpaidInvoice.id, payToken: unpaidInvoice.payToken } }
+                    : {}),
+                }}
+              />
+            )}
+
+            {/* Last, because it is last (Karl: "I think then mark as complete
+                is the last step then?"). Completing PUBLISHES the write-up —
+                the notes become readable on the client's own screens and the
+                client is told — so everything you might still do to this
+                session has to have happened above it. */}
+            <CompleteButton
+              sessionId={trainingSession.id}
+              initialStatus={trainingSession.status}
+              accent={accent}
+            />
+          </FlatBlock>
+        </div>
       </div>
     </>
   )

@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { CreditCard } from 'lucide-react'
 import { SaleComposer, type SalePrefill } from '@/components/shared/sale-composer'
-import { ACTION_BUTTON } from './session-rows'
 
 // "Take payment" on a session the client booked but hasn't paid for.
 //
@@ -15,8 +14,8 @@ import { ACTION_BUTTON } from './session-rows'
 //
 // The parent resolves the invoice server-side and passes it in — null when
 // there's nothing owed (already paid, or unpriced), in which case no button.
-// Renders as one of the session screen's full-width buttons, identical in
-// weight to Complete and Invoice above it. It used to be a solid brand-teal
+// Renders as a row in the session screen's "Finishing up" block, identical in
+// weight to Invoice and Mark as complete beside it. It used to be a solid brand-teal
 // block beside two outlined buttons, which read as decoration rather than
 // hierarchy (AGENTS.md: colour is the trainer's, and it's rationed).
 export function PaySessionButton({
@@ -36,14 +35,14 @@ export function PaySessionButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={ACTION_BUTTON}
+        className="flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-slate-50 active:bg-slate-100"
       >
         <CreditCard
-          className="h-5 w-5 flex-shrink-0 text-slate-700"
+          className="h-[18px] w-[18px] flex-shrink-0 text-slate-700"
           style={accent ? { color: `color-mix(in srgb, ${accent} 78%, #0f172a)` } : undefined}
           strokeWidth={1.75}
         />
-        <span>Take payment</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-900">Take payment</span>
       </button>
 
       <SaleComposer
