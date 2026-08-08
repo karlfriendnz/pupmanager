@@ -5,9 +5,14 @@ export const metadata: Metadata = { title: 'Class session' }
 
 export default async function ClassSessionPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ runId: string; sessionId: string }>
+  searchParams: Promise<{ write?: string }>
 }) {
   const { runId, sessionId } = await params
-  return <ClassSessionContent runId={runId} sessionId={sessionId} basePath="/classes" />
+  // `?write=1` arrives from the session screen's "Start notes" — same register,
+  // landing on "who am I writing up" rather than on marking who turned up.
+  const write = (await searchParams).write === '1'
+  return <ClassSessionContent runId={runId} sessionId={sessionId} write={write} basePath="/classes" />
 }

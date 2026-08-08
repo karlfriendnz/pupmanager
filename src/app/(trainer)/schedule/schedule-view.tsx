@@ -24,7 +24,7 @@ import { SlotTypeChooser, type SlotAddType } from './slot-type-chooser'
 import { NewWalkModal } from './new-walk-modal'
 import { useBookingConflicts, findDropClashes, clashesToConflictResult, fetchBookingConflicts, type ExistingSlot } from '@/lib/use-booking-conflicts'
 import { occupiedEndMs } from '@/lib/buffer'
-import { runSessionHref, type RunKindPackage } from '@/lib/run-kind'
+import { type RunKindPackage } from '@/lib/run-kind'
 import { previewClashKeys, type PreviewBlock as RequestPreviewBlock } from '@/lib/booking-request-preview'
 import { BookingRequestPreviewBanner } from './booking-request-preview-banner'
 import { ProposeTimeSheet } from '@/components/shared/propose-time-sheet'
@@ -3980,14 +3980,14 @@ export function ScheduleView({
   // popover: every width opens the page now.
 
   function handleSessionClick(s: Session) {
-    // Sessions on a run have their own page (attendance + per-client notes) —
-    // in the section that run belongs to. This used to hard-code /classes/…,
-    // which took a drop-in or daycare session to the group-class screen and an
-    // event to a per-session URL events don't have.
-    if (s.classRunId && s.classRun) {
-      router.push(runSessionHref(s.classRunId, s.id, s.classRun.package))
-      return
-    }
+    // EVERY session opens the same screen, whatever kind of offering it came
+    // from (Karl, 2026-08-08: "when you click on a class it's not going to a
+    // different layout to the 1:1 session… this should be consistent across
+    // all offering types"). A class used to go straight to its register, so
+    // the same tap answered with two different screens depending on what you
+    // tapped. /sessions/[id] knows which kind it is and points its buttons at
+    // the register itself.
+    //
     // A 1:1 opens its own page — on every screen, not just a phone (Karl,
     // 2026-08-08: "when you click on the session on a schedule make a full
     // page"). It carries where it came from, so Back returns to the week you

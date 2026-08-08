@@ -141,14 +141,23 @@ export function DisclosureRow({
 }
 
 /**
- * The look of the session screen's full-width action buttons — 56px tall, one
- * per row, a line icon and a label. Exported so the client-side buttons
- * (Complete, Invoice, Take payment) render identically to the server-side
- * links beside them: they sit in one stack, so a difference of a pixel reads
- * as two kinds of thing.
+ * The look of the session screen's full-width action buttons — one per row, a
+ * line icon and a label. Exported so the client-side buttons (Complete,
+ * Invoice, Take payment) render identically to the server-side links beside
+ * them: they sit in one stack, so a difference of a pixel reads as two kinds
+ * of thing.
+ *
+ * Height comes from PADDING (Karl: "can we add top and bottom padding to the
+ * buttons"), which also lets a button with a subline grow rather than crop it.
+ * A fixed 112px was tried first and reverted.
+ *
+ * Note for whoever changes it next: `min-h-…` does NOTHING here. globals.css
+ * sets `button, a { min-height: 44px }` UNLAYERED, and unlayered CSS beats
+ * Tailwind's utilities layer — so a min-height utility on these is silently
+ * thrown away. Use padding, or a plain height (`h-14`), if you mean it.
  */
 export const ACTION_BUTTON =
-  'flex min-h-[56px] w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 text-left text-[15px] font-medium text-slate-900 transition-colors hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60'
+  'flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-5 text-left text-[15px] font-medium text-slate-900 transition-colors hover:bg-slate-50 active:bg-slate-100 disabled:opacity-60'
 
 /**
  * A full-width action button that goes somewhere. Server-side, because a

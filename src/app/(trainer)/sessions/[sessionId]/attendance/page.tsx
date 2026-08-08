@@ -5,6 +5,7 @@ import { PawPrint } from 'lucide-react'
 import { personLabel } from '@/lib/utils'
 import { FlatBlock } from '@/components/shared/flat-list'
 import { PageHeader } from '@/components/shared/page-header'
+import { SetPageImmersive } from '@/components/shared/page-title'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Attendance' }
@@ -65,6 +66,9 @@ export default async function SessionAttendancePage({
 
   return (
     <>
+      {/* No bottom tabs while you're marking who turned up — same rule as the
+          session screen and the class register. */}
+      <SetPageImmersive value keepTopBar />
       <PageHeader
         title="Attendance"
         back={{ href: `/sessions/${trainingSession.id}`, label: 'Back to session' }}

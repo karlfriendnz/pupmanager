@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { Calendar, Video, PawPrint, NotebookPen, Users } from 'lucide-react'
 import { formatSessionTitle } from '@/lib/utils'
-import { runSessionHref } from '@/lib/run-kind'
+import { runSessionHref, runHref, runKind, runKindLabel } from '@/lib/run-kind'
 import { hasAddon } from '@/lib/billing'
 import { PaySessionButton } from './pay-session-button'
 import { FactRow, LinkRow, ActionLinkButton } from './session-rows'
@@ -11,6 +11,7 @@ import { CompleteButton, InvoiceButton } from './session-buttons'
 import { FlatBlock } from '@/components/shared/flat-list'
 import { PageHeader } from '@/components/shared/page-header'
 import { SampleRecordBadge } from '@/components/sample-record-badge'
+import { SetPageImmersive } from '@/components/shared/page-title'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Session' }
@@ -59,10 +60,12 @@ export default async function SessionPage({
   const trainingSession = await prisma.trainingSession.findFirst({
     where: { id: sessionId, trainerId },
     include: {
-      // The run's backing package decides WHICH section's screen this session
-      // belongs to — see the redirect below.
+      // A session on a run: the cohort's name, and the backing package that
+      // says WHICH kind of offering it is (class, casual, daycare, event).
       classRun: {
         select: {
+          id: true,
+          name: true,
           package: {
             select: {
               isGroup: true, allowDropIn: true, sessionCount: true,
@@ -86,21 +89,37 @@ export default async function SessionPage({
   })
   if (!trainingSession) notFound()
 
-  // A session on a RUN belongs to a cohort, not to one client, and already has
-  // a screen built for it (attendance per enrollee). Anything landing here — a
-  // bookmark, a notification, an old link — gets sent there rather than a wall.
-  if (trainingSession.classRunId && trainingSession.classRun) {
-    redirect(runSessionHref(
-      trainingSession.classRunId,
-      trainingSession.id,
-      trainingSession.classRun.package,
-    ))
-  }
+  // A session on a RUN — a class, a casual class, a daycare day, an event —
+  // lands HERE too, on the same five parts (Karl, 2026-08-08: "when you click
+  // on a class it's not going to a different layout to the 1:1 session… this
+  // should be consistent across all offering types with some slight
+  // differences"). It used to redirect straight into the register, so a class
+  // and a 1:1 answered the same tap with two different screens.
+  //
+  // The differences are in what the parts SAY and where the buttons go, not in
+  // the shape: a cohort has a name instead of a dog, always has attendance to
+  // take, and its write-ups are per client on the register screen.
+  const run = trainingSession.classRunId && trainingSession.classRun
+    ? trainingSession.classRun
+    : null
+  const runKindName = run ? runKindLabel(run.package) : null
+
+  // Who is expected. A full enrolment has no dropInSessionId; a drop-in is
+  // attached to THIS session — the same two shapes the register counts.
+  const enrolledCount = run
+    ? await prisma.classEnrollment.count({
+        where: {
+          classRunId: run.id,
+          status: 'ENROLLED',
+          OR: [{ dropInSessionId: null }, { dropInSessionId: trainingSession.id }],
+        },
+      })
+    : 0
 
   // Neither a client nor a class: the client was deleted and the session was
   // left behind. There's nothing to act on, but a bare 404 for a row a trainer
   // just tapped reads as a bug. Say what happened instead.
-  if (!trainingSession.clientId && !trainingSession.dog) {
+  if (!run && !trainingSession.clientId && !trainingSession.dog) {
     return (
       <>
         <PageHeader title="Session" back={{ href: '/schedule', label: 'Back to schedule' }} />
@@ -201,30 +220,68 @@ export default async function SessionPage({
   // sale uses the trainer's payout currency.
   const currency = unpaidInvoice?.currency ?? profile?.payoutCurrency ?? 'nzd'
 
-  // Attendance is a question you can only answer when there is more than one
-  // dog booked in — a buddy session. A plain 1:1 has exactly one dog and the
-  // answer is "they came, or the session didn't happen", which Complete
-  // already says.
+  // Attendance is a question worth asking whenever more than one dog is in the
+  // room: every session of a run, and a 1:1 with buddies on it. A plain 1:1 has
+  // exactly one dog and the answer is "they came, or the session didn't
+  // happen", which Complete already says.
   const buddyCount = trainingSession.buddies.length
-  const canTakeAttendance = buddyCount > 0
+  const canTakeAttendance = run != null || buddyCount > 0
+
+  // Where the two top buttons go, per kind.
+  //
+  // A RUN keeps its register: attendance and the per-client write-ups both
+  // live there, because a cohort's notes are written one enrollee at a time.
+  // `write=1` lands the same screen on "who am I writing up", so the two
+  // buttons don't just repeat each other.
+  //
+  // An EVENT has no per-session screen by definition (one session, so its run
+  // page IS the session) — both buttons go to the event's roster.
+  const runScreenHref = run ? runSessionHref(run.id, trainingSession.id, run.package) : null
+  const isEventRun = run ? runKind(run.package) === 'event' : false
+  const notesHref = run
+    // An event's roster has no write-up mode to land on, so it gets the plain
+    // page rather than a parameter that does nothing.
+    ? (isEventRun ? runScreenHref! : `${runScreenHref}?write=1`)
+    : cameFrom
+      ? `/sessions/${trainingSession.id}/notes?from=${encodeURIComponent(cameFrom)}`
+      : `/sessions/${trainingSession.id}/notes`
+  const attendanceHref = run ? runScreenHref! : `/sessions/${trainingSession.id}/attendance`
 
   const clientUser = trainingSession.client?.user ?? trainingSession.dog?.primaryFor[0]?.user
   const clientName = clientUser ? (clientUser.name ?? clientUser.email) : null
   const d = trainingSession.scheduledAt
-  const notesHref = cameFrom
-    ? `/sessions/${trainingSession.id}/notes?from=${encodeURIComponent(cameFrom)}`
-    : `/sessions/${trainingSession.id}/notes`
+
+  // A run session's title repeats its run: "Puppy School — session 1/6". The
+  // name is already the heading, so the subline keeps only what the title adds
+  // (the same split the register screen uses). Otherwise the card reads
+  // "Puppy School / Class · Puppy School".
+  const runSessionLabel = run && trainingSession.title.includes('—')
+    ? trainingSession.title.split('—').pop()!.trim().replace(/^session/i, 'Session')
+    : null
 
   return (
     <>
+      {/* No bottom tabs here (Karl, 2026-08-08: "the nav bar should not be
+          showing on this page"). Same reasoning as the write-up next door: a
+          screen you opened to do ONE thing to ONE session shouldn't spend its
+          bottom edge offering four other places to be. keepTopBar, so the back
+          arrow survives as the way out. */}
+      <SetPageImmersive value keepTopBar />
+      {/* The shell reserves 5rem at the foot for those tabs plus the home
+          indicator inset. Only the 5rem goes: with the inset gone too, the last
+          button would sit under the home indicator. */}
+      <style>{`@media (max-width: 767px) { .pm-main { padding-bottom: env(safe-area-inset-bottom, 0px) !important; } }`}</style>
+
       <PageHeader
         title="Session"
         back={
           cameFrom
             ? { href: cameFrom, label: cameFrom.startsWith('/schedule') ? 'Back to schedule' : 'Back' }
-            : trainingSession.clientId
-              ? { href: `/clients/${trainingSession.clientId}/sessions`, label: 'Back to client' }
-              : { href: '/schedule', label: 'Back to schedule' }
+            : run
+              ? { href: runHref(run.id, run.package), label: `Back to ${runKindName?.toLowerCase() ?? 'class'}` }
+              : trainingSession.clientId
+                ? { href: `/clients/${trainingSession.clientId}/sessions`, label: 'Back to client' }
+                : { href: '/schedule', label: 'Back to schedule' }
         }
       />
 
@@ -235,10 +292,15 @@ export default async function SessionPage({
 
         {trainingSession.client?.isSample && <SampleRecordBadge />}
 
-        {/* 1 · Who, and when. */}
+        {/* 1 · Who, and when. A cohort has a name where a 1:1 has a dog — the
+            same row either way, so the two screens read as one screen. */}
         <FlatBlock>
           <div className="flex items-center gap-3 px-4 py-3">
-            {trainingSession.dog?.photoUrl ? (
+            {run ? (
+              <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-slate-100">
+                <Users className="h-5 w-5 text-slate-500" strokeWidth={1.75} />
+              </span>
+            ) : trainingSession.dog?.photoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={trainingSession.dog.photoUrl}
@@ -252,10 +314,13 @@ export default async function SessionPage({
             )}
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[15px] font-semibold text-slate-900">
-                {trainingSession.dog?.name ?? clientName ?? 'Session'}
+                {run?.name ?? trainingSession.dog?.name ?? clientName ?? 'Session'}
               </span>
               <span className="mt-0.5 block truncate text-[13px] text-slate-500">
-                {[clientName, formatSessionTitle(trainingSession.title)].filter(Boolean).join(' · ')}
+                {(run
+                  ? [runKindName, runSessionLabel]
+                  : [clientName, formatSessionTitle(trainingSession.title)]
+                ).filter(Boolean).join(' · ')}
               </span>
             </span>
           </div>
@@ -272,7 +337,10 @@ export default async function SessionPage({
               trainingSession.sessionType === 'VIRTUAL'
                 ? (trainingSession.virtualLink ? null : 'Virtual')
                 : trainingSession.location || null,
-              buddyCount > 0 ? `+${buddyCount} buddy dog${buddyCount === 1 ? '' : 's'}` : null,
+              // Who's coming is said once, on the attendance button, where it
+              // is a reason to tap rather than a fact to read.
+              run ? null
+                : buddyCount > 0 ? `+${buddyCount} buddy dog${buddyCount === 1 ? '' : 's'}` : null,
             ].filter(Boolean).join(' · ')}
           />
 
@@ -299,25 +367,20 @@ export default async function SessionPage({
           />
         )}
 
-        {/* 3 · Attendance — only when more than one dog is booked in. */}
+        {/* 3 · Attendance — every session of a run, and a 1:1 with buddies. */}
         {canTakeAttendance && (
           <ActionLinkButton
-            href={`/sessions/${trainingSession.id}/attendance`}
+            href={attendanceHref}
             icon={Users}
             label="Take attendance"
-            sub={`${buddyCount + 1} dogs booked in`}
+            sub={run
+              ? `${enrolledCount} booked in`
+              : `${buddyCount + 1} dogs booked in`}
             accent={accent}
           />
         )}
 
-        {/* 4 · Done. */}
-        <CompleteButton
-          sessionId={trainingSession.id}
-          initialStatus={trainingSession.status}
-          accent={accent}
-        />
-
-        {/* 5 · Billed. */}
+        {/* 4 · Billed. */}
         <InvoiceButton
           sessionId={trainingSession.id}
           initialInvoicedAt={trainingSession.invoicedAt?.toISOString() ?? null}
@@ -325,9 +388,8 @@ export default async function SessionPage({
         />
 
         {/* Taking a card is a different act from recording that you billed
-            them, and only exists when the trainer has the add-on on. It rides
-            below the five so the shape of the screen doesn't change for the
-            trainers who don't. */}
+            them, and only exists when the trainer has the add-on on. It sits
+            with Invoice because it is the same job done the other way. */}
         {canTakePayment && (
           <PaySessionButton
             accent={accent}
@@ -365,6 +427,18 @@ export default async function SessionPage({
             }}
           />
         )}
+
+        {/* 5 · Last, because it is last (Karl: "I think then mark as complete
+            is the last step then?"). Completing PUBLISHES the write-up — the
+            notes become readable on the client's own screens and the client is
+            told — so everything you might still do to this session has to have
+            happened above it. It sat third while it was the one thing you
+            couldn't take back. */}
+        <CompleteButton
+          sessionId={trainingSession.id}
+          initialStatus={trainingSession.status}
+          accent={accent}
+        />
       </div>
     </>
   )

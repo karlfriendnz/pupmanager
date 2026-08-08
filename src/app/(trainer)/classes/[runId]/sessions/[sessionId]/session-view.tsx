@@ -170,6 +170,7 @@ export function SessionView({
   // Which offering section this session sits under, so "Back to class" returns
   // to the right run detail (/classes, /casual-classes or /doggy-daycare).
   basePath = '/classes',
+  write = false,
 }: {
   runId: string
   sessionId: string
@@ -179,6 +180,13 @@ export function SessionView({
   /** The trainer's configured timezone — every date on the page renders in it. */
   tz: string
   basePath?: string
+  /**
+   * Arrived from "Start notes" rather than "Take attendance" (the session
+   * screen has both, pointed at this one screen). The register is the same
+   * list of people either way; what changes is what a tap on a row MEANS —
+   * write this client up, rather than mark them present.
+   */
+  write?: boolean
 }) {
   const router = useRouter()
   const [data, setData] = useState<AttendanceData | null>(null)
@@ -288,6 +296,9 @@ export function SessionView({
   function endPress() { if (pressTimer.current) { clearTimeout(pressTimer.current); pressTimer.current = null } }
   function rowTap(id: string) {
     if (longPressed.current) { longPressed.current = false; return }
+    // Came in to write people up: a tap opens that client's write-up. Marking
+    // them present is still a press-and-hold away, so nothing is lost.
+    if (write) { setNotesFor(id); return }
     toggleStatus(id)
   }
 

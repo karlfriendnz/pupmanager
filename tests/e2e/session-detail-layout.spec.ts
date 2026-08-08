@@ -7,14 +7,19 @@ function db() {
   return new PrismaClient({ adapter: new PrismaPg({ connectionString: TEST_DATABASE_URL }) })
 }
 
-// The session detail screen, at phone width.
+// The session screens, at phone width.
 //
-// It used to be a stack of floating cards — a 340px dog-photo hero, a card per
+// There are two, and the split matters. `/sessions/[id]` is the LANDING screen
+// every kind of session opens on — who and when, then one full-width button per
+// thing you might have opened it to do. `/sessions/[id]/notes` is the write-up,
+// one tap further in: the facts block, the form, and every secondary section
+// (photos, homework, time, preview, delete) as a row that costs one line when
+// it's empty.
+//
+// Both replaced a stack of floating cards — a 340px dog-photo hero, a card per
 // empty section, three coloured action tiles, and two links hidden behind a
-// "…" menu in the header. 1375px of scrolling for a session with no notes, no
-// time logged and no attachments. These tests pin the shape it was rebuilt
-// into: one block of facts, one strip of actions, and every empty section
-// costing a single row.
+// "…" menu in the header. 1375px of scrolling for a session with nothing on
+// it.
 async function login(page: Page, email: string, password: string) {
   await page.goto('/login')
   await page.getByLabel('Email address').fill(email)
@@ -45,11 +50,15 @@ test.use({ viewport: { width: 390, height: 844 } })
 test('an empty session fits on a phone — one facts block, collapsed sections, no hero', async ({ page }) => {
   await login(page, SEED.owner.email, SEED.owner.password)
   const id = await createSession(page)
-  await page.goto(`/sessions/${id}`)
+  await page.goto(`/sessions/${id}/notes`)
 
   // The facts are a list: when (with duration) and where.
   await expect(page.getByText('45 min', { exact: false })).toBeVisible({ timeout: 20_000 })
   await expect(page.getByText('E2E Park')).toBeVisible()
+
+  // The secondary sections live on the Details tab — the screen opens on the
+  // write-up, which is what it's for.
+  await page.getByRole('tab', { name: 'Details' }).click()
 
   // Every empty section costs ONE row that says what's in it — no card, no
   // heading, no "nothing here yet" paragraph inside a bordered box.
@@ -74,29 +83,38 @@ test('an empty session fits on a phone — one facts block, collapsed sections, 
 test('every action stays reachable on the page itself — nothing hides in a "…" menu', async ({ page }) => {
   await login(page, SEED.owner.email, SEED.owner.password)
   const id = await createSession(page, 'E2E Actions Session')
-  await page.goto(`/sessions/${id}`)
 
-  // The header's overflow menu is gone — its two items live on the page now.
+  // The secondary actions live on the write-up screen's Details tab, as rows.
+  await page.goto(`/sessions/${id}/notes`)
+  await page.getByRole('tab', { name: 'Details' }).click()
   await expect(page.getByRole('button', { name: 'More actions' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: /Preview report/ })).toBeVisible({ timeout: 20_000 })
   await expect(page.getByRole('button', { name: /Delete session/ })).toBeVisible()
   await expect(page.getByRole('link', { name: /Client profile/ })).toBeVisible()
 
-  // Complete and invoice are inline, and they still write through.
-  await page.getByRole('button', { name: 'Complete' }).click()
-  await expect(page.getByRole('button', { name: 'Completed' })).toBeVisible({ timeout: 20_000 })
+  // Complete and invoice are full-width buttons on the session screen, and they
+  // still write through. One place each: the write-up must not offer them too.
+  await page.goto(`/sessions/${id}`)
+  await expect(page.getByRole('link', { name: /Start notes/ })).toBeVisible({ timeout: 20_000 })
+  await page.getByRole('button', { name: 'Mark as complete' }).click()
+  await expect(page.getByRole('button', { name: /Completed/ })).toBeVisible({ timeout: 20_000 })
   await page.getByRole('button', { name: 'Invoice', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Invoiced' })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: /Invoiced/ })).toBeVisible({ timeout: 20_000 })
 
   await page.reload()
-  await expect(page.getByRole('button', { name: 'Completed' })).toBeVisible({ timeout: 20_000 })
-  await expect(page.getByRole('button', { name: 'Invoiced' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Completed/ })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: /Invoiced/ })).toBeVisible()
+
+  await page.goto(`/sessions/${id}/notes`)
+  await page.getByRole('tab', { name: 'Details' }).click()
+  await expect(page.getByRole('button', { name: /Mark as complete/ })).toHaveCount(0)
 })
 
 test('delete asks first, and only then deletes', async ({ page }) => {
   await login(page, SEED.owner.email, SEED.owner.password)
   const id = await createSession(page, 'E2E Delete Session')
-  await page.goto(`/sessions/${id}`)
+  await page.goto(`/sessions/${id}/notes`)
+  await page.getByRole('tab', { name: 'Details' }).click()
 
   // One tap must never destroy a session.
   await page.getByRole('button', { name: /Delete session/ }).click()
@@ -143,7 +161,7 @@ test('the header states nothing the rows below it already say', async ({ page })
 test('choosing a form is one row driven by the platform\'s own picker', async ({ page }) => {
   await login(page, SEED.owner.email, SEED.owner.password)
   const id = await createSession(page, 'E2E Form Picker Session')
-  await page.goto(`/sessions/${id}`)
+  await page.goto(`/sessions/${id}/notes`)
 
   const row = page.getByText('Write up this session')
   await expect(row).toBeVisible({ timeout: 20_000 })
@@ -168,13 +186,18 @@ test('choosing a form is one row driven by the platform\'s own picker', async ({
   expect(scrollW).toBe(clientW)
 })
 
-// A ClassRun backs FOUR sections of the app, and each has its own screens. The
-// kind is derived from the backing package's shape, and /sessions/[id] used to
-// send all four to /classes/… — so a drop-in landed on the group-class screen
-// with "Back to class" pointing out of the section the trainer came from, and a
-// one-off event landed on a per-session URL events don't even have.
+// A ClassRun backs FOUR sections of the app, and each has its own register. A
+// session of any of them now opens the SAME landing screen a 1:1 does (Karl:
+// "this should be consistent across all offering types"), so what's under test
+// is no longer a redirect but where that screen's attendance button POINTS.
 //
-// `expectedPath` is the section a session of that kind must end up in.
+// Two regressions live here. The detail page once filtered on `clientId: { not:
+// null }`, which 404'd every class session in the app (a run session has no
+// client by design). The redirect that replaced it sent all four kinds to
+// /classes/… — so a drop-in landed on the group-class screen and a one-off
+// event on a per-session URL events don't even have.
+//
+// `expectedPath` is the register a session of that kind must lead to.
 const RUN_KINDS = [
   {
     kind: 'group class',
@@ -201,11 +224,7 @@ const RUN_KINDS = [
 ] as const
 
 for (const { kind, pkg, expectedPath } of RUN_KINDS) {
-  test(`a ${kind} session opens ITS OWN screen, not 404 and not /classes`, async ({ page }) => {
-    // Regression 1: the detail page filtered on `clientId: { not: null }` to
-    // hide orphans, but a run session has clientId null BY DESIGN (attendance
-    // is per-enrollee). That filter 404'd every class session in the app.
-    // Regression 2: the redirect that replaced it sent every kind to /classes.
+  test(`a ${kind} session opens the session screen, pointed at ITS OWN register`, async ({ page }) => {
     const prisma = db()
     let runId = ''
     let packageId = ''
@@ -245,7 +264,14 @@ for (const { kind, pkg, expectedPath } of RUN_KINDS) {
       await login(page, SEED.owner.email, SEED.owner.password)
       await page.goto(`/sessions/${runSession.id}`)
 
-      await page.waitForURL(`**${expectedPath(run.id, runSession.id)}`, { timeout: 20_000 })
+      // It STAYS here — the same five parts a 1:1 gets, not a bounce into the
+      // register.
+      await expect(page.getByRole('link', { name: /Take attendance/ })).toBeVisible({ timeout: 20_000 })
+      expect(new URL(page.url()).pathname).toBe(`/sessions/${runSession.id}`)
+
+      // And attendance leads to the section this run actually belongs to.
+      const href = await page.getByRole('link', { name: /Take attendance/ }).getAttribute('href')
+      expect(href).toBe(expectedPath(run.id, runSession.id))
 
       // A different tenant still gets nothing.
       await page.context().clearCookies()

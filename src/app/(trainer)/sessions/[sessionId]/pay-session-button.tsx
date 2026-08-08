@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { CreditCard } from 'lucide-react'
 import { SaleComposer, type SalePrefill } from '@/components/shared/sale-composer'
+import { ACTION_BUTTON } from './session-rows'
 
 // "Take payment" on a session the client booked but hasn't paid for.
 //
@@ -35,7 +36,7 @@ export function PaySessionButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex min-h-[56px] w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 text-left text-[15px] font-medium text-slate-900 transition-colors hover:bg-slate-50 active:bg-slate-100"
+        className={ACTION_BUTTON}
       >
         <CreditCard
           className="h-5 w-5 flex-shrink-0 text-slate-700"

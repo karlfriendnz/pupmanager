@@ -73,7 +73,11 @@ export function CompleteButton({
         <span className={`block ${done ? 'text-slate-400' : ''}`}>
           {done ? 'Completed' : 'Mark as complete'}
         </span>
-        {done && <span className="mt-0.5 block text-[13px] font-normal text-slate-400">Tap to undo</span>}
+        {/* Completing publishes the write-up and tells the client, which is
+            not something a trainer should discover by doing it. */}
+        <span className={`mt-0.5 block text-[13px] font-normal ${done ? 'text-slate-400' : 'text-slate-500'}`}>
+          {done ? 'Tap to undo' : 'Sends your notes to the client'}
+        </span>
       </span>
     </button>
   )

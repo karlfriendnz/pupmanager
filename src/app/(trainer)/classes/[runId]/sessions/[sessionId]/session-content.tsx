@@ -11,10 +11,13 @@ export async function ClassSessionContent({
   runId,
   sessionId,
   basePath = '/classes',
+  write = false,
 }: {
   runId: string
   sessionId: string
   basePath?: string
+  /** Land on writing a client up rather than on marking who turned up. */
+  write?: boolean
 }) {
   const session = await auth()
   if (!session) redirect('/login')
@@ -51,7 +54,9 @@ export async function ClassSessionContent({
   // "Back to class" doesn't tip the trainer out of where they were working.
   if (sess.classRun) {
     const correct = runSessionHref(runId, sess.id, sess.classRun.package)
-    if (correct !== `${basePath}/${runId}/sessions/${sess.id}`) redirect(correct)
+    if (correct !== `${basePath}/${runId}/sessions/${sess.id}`) {
+      redirect(write ? `${correct}${correct.includes('?') ? '&' : '?'}write=1` : correct)
+    }
   }
 
   return (
@@ -63,6 +68,7 @@ export async function ClassSessionContent({
       sessionScheduledAt={sess.scheduledAt.toISOString()}
       tz={sess.classRun?.trainer?.user?.timezone ?? 'Pacific/Auckland'}
       basePath={basePath}
+      write={write}
     />
   )
 }
