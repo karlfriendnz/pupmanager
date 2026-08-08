@@ -1,12 +1,14 @@
 import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { Calendar, Video, PawPrint, NotebookPen, Users, Camera, History, Clock } from 'lucide-react'
-import { formatSessionTitle } from '@/lib/utils'
+import { Calendar, Video, PawPrint, NotebookPen, Users, Camera, History } from 'lucide-react'
+import { formatSessionTitle, personLabel } from '@/lib/utils'
 import { runSessionHref, runHref, runKind, runKindLabel } from '@/lib/run-kind'
 import { hasAddon } from '@/lib/billing'
 import { PaySessionButton } from './pay-session-button'
 import { LinkRow, PrimaryActionButton, ContactStrip } from './session-rows'
+import { LogTimeRow } from './log-time-row'
+import { ensureTimeMembers } from './time-members'
 import { SessionWhenRow } from './session-when'
 import { CompleteButton, InvoiceButton } from './session-buttons'
 import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
@@ -88,7 +90,10 @@ export default async function SessionPage({
       buddies: { select: { id: true } },
       // Counts only — the photos and time rows carry them as trailing text.
       _count: { select: { attachments: true } },
-      timeEntries: { select: { minutes: true } },
+      timeEntries: {
+        orderBy: { createdAt: 'asc' },
+        include: { membership: { select: { user: { select: { name: true, email: true } } } } },
+      },
     },
   })
   if (!trainingSession) notFound()
@@ -252,7 +257,20 @@ export default async function SessionPage({
   const attendanceHref = run ? runScreenHref! : `/sessions/${trainingSession.id}/attendance`
 
   const attachmentCount = trainingSession._count.attachments
-  const loggedMinutes = trainingSession.timeEntries.reduce((sum, e) => sum + e.minutes, 0)
+
+  // Time is logged in a modal on this screen, so its entries and the people it
+  // can be logged against come down with the page.
+  const timeEntries = trainingSession.timeEntries.map(e => ({
+    id: e.id,
+    membershipId: e.membershipId,
+    memberName: e.membership.user.name ?? e.membership.user.email,
+    minutes: e.minutes,
+    rateCents: e.rateCents,
+    amountCents: e.rateCents == null ? null : Math.round((e.minutes / 60) * e.rateCents),
+    note: e.note,
+    createdAt: e.createdAt.toISOString(),
+  }))
+  const timeMembers = (await ensureTimeMembers(trainerId)).map(m => ({ id: m.id, name: personLabel(m.user) }))
 
   // The client this session belongs to — directly, or through the dog's
   // primary owner (an ad-hoc session can carry only a dog).
@@ -438,14 +456,11 @@ export default async function SessionPage({
             href={`/sessions/${trainingSession.id}/photos`}
             trailingLabel={attachmentCount > 0 ? `${attachmentCount} so far` : undefined}
           />
-          <LinkRow
-            icon={Clock}
+          <LogTimeRow
+            sessionId={trainingSession.id}
+            entries={timeEntries}
+            members={timeMembers}
             accent={accent}
-            label="Log time"
-            href={`/sessions/${trainingSession.id}/time`}
-            trailingLabel={loggedMinutes > 0
-              ? `${Number((loggedMinutes / 60).toFixed(2))} h`
-              : undefined}
           />
         </FlatBlock>
 

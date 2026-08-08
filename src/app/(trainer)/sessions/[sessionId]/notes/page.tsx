@@ -448,14 +448,14 @@ export default async function SessionPage({
               />
             </DisclosureRow>
 
-            {/* Time is its own screen now, off the session page's "Log time"
-                row — one home, same as photos. */}
+            {/* Time is logged in a modal on the session screen — one home.
+                This row says how much is on the session and points at it. */}
             <LinkRow
               icon={Clock}
               accent={accent}
               label="Time tracking"
               sub={timeSub}
-              href={`/sessions/${trainingSession.id}/time`}
+              href={`/sessions/${trainingSession.id}`}
             />
 
 
