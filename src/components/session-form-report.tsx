@@ -821,10 +821,16 @@ function FormFillerBody({
   const [sendingNow, setSendingNow] = useState(false)
   const [polishing, setPolishing] = useState(false)
   const [confirmingRemove, setConfirmingRemove] = useState(false)
-  // Entry mode: answer one at a time in a focused fullscreen flow ('step',
-  // default) or see every question at once ('list'). Step mode swipes/slides
-  // through the prompts — friendlier everywhere, especially on a phone.
-  const [mode, setMode] = useState<'list' | 'step'>('step')
+  // Entry mode: see every question at once ('list', default) or answer one at
+  // a time in a focused fullscreen flow ('step').
+  //
+  // Step used to be the default — one prompt at a time, swipeable, and pleasant
+  // to write into. But it hides the SHAPE of the write-up: a trainer opening a
+  // session can't see how many questions there are, which are already answered,
+  // or skip to the one they actually want to change. Karl: "we want the full
+  // list view of the session report to load by default". Step is still a tap
+  // away for anyone who prefers writing one thing at a time.
+  const [mode, setMode] = useState<'list' | 'step'>('list')
   const [step, setStep] = useState(0)
   const touchStartX = useRef<number | null>(null)
   // After saving notes in the step flow we slide into an "Add homework" phase so
