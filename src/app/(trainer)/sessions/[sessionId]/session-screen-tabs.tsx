@@ -4,7 +4,7 @@ import { useState, type ReactNode } from 'react'
 import { PageTabs } from '@/components/shared/page-tabs'
 
 /**
- * A 1:1 session, as three tabs — the SAME three the calendar's popover uses
+ * A 1:1 session, as two tabs — the SAME two the calendar's popover uses
  * (Karl: "this doesn't look anything like the desktop version"). A phone opens
  * this page where a desktop opens that popover, so they have to agree: Notes,
  * Previous, Details, in that order, opening on Notes.
@@ -33,7 +33,6 @@ export function SessionScreenTabs({
   details,
   previousNotes,
   writeUp,
-  more,
   initialTab = 'notes',
 }: {
   /** Dog and owner. A third of the row on a wide screen, per Karl. */
@@ -42,16 +41,14 @@ export function SessionScreenTabs({
   previousNotes?: ReactNode
   /** The session notes form — the point of the screen. */
   writeUp: ReactNode
-  /** Photos, homework, time, preview, profile, delete. */
-  more: ReactNode
   /**
    * Which tab to open on. The session screen's "Previous notes" row asks for
    * `previous` — it is a door to what was written last time, and landing on
    * the write-up instead would make the trainer hunt for what they clicked.
    */
-  initialTab?: 'notes' | 'previous' | 'details'
+  initialTab?: 'notes' | 'previous'
 }) {
-  const [tab, setTab] = useState<'notes' | 'previous' | 'details'>(initialTab)
+  const [tab, setTab] = useState<'notes' | 'previous'>(initialTab)
 
   return (
     <>
@@ -65,18 +62,21 @@ export function SessionScreenTabs({
         <PageTabs
           label="Session sections"
           active={tab}
-          onSelect={id => setTab(id as 'notes' | 'previous' | 'details')}
+          onSelect={id => setTab(id as 'notes' | 'previous')}
           tabs={[
             { id: 'notes', label: 'Notes' },
             { id: 'previous', label: 'Previous' },
-            { id: 'details', label: 'Details' },
           ]}
         />
       </div>
 
-      {/* All three MOUNTED, toggled with `hidden`: the write-up holds unsaved
-          text, and unmounting it to check last week's notes would throw it
-          away. */}
+      {/* BOTH mounted, toggled with `hidden`: the write-up holds unsaved text,
+          and unmounting it to check last week's notes would throw it away.
+
+          There was a third tab, "Details", holding photos, time, the preview,
+          the client and delete. Everything on it moved to the session screen
+          one tap back, and what was left belonged with the writing — so it
+          went (Karl: "I don't think we need details on the notes now"). */}
       <div className={tab === 'notes' ? 'flex flex-col gap-4' : 'hidden'}>{writeUp}</div>
 
       <div className={tab === 'previous' ? 'flex flex-col gap-4' : 'hidden'}>
@@ -85,10 +85,6 @@ export function SessionScreenTabs({
         )}
       </div>
 
-      {/* Everything that isn't the write-up: photos, homework, time tracking,
-          the report preview, the way to the client, delete. The facts card
-          lives on Notes now, not here — one copy, where it's used. */}
-      <div className={tab === 'details' ? 'flex flex-col gap-4' : 'hidden'}>{more}</div>
     </>
   )
 }

@@ -56,15 +56,14 @@ test('an empty session fits on a phone — one facts block, collapsed sections, 
   await expect(page.getByText('45 min', { exact: false })).toBeVisible({ timeout: 20_000 })
   await expect(page.getByText('E2E Park')).toBeVisible()
 
-  // The secondary sections live on the Details tab — the screen opens on the
-  // write-up, which is what it's for.
-  await page.getByRole('tab', { name: 'Details' }).click()
+  // TWO tabs. The third — "Details" — held photos, time, the client and
+  // delete, all of which moved to the session screen, and it went with them.
+  await expect(page.getByRole('tab')).toHaveCount(2)
+  await expect(page.getByRole('tab', { name: 'Details' })).toHaveCount(0)
 
-  // Every empty section costs ONE row that says what's in it — no card, no
+  // An empty section costs ONE row that says what's in it — no card, no
   // heading, no "nothing here yet" paragraph inside a bordered box.
-  await expect(page.getByText('No photos or videos')).toBeVisible()
   await expect(page.getByText('None set')).toBeVisible()
-  await expect(page.getByText('Nothing logged')).toBeVisible()
 
   // Collapsed means collapsed: homework's editor only exists once opened.
   const addHomework = page.getByRole('button', { name: 'Add from library' }).first()
@@ -73,9 +72,10 @@ test('an empty session fits on a phone — one facts block, collapsed sections, 
   await expect(addHomework).toBeVisible()
   await page.getByText('Homework', { exact: true }).click()
 
-  // Photos live in a modal on the session screen, with their thumbnails
-  // alongside it — the row here only points back at that screen.
-  await expect(page.getByRole('link', { name: /Photos & video/ })).toHaveAttribute('href', `/sessions/${id}`)
+  // Photos and time are not on this screen at all any more — they are rows on
+  // the session, which is one Back away.
+  await expect(page.getByText('No photos or videos')).toHaveCount(0)
+  await expect(page.getByText('Nothing logged')).toHaveCount(0)
 
   // The whole screen, closed, has to stay in the same order of magnitude as a
   // couple of phone screens. It was 1375px before the rebuild; this guard trips
@@ -88,17 +88,18 @@ test('every action stays reachable on the page itself — nothing hides in a "�
   await login(page, SEED.owner.email, SEED.owner.password)
   const id = await createSession(page, 'E2E Actions Session')
 
-  // The secondary actions live on the write-up screen's Details tab, as rows.
+  // The preview rides with the writing, under the form.
   await page.goto(`/sessions/${id}/notes`)
-  await page.getByRole('tab', { name: 'Details' }).click()
   await expect(page.getByRole('button', { name: 'More actions' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: /Preview report/ })).toBeVisible({ timeout: 20_000 })
+
+  // Reaching the client, and deleting the session, are the session screen's.
+  await page.goto(`/sessions/${id}`)
+  await expect(page.getByRole('link', { name: 'Profile' })).toBeVisible({ timeout: 20_000 })
   await expect(page.getByRole('button', { name: /Delete session/ })).toBeVisible()
-  await expect(page.getByRole('link', { name: /Client profile/ })).toBeVisible()
 
   // Complete and invoice are full-width buttons on the session screen, and they
   // still write through. One place each: the write-up must not offer them too.
-  await page.goto(`/sessions/${id}`)
   await expect(page.getByRole('link', { name: /Start notes/ })).toBeVisible({ timeout: 20_000 })
   await page.getByRole('button', { name: 'Mark as complete' }).click()
   await expect(page.getByRole('button', { name: /Completed/ })).toBeVisible({ timeout: 20_000 })
@@ -110,15 +111,14 @@ test('every action stays reachable on the page itself — nothing hides in a "�
   await expect(page.getByRole('button', { name: /Invoiced/ })).toBeVisible()
 
   await page.goto(`/sessions/${id}/notes`)
-  await page.getByRole('tab', { name: 'Details' }).click()
   await expect(page.getByRole('button', { name: /Mark as complete/ })).toHaveCount(0)
 })
 
 test('delete asks first, and only then deletes', async ({ page }) => {
   await login(page, SEED.owner.email, SEED.owner.password)
   const id = await createSession(page, 'E2E Delete Session')
-  await page.goto(`/sessions/${id}/notes`)
-  await page.getByRole('tab', { name: 'Details' }).click()
+  // Delete lives on the session screen now, at the very bottom.
+  await page.goto(`/sessions/${id}`)
 
   // One tap must never destroy a session.
   await page.getByRole('button', { name: /Delete session/ }).click()

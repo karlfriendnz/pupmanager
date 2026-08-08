@@ -1,16 +1,14 @@
 import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { Calendar, ChevronDown, Video, User, Clock, History, Paperclip, PawPrint, Eye, ListChecks } from 'lucide-react'
+import { Calendar, ChevronDown, Video, History, PawPrint, Eye, ListChecks } from 'lucide-react'
 import { formatSessionTitle } from '@/lib/utils'
-import { formatMoney } from '@/lib/money'
 import { runSessionHref } from '@/lib/run-kind'
 import { SessionFormReport } from '@/components/session-form-report'
 import { hasAddon } from '@/lib/billing'
 import { SessionLibraryTasks } from '@/components/session-library-tasks'
 import { SessionSeriesStep } from '@/components/trainer/session-series-step'
 import { OpenSessionLink } from '../open-session-link'
-import { DeleteSessionRow } from '../session-actions'
 import { DisclosureRow, FactRow, LinkRow } from '../session-rows'
 import { FlatBlock } from '@/components/shared/flat-list'
 import { PageHeader } from '@/components/shared/page-header'
@@ -82,17 +80,6 @@ export default async function SessionPage({
           primaryFor: { take: 1, select: { id: true, user: { select: { name: true, email: true } } } },
         },
       },
-      attachments: {
-        orderBy: { createdAt: 'desc' },
-        select: {
-          id: true, kind: true, url: true, thumbnailUrl: true,
-          caption: true, sizeBytes: true, durationMs: true, createdAt: true,
-        },
-      },
-      timeEntries: {
-        orderBy: { createdAt: 'asc' },
-        include: { membership: { select: { user: { select: { name: true, email: true } } } } },
-      },
     },
   })
   // No such session for this trainer — a genuine 404, and the tenant guard.
@@ -141,34 +128,19 @@ export default async function SessionPage({
   }
 
   // The money — what's owed, what it's worth, whether cards are on — is the
-  // session page's business now, one screen back. This screen writes the
-  // session up; it only needs the currency for the time-tracking subline.
+  // session page's business, one screen back. So is time, and so are the
+  // photos. This screen writes the session up and nothing else.
 
-  // The trainer's brand colour + payout currency in one read. The accent tints
+  // The trainer's brand colour. The accent tints
   // ONLY the row icons, via color-mix toward slate-900 (AGENTS.md) — a pastel
   // brand stays legible and nothing else on the page is painted.
   const profile = await prisma.trainerProfile.findUnique({
     where: { id: trainerId },
-    select: { payoutCurrency: true, emailAccentColor: true },
+    select: { emailAccentColor: true },
   })
   const accent = profile?.emailAccentColor && HEX.test(profile.emailAccentColor)
     ? profile.emailAccentColor
     : null
-
-  const currency = profile?.payoutCurrency ?? 'nzd'
-
-  // The logged entries, for the Time row's subline only — the picker itself
-  // lives on the time screen now, so the member list is loaded there.
-  const timeEntries = trainingSession.timeEntries.map(e => ({
-    id: e.id,
-    membershipId: e.membershipId,
-    memberName: e.membership.user.name ?? e.membership.user.email,
-    minutes: e.minutes,
-    rateCents: e.rateCents,
-    amountCents: e.rateCents == null ? null : Math.round((e.minutes / 60) * e.rateCents),
-    note: e.note,
-    createdAt: e.createdAt.toISOString(),
-  }))
 
   const clientUser = trainingSession.client?.user ?? trainingSession.dog?.primaryFor[0]?.user
   const clientName = clientUser ? (clientUser.name ?? clientUser.email) : null
@@ -212,26 +184,6 @@ export default async function SessionPage({
       })
     : []
 
-  // Sublines for the collapsed sections. Each says what's inside, so the
-  // trainer never has to open a section to find out it's empty.
-  const totalMinutes = timeEntries.reduce((s, e) => s + e.minutes, 0)
-  const billableCents = timeEntries.reduce((s, e) => s + (e.amountCents ?? 0), 0)
-  const timeSub = timeEntries.length === 0
-    ? 'Nothing logged'
-    : [
-        `${Number((totalMinutes / 60).toFixed(2))} h`,
-        billableCents > 0 ? `${formatMoney(billableCents, currency)} billable` : null,
-      ].filter(Boolean).join(' · ')
-
-  const photoCount = trainingSession.attachments.filter(a => a.kind === 'IMAGE').length
-  const videoCount = trainingSession.attachments.length - photoCount
-  const attachmentSub = trainingSession.attachments.length === 0
-    ? 'No photos or videos'
-    : [
-        photoCount > 0 ? `${photoCount} photo${photoCount === 1 ? '' : 's'}` : null,
-        videoCount > 0 ? `${videoCount} video${videoCount === 1 ? '' : 's'}` : null,
-      ].filter(Boolean).join(' · ')
-
   return (
     <>
       {/* The five bottom tabs stand down while you're writing up a session
@@ -274,7 +226,7 @@ export default async function SessionPage({
           used to be a sticky rail BESIDE the write-up; they're the first thing
           in the first tab now, above it, at a third of the width. */}
       <SessionScreenTabs
-        initialTab={sp.tab === 'previous' ? 'previous' : sp.tab === 'details' ? 'details' : 'notes'}
+        initialTab={sp.tab === 'previous' ? 'previous' : 'notes'}
         details={
         <div>
           <FlatBlock>
@@ -415,24 +367,15 @@ export default async function SessionPage({
               <SessionFormReport sessionId={trainingSession.id} sessionStatus={trainingSession.status} layout="inline" autoPromptIfEmpty />
             </FlatBlock>
           )}
-        </>
-        }
-        more={
-        <>
-          {/* Everything else, as rows that open. A section with nothing in it
-              costs one line; a section with content opens on arrival. */}
-          <FlatBlock>
-            {/* Photos open in a modal on the session screen, with the
-                thumbnails alongside it — one home. This row says what's there
-                and points at it. */}
-            <LinkRow
-              icon={Paperclip}
-              accent={accent}
-              label="Photos & video"
-              sub={attachmentSub}
-              href={`/sessions/${trainingSession.id}`}
-            />
 
+          {/* Homework and the preview sit UNDER the write-up, not behind a
+              "Details" tab (Karl: "I don't think we need details on the notes
+              now"). Everything that tab held had moved to the session screen —
+              photos, time, the client — leaving a tab whose job was to hold
+              two things that belong with the writing anyway: what you're
+              sending them home to practise, and what the whole thing will read
+              like when they get it. */}
+          <FlatBlock>
             <DisclosureRow
               icon={ListChecks}
               accent={accent}
@@ -447,44 +390,12 @@ export default async function SessionPage({
               />
             </DisclosureRow>
 
-            {/* Time is logged in a modal on the session screen — one home.
-                This row says how much is on the session and points at it. */}
-            <LinkRow
-              icon={Clock}
-              accent={accent}
-              label="Time tracking"
-              sub={timeSub}
-              href={`/sessions/${trainingSession.id}`}
-            />
-
-
-            {/* Was hidden behind a "…" menu in the header: a whole portal,
-                overlay and outside-click handler to conceal two links. */}
             <LinkRow
               icon={Eye}
               accent={accent}
               label="Preview report"
               sub="See what the client will read"
               href={`/sessions/${trainingSession.id}/preview`}
-            />
-
-            {clientId && (
-              <LinkRow
-                icon={User}
-                accent={accent}
-                label="Client profile"
-                sub={clientName ?? undefined}
-                href={`/clients/${clientId}`}
-              />
-            )}
-          </FlatBlock>
-
-          {/* Destructive, so it sits on its own at the very bottom — quiet red
-              text, and it asks before it does anything. */}
-          <FlatBlock>
-            <DeleteSessionRow
-              sessionId={trainingSession.id}
-              redirectTo={clientId ? `/clients/${clientId}/sessions` : '/schedule'}
             />
           </FlatBlock>
         </>

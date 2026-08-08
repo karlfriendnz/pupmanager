@@ -12,6 +12,7 @@ import { AddPhotosRow } from './add-photos-row'
 import { ensureTimeMembers } from './time-members'
 import { SessionWhenRow } from './session-when'
 import { CompleteButton, InvoiceButton } from './session-buttons'
+import { DeleteSessionRow } from './session-actions'
 import { FlatBlock, SectionLabel } from '@/components/shared/flat-list'
 import { PageHeader } from '@/components/shared/page-header'
 import { SampleRecordBadge } from '@/components/sample-record-badge'
@@ -539,6 +540,23 @@ export default async function SessionPage({
               sessionId={trainingSession.id}
               initialStatus={trainingSession.status}
               accent={accent}
+            />
+          </FlatBlock>
+        </div>
+
+        {/* Destructive, so it sits on its own at the very bottom — quiet red
+            text, and it asks before it does anything. It came here with the
+            write-up's "Details" tab: deleting the session is not part of
+            writing it up, and it was the last thing keeping that tab. */}
+        <div className="mt-2">
+          <FlatBlock>
+            <DeleteSessionRow
+              sessionId={trainingSession.id}
+              redirectTo={run
+                ? runHref(run.id, run.package)
+                : trainingSession.clientId
+                  ? `/clients/${trainingSession.clientId}/sessions`
+                  : '/schedule'}
             />
           </FlatBlock>
         </div>
