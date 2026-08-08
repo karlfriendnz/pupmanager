@@ -4,7 +4,10 @@ import { useState, type ReactNode } from 'react'
 import { PageTabs } from '@/components/shared/page-tabs'
 
 /**
- * A 1:1 session, as two tabs.
+ * A 1:1 session, as three tabs — the SAME three the calendar's popover uses
+ * (Karl: "this doesn't look anything like the desktop version"). A phone opens
+ * this page where a desktop opens that popover, so they have to agree: Notes,
+ * Previous, Details, in that order, opening on Notes.
  *
  * Karl, 2026-08-08: "when you click on a session on the calendar we need to be
  * a bit clever and provide the trainer what they need depending on what they
@@ -41,7 +44,7 @@ export function SessionScreenTabs({
   /** Photos, homework, time, preview, profile, delete. */
   more: ReactNode
 }) {
-  const [tab, setTab] = useState<'session' | 'more'>('session')
+  const [tab, setTab] = useState<'notes' | 'previous' | 'details'>('notes')
 
   return (
     <>
@@ -49,25 +52,32 @@ export function SessionScreenTabs({
         <PageTabs
           label="Session sections"
           active={tab}
-          onSelect={id => setTab(id as 'session' | 'more')}
+          onSelect={id => setTab(id as 'notes' | 'previous' | 'details')}
           tabs={[
-            { id: 'session', label: 'Session' },
-            { id: 'more', label: 'More' },
+            { id: 'notes', label: 'Notes' },
+            { id: 'previous', label: 'Previous' },
+            { id: 'details', label: 'Details' },
           ]}
         />
       </div>
 
-      <div className={tab === 'session' ? 'flex flex-col gap-4' : 'hidden'}>
-        {/* A third of the width from lg up, full width below it — on a phone a
-            third of the row is four words a line. It sits ABOVE the write-up
-            rather than beside it: the form is the thing being filled in, and a
-            column beside it would halve the room it has to do that in. */}
-        <div className="lg:max-w-[33%]">{details}</div>
-        {previousNotes}
-        {writeUp}
+      {/* All three MOUNTED, toggled with `hidden`: the write-up holds unsaved
+          text, and unmounting it to check last week's notes would throw it
+          away. */}
+      <div className={tab === 'notes' ? 'flex flex-col gap-4' : 'hidden'}>{writeUp}</div>
+
+      <div className={tab === 'previous' ? 'flex flex-col gap-4' : 'hidden'}>
+        {previousNotes ?? (
+          <p className="px-1 text-[13px] text-slate-400">Nothing written up for this client yet.</p>
+        )}
       </div>
 
-      <div className={tab === 'more' ? 'flex flex-col gap-4' : 'hidden'}>{more}</div>
+      {/* Who, when, and everything that isn't the write-up — the session's
+          facts, its actions, photos, homework, time tracking, delete. */}
+      <div className={tab === 'details' ? 'flex flex-col gap-4' : 'hidden'}>
+        {details}
+        {more}
+      </div>
     </>
   )
 }
