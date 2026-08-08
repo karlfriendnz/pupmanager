@@ -19,6 +19,7 @@ import { FlatBlock } from '@/components/shared/flat-list'
 import { PageHeader } from '@/components/shared/page-header'
 import { SetPageImmersive } from '@/components/shared/page-title'
 import { SampleRecordBadge } from '@/components/sample-record-badge'
+import { SessionScreenTabs } from './session-screen-tabs'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = { title: 'Session notes' }
@@ -315,13 +316,12 @@ export default async function SessionPage({
         </div>
       )}
 
-      {/* One column on a phone. From lg the container splits: the session's
-          facts + actions become a sticky rail beside the write-up. Same blocks
-          in both — only the CONTAINER reflows (AGENTS.md). */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
-
-        {/* WHO / WHEN / WHERE / WHAT NOW — one bordered block, hairline rows. */}
-        <aside className="lg:sticky lg:top-4">
+      {/* Two tabs, not two columns (Karl). The facts about the dog and owner
+          used to be a sticky rail BESIDE the write-up; they're the first thing
+          in the first tab now, above it, at a third of the width. */}
+      <SessionScreenTabs
+        details={
+        <div>
           <FlatBlock>
             {/* Identity: avatar, name, one subline, status. Was a 340px tinted
                 hero with a photo, a heading, a pill and two more lines. */}
@@ -430,9 +430,69 @@ export default async function SessionPage({
               )}
             </div>
           </FlatBlock>
-        </aside>
-
-        <div className="flex min-w-0 flex-col gap-4">
+        </div>
+        }
+        previousNotes={
+          // What was written last time, between who's in front of you and the
+          // form you're filling in — the order a trainer needs them in during
+          // a session (Karl). It keeps its own block: it opens and closes, and
+          // burying it in "More" would mean leaving the form to read it.
+          previousSessions.length > 0 ? (
+            <FlatBlock>
+              <DisclosureRow
+                icon={History}
+                accent={accent}
+                label="Previous notes"
+                sub={`${previousSessions.length} earlier session${previousSessions.length === 1 ? '' : 's'}`}
+              >
+                <div className="-mx-4 -my-4 divide-y divide-slate-200">
+                  {previousSessions.map(prev => (
+                    <details key={prev.id} className="group/inner">
+                      <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 active:bg-slate-50">
+                        <span className="w-20 flex-shrink-0 text-[13px] tabular-nums text-slate-400">
+                          {prev.scheduledAt.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: '2-digit' })}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{prev.title}</span>
+                        <OpenSessionLink sessionId={prev.id} />
+                        <ChevronDown className="h-4 w-4 flex-shrink-0 text-slate-400 transition-transform group-open/inner:rotate-180" />
+                      </summary>
+                      <div className="flex flex-col gap-3 px-4 pb-4 text-sm text-slate-600">
+                        {prev.formResponses.length === 0 ? (
+                          <p className="text-[13px] text-slate-400">No notes recorded for this session.</p>
+                        ) : prev.formResponses.map((r, i) => {
+                          const answers = (r.answers ?? {}) as Record<string, string>
+                          const questions = Array.isArray(r.form.questions) ? r.form.questions as { id: string; label?: string; type?: string }[] : []
+                          return (
+                            <div key={i} className="flex flex-col gap-2">
+                              {r.introMessage && (
+                                <p className="border-l-2 border-slate-200 pl-3 text-sm italic text-slate-700">{r.introMessage}</p>
+                              )}
+                              {questions.map(q => {
+                                const v = answers[q.id]
+                                if (!v) return null
+                                return (
+                                  <div key={q.id}>
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{q.label ?? 'Answer'}</p>
+                                    <p className="whitespace-pre-line text-sm text-slate-700">{String(v)}</p>
+                                  </div>
+                                )
+                              })}
+                              {r.closingMessage && (
+                                <p className="mt-1 border-l-2 border-slate-200 pl-3 text-sm italic text-slate-700">{r.closingMessage}</p>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              </DisclosureRow>
+            </FlatBlock>
+          ) : null
+        }
+        writeUp={
+        <>
           {/* What this session covers, when the offering runs a curriculum —
               above the write-up, because it is the thing the trainer checks
               BEFORE the session, and the place a step gets skipped for a dog
@@ -446,7 +506,10 @@ export default async function SessionPage({
               <SessionFormReport sessionId={trainingSession.id} sessionStatus={trainingSession.status} layout="inline" autoPromptIfEmpty />
             </FlatBlock>
           )}
-
+        </>
+        }
+        more={
+        <>
           {/* Everything else, as rows that open. A section with nothing in it
               costs one line; a section with content opens on arrival. */}
           <FlatBlock>
@@ -500,57 +563,6 @@ export default async function SessionPage({
               />
             </DisclosureRow>
 
-            {previousSessions.length > 0 && (
-              <DisclosureRow
-                icon={History}
-                accent={accent}
-                label="Previous notes"
-                sub={`${previousSessions.length} earlier session${previousSessions.length === 1 ? '' : 's'}`}
-              >
-                <div className="-mx-4 -my-4 divide-y divide-slate-200">
-                  {previousSessions.map(prev => (
-                    <details key={prev.id} className="group/inner">
-                      <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 active:bg-slate-50">
-                        <span className="w-20 flex-shrink-0 text-[13px] tabular-nums text-slate-400">
-                          {prev.scheduledAt.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: '2-digit' })}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{prev.title}</span>
-                        <OpenSessionLink sessionId={prev.id} />
-                        <ChevronDown className="h-4 w-4 flex-shrink-0 text-slate-400 transition-transform group-open/inner:rotate-180" />
-                      </summary>
-                      <div className="flex flex-col gap-3 px-4 pb-4 text-sm text-slate-600">
-                        {prev.formResponses.length === 0 ? (
-                          <p className="text-[13px] text-slate-400">No notes recorded for this session.</p>
-                        ) : prev.formResponses.map((r, i) => {
-                          const answers = (r.answers ?? {}) as Record<string, string>
-                          const questions = Array.isArray(r.form.questions) ? r.form.questions as { id: string; label?: string; type?: string }[] : []
-                          return (
-                            <div key={i} className="flex flex-col gap-2">
-                              {r.introMessage && (
-                                <p className="border-l-2 border-slate-200 pl-3 text-sm italic text-slate-700">{r.introMessage}</p>
-                              )}
-                              {questions.map(q => {
-                                const v = answers[q.id]
-                                if (!v) return null
-                                return (
-                                  <div key={q.id}>
-                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{q.label ?? 'Answer'}</p>
-                                    <p className="whitespace-pre-line text-sm text-slate-700">{String(v)}</p>
-                                  </div>
-                                )
-                              })}
-                              {r.closingMessage && (
-                                <p className="mt-1 border-l-2 border-slate-200 pl-3 text-sm italic text-slate-700">{r.closingMessage}</p>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </details>
-                  ))}
-                </div>
-              </DisclosureRow>
-            )}
 
             {/* Was hidden behind a "…" menu in the header: a whole portal,
                 overlay and outside-click handler to conceal two links. */}
@@ -581,8 +593,9 @@ export default async function SessionPage({
               redirectTo={clientId ? `/clients/${clientId}/sessions` : '/schedule'}
             />
           </FlatBlock>
-        </div>
-      </div>
+        </>
+        }
+      />
       </div>
     </>
   )
