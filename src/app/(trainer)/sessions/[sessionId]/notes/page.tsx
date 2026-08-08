@@ -422,16 +422,15 @@ export default async function SessionPage({
           {/* Everything else, as rows that open. A section with nothing in it
               costs one line; a section with content opens on arrival. */}
           <FlatBlock>
-            {/* Photos and video are their own screen now, off the session
-                page's "Add photos/video" button — three taps from the calendar
-                was two too many for the thing you do WHILE the dog is doing
-                it. A copy here would be the same feature in two homes. */}
+            {/* Photos open in a modal on the session screen, with the
+                thumbnails alongside it — one home. This row says what's there
+                and points at it. */}
             <LinkRow
               icon={Paperclip}
               accent={accent}
               label="Photos & video"
               sub={attachmentSub}
-              href={`/sessions/${trainingSession.id}/photos`}
+              href={`/sessions/${trainingSession.id}`}
             />
 
             <DisclosureRow

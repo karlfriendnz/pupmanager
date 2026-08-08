@@ -1,13 +1,14 @@
 import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { Calendar, Video, PawPrint, NotebookPen, Users, Camera, History } from 'lucide-react'
+import { Calendar, Video, PawPrint, NotebookPen, Users, History } from 'lucide-react'
 import { formatSessionTitle, personLabel } from '@/lib/utils'
 import { runSessionHref, runHref, runKind, runKindLabel } from '@/lib/run-kind'
 import { hasAddon } from '@/lib/billing'
 import { PaySessionButton } from './pay-session-button'
 import { LinkRow, PrimaryActionButton, ContactStrip } from './session-rows'
 import { LogTimeRow } from './log-time-row'
+import { AddPhotosRow } from './add-photos-row'
 import { ensureTimeMembers } from './time-members'
 import { SessionWhenRow } from './session-when'
 import { CompleteButton, InvoiceButton } from './session-buttons'
@@ -88,8 +89,15 @@ export default async function SessionPage({
       // Extra dogs attending alongside the primary one. More than one dog in
       // the room is what makes attendance a question worth asking.
       buddies: { select: { id: true } },
-      // Counts only — the photos and time rows carry them as trailing text.
-      _count: { select: { attachments: true } },
+      // Photos and time both open in a modal on this screen, so their content
+      // comes down with the page rather than behind a fetch.
+      attachments: {
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true, kind: true, url: true, thumbnailUrl: true,
+          caption: true, sizeBytes: true, durationMs: true, createdAt: true,
+        },
+      },
       timeEntries: {
         orderBy: { createdAt: 'asc' },
         include: { membership: { select: { user: { select: { name: true, email: true } } } } },
@@ -256,7 +264,16 @@ export default async function SessionPage({
       : `/sessions/${trainingSession.id}/notes`
   const attendanceHref = run ? runScreenHref! : `/sessions/${trainingSession.id}/attendance`
 
-  const attachmentCount = trainingSession._count.attachments
+  const attachments = trainingSession.attachments.map(a => ({
+    id: a.id,
+    kind: a.kind,
+    url: a.url,
+    thumbnailUrl: a.thumbnailUrl,
+    caption: a.caption,
+    sizeBytes: a.sizeBytes,
+    durationMs: a.durationMs,
+    createdAt: a.createdAt.toISOString(),
+  }))
 
   // Time is logged in a modal on this screen, so its entries and the people it
   // can be logged against come down with the page.
@@ -449,12 +466,10 @@ export default async function SessionPage({
               trailingLabel={lastWriteUp.scheduledAt.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' })}
             />
           )}
-          <LinkRow
-            icon={Camera}
+          <AddPhotosRow
+            sessionId={trainingSession.id}
+            attachments={attachments}
             accent={accent}
-            label="Add photos/video"
-            href={`/sessions/${trainingSession.id}/photos`}
-            trailingLabel={attachmentCount > 0 ? `${attachmentCount} so far` : undefined}
           />
           <LogTimeRow
             sessionId={trainingSession.id}

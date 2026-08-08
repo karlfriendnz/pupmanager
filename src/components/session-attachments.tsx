@@ -5,6 +5,7 @@ import { upload } from '@vercel/blob/client'
 import { compressImageFile } from '@/lib/compress-image'
 import { Camera, Video, Trash2, Loader2, ImageIcon, Play, AlertCircle } from 'lucide-react'
 import { clientLog } from '@/lib/client-log'
+import { ModalPortal } from '@/components/shared/modal-portal'
 
 const IMAGE_MAX_BYTES = 10 * 1024 * 1024
 // Lowered from 100MB → 60MB. Capacitor's iOS WebView has a tighter
@@ -497,8 +498,14 @@ function AttachmentTile({ attachment: a, onDelete, deleting }: {
       </button>
 
       {open && (
+        // PORTALED to <body>, and z-[60]. This list now lives inside a sheet on
+        // the session screen, and a `fixed inset-0` overlay rendered inside
+        // that sheet sized itself to the sheet — the viewer covered the top
+        // half of the screen and left the gallery it came from showing
+        // underneath. Portaling puts it back on the viewport where it belongs.
+        <ModalPortal>
         <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4"
           onClick={() => setOpen(false)}
         >
           <div className="relative max-w-4xl w-full" onClick={e => e.stopPropagation()}>
@@ -533,6 +540,7 @@ function AttachmentTile({ attachment: a, onDelete, deleting }: {
             )}
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
   )
