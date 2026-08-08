@@ -150,7 +150,14 @@ export default async function ClientSectionPage({
         back={{ href: `/clients/${clientId}`, label: `Back to ${clientName}` }}
       />
       <ClientSectionChrome />
-      <div className="p-4 md:p-8 w-full max-w-5xl xl:max-w-7xl mx-auto">
+      {/* Full width on desktop (Karl), the same as the offering screens:
+          capping this wasted a third of a wide monitor, and the tab strip
+          above stopped short of the content it heads.
+          min-w-0 for the same reason the class screen carries it — an
+          invoice table sets a min-width, and without this the flex chain up
+          to <main> takes its automatic minimum from that table and the whole
+          PAGE scrolls sideways on a phone. */}
+      <div className="p-4 md:p-8 w-full min-w-0">
         {/* The strip stays put as you move between sections — it would be an
             odd tab view that vanished the moment you used it. */}
         <ClientSectionTabs

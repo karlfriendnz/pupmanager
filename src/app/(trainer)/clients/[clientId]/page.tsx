@@ -293,7 +293,14 @@ export default async function ClientDetailPage({
         title={client.user.name ?? client.user.email ?? 'Client'}
         back={{ href: '/clients', label: 'Back to clients' }}
       />
-      <div className="p-4 md:p-8 w-full max-w-5xl xl:max-w-7xl mx-auto">
+      {/* Full width on desktop (Karl), the same as the offering screens:
+          capping this wasted a third of a wide monitor, and the tab strip
+          above stopped short of the content it heads.
+          min-w-0 for the same reason the class screen carries it — an
+          invoice table sets a min-width, and without this the flex chain up
+          to <main> takes its automatic minimum from that table and the whole
+          PAGE scrolls sideways on a phone. */}
+      <div className="p-4 md:p-8 w-full min-w-0">
 
       {client.isSample && (
         <div className="mb-4">
