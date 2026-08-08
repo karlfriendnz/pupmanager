@@ -14,6 +14,7 @@ import { formatDate, personLabel } from '@/lib/utils'
 import { richTextToPlain } from '@/lib/rich-text'
 import { dogsLine } from '@/lib/client-profile-summary'
 import { ClientProfileView } from './client-profile-view'
+import { ClientSectionTabs } from './client-section-tabs'
 import { ClientSummaryCard } from './client-summary-card'
 import { ClientActionsPanel } from './client-actions-panel'
 import { AssignedTrainerControl } from './assigned-trainer-control'
@@ -299,6 +300,19 @@ export default async function ClientDetailPage({
           <SampleRecordBadge />
         </div>
       )}
+
+      {/* The section tabs sit ABOVE the summary/profile split, so they run the
+          full width of the page (Karl). Inside the split they were confined to
+          the content column — 872px of a 1444px <main> — which also made ten
+          tabs scroll when they had room not to. */}
+      <ClientSectionTabs
+        clientId={clientId}
+        active="overview"
+        canViewBilling={canViewBilling}
+        showAchievements={achievementsEnabled}
+        showComms={showComms}
+        className="mb-4"
+      />
 
       {/* Summary sidebar + the profile. Desktop: the summary sticks to the
           left, the tiles and cards scroll on the right. Mobile: the hero
