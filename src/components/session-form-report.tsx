@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type ReactNode } from 'react'
 import { richTextToPlain } from '@/lib/rich-text'
 import { isSessionDone } from '@/lib/report-visibility'
 import { Button } from '@/components/ui/button'
@@ -139,6 +139,7 @@ export function SessionFormReport({
   sessionStatus,
   layout = 'modal',
   autoPromptIfEmpty = false,
+  afterClosing,
 }: {
   sessionId: string
   /**
@@ -152,6 +153,16 @@ export function SessionFormReport({
   sessionStatus?: string
   layout?: 'modal' | 'inline'
   autoPromptIfEmpty?: boolean
+  /**
+   * Rendered inside the editor, directly under the closing message (Karl:
+   * "put homework at the bottom of the notes under closing message").
+   *
+   * It arrives as a slot rather than being built in here because homework is
+   * the PAGE's business — it needs the client and the session date, which this
+   * component has no reason to know. What it does know is where the writing
+   * ends, which is the only thing being asked of it.
+   */
+  afterClosing?: ReactNode
 }) {
   const [templates, setTemplates] = useState<FormTemplate[] | null>(null)
   const [responses, setResponses] = useState<FormResponse[] | null>(null)
@@ -276,6 +287,7 @@ export function SessionFormReport({
             onSaved={handleSaved}
             onCancel={() => setEditing(null)}
             onRemove={() => handleDelete(r.formId)}
+            afterClosing={afterClosing}
             key={r.formId}
           />
         )
@@ -307,6 +319,7 @@ export function SessionFormReport({
           onSaved={handleSaved}
           onCancel={() => setEditing(null)}
           onRemove={() => handleDelete(r.formId)}
+          afterClosing={afterClosing}
           key={r.formId}
         />
       )
@@ -318,7 +331,8 @@ export function SessionFormReport({
     // One row, like every other empty section on the page — the FlatBlock the
     // caller wraps this in supplies the border, so no padding of our own.
     return (
-      <FormDropdown
+      <>
+        <FormDropdown
         templates={templates ?? []}
         sessionId={sessionId}
         onAttached={(template) => {
@@ -339,6 +353,13 @@ export function SessionFormReport({
             .catch(() => {})
         }}
       />
+        {/* Homework survives having no form attached. It rides inside the
+            write-up when there IS one (under the closing message, per Karl),
+            and a session where the trainer hasn't picked a form yet still has
+            homework to set — losing it with the form would be a feature that
+            works only sometimes. */}
+        {afterClosing}
+      </>
     )
   }
 
@@ -452,6 +473,7 @@ export function SessionFormReport({
             linked={linked}
             onSaved={handleSaved}
             onCancel={() => setEditing(null)}
+            afterClosing={afterClosing}
           />
         </ModalShell>
       )}
@@ -784,12 +806,15 @@ function FormFillerBody({
   onSaved,
   onCancel,
   onRemove,
+  afterClosing,
 }: {
   sessionId: string
   template: FormTemplate
   existing: FormResponse | null
   linked: LinkedFieldsBundle
   onSaved: (r: FormResponse) => void
+  /** Rendered under the closing message — see SessionFormReport. */
+  afterClosing?: ReactNode
   // Cancel is shown when a transient edit can be discarded (e.g. a fresh
   // attach). When the form is in always-on inline mode there's nothing to
   // cancel back to, so the host omits this and we offer Remove instead.
@@ -821,6 +846,11 @@ function FormFillerBody({
   const [sendingNow, setSendingNow] = useState(false)
   const [polishing, setPolishing] = useState(false)
   const [confirmingRemove, setConfirmingRemove] = useState(false)
+  // The two ticks that decide what Save does. Both default OFF: polishing
+  // rewrites the trainer's words and sending publishes them to a client, and
+  // neither should happen because a box was already ticked when they arrived.
+  const [polishFirst, setPolishFirst] = useState(false)
+  const [sendToClient, setSendToClient] = useState(false)
   // Entry mode: see every question at once ('list', default) or answer one at
   // a time in a focused fullscreen flow ('step').
   //
@@ -852,7 +882,16 @@ function FormFillerBody({
     setAnswers(prev => ({ ...prev, [id]: value }))
   }
 
-  async function handlePolish() {
+  /**
+   * Run the answers through the AI and RETURN the merged set.
+   *
+   * Returning them matters: polish is a tickbox on the save now, so the save
+   * happens in the same click — and `setAnswers` doesn't update the `answers`
+   * this closure can see. Saving off state here would have posted the
+   * unpolished text every time, silently, while the screen showed the tidy
+   * version. Null means it failed and the caller should stop.
+   */
+  async function runPolish(): Promise<Record<string, string> | null> {
     setError(null)
     setPolishing(true)
     try {
@@ -864,12 +903,17 @@ function FormFillerBody({
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         setError(body?.error?.toString() ?? 'AI polish failed')
-        return
+        return null
       }
       const { polished } = await res.json() as { polished: Record<string, string> }
       // Merge polished text in. Empty values are skipped server-side; merge
       // only what the AI returned so untouched fields are preserved.
-      setAnswers(prev => ({ ...prev, ...polished }))
+      const merged = { ...answers, ...polished }
+      setAnswers(merged)
+      return merged
+    } catch {
+      setError('AI polish failed')
+      return null
     } finally {
       setPolishing(false)
     }
@@ -877,11 +921,25 @@ function FormFillerBody({
 
   // sendNow=false saves a DRAFT (client sees nothing yet). sendNow=true also
   // fires the recap to the client straight away, skipping the Draft notes queue.
-  async function handleSave(sendNow = false) {
+  //
+  // `polishFirst` runs the AI BEFORE the write, in the same click, and saves
+  // what it returned — see runPolish for why the returned value is used rather
+  // than state.
+  async function handleSave(sendNow = false, polishFirst = false) {
     setError(null)
+
+    let toSave = answers
+    if (polishFirst) {
+      const polished = await runPolish()
+      // Polish failed and said so. Don't save half a decision: the trainer
+      // asked for tidy text and would have got their raw dictation.
+      if (!polished) return
+      toSave = polished
+    }
+
     for (const q of template.questions) {
       if (!q.required) continue
-      const val = (answers[q.id] ?? '').trim()
+      const val = (toSave[q.id] ?? '').trim()
       if (!val) {
         const label = q.type === 'CUSTOM_FIELD'
           ? linkedFieldMap.get(q.customFieldId)?.label ?? 'Linked field'
@@ -896,7 +954,7 @@ function FormFillerBody({
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        answers,
+        answers: toSave,
         imagesByQuestion,
         introMessage: introMessage || null,
         closingMessage: closingMessage || null,
@@ -1288,31 +1346,70 @@ function FormFillerBody({
         {introComposer}
         {template.questions.map(renderQuestion)}
         {closingComposer}
+
+        {/* Homework, last, because it is the last thing you decide: what they
+            take home off the back of what you just wrote. */}
+        {afterClosing}
       </div>
 
-      {/* Two rows, stacked — not five controls sharing one line with
-          `flex-wrap` to sort out the overflow. That wrap is what put "Save
-          changes" and "Save & send" on two lines each, mid-row, with a lilac
-          pill above them (Karl: "what can we do about this design").
-          The rows say different things: what you can do TO the write-up, then
-          what you do WITH it. */}
+      {/* Two decisions, then one button (Karl: "make polish with AI and save
+          and send to client checkboxes").
+
+          They were buttons, and that was the problem: three of them —
+          Polish, Save changes, Save & send — each did a save-shaped thing, so
+          the trainer had to work out which combination they meant. Ticking
+          what you want and pressing Save once says the same thing without the
+          arithmetic. Polish runs BEFORE the write, in the same click. */}
       <div className="flex flex-shrink-0 flex-col gap-3 border-t border-slate-100 p-4">
 
-        {/* Tools. Quiet on purpose: no tinted chip behind an icon, and the
-            trainer's brand is the only colour this app paints with (AGENTS.md).
-            A lilac AI pill also competed with the primary button for the eye
-            while being the least likely thing to be pressed. */}
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={handlePolish}
-            disabled={polishing || saving}
-            className="flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-            title="Run answers through AI to clean up your dictated notes"
-          >
-            {polishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" strokeWidth={1.75} />}
-            {polishing ? 'Polishing…' : 'Polish with AI'}
-          </button>
+        <div className="flex flex-col gap-2.5">
+          <label className="flex cursor-pointer items-start gap-2.5">
+            <input
+              type="checkbox"
+              checked={polishFirst}
+              onChange={e => setPolishFirst(e.target.checked)}
+              disabled={saving || polishing}
+              className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-slate-300 text-[var(--pm-brand-600)] focus:ring-[var(--pm-brand-500)]"
+            />
+            <span className="min-w-0">
+              <span className="flex items-center gap-1.5 text-sm font-medium text-slate-900">
+                {polishing
+                  ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                  : <Sparkles className="h-4 w-4 text-slate-500" strokeWidth={1.75} />}
+                {polishing ? 'Polishing…' : 'Polish with AI'}
+              </span>
+              <span className="mt-0.5 block text-[13px] text-slate-500">
+                Tidy up what you dictated before it saves
+              </span>
+            </span>
+          </label>
+
+          <label className="flex cursor-pointer items-start gap-2.5">
+            <input
+              type="checkbox"
+              checked={sendToClient}
+              onChange={e => setSendToClient(e.target.checked)}
+              disabled={saving || polishing}
+              className="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-slate-300 text-[var(--pm-brand-600)] focus:ring-[var(--pm-brand-500)]"
+            />
+            <span className="min-w-0">
+              <span className="flex items-center gap-1.5 text-sm font-medium text-slate-900">
+                <Send className="h-4 w-4 text-slate-500" strokeWidth={1.75} />
+                Send to client
+              </span>
+              <span className="mt-0.5 block text-[13px] text-slate-500">
+                {sendToClient
+                  ? 'They will be able to read it as soon as you save'
+                  : 'Leave it off to keep this a draft'}
+              </span>
+            </span>
+          </label>
+        </div>
+
+        {/* One button, and it says what the ticks add up to. Full width and
+            stacked on a phone so no label wraps inside its own button; a
+            right-aligned row from sm up. */}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
           {onRemove && (
             <button
               type="button"
@@ -1322,7 +1419,7 @@ function FormFillerBody({
                 onRemove()
               }}
               disabled={saving}
-              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors disabled:opacity-50 ${
+              className={`flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-colors disabled:opacity-50 sm:mr-auto ${
                 confirmingRemove
                   ? 'bg-rose-50 text-rose-600'
                   : 'whitespace-nowrap text-slate-600 hover:bg-rose-50 hover:text-rose-600'
@@ -1333,35 +1430,19 @@ function FormFillerBody({
               {confirmingRemove ? 'Click again to permanently remove' : 'Remove'}
             </button>
           )}
-        </div>
-
-        {/* Commit. Full width and stacked on a phone, so no label ever wraps
-            inside its own button; a row from sm up, ending on the primary.
-            `flex-col-reverse` puts that primary at the TOP of the stack while
-            keeping it last in the DOM — so the reading order on a wide screen
-            is still Cancel → Save → Send. */}
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
           {onCancel && (
             <Button variant="ghost" onClick={onCancel} className="w-full sm:w-auto">
               Cancel
             </Button>
           )}
           <Button
-            variant="secondary"
-            loading={saving && !sendingNow}
-            disabled={saving}
-            onClick={() => handleSave(false)}
+            loading={saving || polishing}
+            disabled={saving || polishing}
+            onClick={() => handleSave(sendToClient, polishFirst)}
             className="w-full whitespace-nowrap sm:w-auto"
           >
-            {existing ? 'Save changes' : 'Save draft'}
-          </Button>
-          <Button
-            loading={sendingNow}
-            disabled={saving}
-            onClick={() => handleSave(true)}
-            className="w-full whitespace-nowrap sm:w-auto"
-          >
-            <Send className="h-4 w-4" /> Save &amp; send
+            {sendToClient ? <Send className="h-4 w-4" /> : null}
+            {sendToClient ? 'Save & send' : existing ? 'Save changes' : 'Save draft'}
           </Button>
         </div>
       </div>

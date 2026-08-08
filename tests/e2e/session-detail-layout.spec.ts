@@ -61,16 +61,9 @@ test('an empty session fits on a phone — one facts block, collapsed sections, 
   await expect(page.getByRole('tab')).toHaveCount(2)
   await expect(page.getByRole('tab', { name: 'Details' })).toHaveCount(0)
 
-  // An empty section costs ONE row that says what's in it — no card, no
-  // heading, no "nothing here yet" paragraph inside a bordered box.
-  await expect(page.getByText('None set')).toBeVisible()
-
-  // Collapsed means collapsed: homework's editor only exists once opened.
-  const addHomework = page.getByRole('button', { name: 'Add from library' }).first()
-  await expect(addHomework).toBeHidden()
-  await page.getByText('Homework', { exact: true }).click()
-  await expect(addHomework).toBeVisible()
-  await page.getByText('Homework', { exact: true }).click()
+  // Homework is part of the write-up, and it survives a session that has no
+  // form attached yet — it is set on the session, not on the form.
+  await expect(page.getByText('Homework', { exact: true })).toBeVisible()
 
   // Photos and time are not on this screen at all any more — they are rows on
   // the session, which is one Back away.

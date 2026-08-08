@@ -1,7 +1,7 @@
 import { redirect, notFound } from 'next/navigation'
 import { auth } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { Calendar, ChevronDown, Video, History, PawPrint, Eye, ListChecks } from 'lucide-react'
+import { Calendar, ChevronDown, Video, History, PawPrint, Eye } from 'lucide-react'
 import { formatSessionTitle } from '@/lib/utils'
 import { runSessionHref } from '@/lib/run-kind'
 import { SessionFormReport } from '@/components/session-form-report'
@@ -152,9 +152,6 @@ export default async function SessionPage({
   // already said by the Complete / Invoice cells directly below it — the page
   // must not say the same thing twice (AGENTS.md).
 
-  // Homework already attached — a count for the row, so an empty section costs
-  // one line instead of two full-width buttons.
-  const taskCount = await prisma.trainingTask.count({ where: { sessionId: trainingSession.id } })
 
   // Pull the last 5 past sessions for the same client so the trainer can
   // glance at prior notes without clicking away. Ordered most-recent first.
@@ -364,32 +361,34 @@ export default async function SessionPage({
               block of its own. */}
           {notesOn && (
             <FlatBlock>
-              <SessionFormReport sessionId={trainingSession.id} sessionStatus={trainingSession.status} layout="inline" autoPromptIfEmpty />
+              <SessionFormReport
+                sessionId={trainingSession.id}
+                sessionStatus={trainingSession.status}
+                layout="inline"
+                autoPromptIfEmpty
+                // Homework rides INSIDE the write-up, under the closing
+                // message (Karl). It is the last thing you decide — what they
+                // take home off the back of what you just wrote — so it
+                // belongs at the end of the writing, not in a card below the
+                // save button.
+                afterClosing={
+                  <div className="border-t border-slate-100 pt-4">
+                    <p className="mb-2 text-sm font-medium text-slate-900">Homework</p>
+                    <SessionLibraryTasks
+                      sessionId={trainingSession.id}
+                      clientId={clientId ?? null}
+                      sessionDate={d.toISOString().split('T')[0]}
+                    />
+                  </div>
+                }
+              />
             </FlatBlock>
           )}
 
-          {/* Homework and the preview sit UNDER the write-up, not behind a
-              "Details" tab (Karl: "I don't think we need details on the notes
-              now"). Everything that tab held had moved to the session screen —
-              photos, time, the client — leaving a tab whose job was to hold
-              two things that belong with the writing anyway: what you're
-              sending them home to practise, and what the whole thing will read
-              like when they get it. */}
+          {/* What the client will actually receive — after the writing and
+              the homework that goes with it, because it is the check you do
+              once both are done. */}
           <FlatBlock>
-            <DisclosureRow
-              icon={ListChecks}
-              accent={accent}
-              label="Homework"
-              sub={taskCount === 0 ? 'None set' : `${taskCount} task${taskCount === 1 ? '' : 's'}`}
-              defaultOpen={taskCount > 0}
-            >
-              <SessionLibraryTasks
-                sessionId={trainingSession.id}
-                clientId={clientId ?? null}
-                sessionDate={d.toISOString().split('T')[0]}
-              />
-            </DisclosureRow>
-
             <LinkRow
               icon={Eye}
               accent={accent}
