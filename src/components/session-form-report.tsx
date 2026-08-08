@@ -1290,16 +1290,27 @@ function FormFillerBody({
         {closingComposer}
       </div>
 
-      <div className="flex items-center justify-between gap-2 p-4 border-t border-slate-100 flex-shrink-0 flex-wrap">
-        <div className="flex items-center gap-2">
+      {/* Two rows, stacked — not five controls sharing one line with
+          `flex-wrap` to sort out the overflow. That wrap is what put "Save
+          changes" and "Save & send" on two lines each, mid-row, with a lilac
+          pill above them (Karl: "what can we do about this design").
+          The rows say different things: what you can do TO the write-up, then
+          what you do WITH it. */}
+      <div className="flex flex-shrink-0 flex-col gap-3 border-t border-slate-100 p-4">
+
+        {/* Tools. Quiet on purpose: no tinted chip behind an icon, and the
+            trainer's brand is the only colour this app paints with (AGENTS.md).
+            A lilac AI pill also competed with the primary button for the eye
+            while being the least likely thing to be pressed. */}
+        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={handlePolish}
             disabled={polishing || saving}
-            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-purple-50 text-purple-700 hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
             title="Run answers through AI to clean up your dictated notes"
           >
-            {polishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            {polishing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" strokeWidth={1.75} />}
             {polishing ? 'Polishing…' : 'Polish with AI'}
           </button>
           {onRemove && (
@@ -1311,24 +1322,45 @@ function FormFillerBody({
                 onRemove()
               }}
               disabled={saving}
-              className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50 transition-colors ${
+              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-medium transition-colors disabled:opacity-50 ${
                 confirmingRemove
-                  ? 'bg-red-600 text-white hover:bg-red-700'
-                  : 'text-slate-500 hover:text-red-500 hover:bg-red-50'
+                  ? 'bg-rose-50 text-rose-600'
+                  : 'whitespace-nowrap text-slate-600 hover:bg-rose-50 hover:text-rose-600'
               }`}
               title={confirmingRemove ? 'Click again to confirm' : 'Remove this form from the session'}
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash2 className="h-4 w-4 flex-shrink-0" strokeWidth={1.75} />
               {confirmingRemove ? 'Click again to permanently remove' : 'Remove'}
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          {onCancel && <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>}
-          <Button variant="secondary" size="sm" loading={saving && !sendingNow} disabled={saving} onClick={() => handleSave(false)}>
+
+        {/* Commit. Full width and stacked on a phone, so no label ever wraps
+            inside its own button; a row from sm up, ending on the primary.
+            `flex-col-reverse` puts that primary at the TOP of the stack while
+            keeping it last in the DOM — so the reading order on a wide screen
+            is still Cancel → Save → Send. */}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
+          {onCancel && (
+            <Button variant="ghost" onClick={onCancel} className="w-full sm:w-auto">
+              Cancel
+            </Button>
+          )}
+          <Button
+            variant="secondary"
+            loading={saving && !sendingNow}
+            disabled={saving}
+            onClick={() => handleSave(false)}
+            className="w-full whitespace-nowrap sm:w-auto"
+          >
             {existing ? 'Save changes' : 'Save draft'}
           </Button>
-          <Button size="sm" loading={sendingNow} disabled={saving} onClick={() => handleSave(true)}>
+          <Button
+            loading={sendingNow}
+            disabled={saving}
+            onClick={() => handleSave(true)}
+            className="w-full whitespace-nowrap sm:w-auto"
+          >
             <Send className="h-4 w-4" /> Save &amp; send
           </Button>
         </div>
